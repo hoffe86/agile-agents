@@ -1,0 +1,57 @@
+name: Run eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Evaluation suite to run
+        type: choice
+        options:
+          - custom-eval
+          - swe-bench-subset
+        default: custom-eval
+      task_filter:
+        description: 'Only run tasks whose ID matches this regex'
+        type: string
+        default: '.*'
+      pass_threshold:
+        description: 'Resolved%% needed to exit 0 (see note below)'
+        type: string
+        default: '0'
+
+# ponytail: run-eval is a placeholder — it scores every task `failed` because the
+# dev-lead invocation is still a TODO (eval/README.md §Limitations), so resolved%% is
+# always 0. Default threshold 0 keeps the manual run green while exercising the plumbing.
+# Raise the default to 60 once run-eval shells out to `copilot --agent dev-lead`, and add
+# push/pull_request triggers then if you want it gating. ubuntu-latest ships bash + jq.
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run eval harness
+        run: |
+          bash eval/run-eval.sh \
+            --suite "${{ inputs.suite }}" \
+            --task-filter "${{ inputs.task_filter }}" \
+            --pass-threshold "${{ inputs.pass_threshold }}"
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Eval result — ${{ inputs.suite }}"
+            echo '```json'
+            cat eval/runs/*/summary.json 2>/dev/null || echo 'no summary.json produced'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload run artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-${{ inputs.suite }}-${{ github.run_id }}
+          path: eval/runs/
+          if-no-files-found: error

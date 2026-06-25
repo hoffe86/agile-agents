@@ -2,6 +2,7 @@
 .copilot-tracking/
 
 # Eval run outputs
+eval/runs/
 eval/**/results/
 eval/**/.runs/
 
