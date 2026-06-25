@@ -75,8 +75,9 @@ The [`Run eval`](../.github/workflows/eval.yml) workflow runs the harness on Git
 `workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold, and a
 `dry_run` toggle (**default on** — renders the per-task command without auth/credits). It posts
 `summary.json` to the run summary and uploads `runs/` as an artifact. It is **manual and
-non-gating**; a real run (`dry_run: false`) requires a Copilot-authenticated runner. Add
-`push` / `pull_request` triggers and raise the threshold once acceptance scoring lands.
+non-gating**; a real run (`dry_run: false`) requires a Copilot-authenticated runner (both the
+agent run and the LLM judge call `copilot`). Add `push` / `pull_request` triggers and raise the
+threshold once you trust the scores.
 
 Outputs land in `runs/<run-id>/` where `<run-id>` is `YYYYMMDD-HHMMSS-<suite>`:
 
@@ -115,8 +116,10 @@ The harness exits **0** when resolved % ≥ 60% on the suite, **1** otherwise (c
    - `prompt.md` — the user-story prompt to give `dev-lead` (10-30 lines)
    - `acceptance.md` — 3-5 explicit, machine- or human-verifiable pass criteria
    - `solution-profile.yaml` — the synthetic profile context (tech stack, quality gates, etc.)
-3. Re-run with `-TaskFilter task-NN`.
-4. Once stable, append a row to `baselines.md`.
+3. The default LLM judge scores it against `acceptance.md` automatically — no scorer to write.
+   Add an optional `score.ps1`/`score.sh` only if the task needs a deterministic build/test.
+4. Re-run with `-TaskFilter task-NN`.
+5. Once stable, append a row to `baselines.md`.
 
 ## Portability notes
 
@@ -137,26 +140,39 @@ For air-gapped projects, the harness has **no network dependencies** at runtime.
 network-dependent step is the initial download of SWE-bench Verified test data, which adopters
 can mirror internally.
 
+## Scoring
+
+After a successful `dev-lead` run the harness scores the produced workspace against the task's
+`acceptance.md` and maps the result to `resolved` / `partial` / `failed` (exit `0` / `2` / else):
+
+1. **Default — LLM judge.** [`score-judge.ps1`](score-judge.ps1) / [`score-judge.sh`](score-judge.sh)
+   collect the files the agent produced (excluding the seeded `solution-profile.yaml`), fill the
+   shared grading prompt in [`references/judge-prompt.md`](references/judge-prompt.md) with the
+   acceptance criteria + those artifacts, and ask `copilot` for a verdict. An unparseable or empty
+   verdict, or no produced files, scores `failed` — the judge never inflates the score. This
+   automates the rubric's "human reviewer checks the criteria" path for narrative tasks (ADR, PR
+   description, threat model) and source-level checks for code tasks.
+2. **Override — deterministic per-task scorer.** Drop a `score.ps1` (pwsh) or `score.sh` (bash) in
+   the task folder and it takes precedence over the judge. Use this when acceptance needs a real
+   build/test rather than a judgement (e.g. `dotnet build` / `dotnet test`, `bicep build`). It runs
+   in the task workspace and uses the same `0 / 2 / else` exit-code contract.
+
+The judge needs `copilot` installed and authenticated, same as the run itself. Self-check the
+verdict parser with `score-judge.ps1 -SelfTest` / `score-judge.sh --self-test` (no copilot call).
+
 ## Status & limitations (be honest)
 
 `run-eval.ps1` / `run-eval.sh` **invoke `dev-lead` for real** on the `custom-eval` suite
-(`copilot --agent dev-agents:dev-lead --plugin-dir <repo>`). Two pieces are still open:
+(`copilot --agent dev-agents:dev-lead --plugin-dir <repo>`) and score it (above). One piece is
+still open:
 
-1. **Acceptance scoring is opt-in.** After a successful run the harness looks for a per-task
-   scorer — `score.ps1` (pwsh) or `score.sh` (bash) in the task folder — and maps its exit code
-   to a status: `0 → resolved`, `2 → partial`, anything else → `failed`. The scorer runs in the
-   task workspace and checks `acceptance.md` (e.g. `dotnet build` / `dotnet test`, file
-   assertions). **With no scorer present the task is recorded `failed` with a `needs-scoring`
-   note** — the harness never credits a pass it didn't verify, so baselines stay honest. Adding
-   scorers is the next increment; the rubric's "bias toward failed when unverifiable" guidance
-   is encoded here.
-2. **SWE-bench task-prep is not wired.** Running a SWE-bench instance needs the issue text from
-   the `princeton-nlp/SWE-bench_Verified` dataset plus a checkout of the target repo at the base
-   commit. Until that prep exists, `swe-bench-subset` tasks fail with a clear note. The
-   invocation helper is shared, so wiring prep is the only remaining work for that suite.
+- **SWE-bench task-prep is not wired.** Running a SWE-bench instance needs the issue text from
+  the `princeton-nlp/SWE-bench_Verified` dataset plus a checkout of the target repo at the base
+  commit. Until that prep exists, `swe-bench-subset` tasks fail with a clear note. The
+  invocation helper is shared, so wiring prep is the only remaining work for that suite.
 
 For air-gapped projects the harness has no runtime network dependency beyond the SWE-bench data
-download (mirrorable internally) and whatever the agent itself fetches.
+download (mirrorable internally) and whatever the agent + judge fetch.
 
 ## Related plan items
 

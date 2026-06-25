@@ -25,9 +25,9 @@ on:
 
 # ponytail: dry_run defaults true so a manual run validates the dev-lead wiring on a bare
 # runner — no copilot install, no auth, no credits. A real run (dry_run:false) needs a
-# Copilot-authenticated runner; without per-task scorers it records `needs-scoring`/failed,
-# so threshold default 0 keeps it green. Raise the threshold + add push/PR triggers once
-# acceptance scoring (score.ps1/score.sh) lands. ubuntu-latest ships bash + jq.
+# Copilot-authenticated runner (the agent run AND the LLM judge both call copilot), so the
+# threshold default 0 keeps it green while you calibrate. Raise the threshold + add push/PR
+# triggers once you trust the scores. ubuntu-latest ships bash + jq.
 
 jobs:
   eval:

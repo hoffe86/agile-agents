@@ -197,12 +197,12 @@ foreach ($task in $tasks) {
             $status = 'failed'
         }
         else {
-            # Optional per-task scorer decides resolved/partial/failed against
-            # acceptance.md (exit 0 = resolved, 2 = partial, else failed). Absent a
-            # scorer the harness cannot verify acceptance, so it records failed +
-            # a needs-scoring note rather than inventing a pass.
+            # Scoring (exit 0 = resolved, 2 = partial, else failed):
+            #   per-task score.ps1 / score.sh = deterministic override (build/test);
+            #   otherwise the default LLM judge grades the workspace vs acceptance.md.
             $scorePs = Join-Path $task.Folder 'score.ps1'
             $scoreSh = Join-Path $task.Folder 'score.sh'
+            $acceptance = Join-Path $task.Folder 'acceptance.md'
             if (Test-Path $scorePs) {
                 & pwsh -NoProfile -File $scorePs -Workspace $ws *>> $logPath
                 $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
@@ -212,8 +212,8 @@ foreach ($task in $tasks) {
                 $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
             }
             else {
-                "[RESULT] needs-scoring — dev-lead ran; no score.ps1/score.sh to verify acceptance.md." | Add-Content -Path $logPath -Encoding utf8
-                $status = 'failed'
+                & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance *>> $logPath
+                $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
             }
         }
     }

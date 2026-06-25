@@ -130,11 +130,11 @@ task-filter, threshold; `summary.json` lands in the run summary and `eval/runs/`
 an artifact).
 
 > **Status:** `custom-eval` **invokes `dev-lead` for real** (`copilot --agent
-> dev-agents:dev-lead --plugin-dir <repo>`). Two pieces remain: per-task **acceptance
-> scoring** is opt-in (a `score.ps1`/`score.sh` hook; absent one, a task is recorded `failed` +
-> `needs-scoring`, so baselines never inflate), and **SWE-bench task-prep** (dataset fetch +
-> repo checkout) isn't wired yet. The workflow stays manual and non-gating until acceptance
-> scoring lands. See [`eval/README.md`](eval/README.md#status--limitations-be-honest).
+> dev-agents:dev-lead --plugin-dir <repo>`) and **scores the result**: an LLM judge grades the
+> produced workspace against the task's `acceptance.md` (`resolved`/`partial`/`failed`), with an
+> optional deterministic per-task `score.ps1`/`score.sh` override for build/test-based checks.
+> **SWE-bench task-prep** (dataset fetch + repo checkout) isn't wired yet. The workflow stays
+> manual and non-gating. See [`eval/README.md`](eval/README.md#scoring).
 
 ### `model_tier` frontmatter convention
 Each agent declares a tier so the orchestrator can pick the right model (light = high-volume

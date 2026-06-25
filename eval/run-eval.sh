@@ -184,14 +184,15 @@ for i in "${!FILTERED_IDS[@]}"; do
         elif [[ $rc -ne 0 || ! -s "$log" ]]; then
             status="failed"
         elif [[ -f "${folder}/score.sh" ]]; then
-            # Optional per-task scorer: exit 0 = resolved, 2 = partial, else failed.
+            # Per-task deterministic override: exit 0 = resolved, 2 = partial, else failed.
             sc=0
             bash "${folder}/score.sh" "$ws" >> "$log" 2>&1 || sc=$?
             case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         else
-            # dev-lead ran but the harness can't verify acceptance.md → fail honestly.
-            echo "[RESULT] needs-scoring — dev-lead ran; no score.sh to verify acceptance.md." >> "$log"
-            status="failed"
+            # Default: LLM judge grades the workspace against acceptance.md.
+            sc=0
+            bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
+            case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         fi
     fi
 
