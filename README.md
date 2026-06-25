@@ -158,3 +158,8 @@ place — extend via a wrapper skill or contribute upstream and re-sync. See
 ### Working on the harness
 See [`.github/copilot-instructions.md`](.github/copilot-instructions.md) for the full
 development guide (flat-layout rule, model-tier convention, skill format, plugin manifests).
+
+## License
+
+[MIT](LICENSE). Vendored skills under `skills/` retain their upstream MIT license
+(Copyright GitHub, Inc.) — see [`skills/VENDORED.md`](skills/VENDORED.md).
