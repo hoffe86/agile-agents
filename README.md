@@ -93,10 +93,46 @@ in `solution-profile.yaml` under `backlog.system` + `backlog.url`. Task creation
 ## Quality, eval & cost
 
 ### Eval harness (`eval/`)
-Reproducible regression suite combining a SWE-bench subset with 10 framework-shaped tasks
-(Bicep, AVM, C#/Python, IaC review, threat-model, etc.). Run via `eval/run-eval.ps1` (Windows)
-or `eval/run-eval.sh` (POSIX). Baselines are tracked in [`eval/baselines.md`](eval/baselines.md)
-— diff against it after any non-trivial agent or skill change.
+
+The eval harness is the suite's **measurement frame** — it makes quality a number, not a vibe,
+so two questions have evidence-based answers: *is the suite getting better or worse over time?*
+and *did change X actually help?* (run before/after, compare the delta). Quantitative
+measurement is the foundation every other quality lever is judged against.
+
+**Two suites, one runner:**
+
+| Suite | Source | Size | Answers |
+|---|---|---|---|
+| `swe-bench-subset/` | Stratified slice of [SWE-bench Verified](https://www.swebench.com/verified.html) | 25 tasks · 8 repos · 3 difficulty bands | External, comparable-to-literature score |
+| `custom-eval/` | Hand-written framework-shaped tasks (C#, Python, Bicep, GHA, Helm, ADR, threat-model) | 10 tasks | Internal, breadth-of-framework score |
+
+**Metrics.** Every task scores one of three statuses; SWE-bench mirrors the upstream definition
+so numbers stay comparable to the public leaderboard:
+
+| Status | Meaning | SWE-bench equivalent |
+|---|---|---|
+| ✅ `resolved` | All acceptance criteria met; build green; tests green | All `FAIL_TO_PASS` pass **and** no `PASS_TO_PASS` regression |
+| 🟡 `partial` | ≥1 criterion met; remaining failures non-catastrophic (artefact still compiles/runs) | Some `FAIL_TO_PASS` pass; no `PASS_TO_PASS` regression |
+| ❌ `failed` | No criterion met, build broken, or a test regressed | Patch doesn't apply, build broken, or `PASS_TO_PASS` regresses |
+
+Per run the harness writes `summary.json` with absolute counts and the derived rates —
+**resolved % / partial % / failed %** (each = count ÷ total). **Resolved %** is the headline
+metric; the runner exits `0` when `resolved% ≥ pass-threshold` (default `60`), `1` otherwise, so
+it can gate CI. Every run appends a row to [`eval/baselines.md`](eval/baselines.md) — the
+committed trend line; diff against it after any non-trivial agent or skill change. Full
+definitions in [`eval/scoring-rubric.md`](eval/scoring-rubric.md); methodology and the
+add-a-task contract in [`eval/README.md`](eval/README.md); composition rationale in
+[ADR 0002](docs/adr/0002-self-benchmarking-harness-composition.md).
+
+**Run it** locally with `eval/run-eval.ps1` (Windows) / `eval/run-eval.sh` (POSIX), or on demand
+via the [`Run eval`](.github/workflows/eval.yml) workflow (`workflow_dispatch` → pick suite,
+task-filter, threshold; `summary.json` lands in the run summary and `eval/runs/` is uploaded as
+an artifact).
+
+> **Status:** the runner currently writes a **placeholder** result per task (scores every task
+> `failed`) — the non-interactive `dev-lead` invocation is still a TODO pending the Copilot CLI
+> agent-run contract. The plumbing, metrics, and scoring are exercisable end-to-end today; only
+> the agent call is stubbed. The workflow is therefore manual and non-gating until that lands.
 
 ### `model_tier` frontmatter convention
 Each agent declares a tier so the orchestrator can pick the right model (light = high-volume

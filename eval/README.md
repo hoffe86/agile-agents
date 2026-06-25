@@ -55,6 +55,14 @@ For each task the harness:
 ./run-eval.sh --suite custom-eval --task-filter 'task-03'
 ```
 
+### CI (on demand)
+
+The [`Run eval`](../.github/workflows/eval.yml) workflow runs the harness on GitHub Actions via
+`workflow_dispatch`: pick the suite, an optional task-filter regex, and a pass-threshold. It
+posts `summary.json` to the run summary and uploads `runs/` as an artifact. It is **manual and
+non-gating** while the runner is a placeholder (see *Limitations*); add `push` / `pull_request`
+triggers and raise the threshold once the real `dev-lead` invocation lands.
+
 Outputs land in `runs/<run-id>/` where `<run-id>` is `YYYYMMDD-HHMMSS-<suite>`:
 
 ```
