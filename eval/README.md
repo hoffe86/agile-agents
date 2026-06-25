@@ -13,6 +13,19 @@ adopter who forks this template) can answer two questions with numbers, not vibe
 Self-benchmarking is the **first** improvement (Phase 1, item H2 in the improvement plan) for a
 reason: every later quality lift needs a quantitative anchor to be measured against.
 
+## Eval layers
+
+This outcome eval is the **top** of a layered pyramid ([ADR 0008](../docs/adr/0008-layered-evaluation-strategy.md)):
+
+| Layer | What it grades | Cost | Where |
+|---|---|---|---|
+| **L0** trajectory | *how* a run executed (RPI process conformance over the event log) | zero-credit, deterministic, gating | [`trajectory/`](trajectory/README.md) |
+| **L1** review-detection | the Review phase (seeded-defect recall/precision) | medium | planned (ADR 0008) |
+| **L2** outcome | *what* a run produced (acceptance vs. artifact) | credit-heavy, manual | this folder |
+
+L0 runs free on every push/PR and catches process failures L2 is blind to; L2 (below) is the
+end-to-end integration checkpoint.
+
 ## Methodology
 
 Two evaluation suites, both runnable through the same harness:
