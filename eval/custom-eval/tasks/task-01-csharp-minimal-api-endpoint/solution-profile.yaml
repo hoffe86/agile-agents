@@ -1,0 +1,22 @@
+name: orders-service
+language: csharp
+framework: aspnet-minimal-api
+target_framework: net9.0
+
+testing:
+  framework: xunit
+  e2e:
+    framework: none
+
+quality_gates:
+  test_bar:
+    enabled: true
+    fail_fast: true
+    commands:
+      lint: "dotnet format --verify-no-changes"
+      build: "dotnet build -warnaserror"
+      test: "dotnet test --no-build"
+
+api_conventions:
+  error_format: rfc9457
+  openapi: required

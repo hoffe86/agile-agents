@@ -1,0 +1,26 @@
+name: orders-api
+deliverable_type: infrastructure
+target_platform: kubernetes
+
+infrastructure:
+  iac: kustomize
+  migration_from: helm
+  environments:
+    - dev
+    - staging
+    - prod
+  resources:
+    - deployment
+    - service
+    - configmap
+    - hpa
+    - serviceaccount
+    - networkpolicy
+
+quality_gates:
+  test_bar:
+    enabled: true
+    fail_fast: true
+    commands:
+      lint:  "kubectl kustomize deploy/kustomize/orders-api/overlays/dev > /dev/null"
+      build: "kubectl kustomize deploy/kustomize/orders-api/overlays/prod > /dev/null"

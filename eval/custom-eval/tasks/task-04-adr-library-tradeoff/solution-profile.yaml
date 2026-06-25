@@ -1,0 +1,17 @@
+name: order-orchestrator
+language: csharp
+framework: aspnet-minimal-api
+
+architecture:
+  adr_directory: docs/adr
+  adr_template: madr-light
+  adr_required_for:
+    - external_library_choice
+    - data_store_choice
+    - integration_pattern_change
+
+quality_gates:
+  test_bar:
+    enabled: false   # narrative deliverable, no build/test gate
+
+deliverable_type: documentation

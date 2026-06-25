@@ -1,0 +1,22 @@
+name: invoice-summariser
+language: python
+python_version: "3.12"
+framework: fastapi
+
+testing:
+  framework: pytest
+  e2e:
+    framework: none
+
+quality_gates:
+  test_bar:
+    enabled: true
+    fail_fast: true
+    commands:
+      lint: "ruff check ."
+      type:  "mypy --strict ."
+      test:  "pytest -q"
+
+code_conventions:
+  di_style: constructor
+  interface_pattern: typing.Protocol

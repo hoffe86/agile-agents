@@ -1,0 +1,24 @@
+name: pricing-client
+language: csharp
+target_framework: net9.0
+
+resilience:
+  library: microsoft-extensions-http-resilience
+  strategies:
+    - timeout
+    - retry
+    - circuit-breaker
+    - concurrency-limiter
+  configurable: true
+
+testing:
+  framework: xunit
+  mocking_library: nsubstitute
+
+quality_gates:
+  test_bar:
+    enabled: true
+    fail_fast: true
+    commands:
+      build: "dotnet build -warnaserror"
+      test:  "dotnet test --no-build"

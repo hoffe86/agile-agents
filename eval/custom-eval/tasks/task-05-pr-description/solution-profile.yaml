@@ -1,0 +1,19 @@
+name: orders-service
+language: csharp
+
+deliverable_type: documentation
+artefact: pr-description
+
+conventions:
+  pr_template_sections:
+    - What
+    - Why
+    - How
+    - Testing
+    - "Risk & rollback"
+  ticket_system: jira
+  ticket_prefix: JIRA-
+
+quality_gates:
+  test_bar:
+    enabled: false

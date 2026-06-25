@@ -1,0 +1,35 @@
+{
+  "name": "hoffe86-agent-marketplace",
+  "owner": {
+    "name": "hoffe86",
+    "url": "https://github.com/hoffe86"
+  },
+  "metadata": {
+    "description": "Marketplace for the dev-agents software-development agent suite.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "dev-agents",
+      "description": "Autonomous software-development agent suite for GitHub Copilot CLI — an RPI (Research, Plan, Implement, Review) pipeline of 11 specialist agents and 52 skills.",
+      "version": "0.1.0",
+      "source": "./",
+      "category": "development",
+      "keywords": [
+        "agents",
+        "rpi",
+        "code-review",
+        "architecture",
+        "testing",
+        "infrastructure",
+        "azure",
+        "copilot-cli"
+      ],
+      "agents": "agents/",
+      "skills": [
+        "skills/",
+        "user/skills/"
+      ]
+    }
+  ]
+}

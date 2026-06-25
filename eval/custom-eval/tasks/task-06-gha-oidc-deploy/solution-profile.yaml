@@ -1,0 +1,23 @@
+name: orders-service
+language: csharp
+framework: aspnet-core
+
+cicd:
+  platform: github-actions
+  auth: oidc
+  action_pinning: full-sha
+  deploy_target:
+    type: azure-web-app
+    name: app-orders-prod
+    resource_group: rg-orders-prod
+
+compliance:
+  supply_chain:
+    - pin-actions-to-sha
+    - no-long-lived-azure-secrets
+
+quality_gates:
+  test_bar:
+    enabled: true
+    commands:
+      lint:  "actionlint .github/workflows/"

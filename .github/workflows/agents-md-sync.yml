@@ -1,0 +1,44 @@
+name: AGENTS.md sync check
+
+on:
+  push:
+    paths:
+      - 'solution-profile.yaml'
+      - 'agents/**'
+      - 'skills/**'
+      - 'scripts/generate-agents-md.*'
+      - 'scripts/references/agents-md-template.md'
+      - 'AGENTS.md'
+      - '.github/workflows/agents-md-sync.yml'
+  pull_request:
+    paths:
+      - 'solution-profile.yaml'
+      - 'agents/**'
+      - 'skills/**'
+      - 'scripts/generate-agents-md.*'
+      - 'scripts/references/agents-md-template.md'
+      - 'AGENTS.md'
+  workflow_dispatch:
+
+jobs:
+  check-agents-md-in-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Regenerate AGENTS.md from solution-profile.yaml
+        shell: pwsh
+        run: |
+          ./scripts/generate-agents-md.ps1 `
+            -ProfilePath solution-profile.yaml `
+            -AgentsDir   agents `
+            -SkillsDir   skills `
+            -Output      AGENTS.md
+
+      - name: Fail if AGENTS.md drifted from sources
+        run: |
+          if ! git diff --exit-code -- AGENTS.md; then
+            echo "::error::AGENTS.md is out of sync with solution-profile.yaml / agents / skills."
+            echo "Run: pwsh scripts/generate-agents-md.ps1 and commit the result."
+            exit 1
+          fi

@@ -1,0 +1,22 @@
+name: reconciliation-service
+language: csharp
+target_framework: net9.0
+
+testing:
+  framework: xunit
+  mocking_library: nsubstitute
+  integration:
+    enabled: true
+    container_runtime: testcontainers
+    backing_services:
+      - postgres
+  coverage_tool: coverlet
+  coverage_target: 90
+
+quality_gates:
+  test_bar:
+    enabled: true
+    fail_fast: true
+    commands:
+      build: "dotnet build"
+      test:  "dotnet test --collect:'XPlat Code Coverage'"

@@ -1,0 +1,25 @@
+name: quotes-api
+language: csharp
+framework: aspnet-minimal-api
+
+deliverable_type: documentation
+artefact: threat-model
+
+security:
+  exposure: public-internet
+  authn: oauth2-client-credentials
+  identity_provider: entra-id
+  pii_in_payload: true
+  region: westeurope
+  edge:
+    cdn: azure-front-door
+    waf: enabled
+    rate_limit_rpm: 100
+  required_frameworks:
+    - owasp-api-top10
+    - microsoft-sdl
+    - nist-sp-800-204
+
+quality_gates:
+  test_bar:
+    enabled: false

@@ -1,0 +1,23 @@
+name: platform-modules
+language: bicep
+target_cloud: azure
+
+infrastructure:
+  iac: bicep
+  module_pattern: parameterised-reusable
+  baseline: azure-waf-security
+
+compliance:
+  framework: cis-azure
+  controls:
+    - "3.1 Secure transfer required"
+    - "3.7 Public access level set to private"
+    - "3.8 Default network access denied"
+
+quality_gates:
+  test_bar:
+    enabled: true
+    fail_fast: true
+    commands:
+      lint:  "bicep lint modules/"
+      build: "bicep build modules/storage-account.bicep && bicep build examples/storage-account-consumer.bicep"

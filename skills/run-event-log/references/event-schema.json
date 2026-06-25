@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoffe86/agent/skills/run-event-log/event-schema.json",
+  "title": "Coding-suite run event",
+  "description": "One structured JSON Lines event emitted by a coding-suite agent (dev-lead, architect, coding, testing, infrastructure, or any reviewer) at a phase boundary, on a non-trivial tool call, on a quality-gate decision, or on completion. Append-only — see SKILL.md. Sentinel blocks remain canonical hand-off; this event log is additive telemetry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["timestamp", "run_id", "agent", "phase", "event_type"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC with millisecond precision and Z suffix, e.g. '2026-04-15T08:42:17.123Z'."
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "description": "UUID (UUIDv7 recommended) minted by dev-lead at run start. Same value for every event in a run."
+    },
+    "agent": {
+      "type": "string",
+      "enum": [
+        "dev-lead",
+        "architect",
+        "coding",
+        "testing",
+        "infrastructure",
+        "review",
+        "security-review",
+        "architecture-review",
+        "infrastructure-review",
+        "test-review"
+      ],
+      "description": "Which coding-suite agent emitted the event."
+    },
+    "phase": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Free-form phase name, e.g. 'architecture', 'coding', 'testing', 'infrastructure', 'review', 'wrap-up'."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "run_start",
+        "run_complete",
+        "phase_start",
+        "phase_complete",
+        "tool_call",
+        "gate_check",
+        "handoff_received",
+        "error"
+      ],
+      "description": "Discriminator. See references/event-types.md for required-field rules per event_type."
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "Optional grouping key — typically the parent task or work-item id. Lets analysis tooling group events that belong to the same logical user request across multiple runs."
+    },
+    "parent_event_id": {
+      "type": "string",
+      "description": "Optional id of the event that caused this one (e.g. the phase_start that this phase_complete closes)."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "fail", "partial"],
+      "description": "Required for phase_complete, run_complete, gate_check. Forbidden for phase_start / run_start."
+    },
+    "tokens_in": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Prompt tokens consumed by the model call associated with this event (or sum of calls within the phase, for phase_complete)."
+    },
+    "tokens_out": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Completion tokens produced by the model call associated with this event."
+    },
+    "cost_usd": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated USD cost. Reporters should use the price card embedded by the cost-budget skill (lands in H4)."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock duration in milliseconds for the action this event describes."
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Required for event_type=tool_call. Name of the tool invoked, e.g. 'view', 'edit', 'powershell', 'github-create_pull_request'."
+    },
+    "args_summary": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Redacted ≤200-char summary of tool arguments. NEVER include secrets, full file contents, or PII. For restricted projects, hash file paths (SHA-256 first 12 hex chars) before including them."
+    },
+    "error_kind": {
+      "type": "string",
+      "description": "Required for event_type=error. Short machine-readable category, e.g. 'tool_timeout', 'validation_failed', 'gate_blocked', 'rate_limited'."
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Free-form structured detail. Same redaction rules apply (no secrets, no full file contents, no unredacted PII)."
+    }
+  },
+  "examples": [
+    {
+      "timestamp": "2026-04-15T08:42:17.123Z",
+      "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
+      "agent": "dev-lead",
+      "phase": "bootstrap",
+      "event_type": "run_start",
+      "payload": {
+        "user_request_summary": "Add Bicep module for Storage Account with private endpoint",
+        "profile_loaded": true
+      }
+    },
+    {
+      "timestamp": "2026-04-15T08:42:18.001Z",
+      "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
+      "agent": "architect",
+      "phase": "architecture",
+      "event_type": "phase_start",
+      "parent_event_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e60"
+    },
+    {
+      "timestamp": "2026-04-15T08:43:09.872Z",
+      "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
+      "agent": "coding",
+      "phase": "coding",
+      "event_type": "tool_call",
+      "tool_name": "edit",
+      "args_summary": "infra/modules/storage.bicep — add privateEndpoint resource (lines 42-78)",
+      "tokens_in": 4210,
+      "tokens_out": 612,
+      "cost_usd": 0.018,
+      "duration_ms": 2300
+    },
+    {
+      "timestamp": "2026-04-15T08:46:55.410Z",
+      "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
+      "agent": "security-review",
+      "phase": "review",
+      "event_type": "gate_check",
+      "outcome": "fail",
+      "payload": {
+        "gate": "no-public-network-access",
+        "finding_count": 1,
+        "severity": "high"
+      }
+    },
+    {
+      "timestamp": "2026-04-15T08:51:02.998Z",
+      "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
+      "agent": "dev-lead",
+      "phase": "wrap-up",
+      "event_type": "run_complete",
+      "outcome": "success",
+      "tokens_in": 84210,
+      "tokens_out": 19880,
+      "cost_usd": 0.612,
+      "duration_ms": 524000
+    }
+  ]
+}
