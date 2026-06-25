@@ -73,10 +73,26 @@ login`); use `--dry-run` to validate the wiring without either.
 
 The [`Run eval`](../.github/workflows/eval.yml) workflow runs the harness on GitHub Actions via
 `workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold, and a
-`dry_run` toggle (**default on** — renders the per-task command without auth/credits). It posts
-`summary.json` to the run summary and uploads `runs/` as an artifact. It is **manual and
-non-gating**; a real run (`dry_run: false`) requires a Copilot-authenticated runner (both the
-agent run and the LLM judge call `copilot`). Add `push` / `pull_request` triggers and raise the
+`dry_run` toggle (**default on** — renders the per-task command without auth/credits, so the
+default dispatch is a free wiring check). It posts `summary.json` to the run summary and uploads
+`runs/` as an artifact.
+
+**To actually execute the agents in CI (`dry_run: false`):**
+
+1. Create a **fine-grained personal access token** with the **Copilot Requests** account
+   permission (user-owned — see
+   [Authenticating Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli#authenticating-with-a-personal-access-token)).
+2. Add it as the repository secret **`COPILOT_CLI_TOKEN`**.
+3. Dispatch with `dry_run` **unchecked**. The job then installs the Copilot CLI
+   (`npm install -g @github/copilot`) and authenticates with the token.
+
+A real run **consumes Copilot credits and is slow** — it executes the full multi-agent pipeline
+per task, and both the `dev-lead` run *and* the LLM judge call `copilot`. Use `task_filter` to
+limit scope (the job has a 180-minute timeout). If `dry_run: false` is selected without the
+secret, the job fails fast with a clear message rather than silently skipping. The eval is
+designed as a **local/manual measurement tool first** — running `run-eval.*` on your own
+authenticated machine is the cheaper primary path; CI real-runs are for shared, reproducible
+checkpoints. It stays **non-gating**; add `push` / `pull_request` triggers and raise the
 threshold once you trust the scores.
 
 Outputs land in `runs/<run-id>/` where `<run-id>` is `YYYYMMDD-HHMMSS-<suite>`:
