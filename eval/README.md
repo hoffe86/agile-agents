@@ -59,13 +59,15 @@ For each task the harness:
 workspace with the task's `solution-profile.yaml`, and runs
 
 ```
-copilot -p <prompt> --agent dev-lead --plugin-dir <repo> --allow-all-tools --no-ask-user \
-        --output-format json -C <workspace> --add-dir <workspace>
+copilot -p <prompt> --agent dev-agents:dev-lead --plugin-dir <repo> --allow-all-tools \
+        --no-ask-user --output-format json -C <workspace> --add-dir <workspace>
 ```
 
-`--plugin-dir <repo>` loads this repo as a local plugin so `dev-lead` resolves without a prior
-`copilot plugin install`. The CLI must be installed and authenticated (`copilot login`); use
-`--dry-run` to validate the wiring without either.
+`--plugin-dir <repo>` loads this repo as a local plugin (named `dev-agents` from
+`.github/plugin/plugin.json`), so the supervisor agent is addressed **plugin-namespaced** as
+`dev-agents:dev-lead` — bare `dev-lead` errors `No such agent`. No prior
+`copilot plugin install` is needed. The CLI must be installed and authenticated (`copilot
+login`); use `--dry-run` to validate the wiring without either.
 
 ### CI (on demand)
 
@@ -138,7 +140,7 @@ can mirror internally.
 ## Status & limitations (be honest)
 
 `run-eval.ps1` / `run-eval.sh` **invoke `dev-lead` for real** on the `custom-eval` suite
-(`copilot --agent dev-lead --plugin-dir <repo>`). Two pieces are still open:
+(`copilot --agent dev-agents:dev-lead --plugin-dir <repo>`). Two pieces are still open:
 
 1. **Acceptance scoring is opt-in.** After a successful run the harness looks for a per-task
    scorer — `score.ps1` (pwsh) or `score.sh` (bash) in the task folder — and maps its exit code

@@ -8,8 +8,8 @@
     invokes dev-lead per task, captures stdout/stderr to runs/<run-id>/<task-id>.log, and
     writes a summary.json + appends a row to baselines.md.
 
-    custom-eval invokes dev-lead for real via `copilot --agent dev-lead --plugin-dir <repo>`
-    (the repo is loaded as a local plugin so the agent resolves without installing).
+    custom-eval invokes dev-lead for real via `copilot --agent dev-agents:dev-lead --plugin-dir
+    <repo>` (the repo is loaded as a local plugin so the agent resolves without installing).
     swe-bench-subset task-prep (dataset fetch + repo checkout) is not yet wired; those
     tasks fail honestly until it lands.
 
@@ -58,9 +58,13 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# Repo root = parent of eval/. Loaded as a local plugin so `--agent dev-lead`
-# resolves the in-repo agents/skills without a prior `copilot plugin install`.
+# Repo root = parent of eval/. Loaded as a local plugin so the agent resolves
+# without a prior `copilot plugin install`. --plugin-dir registers it under the
+# plugin name from .github/plugin/plugin.json ("dev-agents"), so the supervisor
+# agent is addressed as dev-agents:dev-lead — NOT bare dev-lead (the CLI errors
+# "No such agent: dev-lead" without the plugin prefix).
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$devLeadAgent = 'dev-agents:dev-lead'
 
 if (-not $DryRun -and -not (Get-Command copilot -ErrorAction SilentlyContinue)) {
     Write-Error "copilot CLI not found on PATH. Install it, run 'copilot login', or use -DryRun."
@@ -76,7 +80,7 @@ function Invoke-DevLead {
     )
     $copilotArgs = @(
         '-p', $PromptText
-        '--agent', 'dev-lead'
+        '--agent', $devLeadAgent
         '--plugin-dir', $repoRoot
         '--allow-all-tools'
         '--no-ask-user'

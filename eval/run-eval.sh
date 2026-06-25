@@ -4,7 +4,7 @@
 # Runs the dev-lead self-benchmark harness against one of two suites and
 # captures per-task logs + a summary.json.
 #
-# NOTE: custom-eval invokes dev-lead for real via `copilot --agent dev-lead
+# NOTE: custom-eval invokes dev-lead for real via `copilot --agent dev-agents:dev-lead
 # --plugin-dir <repo>` (the repo is loaded as a local plugin so the agent resolves
 # without installing). swe-bench-subset task-prep (dataset fetch + repo checkout) is
 # not yet wired; those tasks fail honestly until it lands.
@@ -24,6 +24,9 @@ PASS_THRESHOLD=60
 DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Plugin-namespaced agent id — see run-eval.ps1 for the why. --plugin-dir loads
+# this repo as plugin "dev-agents", so the supervisor is dev-agents:dev-lead.
+DEV_LEAD_AGENT="dev-agents:dev-lead"
 OUTPUT_ROOT="${SCRIPT_DIR}/runs"
 
 usage() {
@@ -69,19 +72,19 @@ if [[ "$DRY_RUN" != "1" ]] && ! command -v copilot >/dev/null 2>&1; then
 fi
 
 # --- dev-lead invocation -----------------------------------------------------
-# The repo is loaded as a local plugin so `--agent dev-lead` resolves the in-repo
-# agents/skills without a prior `copilot plugin install`.
+# The repo is loaded as a local plugin (name "dev-agents") so `--agent
+# dev-agents:dev-lead` resolves the in-repo agents/skills without `copilot plugin install`.
 invoke_dev_lead() {
     local prompt_text="$1" workspace="$2" log="$3"
     if [[ "$DRY_RUN" == "1" ]]; then
         {
             echo "[DRY RUN] would invoke dev-lead with:"
-            echo "copilot -p <prompt> --agent dev-lead --plugin-dir \"$REPO_ROOT\" --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\""
+            echo "copilot -p <prompt> --agent $DEV_LEAD_AGENT --plugin-dir \"$REPO_ROOT\" --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\""
         } > "$log"
         return 0
     fi
     copilot -p "$prompt_text" \
-        --agent dev-lead \
+        --agent "$DEV_LEAD_AGENT" \
         --plugin-dir "$REPO_ROOT" \
         --allow-all-tools \
         --no-ask-user \
