@@ -6,15 +6,11 @@ This repo is the **development home** of `dev-agents` — a portable GitHub Copi
 **plugin** providing an autonomous software-development agent suite. It is both the
 source you edit and the installable plugin/marketplace that others consume.
 
-Two ways the suite is consumed:
-
-1. **As a Copilot CLI plugin** (primary) — `copilot plugin marketplace add hoffe86/agent`
-   then `copilot plugin install dev-agents@hoffe86-agent-marketplace`. The CLI loads
-   `agents/` and `skills/` + `user/skills/` directly from the plugin (see
-   `.github/plugin/plugin.json`).
-2. **Vendored into a target repo** (copy-install) — `install.ps1` / `install.sh` copy
-   the suite into a project's `.github/` (agents → `.github/agents/`, skills →
-   `.github/skills/`). See `INSTALL.md`.
+The suite is consumed **as a Copilot CLI plugin** — `copilot plugin marketplace add
+hoffe86/agent` then `copilot plugin install dev-agents@hoffe86-agent-marketplace`. The CLI
+loads `agents/`, `skills/`, and `user/skills/` directly from the plugin (see
+`.github/plugin/plugin.json`). Per-project config (`solution-profile.yaml`) is copied into
+the target repo's `.github/`.
 
 ## Repository structure
 
@@ -36,7 +32,6 @@ agent/
 │   ├── research/                    Whitepaper + spikes
 │   └── AGENTS-MD-MAPPING.md         Folder→agent mapping for the generator
 ├── solution-profile.yaml            Per-project operational profile (template)
-├── install.ps1 / install.sh / INSTALL.md
 ├── AGENTS.md                        Generated — do not hand-edit
 └── README.md
 ```
@@ -83,9 +78,8 @@ test-bar-gate, e2e-testing, cost-budget).
 ### User-scope skills
 The five skills under `user/skills/` (`working-style`, `trade-off-reporting`, `code-review`,
 `cloud-native-patterns`, `azure-drawio-mcp-diagramming`) are referenced by **every** agent.
-As a plugin they are bundled (the `skills` array includes `user/skills/`). For copy-install
-they go to `~/.copilot/skills/`. If you also keep a runtime copy at `~/.copilot/skills/`,
-sync changes both ways.
+They are bundled into the plugin (the `skills` array includes `user/skills/`). If you also
+keep a runtime copy at `~/.copilot/skills/`, sync changes both ways.
 
 ### Model-tier convention
 Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),

@@ -8,38 +8,20 @@ and an eval/cost layer.
 
 ## Install
 
-### As a Copilot CLI plugin (recommended)
-
 ```shell
 copilot plugin marketplace add hoffe86/agent
 copilot plugin install dev-agents@hoffe86-agent-marketplace
 ```
 
-Or install straight from the repo root:
+Or straight from the repo root:
 
 ```shell
 copilot plugin install hoffe86/agent
 ```
 
-The plugin ships the `agents/` and all `skills/` (repo-scope + user-scope) — installing it
-makes the whole suite available in the CLI.
-
-### Vendored into a target repo (copy-install)
-
-When you want the agents committed into a project's `.github/` (e.g. for the cloud coding
-agent or team standardisation), use the install scripts:
-
-```powershell
-.\install.ps1 -TargetPath C:\src\my-project          # Windows / PowerShell 5.1+
-```
-```bash
-./install.sh --target ~/src/my-project               # Linux / macOS / WSL
-```
-
-Agents flatten into `.github/agents/`, skills into `.github/skills/<name>/`, plus `AGENTS.md`,
-`solution-profile.yaml`, `eval/`, `scripts/`, `.github/AGENTS-MD-MAPPING.md`, and the
-`agents-md-sync.yml` workflow. See [`INSTALL.md`](INSTALL.md) for scopes, update mode, and the
-`solution-profile.yaml` merge workflow.
+The plugin ships `agents/` and all `skills/` (repo-scope + user-scope) — installing it makes
+the whole suite available in the CLI. Per-project config (`solution-profile.yaml`) is a
+one-file copy into your target repo's `.github/` (see [Solution profile](#solution-profile)).
 
 ## What you get
 
@@ -67,7 +49,7 @@ Agents flatten into `.github/agents/`, skills into `.github/skills/<name>/`, plu
 
 **5 user-scope skills** (`user/skills/`) — referenced by every agent: `working-style`,
 `trade-off-reporting`, `code-review`, `cloud-native-patterns`, `azure-drawio-mcp-diagramming`.
-Bundled into the plugin; for copy-install they go to `~/.copilot/skills/`.
+Bundled into the plugin.
 
 ## How it works — the RPI pipeline
 
