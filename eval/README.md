@@ -51,17 +51,30 @@ For each task the harness:
 ### Bash (Linux / macOS)
 
 ```bash
-./run-eval.sh --suite swe-bench-subset
 ./run-eval.sh --suite custom-eval --task-filter 'task-03'
+./run-eval.sh --suite custom-eval --dry-run     # print the copilot command per task; no auth/credits
 ```
+
+`custom-eval` invokes `dev-lead` for real: it reads each task's `prompt.md`, seeds a fresh
+workspace with the task's `solution-profile.yaml`, and runs
+
+```
+copilot -p <prompt> --agent dev-lead --plugin-dir <repo> --allow-all-tools --no-ask-user \
+        --output-format json -C <workspace> --add-dir <workspace>
+```
+
+`--plugin-dir <repo>` loads this repo as a local plugin so `dev-lead` resolves without a prior
+`copilot plugin install`. The CLI must be installed and authenticated (`copilot login`); use
+`--dry-run` to validate the wiring without either.
 
 ### CI (on demand)
 
 The [`Run eval`](../.github/workflows/eval.yml) workflow runs the harness on GitHub Actions via
-`workflow_dispatch`: pick the suite, an optional task-filter regex, and a pass-threshold. It
-posts `summary.json` to the run summary and uploads `runs/` as an artifact. It is **manual and
-non-gating** while the runner is a placeholder (see *Limitations*); add `push` / `pull_request`
-triggers and raise the threshold once the real `dev-lead` invocation lands.
+`workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold, and a
+`dry_run` toggle (**default on** — renders the per-task command without auth/credits). It posts
+`summary.json` to the run summary and uploads `runs/` as an artifact. It is **manual and
+non-gating**; a real run (`dry_run: false`) requires a Copilot-authenticated runner. Add
+`push` / `pull_request` triggers and raise the threshold once acceptance scoring lands.
 
 Outputs land in `runs/<run-id>/` where `<run-id>` is `YYYYMMDD-HHMMSS-<suite>`:
 
@@ -122,14 +135,26 @@ For air-gapped projects, the harness has **no network dependencies** at runtime.
 network-dependent step is the initial download of SWE-bench Verified test data, which adopters
 can mirror internally.
 
-## Limitations (be honest)
+## Status & limitations (be honest)
 
-The harness skeleton in `run-eval.ps1` / `run-eval.sh` currently writes a **placeholder
-invocation** (a `# TODO` comment) instead of actually shelling out to `copilot --agent dev-lead`.
-The Copilot CLI invocation contract for non-interactive agent runs is still being finalised
-(see GitHub Copilot CLI docs); once stable, replace the TODO block in both scripts with the
-real subprocess call. The folder structure, manifest format, and scoring rubric are designed
-so that swap is a localised change.
+`run-eval.ps1` / `run-eval.sh` **invoke `dev-lead` for real** on the `custom-eval` suite
+(`copilot --agent dev-lead --plugin-dir <repo>`). Two pieces are still open:
+
+1. **Acceptance scoring is opt-in.** After a successful run the harness looks for a per-task
+   scorer — `score.ps1` (pwsh) or `score.sh` (bash) in the task folder — and maps its exit code
+   to a status: `0 → resolved`, `2 → partial`, anything else → `failed`. The scorer runs in the
+   task workspace and checks `acceptance.md` (e.g. `dotnet build` / `dotnet test`, file
+   assertions). **With no scorer present the task is recorded `failed` with a `needs-scoring`
+   note** — the harness never credits a pass it didn't verify, so baselines stay honest. Adding
+   scorers is the next increment; the rubric's "bias toward failed when unverifiable" guidance
+   is encoded here.
+2. **SWE-bench task-prep is not wired.** Running a SWE-bench instance needs the issue text from
+   the `princeton-nlp/SWE-bench_Verified` dataset plus a checkout of the target repo at the base
+   commit. Until that prep exists, `swe-bench-subset` tasks fail with a clear note. The
+   invocation helper is shared, so wiring prep is the only remaining work for that suite.
+
+For air-gapped projects the harness has no runtime network dependency beyond the SWE-bench data
+download (mirrorable internally) and whatever the agent itself fetches.
 
 ## Related plan items
 

@@ -4,14 +4,16 @@
 # Runs the dev-lead self-benchmark harness against one of two suites and
 # captures per-task logs + a summary.json.
 #
-# NOTE: dev-lead invocation is currently a TODO (see Limitations in README.md).
-# The script writes a placeholder log per task so the surrounding plumbing can
-# be exercised end-to-end before the real CLI integration lands.
+# NOTE: custom-eval invokes dev-lead for real via `copilot --agent dev-lead
+# --plugin-dir <repo>` (the repo is loaded as a local plugin so the agent resolves
+# without installing). swe-bench-subset task-prep (dataset fetch + repo checkout) is
+# not yet wired; those tasks fail honestly until it lands.
 #
 # Usage:
 #   ./run-eval.sh --suite swe-bench-subset
 #   ./run-eval.sh --suite custom-eval --task-filter 'task-03'
 #   ./run-eval.sh --suite custom-eval --task-filter 'bicep|helm' --pass-threshold 75
+#   ./run-eval.sh --suite custom-eval --dry-run    # print commands, no auth/credits
 
 set -euo pipefail
 
@@ -19,7 +21,9 @@ set -euo pipefail
 SUITE=""
 TASK_FILTER=".*"
 PASS_THRESHOLD=60
+DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 OUTPUT_ROOT="${SCRIPT_DIR}/runs"
 
 usage() {
@@ -31,6 +35,7 @@ Options:
   --task-filter <regex>      Optional. Only run tasks whose ID matches. Default: .*
   --pass-threshold <int>     Optional. Resolved% needed to exit 0. Default: 60
   --output-root <path>       Optional. Where to write runs/. Default: ./runs
+  --dry-run                  Print the resolved copilot command per task; don't execute.
   -h, --help                 Show this help and exit.
 EOF
 }
@@ -42,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --task-filter)      TASK_FILTER="$2"; shift 2 ;;
         --pass-threshold)   PASS_THRESHOLD="$2"; shift 2 ;;
         --output-root)      OUTPUT_ROOT="$2"; shift 2 ;;
+        --dry-run)          DRY_RUN=1; shift ;;
         -h|--help)          usage; exit 0 ;;
         *)                  echo "Unknown arg: $1" >&2; usage; exit 2 ;;
     esac
@@ -56,6 +62,34 @@ fi
 
 SUITE_ROOT="${SCRIPT_DIR}/${SUITE}"
 [[ -d "$SUITE_ROOT" ]] || { echo "ERROR: missing suite folder $SUITE_ROOT" >&2; exit 2; }
+
+if [[ "$DRY_RUN" != "1" ]] && ! command -v copilot >/dev/null 2>&1; then
+    echo "ERROR: copilot CLI not found on PATH. Install it, run 'copilot login', or use --dry-run." >&2
+    exit 2
+fi
+
+# --- dev-lead invocation -----------------------------------------------------
+# The repo is loaded as a local plugin so `--agent dev-lead` resolves the in-repo
+# agents/skills without a prior `copilot plugin install`.
+invoke_dev_lead() {
+    local prompt_text="$1" workspace="$2" log="$3"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        {
+            echo "[DRY RUN] would invoke dev-lead with:"
+            echo "copilot -p <prompt> --agent dev-lead --plugin-dir \"$REPO_ROOT\" --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\""
+        } > "$log"
+        return 0
+    fi
+    copilot -p "$prompt_text" \
+        --agent dev-lead \
+        --plugin-dir "$REPO_ROOT" \
+        --allow-all-tools \
+        --no-ask-user \
+        --output-format json \
+        -C "$workspace" \
+        --add-dir "$workspace" \
+        > "$log" 2>&1
+}
 
 # --- Resolve task list -------------------------------------------------------
 TASK_IDS=()
@@ -118,33 +152,45 @@ for i in "${!FILTERED_IDS[@]}"; do
 
     printf "  → %s ... " "$id"
 
-    # ========================================================================
-    # TODO: invoke dev-lead via copilot CLI. Expected shape (subject to
-    # confirmation once the non-interactive CLI contract is finalised):
-    #
-    #   copilot --agent dev-lead \
-    #           --prompt-file "$ref" \
-    #           --workspace  "$RUN_DIR" \
-    #           --json-events \
-    #     > "$log" 2>&1
-    #
-    # Until then we write a placeholder log so the harness plumbing is
-    # exercisable end-to-end and the scoring code path is testable.
-    # ========================================================================
+    if [[ "$SUITE" == "swe-bench-subset" ]]; then
+        # ponytail: SWE-bench task-prep (fetch issue text from the HF dataset +
+        # checkout the repo at the base commit + extract FAIL_TO_PASS) is a separate
+        # integration, not yet wired. invoke_dev_lead is ready for it once prep
+        # produces a prompt + workspace. Until then, fail honestly.
+        {
+            echo "SWE-bench task-prep not wired."
+            echo "Task: $id  Ref: $ref"
+            echo "Needs: dataset fetch + repo checkout at base commit before dev-lead can run."
+        } > "$log"
+        status="failed"
+    else
+        folder="$(dirname "$ref")"
+        ws="${RUN_DIR}/ws/${id}"
+        mkdir -p "${ws}/.github"
+        if [[ -f "${folder}/solution-profile.yaml" ]]; then
+            cp "${folder}/solution-profile.yaml" "${ws}/solution-profile.yaml"
+            cp "${folder}/solution-profile.yaml" "${ws}/.github/solution-profile.yaml"
+        fi
+        prompt_text="$(cat "$ref")"
 
-    {
-        echo "[$(date -Iseconds)] PLACEHOLDER RUN — dev-lead invocation not yet wired."
-        echo "Suite:     $SUITE"
-        echo "Task ID:   $id"
-        echo "Prompt:    $ref"
-        echo ""
-        echo "When the CLI integration lands, this file will contain the full"
-        echo "agent transcript plus the JSON event stream from H6."
-    } > "$log"
+        rc=0
+        invoke_dev_lead "$prompt_text" "$ws" "$log" || rc=$?
 
-    # Placeholder scoring — mark failed until real invocation lands so
-    # baselines stay honest.
-    status="failed"
+        if [[ "$DRY_RUN" == "1" ]]; then
+            status="failed"          # not a real run; excluded from a real score
+        elif [[ $rc -ne 0 || ! -s "$log" ]]; then
+            status="failed"
+        elif [[ -f "${folder}/score.sh" ]]; then
+            # Optional per-task scorer: exit 0 = resolved, 2 = partial, else failed.
+            sc=0
+            bash "${folder}/score.sh" "$ws" >> "$log" 2>&1 || sc=$?
+            case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
+        else
+            # dev-lead ran but the harness can't verify acceptance.md → fail honestly.
+            echo "[RESULT] needs-scoring — dev-lead ran; no score.sh to verify acceptance.md." >> "$log"
+            status="failed"
+        fi
+    fi
 
     case "$status" in
         resolved) RESOLVED=$((RESOLVED+1)) ;;

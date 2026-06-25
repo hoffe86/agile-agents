@@ -129,10 +129,12 @@ via the [`Run eval`](.github/workflows/eval.yml) workflow (`workflow_dispatch` â
 task-filter, threshold; `summary.json` lands in the run summary and `eval/runs/` is uploaded as
 an artifact).
 
-> **Status:** the runner currently writes a **placeholder** result per task (scores every task
-> `failed`) â€” the non-interactive `dev-lead` invocation is still a TODO pending the Copilot CLI
-> agent-run contract. The plumbing, metrics, and scoring are exercisable end-to-end today; only
-> the agent call is stubbed. The workflow is therefore manual and non-gating until that lands.
+> **Status:** `custom-eval` **invokes `dev-lead` for real** (`copilot --agent dev-lead
+> --plugin-dir <repo>`). Two pieces remain: per-task **acceptance scoring** is opt-in (a
+> `score.ps1`/`score.sh` hook; absent one, a task is recorded `failed` + `needs-scoring`, so
+> baselines never inflate), and **SWE-bench task-prep** (dataset fetch + repo checkout) isn't
+> wired yet. The workflow stays manual and non-gating until acceptance scoring lands. See
+> [`eval/README.md`](eval/README.md#status--limitations-be-honest).
 
 ### `model_tier` frontmatter convention
 Each agent declares a tier so the orchestrator can pick the right model (light = high-volume

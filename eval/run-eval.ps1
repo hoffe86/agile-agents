@@ -8,9 +8,13 @@
     invokes dev-lead per task, captures stdout/stderr to runs/<run-id>/<task-id>.log, and
     writes a summary.json + appends a row to baselines.md.
 
-    NOTE: dev-lead invocation is currently a TODO (see Limitations in README.md). This
-    script writes a placeholder log per task so the surrounding plumbing can be exercised
-    end-to-end before the real CLI integration lands.
+    custom-eval invokes dev-lead for real via `copilot --agent dev-lead --plugin-dir <repo>`
+    (the repo is loaded as a local plugin so the agent resolves without installing).
+    swe-bench-subset task-prep (dataset fetch + repo checkout) is not yet wired; those
+    tasks fail honestly until it lands.
+
+.PARAMETER DryRun
+    Print the resolved copilot command per task without executing (no auth / no credits).
 
 .PARAMETER Suite
     Which evaluation suite to run. Either 'swe-bench-subset' or 'custom-eval'.
@@ -44,11 +48,52 @@ param(
     [ValidateRange(0, 100)]
     [int]$PassThreshold = 60,
 
-    [string]$OutputRoot = (Join-Path $PSScriptRoot 'runs')
+    [string]$OutputRoot = (Join-Path $PSScriptRoot 'runs'),
+
+    # Print the resolved copilot command per task without executing it (no auth /
+    # no credits) — use to verify the wiring.
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# Repo root = parent of eval/. Loaded as a local plugin so `--agent dev-lead`
+# resolves the in-repo agents/skills without a prior `copilot plugin install`.
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+if (-not $DryRun -and -not (Get-Command copilot -ErrorAction SilentlyContinue)) {
+    Write-Error "copilot CLI not found on PATH. Install it, run 'copilot login', or use -DryRun."
+    exit 2
+}
+
+# --- dev-lead invocation ------------------------------------------------------
+function Invoke-DevLead {
+    param(
+        [Parameter(Mandatory)][string]$PromptText,
+        [Parameter(Mandatory)][string]$Workspace,
+        [Parameter(Mandatory)][string]$LogPath
+    )
+    $copilotArgs = @(
+        '-p', $PromptText
+        '--agent', 'dev-lead'
+        '--plugin-dir', $repoRoot
+        '--allow-all-tools'
+        '--no-ask-user'
+        '--output-format', 'json'
+        '-C', $Workspace
+        '--add-dir', $Workspace
+    )
+    if ($DryRun) {
+        $rendered = 'copilot ' + (($copilotArgs | ForEach-Object {
+            if ($_ -match '\s') { '"{0}"' -f ($_ -replace '"', '\"') } else { $_ }
+        }) -join ' ')
+        @("[DRY RUN] would invoke dev-lead with:", $rendered) | Set-Content -Path $LogPath -Encoding utf8
+        return 0
+    }
+    & copilot @copilotArgs *>&1 | Tee-Object -FilePath $LogPath | Out-Null
+    return $LASTEXITCODE
+}
 
 # --- Resolve task list --------------------------------------------------------
 $suiteRoot = Join-Path $PSScriptRoot $Suite
@@ -67,6 +112,7 @@ switch ($Suite) {
             [pscustomobject]@{
                 Id        = $_.instance_id
                 PromptRef = "hf://princeton-nlp/SWE-bench_Verified#$($_.instance_id)"
+                Folder    = $null
                 Meta      = $_
             }
         }
@@ -78,6 +124,7 @@ switch ($Suite) {
             [pscustomobject]@{
                 Id        = $_.Name
                 PromptRef = (Join-Path $_.FullName 'prompt.md')
+                Folder    = $_.FullName
                 Meta      = @{ folder = $_.FullName }
             }
         }
@@ -109,33 +156,62 @@ foreach ($task in $tasks) {
 
     $status = 'failed'
     try {
-        # ====================================================================
-        # TODO: invoke dev-lead via copilot CLI. Expected shape (subject to
-        # confirmation once the non-interactive CLI contract is finalised):
-        #
-        #   copilot --agent dev-lead `
-        #           --prompt-file $task.PromptRef `
-        #           --workspace  $runDir `
-        #           --json-events `
-        #     2>&1 | Tee-Object -FilePath $logPath
-        #
-        # Until then we write a placeholder log so the harness plumbing is
-        # exercisable end-to-end and the scoring code path is testable.
-        # ====================================================================
+        if ($Suite -eq 'swe-bench-subset') {
+            # ponytail: SWE-bench task-prep (fetch issue text from the HF dataset +
+            # checkout the repo at the base commit + extract FAIL_TO_PASS) is a separate
+            # integration, not yet wired. The Invoke-DevLead helper is ready for it once
+            # prep produces a prompt + workspace. Until then, fail honestly.
+            @(
+                "[$(Get-Date -Format o)] SWE-bench task-prep not wired."
+                "Task: $($task.Id)  Ref: $($task.PromptRef)"
+                "Needs: dataset fetch + repo checkout at base commit before dev-lead can run."
+            ) | Set-Content -Path $logPath -Encoding utf8
+            $status = 'failed'
+            $results += [pscustomobject]@{ id = $task.Id; status = $status }
+            Write-Host $status
+            continue
+        }
 
-        @(
-            "[$(Get-Date -Format o)] PLACEHOLDER RUN — dev-lead invocation not yet wired."
-            "Suite:     $Suite"
-            "Task ID:   $($task.Id)"
-            "Prompt:    $($task.PromptRef)"
-            ''
-            'When the CLI integration lands, this file will contain the full'
-            'agent transcript plus the JSON event stream from H6.'
-        ) | Set-Content -Path $logPath -Encoding utf8
+        $promptText = Get-Content -Path $task.PromptRef -Raw
 
-        # Placeholder scoring — unknown until real invocation. Mark 'failed' so
-        # baselines remain honest until wired up.
-        $status = 'failed'
+        # Fresh per-task workspace, seeded with the task's solution-profile.yaml at the
+        # documented locations so dev-lead reads its operational profile.
+        $ws = Join-Path $runDir "ws/$($task.Id)"
+        New-Item -ItemType Directory -Force -Path (Join-Path $ws '.github') | Out-Null
+        $profileSrc = Join-Path $task.Folder 'solution-profile.yaml'
+        if (Test-Path $profileSrc) {
+            Copy-Item $profileSrc (Join-Path $ws 'solution-profile.yaml') -Force
+            Copy-Item $profileSrc (Join-Path $ws '.github/solution-profile.yaml') -Force
+        }
+
+        $exit = Invoke-DevLead -PromptText $promptText -Workspace $ws -LogPath $logPath
+
+        if ($DryRun) {
+            $status = 'failed'   # not a real run; excluded from a real score
+        }
+        elseif ($exit -ne 0 -or -not (Test-Path $logPath) -or (Get-Item $logPath).Length -eq 0) {
+            $status = 'failed'
+        }
+        else {
+            # Optional per-task scorer decides resolved/partial/failed against
+            # acceptance.md (exit 0 = resolved, 2 = partial, else failed). Absent a
+            # scorer the harness cannot verify acceptance, so it records failed +
+            # a needs-scoring note rather than inventing a pass.
+            $scorePs = Join-Path $task.Folder 'score.ps1'
+            $scoreSh = Join-Path $task.Folder 'score.sh'
+            if (Test-Path $scorePs) {
+                & pwsh -NoProfile -File $scorePs -Workspace $ws *>> $logPath
+                $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
+            }
+            elseif (Test-Path $scoreSh) {
+                & bash $scoreSh "$ws" *>> $logPath
+                $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
+            }
+            else {
+                "[RESULT] needs-scoring — dev-lead ran; no score.ps1/score.sh to verify acceptance.md." | Add-Content -Path $logPath -Encoding utf8
+                $status = 'failed'
+            }
+        }
     }
     catch {
         "[ERROR] $($_.Exception.Message)" | Add-Content -Path $logPath -Encoding utf8
