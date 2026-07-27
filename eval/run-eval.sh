@@ -4,7 +4,7 @@
 # Runs the dev-lead self-benchmark harness against one of two suites and
 # captures per-task logs + a summary.json.
 #
-# NOTE: custom-eval invokes dev-lead for real via `copilot --agent dev-lead
+# NOTE: custom-eval invokes dev-lead for real via `copilot --agent dev-agents:dev-lead
 # --plugin-dir <repo>` (the repo is loaded as a local plugin so the agent resolves
 # without installing). swe-bench-subset task-prep (dataset fetch + repo checkout) is
 # not yet wired; those tasks fail honestly until it lands.
@@ -24,6 +24,9 @@ PASS_THRESHOLD=60
 DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Plugin-namespaced agent id — see run-eval.ps1 for the why. --plugin-dir loads
+# this repo as plugin "dev-agents", so the supervisor is dev-agents:dev-lead.
+DEV_LEAD_AGENT="dev-agents:dev-lead"
 OUTPUT_ROOT="${SCRIPT_DIR}/runs"
 
 usage() {
@@ -69,19 +72,19 @@ if [[ "$DRY_RUN" != "1" ]] && ! command -v copilot >/dev/null 2>&1; then
 fi
 
 # --- dev-lead invocation -----------------------------------------------------
-# The repo is loaded as a local plugin so `--agent dev-lead` resolves the in-repo
-# agents/skills without a prior `copilot plugin install`.
+# The repo is loaded as a local plugin (name "dev-agents") so `--agent
+# dev-agents:dev-lead` resolves the in-repo agents/skills without `copilot plugin install`.
 invoke_dev_lead() {
     local prompt_text="$1" workspace="$2" log="$3"
     if [[ "$DRY_RUN" == "1" ]]; then
         {
             echo "[DRY RUN] would invoke dev-lead with:"
-            echo "copilot -p <prompt> --agent dev-lead --plugin-dir \"$REPO_ROOT\" --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\""
+            echo "copilot -p <prompt> --agent $DEV_LEAD_AGENT --plugin-dir \"$REPO_ROOT\" --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\""
         } > "$log"
         return 0
     fi
     copilot -p "$prompt_text" \
-        --agent dev-lead \
+        --agent "$DEV_LEAD_AGENT" \
         --plugin-dir "$REPO_ROOT" \
         --allow-all-tools \
         --no-ask-user \
@@ -181,14 +184,15 @@ for i in "${!FILTERED_IDS[@]}"; do
         elif [[ $rc -ne 0 || ! -s "$log" ]]; then
             status="failed"
         elif [[ -f "${folder}/score.sh" ]]; then
-            # Optional per-task scorer: exit 0 = resolved, 2 = partial, else failed.
+            # Per-task deterministic override: exit 0 = resolved, 2 = partial, else failed.
             sc=0
             bash "${folder}/score.sh" "$ws" >> "$log" 2>&1 || sc=$?
             case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         else
-            # dev-lead ran but the harness can't verify acceptance.md → fail honestly.
-            echo "[RESULT] needs-scoring — dev-lead ran; no score.sh to verify acceptance.md." >> "$log"
-            status="failed"
+            # Default: LLM judge grades the workspace against acceptance.md.
+            sc=0
+            bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
+            case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         fi
     fi
 

@@ -129,12 +129,21 @@ via the [`Run eval`](.github/workflows/eval.yml) workflow (`workflow_dispatch` �
 task-filter, threshold; `summary.json` lands in the run summary and `eval/runs/` is uploaded as
 an artifact).
 
-> **Status:** `custom-eval` **invokes `dev-lead` for real** (`copilot --agent dev-lead
-> --plugin-dir <repo>`). Two pieces remain: per-task **acceptance scoring** is opt-in (a
-> `score.ps1`/`score.sh` hook; absent one, a task is recorded `failed` + `needs-scoring`, so
-> baselines never inflate), and **SWE-bench task-prep** (dataset fetch + repo checkout) isn't
-> wired yet. The workflow stays manual and non-gating until acceptance scoring lands. See
-> [`eval/README.md`](eval/README.md#status--limitations-be-honest).
+**Layered evaluation.** This outcome eval is the top of a pyramid ([ADR 0008](docs/adr/0008-layered-evaluation-strategy.md)):
+a free, deterministic **L0 trajectory eval** ([`eval/trajectory/`](eval/trajectory/README.md))
+asserts each run's [`run-event-log`](skills/run-event-log/SKILL.md) stream conformed to the RPI
+shape (dev-lead bookends, research→implement→test→**test-bar gate**→review ordering, reviewer
+gate_checks, cost telemetry). It runs on every push/PR via the
+[`Trajectory eval`](.github/workflows/trajectory-eval.yml) workflow — no credits, no model — and
+catches process failures the outcome eval is blind to (e.g. a run that produces a plausible
+artifact while its gates never fire). An L1 review-detection eval is planned.
+
+> **Status:** `custom-eval` **invokes `dev-lead` for real** (`copilot --agent
+> dev-agents:dev-lead --plugin-dir <repo>`) and **scores the result**: an LLM judge grades the
+> produced workspace against the task's `acceptance.md` (`resolved`/`partial`/`failed`), with an
+> optional deterministic per-task `score.ps1`/`score.sh` override for build/test-based checks.
+> **SWE-bench task-prep** (dataset fetch + repo checkout) isn't wired yet. The workflow stays
+> manual and non-gating. See [`eval/README.md`](eval/README.md#scoring).
 
 ### `model_tier` frontmatter convention
 Each agent declares a tier so the orchestrator can pick the right model (light = high-volume

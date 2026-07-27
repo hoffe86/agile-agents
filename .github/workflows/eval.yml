@@ -23,22 +23,43 @@ on:
         type: boolean
         default: true
 
-# ponytail: dry_run defaults true so a manual run validates the dev-lead wiring on a bare
-# runner — no copilot install, no auth, no credits. A real run (dry_run:false) needs a
-# Copilot-authenticated runner; without per-task scorers it records `needs-scoring`/failed,
-# so threshold default 0 keeps it green. Raise the threshold + add push/PR triggers once
-# acceptance scoring (score.ps1/score.sh) lands. ubuntu-latest ships bash + jq.
+# ponytail: dry_run defaults true — a free wiring check on a bare runner (no copilot, no auth,
+# no credits). For a REAL run set dry_run=false AND add a repo secret COPILOT_CLI_TOKEN
+# (fine-grained PAT with the "Copilot Requests" permission); the job then installs the Copilot
+# CLI and authenticates with it. Both the dev-lead run and the LLM judge call copilot, so a real
+# run consumes credits and is slow (the full multi-agent pipeline per task) — use task_filter to
+# limit scope, and keep threshold 0 until you trust the scores. ubuntu-latest ships bash + jq.
 
 jobs:
   eval:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        if: ${{ inputs.dry_run == false }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Copilot CLI
+        if: ${{ inputs.dry_run == false }}
+        run: npm install -g @github/copilot
+
       - name: Run eval harness
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
         run: |
-          DRY=""
-          if [ "${{ inputs.dry_run }}" = "true" ]; then DRY="--dry-run"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY="--dry-run"
+          else
+            DRY=""
+            if [ -z "${COPILOT_GITHUB_TOKEN:-}" ]; then
+              echo "::error::Real run (dry_run=false) needs Copilot auth. Add a fine-grained PAT with the 'Copilot Requests' permission as the COPILOT_CLI_TOKEN repository secret, or run with dry_run=true."
+              exit 1
+            fi
+          fi
           bash eval/run-eval.sh \
             --suite "${{ inputs.suite }}" \
             --task-filter "${{ inputs.task_filter }}" \

@@ -1,0 +1,35 @@
+name: Trajectory eval
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# L0 eval: deterministic, zero-credit, no secrets. Asserts the run-event-log stream
+# conforms to the RPI pipeline shape (see docs/adr/0008). Safe to gate on — unlike the
+# credit-heavy outcome eval (Run eval workflow), this calls no model.
+
+jobs:
+  trajectory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Self-test the checker
+        run: python eval/trajectory/check-trajectory.py --self-test
+
+      - name: Fixture is in sync with the generator
+        run: |
+          python eval/trajectory/check-trajectory.py --emit-fixture /tmp/regen.jsonl
+          if ! diff -u eval/trajectory/fixtures/full-run.events.jsonl /tmp/regen.jsonl; then
+            echo "::error::full-run.events.jsonl is out of sync with build_golden(). Re-run --emit-fixture and commit."
+            exit 1
+          fi
+
+      - name: Check the golden trajectory
+        run: python eval/trajectory/check-trajectory.py eval/trajectory/fixtures/full-run.events.jsonl
