@@ -114,7 +114,8 @@ def run_checks(events):
 
     # test-bar gate = a gate_check emitted by dev-lead, before the first review activity.
     testbar_i = _first_index(events, lambda e: e.get("event_type") == "gate_check"
-                             and e.get("agent") == "dev-lead")
+                             and e.get("agent") == "dev-lead"
+                             and e.get("phase") == "test-bar")
     first_review_i = _first_index(events, lambda e: e.get("agent") in REVIEWERS)
     if testbar_i is None:
         add("test-bar-gate", True, False, "no dev-lead gate_check (test-bar gate) found")
