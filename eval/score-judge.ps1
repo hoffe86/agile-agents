@@ -86,12 +86,7 @@ if (Test-Path $Workspace) {
         Sort-Object FullName
     foreach ($f in $files) {
         if ($total -ge $maxTotal) { break }
-        $rel = $f.FullName.Substring($Workspace.Length).TrimStart('\','/')
-        $body = Get-Content -Path $f.FullName -Raw -ErrorAction SilentlyContinue
-        if ($null -eq $body) { continue }
-        if ($body.Length -gt $maxPerFile) { $body = $body.Substring(0, $maxPerFile) + "`n...[truncated]" }
-        $artifacts += "### $rel`n``````n$body`n```````n`n"
-        $total += $body.Length
+        $artifacts += "### $rel`n```````n$body`n```````n`n"
     }
 }
 if ([string]::IsNullOrWhiteSpace($artifacts)) {
