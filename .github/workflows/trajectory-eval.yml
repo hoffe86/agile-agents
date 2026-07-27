@@ -2,15 +2,7 @@ name: Trajectory eval
 
 on:
   push:
-    paths:
-      - 'eval/trajectory/**'
-      - 'skills/run-event-log/**'
-      - '.github/workflows/trajectory-eval.yml'
   pull_request:
-    paths:
-      - 'eval/trajectory/**'
-      - 'skills/run-event-log/**'
-      - '.github/workflows/trajectory-eval.yml'
   workflow_dispatch:
 
 # L0 eval: deterministic, zero-credit, no secrets. Asserts the run-event-log stream
