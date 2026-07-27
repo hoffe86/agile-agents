@@ -52,7 +52,7 @@ MAX_TOTAL=60000
 artifacts=""
 total=0
 if [[ -d "$WS" ]]; then
-    while IFS= read -r -d '' f; do
+    while IFS= read -r f; do
         [[ $total -ge $MAX_TOTAL ]] && break
         rel="${f#"$WS"/}"
         body="$(cat "$f" 2>/dev/null || true)"
@@ -60,7 +60,7 @@ if [[ -d "$WS" ]]; then
         if [[ ${#body} -gt $MAX_PER_FILE ]]; then body="${body:0:$MAX_PER_FILE}"$'\n...[truncated]'; fi
         artifacts+="### ${rel}"$'\n```\n'"${body}"$'\n```\n\n'
         total=$(( total + ${#body} ))
-    done < <(find "$WS" -type f -not -path '*/.github/*' -not -name 'solution-profile.yaml' -print0 | sort -z)
+    done < <(find "$WS" -type f -not -path '*/.github/*' -not -path '*/.git/*' -not -name 'solution-profile.yaml' -print | LC_ALL=C sort)
 fi
 if [[ -z "${artifacts// }" ]]; then
     echo '[judge] agent produced no gradable files → failed.'; exit 1
