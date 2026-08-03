@@ -1,7 +1,7 @@
-# dev-agents
+# Agile Agents
 
-An **agent harness for autonomous coding**, packaged as an installable GitHub Copilot CLI
-plugin. It takes a prepared requirement and drives it to a reviewed change without a human
+The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plugins.
+It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
 over 11 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-manager) plus
 38 skills, with up-front arc42/C4 + ADR conformance, multi-lens review, and an eval/cost layer.
@@ -10,30 +10,30 @@ over 11 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-ma
 
 ```shell
 copilot plugin marketplace add hoffe86/agent
-copilot plugin install dev-agents@dev-agents-marketplace
+copilot plugin install agile-agents-core@agile-agents-marketplace
 ```
 
 The harness is technology-neutral. Add the companion plugins your project actually uses:
 
 ```shell
-copilot plugin install dev-agents-dotnet@dev-agents-marketplace     # C# / .NET
-copilot plugin install dev-agents-python@dev-agents-marketplace     # Python
-copilot plugin install dev-agents-bicep@dev-agents-marketplace      # Bicep IaC
-copilot plugin install dev-agents-terraform@dev-agents-marketplace  # Terraform IaC
-copilot plugin install dev-agents-ado@dev-agents-marketplace        # Azure DevOps Boards
-copilot plugin install dev-agents-github@dev-agents-marketplace     # GitHub Issues
+copilot plugin install agile-agents-dotnet@agile-agents-marketplace     # C# / .NET
+copilot plugin install agile-agents-python@agile-agents-marketplace     # Python
+copilot plugin install agile-agents-bicep@agile-agents-marketplace      # Bicep IaC
+copilot plugin install agile-agents-terraform@agile-agents-marketplace  # Terraform IaC
+copilot plugin install agile-agents-ado@agile-agents-marketplace        # Azure DevOps Boards
+copilot plugin install agile-agents-github@agile-agents-marketplace     # GitHub Issues
 ```
 
 Agents route on **skill availability**, not on a hardcoded stack — an uninstalled companion
 degrades to repo conventions rather than failing.
 
-The `dev-agents` plugin ships `agents/` and the technology-neutral `skills/` (repo-scope +
+The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skills/` (repo-scope +
 user-scope). Per-project config (`solution-profile.yaml`) is a
 one-file copy into your target repo's `.github/` (see [Solution profile](#solution-profile)).
 
 ## What you get
 
-**11 agents** (`plugins/dev-agents/agents/`) — 1 supervisor + 4 authors + 5 reviewers + backlog-manager:
+**11 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 4 authors + 5 reviewers + backlog-manager:
 
 | Role | Agent | Purpose |
 |------|-------|---------|
@@ -49,7 +49,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | Reviewer | `infrastructure-review` | WAF, AVM, CAF, CIS Azure, OIDC, SLSA |
 | Reviewer | `test-review` | xUnit Test Patterns, Google Testing, Fowler test pyramid |
 
-**33 repo-scope skills** (`plugins/dev-agents/skills/`) — 17 hand-written + 16 vendored from
+**33 repo-scope skills** (`plugins/agile-agents-core/skills/`) — 17 hand-written + 16 vendored from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills)
 (intermixed flat). Includes `read-repo-context` — the foundation skill every agent loads first
 — and `reviewer-read-only-rules`, the defence-in-depth contract every review agent loads. See
@@ -59,14 +59,14 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 
 | Plugin | Skills |
 |---|---|
-| `dev-agents-dotnet` | `csharp-implementation`, `csharp-testing`, `aspire`, `ef-core`, `dotnet-design-pattern-review` |
-| `dev-agents-python` | `python-implementation`, `python-testing`, `pytest-coverage`, `ruff-recursive-fix` |
-| `dev-agents-bicep` | `bicep-implementation`, `update-avm-modules-in-bicep` |
-| `dev-agents-terraform` | `terraform-azure-implementation`, `terraform-azurerm-set-diff-analyzer`, `import-infrastructure-as-code` |
-| `dev-agents-ado` | `ado-work-items` |
-| `dev-agents-github` | `github-issues` |
+| `agile-agents-dotnet` | `csharp-implementation`, `csharp-testing`, `aspire`, `ef-core`, `dotnet-design-pattern-review` |
+| `agile-agents-python` | `python-implementation`, `python-testing`, `pytest-coverage`, `ruff-recursive-fix` |
+| `agile-agents-bicep` | `bicep-implementation`, `update-avm-modules-in-bicep` |
+| `agile-agents-terraform` | `terraform-azure-implementation`, `terraform-azurerm-set-diff-analyzer`, `import-infrastructure-as-code` |
+| `agile-agents-ado` | `ado-work-items` |
+| `agile-agents-github` | `github-issues` |
 
-**5 user-scope skills** (`plugins/dev-agents/user/skills/`) — referenced by every agent: `working-style`,
+**5 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — referenced by every agent: `working-style`,
 `trade-off-reporting`, `code-review`, `cloud-native-patterns`, `azure-drawio-mcp-diagramming`.
 Bundled into the plugin.
 
@@ -150,7 +150,7 @@ an artifact).
 
 **Layered evaluation.** This outcome eval is the top of a pyramid ([ADR 0008](docs/adr/0008-layered-evaluation-strategy.md)):
 a free, deterministic **L0 trajectory eval** ([`eval/trajectory/`](eval/trajectory/README.md))
-asserts each run's [`run-event-log`](plugins/dev-agents/skills/run-event-log/SKILL.md) stream conformed to the RPI
+asserts each run's [`run-event-log`](plugins/agile-agents-core/skills/run-event-log/SKILL.md) stream conformed to the RPI
 shape (dev-lead bookends, research→implement→test→**test-bar gate**→review ordering, reviewer
 gate_checks, cost telemetry). It runs on every push/PR via the
 [`Trajectory eval`](.github/workflows/trajectory-eval.yml) workflow — no credits, no model — and
@@ -158,7 +158,7 @@ catches process failures the outcome eval is blind to (e.g. a run that produces 
 artifact while its gates never fire). An L1 review-detection eval is planned.
 
 > **Status:** `custom-eval` **invokes `dev-lead` for real** (`copilot --agent
-> dev-agents:dev-lead --plugin-dir <repo>/plugins/dev-agents`) and **scores the result**: an LLM judge grades the
+> agile-agents-core:dev-lead --plugin-dir <repo>/plugins/agile-agents-core`) and **scores the result**: an LLM judge grades the
 > produced workspace against the task's `acceptance.md` (`resolved`/`partial`/`failed`), with an
 > optional deterministic per-task `score.ps1`/`score.sh` override for build/test-based checks.
 > **SWE-bench task-prep** (dataset fetch + repo checkout) isn't wired yet. The workflow stays
@@ -199,7 +199,7 @@ pipeline: `IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `INFRASTRUCTURE COMPLETE`
 `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`, `TASKS PLANNED`.
 
 ### Vendored skills are read-only
-The 24 vendored skills (spread across `plugins/dev-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
+The 24 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
 place — extend via a wrapper skill or contribute upstream and re-sync. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md).
 
@@ -209,6 +209,6 @@ development guide (flat-layout rule, model-tier convention, skill format, plugin
 
 ## License
 
-[MIT](LICENSE). Vendored skills under `plugins/dev-agents*/skills/` retain their upstream MIT license
+[MIT](LICENSE). Vendored skills under `plugins/agile-agents*/skills/` retain their upstream MIT license
 (Copyright GitHub, Inc.) — see [`plugins/VENDORED.md`](plugins/VENDORED.md).
 

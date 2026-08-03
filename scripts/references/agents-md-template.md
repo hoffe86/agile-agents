@@ -51,7 +51,7 @@ full convention map.
 ## Skills
 
 The following skills are available in `.github/skills/` (or
-`skills/` at the repo root in the dev-agents source). Each skill
+`skills/` at the repo root in the agile-agents source). Each skill
 is a self-contained `<name>/SKILL.md` with YAML frontmatter and a
 natural-language workflow.
 

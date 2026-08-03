@@ -4,8 +4,8 @@ on:
   push:
     paths:
       - 'solution-profile.yaml'
-      - 'plugins/dev-agents/agents/**'
-      - 'plugins/dev-agents*/skills/**'
+      - 'plugins/agile-agents-core/agents/**'
+      - 'plugins/agile-agents*/skills/**'
       - 'scripts/generate-agents-md.*'
       - 'scripts/references/agents-md-template.md'
       - 'AGENTS.md'
@@ -13,8 +13,8 @@ on:
   pull_request:
     paths:
       - 'solution-profile.yaml'
-      - 'plugins/dev-agents/agents/**'
-      - 'plugins/dev-agents*/skills/**'
+      - 'plugins/agile-agents-core/agents/**'
+      - 'plugins/agile-agents*/skills/**'
       - 'scripts/generate-agents-md.*'
       - 'scripts/references/agents-md-template.md'
       - 'AGENTS.md'

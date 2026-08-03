@@ -4,8 +4,8 @@
 # Runs the dev-lead self-benchmark harness against one of two suites and
 # captures per-task logs + a summary.json.
 #
-# NOTE: custom-eval invokes dev-lead for real via `copilot --agent dev-agents:dev-lead
-# --plugin-dir <repo>/plugins/dev-agents` (the plugin folder is loaded locally so the agent resolves
+# NOTE: custom-eval invokes dev-lead for real via `copilot --agent agile-agents-core:dev-lead
+# --plugin-dir <repo>/plugins/agile-agents-core` (the plugin folder is loaded locally so the agent resolves
 # without installing). swe-bench-subset task-prep (dataset fetch + repo checkout) is
 # not yet wired; those tasks fail honestly until it lands.
 #
@@ -24,17 +24,17 @@ PASS_THRESHOLD=60
 DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PLUGIN_DIR="${REPO_ROOT}/plugins/dev-agents"
+PLUGIN_DIR="${REPO_ROOT}/plugins/agile-agents-core"
 # Every plugin folder is registered, so companion skills (dotnet / python / bicep /
 # terraform / trackers) resolve during a run — otherwise language tasks would silently
 # fall back to repo conventions and the score wouldn't reflect the shipped suite.
 PLUGIN_ARGS=()
-for d in "${REPO_ROOT}"/plugins/dev-agents*; do
+for d in "${REPO_ROOT}"/plugins/agile-agents*; do
     [[ -d "$d" ]] && PLUGIN_ARGS+=(--plugin-dir "$d")
 done
 # Plugin-namespaced agent id — see run-eval.ps1 for the why. --plugin-dir loads
-# this repo as plugin "dev-agents", so the supervisor is dev-agents:dev-lead.
-DEV_LEAD_AGENT="dev-agents:dev-lead"
+# this repo as plugin "agile-agents-core", so the supervisor is agile-agents-core:dev-lead.
+DEV_LEAD_AGENT="agile-agents-core:dev-lead"
 OUTPUT_ROOT="${SCRIPT_DIR}/runs"
 
 usage() {
@@ -80,8 +80,8 @@ if [[ "$DRY_RUN" != "1" ]] && ! command -v copilot >/dev/null 2>&1; then
 fi
 
 # --- dev-lead invocation -----------------------------------------------------
-# The repo is loaded as a local plugin (name "dev-agents") so `--agent
-# dev-agents:dev-lead` resolves the in-repo agents/skills without `copilot plugin install`.
+# The repo is loaded as a local plugin (name "agile-agents-core") so `--agent
+# agile-agents-core:dev-lead` resolves the in-repo agents/skills without `copilot plugin install`.
 invoke_dev_lead() {
     local prompt_text="$1" workspace="$2" log="$3"
     if [[ "$DRY_RUN" == "1" ]]; then

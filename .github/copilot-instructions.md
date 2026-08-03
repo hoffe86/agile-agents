@@ -1,14 +1,14 @@
-# Copilot Instructions — dev-agents
+# Copilot Instructions — Agile Agents
 
 ## Repository purpose
 
-This repo implements an **agent harness for autonomous coding** — the orchestration
+This repo implements the **Agentic Agile Harness** — the orchestration
 layer, specialist agent roster, skills, gates, and operational profile that let an
 agentic CLI take a prepared requirement and drive it to a reviewed change without a
 human in the loop between stages. The harness is what this repo builds; the code it
 writes lives in *other* repos.
 
-It ships as `dev-agents`, a portable GitHub Copilot CLI **plugin**. This repo is both
+It ships as `agile-agents-core`, a portable GitHub Copilot CLI **plugin**. This repo is both
 the source you edit and the installable plugin/marketplace that others consume.
 
 Harness, concretely: `dev-lead` (supervisor) runs the RPI pipeline over a roster of
@@ -48,8 +48,8 @@ If a task needs an ecosystem with no skill, that is a gap to report, not a reaso
 the tooling into an agent.
 
 The suite is consumed **as a Copilot CLI plugin** — `copilot plugin marketplace add
-hoffe86/agent` then `copilot plugin install dev-agents@dev-agents-marketplace`, plus whichever
-`dev-agents-<technology>` companion plugins the project needs. The CLI loads `agents/`,
+hoffe86/agent` then `copilot plugin install agile-agents-core@agile-agents-marketplace`, plus whichever
+`agile-agents-<technology>` companion plugins the project needs. The CLI loads `agents/`,
 `skills/`, and `user/skills/` directly from each plugin (see
 `plugins/<name>/.github/plugin/plugin.json`). Per-project config
 (`solution-profile.yaml`) is copied into the target repo's `.github/`.
@@ -60,21 +60,21 @@ hoffe86/agent` then `copilot plugin install dev-agents@dev-agents-marketplace`, 
 agent/                               Marketplace root
 ├── .github/
 │   ├── copilot-instructions.md      This file
-│   ├── plugin/marketplace.json      Marketplace listing (dev-agents-marketplace, pluginRoot ./plugins)
+│   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace, pluginRoot ./plugins)
 │   └── workflows/agents-md-sync.yml AGENTS.md drift check
 ├── plugins/                         One folder per plugin
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
-│   ├── dev-agents/                  The autonomous-coding agent harness
-│   │   ├── .github/plugin/plugin.json   Copilot CLI plugin manifest (name: dev-agents)
+│   ├── agile-agents-core/             The autonomous-coding agent harness
+│   │   ├── .github/plugin/plugin.json   Copilot CLI plugin manifest (name: agile-agents-core)
 │   │   ├── agents/                  11 *.agent.md (1 supervisor + 4 authors + 5 reviewers + backlog-manager)
 │   │   ├── skills/                  33 technology-neutral repo-scope skills
 │   │   └── user/skills/             5 user-scope skills (bundled into the plugin)
-│   ├── dev-agents-dotnet/           5 skills — C# / .NET
-│   ├── dev-agents-python/           4 skills — Python
-│   ├── dev-agents-bicep/            2 skills — Bicep IaC
-│   ├── dev-agents-terraform/        3 skills — Terraform IaC
-│   ├── dev-agents-ado/              1 skill  — Azure DevOps Boards tracker mechanics
-│   └── dev-agents-github/           1 skill  — GitHub Issues tracker mechanics
+│   ├── agile-agents-dotnet/           5 skills — C# / .NET
+│   ├── agile-agents-python/           4 skills — Python
+│   ├── agile-agents-bicep/            2 skills — Bicep IaC
+│   ├── agile-agents-terraform/        3 skills — Terraform IaC
+│   ├── agile-agents-ado/              1 skill  — Azure DevOps Boards tracker mechanics
+│   └── agile-agents-github/           1 skill  — GitHub Issues tracker mechanics
 ├── scripts/                         generate-agents-md.{ps1,sh} + references/
 ├── eval/                            Eval harness (SWE-bench subset + custom tasks) + baselines.md
 ├── docs/
@@ -95,8 +95,8 @@ one `plugins[]` entry per plugin with `"source": "<name>"`. To add a plugin: cre
 `plugins/<name>/` with a manifest, then add its marketplace entry. Do not put agents or
 skills at the repo root.
 
-**What belongs where.** `dev-agents` holds the agents and every **technology-neutral** skill.
-Anything tied to one language, IaC tool, or tracker ships in a `dev-agents-<technology>`
+**What belongs where.** `agile-agents-core` holds the agents and every **technology-neutral** skill.
+Anything tied to one language, IaC tool, or tracker ships in a `agile-agents-<technology>`
 companion plugin so a project installs only what it uses. Agents route on **skill
 availability**, never on a hardcoded technology list — an uninstalled companion must degrade
 to repo conventions, not fail. Split a new companion out only when the technology has a
@@ -193,6 +193,6 @@ bump `version` in **every** changed `plugins/*/.github/plugin/plugin.json`, in t
 ### AGENTS.md generation
 `AGENTS.md` is generated from `solution-profile.yaml` + agent/skill frontmatter by
 `scripts/generate-agents-md.ps1` / `.sh`. The generator discovers **every**
-`plugins/dev-agents*/skills` directory and tags each skill with its plugin. **Do not hand-edit
+`plugins/agile-agents*/skills` directory and tags each skill with its plugin. **Do not hand-edit
 it** — the `agents-md-sync` workflow fails the build if it drifts. Re-run the generator and
 commit the result after changing agents, skills, or the profile.

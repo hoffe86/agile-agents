@@ -127,59 +127,59 @@ Adds, fixes, and runs tests for application code in any language the repo uses. 
 ## Skills
 
 The following skills are available in `.github/skills/` (or
-`skills/` at the repo root in the dev-agents source). Each skill
+`skills/` at the repo root in the agile-agents source). Each skill
 is a self-contained `<name>/SKILL.md` with YAML frontmatter and a
 natural-language workflow.
 
-- **acquire-codebase-knowledge** (`dev-agents`) — Use this skill when the user explicitly asks to map, document, or onboard into an existing codebase.
-- **ado-work-items** (`dev-agents-ado`) — Azure DevOps Boards mechanics for reading and writing work items — MCP tool entry points, field mapping per work-item type (Epic / Feature / PBI / Issue / Task), markdown-vs-HTML formatting rules, ...
-- **architecture-decision-records** (`dev-agents`) — Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format.
-- **architecture-design** (`dev-agents`) — Author or update a software/solution architecture design document.
-- **aspire** (`dev-agents-dotnet`) — Aspire skill covering the Aspire CLI, AppHost orchestration, service discovery, integrations, MCP server, VS Code extension, Dev Containers, GitHub Codespaces, templates, dashboard, and deployment.
-- **backlog-item-standards** (`dev-agents`) — Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definitio...
-- **bicep-implementation** (`dev-agents-bicep`) — Implement Azure infrastructure using Bicep with Azure Verified Modules (AVM) wherever possible, following Microsoft's published Bicep best practices and Well-Architected Framework.
-- **breakdown-feature-implementation** (`dev-agents`) — Prompt for creating detailed feature implementation plans, following Epoch monorepo structure.
-- **breakdown-test** (`dev-agents`) — Test Planning and Quality Assurance prompt that generates comprehensive test strategies, task breakdowns, and quality validation plans for GitHub projects.
-- **cicd-pipeline-implementation** (`dev-agents`) — Implement CI/CD pipelines for infrastructure and application code using GitHub Actions or Azure Pipelines (YAML).
-- **code-localisation** (`dev-agents`) — Locate the small set of code files relevant to a task in a large repository.
-- **code-review-checklist** (`dev-agents`) — Perform a high-signal code review of a diff or set of changed files focused on correctness, design, readability, test quality, and documentation.
-- **codeql** (`dev-agents`) — Comprehensive guide for setting up and configuring CodeQL code scanning via GitHub Actions workflows and the CodeQL CLI.
-- **conventional-commit** (`dev-agents`) — Prompt and workflow for generating conventional commit messages using a structured XML format.
-- **cost-budget** (`dev-agents`) — Read the per-run / per-phase cost envelope from `solution-profile.yaml: cost_envelope`, gate run start (refuse if envelope is missing on production-tier engagements), checkpoint at every phase tran...
-- **create-github-action-workflow-specification** (`dev-agents`) — Create a formal specification for an existing GitHub Actions CI/CD workflow, optimized for AI consumption and workflow maintenance.
-- **create-implementation-plan** (`dev-agents`) — Create a new implementation plan file for new features, refactoring existing code or upgrading packages, design, architecture or infrastructure.
-- **csharp-implementation** (`dev-agents-dotnet`) — Implement C#/.NET features end-to-end using current best practices (modern C# language features, async correctness, DI, SOLID, secure-by-default).
-- **csharp-testing** (`dev-agents-dotnet`) — Add or extend tests for C#/.NET code using xUnit, NUnit, MSTest, or TUnit (whichever the solution already uses), then run them and pursue coverage.
-- **dev-lead-templates** (`dev-agents`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 1.7), the conditional design-approval gate prompt (Stage 2.5), and the final Done/Stop report (Stage 6).
-- **dotnet-design-pattern-review** (`dev-agents-dotnet`) — Review the C#/.NET code for design pattern implementation and suggest improvements.
-- **e2e-testing** (`dev-agents`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
-- **editorconfig** (`dev-agents`) — Generates a comprehensive and best-practice-oriented .editorconfig file based on project analysis and user preferences.
-- **ef-core** (`dev-agents-dotnet`) — Get best practices for Entity Framework Core
-- **git-commit** (`dev-agents`) — Execute git commit with conventional commit message analysis, intelligent staging, and message generation.
-- **github-issues** (`dev-agents-github`) — GitHub Issues mechanics for reading and writing work items — tool entry points, the single-body field layout with section headings, cross-reference and closing-keyword syntax, labels / milestones /...
-- **helm-kustomize-implementation** (`dev-agents`) — Implement Kubernetes deployments via raw manifests, Helm charts, or Kustomize overlays — with AKS in mind.
-- **iac-best-practices** (`dev-agents`) — Cross-cutting Infrastructure-as-Code best practices that apply regardless of tool (Bicep, Terraform, Helm, Kustomize, ARM, Pulumi).
-- **import-infrastructure-as-code** (`dev-agents-terraform`) — Import existing Azure resources into Terraform using Azure CLI discovery and Azure Verified Modules (AVM).
-- **multi-stage-dockerfile** (`dev-agents`) — Create optimized multi-stage Dockerfiles for any language or framework
-- **polyglot-test-agent** (`dev-agents`) — Generates comprehensive, workable unit tests for any programming language using a multi-agent pipeline.
-- **pr-description** (`dev-agents`) — Generate a high-signal pull-request description from a diff and the run's hand-off context.
-- **pytest-coverage** (`dev-agents-python`) — Run pytest tests with coverage, discover lines missing coverage, and increase coverage to 100%.
-- **python-implementation** (`dev-agents-python`) — Implement Python features end-to-end using current best practices (type hints, src layout, ruff-clean, modern stdlib, async where appropriate).
-- **python-testing** (`dev-agents-python`) — Add or extend tests for Python code using pytest (the de-facto standard), then run them and chase coverage.
-- **read-repo-context** (`dev-agents`) — Canonical preamble every coding-suite agent loads at the start of a turn.
-- **refactor** (`dev-agents`) — Surgical code refactoring to improve maintainability without changing behavior.
-- **refactor-method-complexity-reduce** (`dev-agents`) — Refactor given method `${input:methodName}` to reduce its cognitive complexity to `${input:complexityThreshold}` or below, by extracting helper methods.
-- **release-notes** (`dev-agents`) — Generate release notes (CHANGELOG entry + GitHub release body) from commit history between two refs.
-- **reviewer-read-only-rules** (`dev-agents`) — Defence-in-depth read-only contract that every review agent enforces.
-- **ruff-recursive-fix** (`dev-agents-python`) — Run Ruff checks with optional scope and rule overrides, apply safe and unsafe autofixes iteratively, review each change, and resolve remaining findings with targeted edits or user decisions.
-- **run-event-log** (`dev-agents`) — Emit one JSON Lines event per phase boundary, tool call, and completion to `.copilot-runs/<run-id>/events.jsonl` for audit, cost tracking, and post-hoc analysis.
-- **security-review** (`dev-agents`) — AI-powered codebase security scanner that reasons about code like a security researcher — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matchin...
-- **terraform-azure-implementation** (`dev-agents-terraform`) — Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides.
-- **terraform-azurerm-set-diff-analyzer** (`dev-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
-- **test-bar-gate** (`dev-agents`) — Pre-reviewer automated quality gate — runs lint, type-check, and unit tests after `coding`/`testing` finish and before the reviewer fan-out.
-- **threat-model-analyst** (`dev-agents`) — Full STRIDE-A threat model analysis and incremental update skill for repositories and systems.
-- **update-avm-modules-in-bicep** (`dev-agents-bicep`) — Update Azure Verified Modules (AVM) to latest versions in Bicep files.
-- **webapp-testing** (`dev-agents`) — Toolkit for interacting with and testing local web applications using Playwright.
+- **acquire-codebase-knowledge** (`agile-agents-core`) — Use this skill when the user explicitly asks to map, document, or onboard into an existing codebase.
+- **ado-work-items** (`agile-agents-ado`) — Azure DevOps Boards mechanics for reading and writing work items — MCP tool entry points, field mapping per work-item type (Epic / Feature / PBI / Issue / Task), markdown-vs-HTML formatting rules, ...
+- **architecture-decision-records** (`agile-agents-core`) — Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format.
+- **architecture-design** (`agile-agents-core`) — Author or update a software/solution architecture design document.
+- **aspire** (`agile-agents-dotnet`) — Aspire skill covering the Aspire CLI, AppHost orchestration, service discovery, integrations, MCP server, VS Code extension, Dev Containers, GitHub Codespaces, templates, dashboard, and deployment.
+- **backlog-item-standards** (`agile-agents-core`) — Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definitio...
+- **bicep-implementation** (`agile-agents-bicep`) — Implement Azure infrastructure using Bicep with Azure Verified Modules (AVM) wherever possible, following Microsoft's published Bicep best practices and Well-Architected Framework.
+- **breakdown-feature-implementation** (`agile-agents-core`) — Prompt for creating detailed feature implementation plans, following Epoch monorepo structure.
+- **breakdown-test** (`agile-agents-core`) — Test Planning and Quality Assurance prompt that generates comprehensive test strategies, task breakdowns, and quality validation plans for GitHub projects.
+- **cicd-pipeline-implementation** (`agile-agents-core`) — Implement CI/CD pipelines for infrastructure and application code using GitHub Actions or Azure Pipelines (YAML).
+- **code-localisation** (`agile-agents-core`) — Locate the small set of code files relevant to a task in a large repository.
+- **code-review-checklist** (`agile-agents-core`) — Perform a high-signal code review of a diff or set of changed files focused on correctness, design, readability, test quality, and documentation.
+- **codeql** (`agile-agents-core`) — Comprehensive guide for setting up and configuring CodeQL code scanning via GitHub Actions workflows and the CodeQL CLI.
+- **conventional-commit** (`agile-agents-core`) — Prompt and workflow for generating conventional commit messages using a structured XML format.
+- **cost-budget** (`agile-agents-core`) — Read the per-run / per-phase cost envelope from `solution-profile.yaml: cost_envelope`, gate run start (refuse if envelope is missing on production-tier engagements), checkpoint at every phase tran...
+- **create-github-action-workflow-specification** (`agile-agents-core`) — Create a formal specification for an existing GitHub Actions CI/CD workflow, optimized for AI consumption and workflow maintenance.
+- **create-implementation-plan** (`agile-agents-core`) — Create a new implementation plan file for new features, refactoring existing code or upgrading packages, design, architecture or infrastructure.
+- **csharp-implementation** (`agile-agents-dotnet`) — Implement C#/.NET features end-to-end using current best practices (modern C# language features, async correctness, DI, SOLID, secure-by-default).
+- **csharp-testing** (`agile-agents-dotnet`) — Add or extend tests for C#/.NET code using xUnit, NUnit, MSTest, or TUnit (whichever the solution already uses), then run them and pursue coverage.
+- **dev-lead-templates** (`agile-agents-core`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 1.7), the conditional design-approval gate prompt (Stage 2.5), and the final Done/Stop report (Stage 6).
+- **dotnet-design-pattern-review** (`agile-agents-dotnet`) — Review the C#/.NET code for design pattern implementation and suggest improvements.
+- **e2e-testing** (`agile-agents-core`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
+- **editorconfig** (`agile-agents-core`) — Generates a comprehensive and best-practice-oriented .editorconfig file based on project analysis and user preferences.
+- **ef-core** (`agile-agents-dotnet`) — Get best practices for Entity Framework Core
+- **git-commit** (`agile-agents-core`) — Execute git commit with conventional commit message analysis, intelligent staging, and message generation.
+- **github-issues** (`agile-agents-github`) — GitHub Issues mechanics for reading and writing work items — tool entry points, the single-body field layout with section headings, cross-reference and closing-keyword syntax, labels / milestones /...
+- **helm-kustomize-implementation** (`agile-agents-core`) — Implement Kubernetes deployments via raw manifests, Helm charts, or Kustomize overlays — with AKS in mind.
+- **iac-best-practices** (`agile-agents-core`) — Cross-cutting Infrastructure-as-Code best practices that apply regardless of tool (Bicep, Terraform, Helm, Kustomize, ARM, Pulumi).
+- **import-infrastructure-as-code** (`agile-agents-terraform`) — Import existing Azure resources into Terraform using Azure CLI discovery and Azure Verified Modules (AVM).
+- **multi-stage-dockerfile** (`agile-agents-core`) — Create optimized multi-stage Dockerfiles for any language or framework
+- **polyglot-test-agent** (`agile-agents-core`) — Generates comprehensive, workable unit tests for any programming language using a multi-agent pipeline.
+- **pr-description** (`agile-agents-core`) — Generate a high-signal pull-request description from a diff and the run's hand-off context.
+- **pytest-coverage** (`agile-agents-python`) — Run pytest tests with coverage, discover lines missing coverage, and increase coverage to 100%.
+- **python-implementation** (`agile-agents-python`) — Implement Python features end-to-end using current best practices (type hints, src layout, ruff-clean, modern stdlib, async where appropriate).
+- **python-testing** (`agile-agents-python`) — Add or extend tests for Python code using pytest (the de-facto standard), then run them and chase coverage.
+- **read-repo-context** (`agile-agents-core`) — Canonical preamble every coding-suite agent loads at the start of a turn.
+- **refactor** (`agile-agents-core`) — Surgical code refactoring to improve maintainability without changing behavior.
+- **refactor-method-complexity-reduce** (`agile-agents-core`) — Refactor given method `${input:methodName}` to reduce its cognitive complexity to `${input:complexityThreshold}` or below, by extracting helper methods.
+- **release-notes** (`agile-agents-core`) — Generate release notes (CHANGELOG entry + GitHub release body) from commit history between two refs.
+- **reviewer-read-only-rules** (`agile-agents-core`) — Defence-in-depth read-only contract that every review agent enforces.
+- **ruff-recursive-fix** (`agile-agents-python`) — Run Ruff checks with optional scope and rule overrides, apply safe and unsafe autofixes iteratively, review each change, and resolve remaining findings with targeted edits or user decisions.
+- **run-event-log** (`agile-agents-core`) — Emit one JSON Lines event per phase boundary, tool call, and completion to `.copilot-runs/<run-id>/events.jsonl` for audit, cost tracking, and post-hoc analysis.
+- **security-review** (`agile-agents-core`) — AI-powered codebase security scanner that reasons about code like a security researcher — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matchin...
+- **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides.
+- **terraform-azurerm-set-diff-analyzer** (`agile-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
+- **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, and unit tests after `coding`/`testing` finish and before the reviewer fan-out.
+- **threat-model-analyst** (`agile-agents-core`) — Full STRIDE-A threat model analysis and incremental update skill for repositories and systems.
+- **update-avm-modules-in-bicep** (`agile-agents-bicep`) — Update Azure Verified Modules (AVM) to latest versions in Bicep files.
+- **webapp-testing** (`agile-agents-core`) — Toolkit for interacting with and testing local web applications using Playwright.
 
 Mandatory-load skills (loaded by every agent regardless of context):
 

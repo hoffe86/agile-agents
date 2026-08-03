@@ -1,19 +1,19 @@
 {
-  "name": "dev-agents-marketplace",
+  "name": "agile-agents-marketplace",
   "owner": {
     "name": "hoffe86",
     "url": "https://github.com/hoffe86"
   },
   "metadata": {
-    "description": "Marketplace for the dev-agents autonomous-coding agent harness.",
+    "description": "Marketplace for Agile Agents — the Agentic Agile Harness.",
     "version": "0.1.0",
     "pluginRoot": "./plugins"
   },
   "plugins": [
     {
-      "name": "dev-agents",
-      "source": "dev-agents",
-      "description": "Agent harness for autonomous coding on GitHub Copilot CLI — an RPI (Research, Plan, Implement, Review) pipeline of 11 specialist agents and 38 skills. Language, IaC, and tracker specifics ship as companion plugins.",
+      "name": "agile-agents-core",
+      "source": "agile-agents-core",
+      "description": "Agentic Agile Harness for GitHub Copilot CLI — an RPI (Research, Plan, Implement, Review) pipeline of 11 specialist agents and 38 skills. Language, IaC, and tracker specifics ship as companion plugins.",
       "version": "0.1.0",
       "category": "development",
       "keywords": [
@@ -27,9 +27,9 @@
       ]
     },
     {
-      "name": "dev-agents-dotnet",
-      "source": "dev-agents-dotnet",
-      "description": ".NET / C# implementation and testing skills for the dev-agents harness — modern C#, xUnit/NUnit/MSTest/TUnit, EF Core, Aspire, and design-pattern review.",
+      "name": "agile-agents-dotnet",
+      "source": "agile-agents-dotnet",
+      "description": ".NET / C# implementation and testing skills for the Agentic Agile Harness — modern C#, xUnit/NUnit/MSTest/TUnit, EF Core, Aspire, and design-pattern review.",
       "version": "0.1.0",
       "category": "development",
       "keywords": [
@@ -42,9 +42,9 @@
       ]
     },
     {
-      "name": "dev-agents-python",
-      "source": "dev-agents-python",
-      "description": "Python implementation and testing skills for the dev-agents harness — type-hinted src layout, pytest, coverage, and Ruff.",
+      "name": "agile-agents-python",
+      "source": "agile-agents-python",
+      "description": "Python implementation and testing skills for the Agentic Agile Harness — type-hinted src layout, pytest, coverage, and Ruff.",
       "version": "0.1.0",
       "category": "development",
       "keywords": [
@@ -56,9 +56,9 @@
       ]
     },
     {
-      "name": "dev-agents-bicep",
-      "source": "dev-agents-bicep",
-      "description": "Bicep Infrastructure-as-Code skills for the dev-agents harness — Azure Verified Modules, AVM version updates, and Well-Architected alignment.",
+      "name": "agile-agents-bicep",
+      "source": "agile-agents-bicep",
+      "description": "Bicep Infrastructure-as-Code skills for the Agentic Agile Harness — Azure Verified Modules, AVM version updates, and Well-Architected alignment.",
       "version": "0.1.0",
       "category": "development",
       "keywords": [
@@ -70,9 +70,9 @@
       ]
     },
     {
-      "name": "dev-agents-terraform",
-      "source": "dev-agents-terraform",
-      "description": "Terraform Infrastructure-as-Code skills for the dev-agents harness — azurerm/AzAPI providers, Azure Verified Modules, plan-diff analysis, and resource import.",
+      "name": "agile-agents-terraform",
+      "source": "agile-agents-terraform",
+      "description": "Terraform Infrastructure-as-Code skills for the Agentic Agile Harness — azurerm/AzAPI providers, Azure Verified Modules, plan-diff analysis, and resource import.",
       "version": "0.1.0",
       "category": "development",
       "keywords": [
@@ -85,9 +85,9 @@
       ]
     },
     {
-      "name": "dev-agents-ado",
-      "source": "dev-agents-ado",
-      "description": "Azure DevOps Boards tracker mechanics for the dev-agents harness — work-item CRUD, WIQL queries, field and state conventions, and parent/child linking used by the backlog-manager agent.",
+      "name": "agile-agents-ado",
+      "source": "agile-agents-ado",
+      "description": "Azure DevOps Boards tracker mechanics for the Agentic Agile Harness — work-item CRUD, WIQL queries, field and state conventions, and parent/child linking used by the backlog-manager agent.",
       "version": "0.1.0",
       "category": "development",
       "keywords": [
@@ -100,9 +100,9 @@
       ]
     },
     {
-      "name": "dev-agents-github",
-      "source": "dev-agents-github",
-      "description": "GitHub Issues tracker mechanics for the dev-agents harness — issue CRUD, sub-issue hierarchy, labels, and project fields used by the backlog-manager agent.",
+      "name": "agile-agents-github",
+      "source": "agile-agents-github",
+      "description": "GitHub Issues tracker mechanics for the Agentic Agile Harness — issue CRUD, sub-issue hierarchy, labels, and project fields used by the backlog-manager agent.",
       "version": "0.1.0",
       "category": "development",
       "keywords": [

@@ -54,10 +54,10 @@ resolve_first() {
   "$repo_root/solution-profile.yaml" || true)"
 [[ -z "$AGENTS_DIR" ]] && AGENTS_DIR="$(resolve_first \
   "$repo_root/.github/agents" \
-  "$repo_root/plugins/dev-agents/agents" \
+  "$repo_root/plugins/agile-agents-core/agents" \
   "$repo_root/agents" || true)"
 if [[ -z "$SKILLS_DIR" ]]; then
-  for d in "$repo_root"/plugins/dev-agents*/skills; do
+  for d in "$repo_root"/plugins/agile-agents*/skills; do
     [[ -d "$d" ]] && SKILLS_DIRS+=("$d")
   done
   if (( ${#SKILLS_DIRS[@]} == 0 )); then

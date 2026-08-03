@@ -8,8 +8,8 @@
     invokes dev-lead per task, captures stdout/stderr to runs/<run-id>/<task-id>.log, and
     writes a summary.json + appends a row to baselines.md.
 
-    custom-eval invokes dev-lead for real via `copilot --agent dev-agents:dev-lead --plugin-dir
-    <repo>/plugins/dev-agents` (the plugin folder is loaded locally so the agent resolves without installing).
+    custom-eval invokes dev-lead for real via `copilot --agent agile-agents-core:dev-lead --plugin-dir
+    <repo>/plugins/agile-agents-core` (the plugin folder is loaded locally so the agent resolves without installing).
     swe-bench-subset task-prep (dataset fetch + repo checkout) is not yet wired; those
     tasks fail honestly until it lands.
 
@@ -60,17 +60,17 @@ Set-StrictMode -Version Latest
 
 # Repo root = parent of eval/. Loaded as a local plugin so the agent resolves
 # without a prior `copilot plugin install`. --plugin-dir registers it under the
-# plugin name from plugins/dev-agents/.github/plugin/plugin.json ("dev-agents"), so the supervisor
-# agent is addressed as dev-agents:dev-lead — NOT bare dev-lead (the CLI errors
+# plugin name from plugins/agile-agents-core/.github/plugin/plugin.json ("agile-agents-core"), so the supervisor
+# agent is addressed as agile-agents-core:dev-lead — NOT bare dev-lead (the CLI errors
 # "No such agent: dev-lead" without the plugin prefix).
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # Every plugin folder is registered, so companion skills (dotnet / python / bicep /
 # terraform / trackers) resolve during a run — otherwise language tasks would silently
 # fall back to repo conventions and the score wouldn't reflect the shipped suite.
-$pluginDirs = @(Get-ChildItem -Path (Join-Path $repoRoot 'plugins') -Directory -Filter 'dev-agents*' |
+$pluginDirs = @(Get-ChildItem -Path (Join-Path $repoRoot 'plugins') -Directory -Filter 'agile-agents*' |
     Sort-Object Name | ForEach-Object { $_.FullName })
 $pluginDir = $pluginDirs[0]  # retained for messages that name a single representative dir
-$devLeadAgent = 'dev-agents:dev-lead'
+$devLeadAgent = 'agile-agents-core:dev-lead'
 
 if (-not $DryRun -and -not (Get-Command copilot -ErrorAction SilentlyContinue)) {
     Write-Error "copilot CLI not found on PATH. Install it, run 'copilot login', or use -DryRun."

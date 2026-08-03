@@ -23,11 +23,11 @@
 
 .PARAMETER AgentsDir
     Directory containing *.agent.md files. Default: .github/agents/ (or
-    plugins/dev-agents/agents/ at the repo root when running from the dev-agents repo).
+    plugins/agile-agents-core/agents/ at the repo root when running from the agile-agents repo).
 
 .PARAMETER SkillsDir
     Directory containing skill subfolders with SKILL.md files. Default:
-    .github/skills/ (or plugins/dev-agents/skills/ at the repo root when in the dev-agents repo).
+    .github/skills/ (or plugins/agile-agents-core/skills/ at the repo root when in the agile-agents repo).
 
 .PARAMETER Output
     Output file path. Default: AGENTS.md at repo root.
@@ -204,12 +204,12 @@ if (-not $ProfilePath) {
 if (-not $AgentsDir) {
     $AgentsDir = Resolve-First @(
         (Join-Path $repoRoot '.github/agents'),
-        (Join-Path $repoRoot 'plugins/dev-agents/agents'),
+        (Join-Path $repoRoot 'plugins/agile-agents-core/agents'),
         (Join-Path $repoRoot 'agents')
     )
 }
 if (-not $SkillsDir) {
-    $SkillsDir = @(Get-ChildItem -Path (Join-Path $repoRoot 'plugins') -Directory -Filter 'dev-agents*' -ErrorAction SilentlyContinue |
+    $SkillsDir = @(Get-ChildItem -Path (Join-Path $repoRoot 'plugins') -Directory -Filter 'agile-agents*' -ErrorAction SilentlyContinue |
         ForEach-Object { Join-Path $_.FullName 'skills' } | Where-Object { Test-Path $_ } | Sort-Object)
     if (-not $SkillsDir) {
         $SkillsDir = @(Resolve-First @(

@@ -72,14 +72,14 @@ For each task the harness:
 workspace with the task's `solution-profile.yaml`, and runs
 
 ```
-copilot -p <prompt> --agent dev-agents:dev-lead --plugin-dir <repo>/plugins/dev-agents --allow-all-tools \
+copilot -p <prompt> --agent agile-agents-core:dev-lead --plugin-dir <repo>/plugins/agile-agents-core --allow-all-tools \
         --no-ask-user --output-format json -C <workspace> --add-dir <workspace>
 ```
 
-`--plugin-dir <repo>/plugins/dev-agents` loads the plugin folder as a local plugin (named
-`dev-agents` from its `.github/plugin/plugin.json`), so the supervisor agent is addressed
+`--plugin-dir <repo>/plugins/agile-agents-core` loads the plugin folder as a local plugin (named
+`agile-agents-core` from its `.github/plugin/plugin.json`), so the supervisor agent is addressed
 **plugin-namespaced** as
-`dev-agents:dev-lead` — bare `dev-lead` errors `No such agent`. No prior
+`agile-agents-core:dev-lead` — bare `dev-lead` errors `No such agent`. No prior
 `copilot plugin install` is needed. The CLI must be installed and authenticated (`copilot
 login`); use `--dry-run` to validate the wiring without either.
 
@@ -193,7 +193,7 @@ verdict parser with `score-judge.ps1 -SelfTest` / `score-judge.sh --self-test` (
 ## Status & limitations (be honest)
 
 `run-eval.ps1` / `run-eval.sh` **invoke `dev-lead` for real** on the `custom-eval` suite
-(`copilot --agent dev-agents:dev-lead --plugin-dir <repo>/plugins/dev-agents`) and score it (above). One piece is
+(`copilot --agent agile-agents-core:dev-lead --plugin-dir <repo>/plugins/agile-agents-core`) and score it (above). One piece is
 still open:
 
 - **SWE-bench task-prep is not wired.** Running a SWE-bench instance needs the issue text from

@@ -17,30 +17,30 @@ It is a one-line addition to frontmatter — nothing in the skill body is touche
 
 | Skill | Plugin | Upstream |
 |---|---|---|
-| acquire-codebase-knowledge | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/acquire-codebase-knowledge |
-| aspire | `dev-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/aspire |
-| breakdown-feature-implementation | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/breakdown-feature-implementation |
-| breakdown-test | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/breakdown-test |
-| codeql | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/codeql |
-| conventional-commit | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/conventional-commit |
-| create-github-action-workflow-specification | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/create-github-action-workflow-specification |
-| create-implementation-plan | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/create-implementation-plan |
-| dotnet-design-pattern-review | `dev-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/dotnet-design-pattern-review |
-| editorconfig | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/editorconfig |
-| ef-core | `dev-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/ef-core |
-| git-commit | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/git-commit |
-| import-infrastructure-as-code | `dev-agents-terraform` | https://github.com/github/awesome-copilot/tree/main/skills/import-infrastructure-as-code |
-| multi-stage-dockerfile | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/multi-stage-dockerfile |
-| polyglot-test-agent | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/polyglot-test-agent |
-| pytest-coverage | `dev-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/pytest-coverage |
-| refactor | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/refactor |
-| refactor-method-complexity-reduce | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/refactor-method-complexity-reduce |
-| ruff-recursive-fix | `dev-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/ruff-recursive-fix |
-| security-review | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/security-review |
-| terraform-azurerm-set-diff-analyzer | `dev-agents-terraform` | https://github.com/github/awesome-copilot/tree/main/skills/terraform-azurerm-set-diff-analyzer |
-| threat-model-analyst | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/threat-model-analyst |
-| update-avm-modules-in-bicep | `dev-agents-bicep` | https://github.com/github/awesome-copilot/tree/main/skills/update-avm-modules-in-bicep |
-| webapp-testing | `dev-agents` | https://github.com/github/awesome-copilot/tree/main/skills/webapp-testing |
+| acquire-codebase-knowledge | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/acquire-codebase-knowledge |
+| aspire | `agile-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/aspire |
+| breakdown-feature-implementation | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/breakdown-feature-implementation |
+| breakdown-test | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/breakdown-test |
+| codeql | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/codeql |
+| conventional-commit | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/conventional-commit |
+| create-github-action-workflow-specification | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/create-github-action-workflow-specification |
+| create-implementation-plan | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/create-implementation-plan |
+| dotnet-design-pattern-review | `agile-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/dotnet-design-pattern-review |
+| editorconfig | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/editorconfig |
+| ef-core | `agile-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/ef-core |
+| git-commit | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/git-commit |
+| import-infrastructure-as-code | `agile-agents-terraform` | https://github.com/github/awesome-copilot/tree/main/skills/import-infrastructure-as-code |
+| multi-stage-dockerfile | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/multi-stage-dockerfile |
+| polyglot-test-agent | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/polyglot-test-agent |
+| pytest-coverage | `agile-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/pytest-coverage |
+| refactor | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/refactor |
+| refactor-method-complexity-reduce | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/refactor-method-complexity-reduce |
+| ruff-recursive-fix | `agile-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/ruff-recursive-fix |
+| security-review | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/security-review |
+| terraform-azurerm-set-diff-analyzer | `agile-agents-terraform` | https://github.com/github/awesome-copilot/tree/main/skills/terraform-azurerm-set-diff-analyzer |
+| threat-model-analyst | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/threat-model-analyst |
+| update-avm-modules-in-bicep | `agile-agents-bicep` | https://github.com/github/awesome-copilot/tree/main/skills/update-avm-modules-in-bicep |
+| webapp-testing | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/webapp-testing |
 
 ## Updating via Copilot CLI
 
