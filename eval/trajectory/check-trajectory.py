@@ -28,7 +28,7 @@ import json
 import sys
 from collections import Counter
 
-# Mirror skills/run-event-log/references/event-schema.json (keep in sync).
+# Mirror plugins/dev-agents/skills/run-event-log/references/event-schema.json (keep in sync).
 AGENTS = {
     "dev-lead", "architect", "coding", "testing", "infrastructure",
     "review", "security-review", "architecture-review",

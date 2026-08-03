@@ -1,0 +1,24 @@
+{
+  "name": "dev-agents-dotnet",
+  "description": ".NET / C# implementation and testing skills for the dev-agents harness — modern C#, xUnit/NUnit/MSTest/TUnit, EF Core, Aspire, and design-pattern review.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": {
+    "name": "hoffe86",
+    "url": "https://github.com/hoffe86"
+  },
+  "homepage": "https://github.com/hoffe86/agent",
+  "repository": "https://github.com/hoffe86/agent",
+  "keywords": [
+    "dotnet",
+    "csharp",
+    "aspire",
+    "ef-core",
+    "testing",
+    "copilot-cli"
+  ],
+  "category": "development",
+  "skills": [
+    "skills/"
+  ]
+}

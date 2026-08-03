@@ -4,8 +4,8 @@ on:
   push:
     paths:
       - 'solution-profile.yaml'
-      - 'agents/**'
-      - 'skills/**'
+      - 'plugins/dev-agents/agents/**'
+      - 'plugins/dev-agents*/skills/**'
       - 'scripts/generate-agents-md.*'
       - 'scripts/references/agents-md-template.md'
       - 'AGENTS.md'
@@ -13,8 +13,8 @@ on:
   pull_request:
     paths:
       - 'solution-profile.yaml'
-      - 'agents/**'
-      - 'skills/**'
+      - 'plugins/dev-agents/agents/**'
+      - 'plugins/dev-agents*/skills/**'
       - 'scripts/generate-agents-md.*'
       - 'scripts/references/agents-md-template.md'
       - 'AGENTS.md'
@@ -42,3 +42,4 @@ jobs:
             echo "Run: pwsh scripts/generate-agents-md.ps1 and commit the result."
             exit 1
           fi
+

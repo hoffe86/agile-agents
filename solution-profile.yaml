@@ -154,7 +154,7 @@ ai_copilot:
   mandatory_skills: []          # Skills that must always load (in addition to agent defaults).
 
 # ─── code_localisation ────────────────────────────────────────────────────────
-# Drives the `code-localisation` skill (skills/code-localisation/) — picks the
+# Drives the `code-localisation` skill (plugins/dev-agents/skills/code-localisation/) — picks the
 # small set of files an agent should actually read for a code-touching task instead of
 # grepping blindly. Skip backend selection details with `backend: auto` and let the
 # skill detect what's available (tree-sitter wins by default; mcp if `mcp_server` set;
@@ -171,7 +171,7 @@ code_localisation:
 # Pre-reviewer automated gates. Today only `test_bar` is wired up (lint → typecheck →
 # unit-tests, fail-fast). Sits between Stage 4 (Testing) and Stage 5 (Review) in the
 # `dev-lead` pipeline so reviewer agents are never spent on a patch that doesn't build.
-# Per-stack default commands live in `skills/test-bar-gate/references/commands.yaml`;
+# Per-stack default commands live in `plugins/dev-agents/skills/test-bar-gate/references/commands.yaml`;
 # the sub-blocks below let a project override any single command without redefining the
 # whole palette.
 quality_gates:
@@ -205,7 +205,7 @@ quality_gates:
 
 # ─── testing ──────────────────────────────────────────────────────────────────
 # Test-layer toggles that go beyond the unit-test discipline declared in `tech_stack`.
-# Today only `e2e` is wired up — drives the `e2e-testing` skill (skills/e2e-testing/).
+# Today only `e2e` is wired up — drives the `e2e-testing` skill (plugins/dev-agents/skills/e2e-testing/).
 testing:
   e2e:
     framework: "none"           # playwright | selenium | cypress | none (default none)
@@ -216,7 +216,7 @@ testing:
 
 # ─── cost_envelope ────────────────────────────────────────────────────────────
 # Per-AI-run budget for the agent suite — DISTINCT from `operational.cost_band_eur_monthly`,
-# which is steady-state app cost. Drives the `cost-budget` skill (skills/cost-budget/):
+# which is steady-state app cost. Drives the `cost-budget` skill (plugins/dev-agents/skills/cost-budget/):
 # refuses to start external-project runs without an envelope, checkpoints at every phase
 # transition, hard-halts on breach. Tier defaults align with cost-budget/references/tier-defaults.md.
 cost_envelope:

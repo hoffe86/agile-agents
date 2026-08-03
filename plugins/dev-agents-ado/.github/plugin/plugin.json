@@ -1,0 +1,24 @@
+{
+  "name": "dev-agents-ado",
+  "description": "Azure DevOps Boards tracker mechanics for the dev-agents harness — work-item CRUD, WIQL queries, field and state conventions, and parent/child linking used by the backlog-manager agent.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": {
+    "name": "hoffe86",
+    "url": "https://github.com/hoffe86"
+  },
+  "homepage": "https://github.com/hoffe86/agent",
+  "repository": "https://github.com/hoffe86/agent",
+  "keywords": [
+    "azure-devops",
+    "ado",
+    "backlog",
+    "work-items",
+    "tracker",
+    "copilot-cli"
+  ],
+  "category": "development",
+  "skills": [
+    "skills/"
+  ]
+}

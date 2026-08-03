@@ -41,7 +41,7 @@ done
 
 # ── repo root ────────────────────────────────────────────────────────────────
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || cd "$script_dir/.." && pwd)"
+repo_root="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || (cd "$script_dir/.." && pwd))"
 
 resolve_first() {
   for p in "$@"; do [[ -n "$p" && -e "$p" ]] && { echo "$p"; return 0; }; done
@@ -53,10 +53,16 @@ resolve_first() {
   "$repo_root/solution-profile.yaml" || true)"
 [[ -z "$AGENTS_DIR" ]] && AGENTS_DIR="$(resolve_first \
   "$repo_root/.github/agents" \
+  "$repo_root/plugins/dev-agents/agents" \
   "$repo_root/agents" || true)"
-[[ -z "$SKILLS_DIR" ]] && SKILLS_DIR="$(resolve_first \
-  "$repo_root/.github/skills" \
-  "$repo_root/skills" || true)"
+if [[ -z "$SKILLS_DIR" ]]; then
+  for d in "$repo_root"/plugins/dev-agents*/skills; do
+    [[ -d "$d" ]] && SKILLS_DIR="${SKILLS_DIR:+$SKILLS_DIR$'\n'}$d"
+  done
+  [[ -z "$SKILLS_DIR" ]] && SKILLS_DIR="$(resolve_first \
+    "$repo_root/.github/skills" \
+    "$repo_root/skills" || true)"
+fi
 [[ -z "$OUTPUT" ]] && OUTPUT="$repo_root/AGENTS.md"
 
 [[ -z "$PROFILE_PATH" ]] && { echo "solution-profile.yaml not found" >&2; exit 1; }
@@ -234,20 +240,24 @@ done < <(find "$AGENTS_DIR" -maxdepth 1 -name '*.agent.md' -type f | sort)
 
 # ── skills list ────────────────────────────────────────────────────────────
 skills_list="_(skills directory not found)_"
-if [[ -n "$SKILLS_DIR" && -d "$SKILLS_DIR" ]]; then
+if [[ -n "$SKILLS_DIR" ]]; then
   tmp=""
-  while IFS= read -r d; do
-    sm="$d/SKILL.md"
-    [[ -f "$sm" ]] || continue
-    fm="$(read_frontmatter "$sm")"
-    name="$(fm_get "$fm" name)"; [[ -z "$name" ]] && continue
-    desc="$(fm_get "$fm" description | tr -s ' ')"
-    first="$(echo "$desc" | sed -E 's/([.!?])[[:space:]].*/\1/')"
-    [[ ${#first} -gt 200 ]] && first="${first:0:197}..."
-    line="- **$name** — $first"
-    [[ -z "$tmp" ]] && tmp="$line" || tmp="$tmp"$'\n'"$line"
-  done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d | sort)
-  [[ -n "$tmp" ]] && skills_list="$tmp"
+  while IFS= read -r skills_root; do
+    [[ -d "$skills_root" ]] || continue
+    plugin="$(basename "$(dirname "$skills_root")")"
+    while IFS= read -r d; do
+      sm="$d/SKILL.md"
+      [[ -f "$sm" ]] || continue
+      fm="$(read_frontmatter "$sm")"
+      name="$(fm_get "$fm" name)"; [[ -z "$name" ]] && continue
+      desc="$(fm_get "$fm" description | tr -s ' ')"
+      first="$(echo "$desc" | sed -E 's/([.!?])[[:space:]].*/\1/')"
+      [[ ${#first} -gt 200 ]] && first="${first:0:197}..."
+      line="- **$name** (\`$plugin\`) — $first"
+      [[ -z "$tmp" ]] && tmp="$line" || tmp="$tmp"$'\n'"$line"
+    done < <(find "$skills_root" -mindepth 1 -maxdepth 1 -type d | sort)
+  done <<< "$SKILLS_DIR"
+  [[ -n "$tmp" ]] && skills_list="$(echo "$tmp" | sort)"
 fi
 
 if [[ -n "$mandatory_skills" ]]; then

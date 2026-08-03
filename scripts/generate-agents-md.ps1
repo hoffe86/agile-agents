@@ -23,11 +23,11 @@
 
 .PARAMETER AgentsDir
     Directory containing *.agent.md files. Default: .github/agents/ (or
-    agents/ at the repo root when running from the dev-agents repo).
+    plugins/dev-agents/agents/ at the repo root when running from the dev-agents repo).
 
 .PARAMETER SkillsDir
     Directory containing skill subfolders with SKILL.md files. Default:
-    .github/skills/ (or skills/ at the repo root when in the dev-agents repo).
+    .github/skills/ (or plugins/dev-agents/skills/ at the repo root when in the dev-agents repo).
 
 .PARAMETER Output
     Output file path. Default: AGENTS.md at repo root.
@@ -47,7 +47,7 @@
 param(
     [string]$ProfilePath,
     [string]$AgentsDir,
-    [string]$SkillsDir,
+    [string[]]$SkillsDir,
     [string]$Output,
     [switch]$DryRun
 )
@@ -204,14 +204,19 @@ if (-not $ProfilePath) {
 if (-not $AgentsDir) {
     $AgentsDir = Resolve-First @(
         (Join-Path $repoRoot '.github/agents'),
+        (Join-Path $repoRoot 'plugins/dev-agents/agents'),
         (Join-Path $repoRoot 'agents')
     )
 }
 if (-not $SkillsDir) {
-    $SkillsDir = Resolve-First @(
-        (Join-Path $repoRoot '.github/skills'),
-        (Join-Path $repoRoot 'skills')
-    )
+    $SkillsDir = @(Get-ChildItem -Path (Join-Path $repoRoot 'plugins') -Directory -Filter 'dev-agents*' -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName 'skills' } | Where-Object { Test-Path $_ } | Sort-Object)
+    if (-not $SkillsDir) {
+        $SkillsDir = @(Resolve-First @(
+            (Join-Path $repoRoot '.github/skills'),
+            (Join-Path $repoRoot 'skills')
+        )) | Where-Object { $_ }
+    }
 }
 if (-not $Output) { $Output = Join-Path $repoRoot 'AGENTS.md' }
 
@@ -255,19 +260,22 @@ $agentsTable = ($agentBlocks -join "`n")
 $skillsList = '_(skills directory not found)_'
 if ($SkillsDir) {
     $skillEntries = New-Object System.Collections.Generic.List[string]
-    Get-ChildItem -LiteralPath $SkillsDir -Directory | Sort-Object Name | ForEach-Object {
-        $sm = Join-Path $_.FullName 'SKILL.md'
-        if (Test-Path $sm) {
-            $fm = Read-AgentFrontmatter -Path $sm
-            if ($fm -and $fm['name']) {
-                $d = ($fm['description'] -replace '\s+', ' ').Trim()
-                $first = ($d -split '(?<=[\.!?])\s')[0]
-                if ($first.Length -gt 200) { $first = $first.Substring(0, 197) + '...' }
-                $skillEntries.Add("- **$($fm['name'])** — $first")
+    foreach ($dir in $SkillsDir) {
+        $plugin = Split-Path (Split-Path $dir -Parent) -Leaf
+        Get-ChildItem -LiteralPath $dir -Directory | Sort-Object Name | ForEach-Object {
+            $sm = Join-Path $_.FullName 'SKILL.md'
+            if (Test-Path $sm) {
+                $fm = Read-AgentFrontmatter -Path $sm
+                if ($fm -and $fm['name']) {
+                    $d = ($fm['description'] -replace '\s+', ' ').Trim()
+                    $first = ($d -split '(?<=[\.!?])\s')[0]
+                    if ($first.Length -gt 200) { $first = $first.Substring(0, 197) + '...' }
+                    $skillEntries.Add("- **$($fm['name'])** (``$plugin``) — $first")
+                }
             }
         }
     }
-    if ($skillEntries.Count -gt 0) { $skillsList = ($skillEntries -join "`n") }
+    if ($skillEntries.Count -gt 0) { $skillsList = (($skillEntries | Sort-Object) -join "`n") }
 }
 
 $mandatoryList = if ($mandatorySkills.Count -gt 0) { ($mandatorySkills | Sort-Object | ForEach-Object { "- ``$_``" }) -join "`n" } else { '_(none configured)_' }
