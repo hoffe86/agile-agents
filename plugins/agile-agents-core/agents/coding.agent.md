@@ -91,6 +91,14 @@ For commit messages (when the orchestrator decides to commit), use **`convention
 - **You verify your changes build.** Before handing off, run the project's own gate — from `solution-profile.yaml: quality_gates` / `tech_stack.lint_format_tools` if declared, otherwise the build/lint/format command the repo already uses (its CI workflow, task runner, or package manifest scripts are the source of truth). Never invent a toolchain the repo doesn't use.
 - **Match existing conventions.** Don't introduce a new style, framework, or dependency unless the user asked.
 
+## Corrective rounds
+
+When your input is a set of **review findings** (routed by `dev-lead` after a review), you are in a corrective round, not a fresh implementation:
+
+- **Fix only the findings you were given.** Do not refactor around them, do not fix findings owned by another agent, do not expand scope. The review budget is one round — an unrequested change costs a re-review you don't have.
+- **Dispute in writing rather than silently skipping.** If a finding is wrong, already handled, or not yours, say so with the reason. A skipped finding with no explanation reads as an oversight and burns the run.
+- **Account for every finding** in the hand-off block's `Findings addressed` field — one line per finding id, no exceptions. `dev-lead` re-runs review exactly once; it must be able to tell "fixed" from "skipped" before spending that.
+
 ## Hand-off contract
 
 When you finish, return a structured summary to the orchestrator:
@@ -104,6 +112,7 @@ IMPLEMENTATION COMPLETE
 - Public surface added/changed: <new or changed public types, methods, HTTP routes, CLI flags, config keys, exported symbols — anything an external caller can see; "none" if internal-only>
 - Internal-only changes: <refactors, private helpers, plumbing not visible to callers; "none" if everything is in the Public surface list>
 - Build status: ✅ passes  /  ⚠️ warnings: <list>  /  ❌ failures: <list>
+- Findings addressed: <corrective rounds only — one line per finding: "<id>: fixed in <file:line>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit the field entirely on a first-pass implementation.>
 - Unmet design constraint (if any): <only fill in if you could not deliver inside the architect's locked design without a new dependency, boundary, contract, or Azure service — describe the gap so dev-lead can route back to architect>
 - Open questions for review: <if any>
 ```

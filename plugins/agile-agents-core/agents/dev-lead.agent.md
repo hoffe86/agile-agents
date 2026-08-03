@@ -367,9 +367,28 @@ A test-bar gate that fails twice is a stronger signal than the standard "one cor
 - **Zero 🟠 Major findings open** — either fixed by looping back to coding / testing / infrastructure, or explicitly accepted by the human via stop condition #7.
 
 **Loop policy (one corrective round only):**
-- If the first review returns 🔁 / ❌ or surfaces any 🔴 Critical or 🟠 Major: route only the findings owned by each fixer (coding / testing / infrastructure) back to them, then re-run review **once**.
+- If the first review returns 🔁 / ❌ or surfaces any 🔴 Critical or 🟠 Major: route to each fixer **only the finding ids that name it as owner** (from the `Findings by owner` field), verbatim — id, file:line, and the proposed fix. Do not dump the whole report on each fixer, and do not paraphrase a finding into a task.
+- **Check the accounting before re-reviewing.** Each fixer returns a `Findings addressed` line per id. Before spending the single re-review, verify every routed id came back as `fixed`, `disputed`, or `not mine`. If ids are missing, that is a malformed hand-off — send **one** corrective message asking for those ids specifically (this is the standard hand-off retry, not the review round). If a finding came back `not mine`, re-route it to the named owner. A `disputed` finding stays open: carry the fixer's reason into the re-review so `review` can accept or reject it rather than re-raising it blind.
+- Then re-run review **once**.
 - If the second review still returns 🔁 / ❌, or still has any open 🔴 Critical, or still has any open 🟠 Major (even with a ✅ Approve verdict): **do not loop again**. Fire **stop condition #7** and ask the human via `ask_user` whether to (a) accept the remaining Major findings as documented risks, (b) authorise an additional corrective round (counts as a scope expansion — needs explicit approval), or (c) stop the run.
 - A new 🔴 Critical or 🟠 Major appearing only on the retry counts the same way — one retry was the budget; do not loop again on freshly-introduced findings.
+
+**Findings ledger (your bookkeeping, one writer — you).**
+
+Agents exchange findings as markdown; you keep the state in the session DB so it survives a context compaction. Track only 🔴 Critical and 🟠 Major — Minor and Nits go to the Done report as follow-ups without per-id tracking.
+
+```sql
+CREATE TABLE IF NOT EXISTS findings (
+  id TEXT PRIMARY KEY,          -- C1, M2, … from the review report
+  severity TEXT,                -- critical | major
+  owner TEXT,                   -- coding | testing | infrastructure | architect
+  summary TEXT,
+  status TEXT DEFAULT 'open',   -- open | fixed | disputed | accepted-risk
+  note TEXT                     -- dispute reason, or the human's acceptance
+);
+```
+
+Insert on the first review, `UPDATE` from each fixer's `Findings addressed` lines, then `SELECT id, owner FROM findings WHERE status = 'open'` before re-reviewing — that query is the accounting check above. Never let a fixer or `review` write this table; they don't share your session and a second writer is how the ledger and the reports drift apart.
 
 ### Stage 6 — Done report
 
@@ -394,7 +413,8 @@ You are the only memory between stages. Each delegation message must carry forwa
 - **Architect → Coding:** chosen pattern / library / topology, contracts, NFRs to honour, **binding ADR id(s) the design honours** (existing, human-authored — the architect did not create them).
 - **Coding → Testing:** the verbatim `IMPLEMENTATION COMPLETE` block; the Definition of Done.
 - **Testing → Review:** test summary; the diff base.
-- **Review → fixers:** only the findings owned by that fixer (don't dump the whole report on each).
+- **Review → fixers:** only the finding ids that name that fixer as owner, verbatim (id + file:line + proposed fix). Don't dump the whole report on each, and don't paraphrase.
+- **Fixers → Review (corrective round):** the `Findings addressed` lines, including the reasons on any `disputed` finding, so `review` adjudicates rather than re-raising blind.
 
 Use the SQL `todos` table to persist this — store key handoff facts in the todo `description` so they survive a context compaction.
 
@@ -423,6 +443,7 @@ A run is Done when **all** are true:
 4. `review` final verdict is ✅ Approve with no open 🔴 Critical and no unaccepted 🟠 Major.
 5. Trade-offs are surfaced (consolidated from each stage).
 6. SQL todos for this run are all `done` or explicitly `blocked` with reason.
+7. No row in `findings` is still `open` — every 🔴/🟠 is `fixed`, or `accepted-risk` with the human's reason in `note`.
 
 If any is false, the run is **not** Done. Say so plainly.
 

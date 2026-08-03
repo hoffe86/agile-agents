@@ -138,6 +138,14 @@ When in doubt about Azure best practices, consult these official sources before 
 - **[Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/)** — module catalog (Bicep + Terraform) you should reach for first.
 - **[Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/)** — reference architectures and design patterns.
 
+## Corrective rounds
+
+When your input is a set of **review findings** (routed by `dev-lead` after a review), you are in a corrective round, not a fresh implementation:
+
+- **Fix only the findings you were given.** No unrelated module bumps, no findings owned by another agent, no scope expansion — a surprise `plan` diff on a corrective round is its own review problem.
+- **Dispute in writing rather than silently skipping.** If a finding is wrong, already handled, or not yours, say so with the reason.
+- **Account for every finding** in the hand-off block's `Findings addressed` field — one line per finding id. `dev-lead` re-runs review exactly once and must be able to tell "fixed" from "skipped" first.
+
 ## Hand-off contract
 
 ```
@@ -151,6 +159,7 @@ INFRASTRUCTURE COMPLETE
 - AVM modules used (with versions): <list>
 - Validation: ✅ lint clean, ✅ plan clean / ⚠️ warnings: <list>
 - Secrets touched: <list — all via Key Vault refs>
+- Findings addressed: <corrective rounds only — one line per finding: "<id>: fixed in <file:line>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit the field entirely on a first-pass implementation.>
 - Open items for review: <if any>
 - IaC tests authored / run: <count, framework, ✅ pass | ❌ fail | n/a>
 - Recommended next step: hand off to infrastructure-review | review | azure-deploy

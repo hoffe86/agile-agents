@@ -79,6 +79,14 @@ For web-UI / end-to-end testing, **`e2e-testing`** and **`webapp-testing`** (ven
 - **Aim for 100% coverage of lines you or `coding` added/modified this session.** Don't chase coverage on unrelated legacy code.
 - **Write permissions.** You **may** stage/commit test changes on the feature branch, push the branch, and open/update a pull request. You **must never** merge or close PRs, force-push, rewrite shared history, regenerate snapshots/fixtures without an explicit human ask, or deploy to the production environment.
 
+## Corrective rounds
+
+When your input is a set of **review findings** (routed by `dev-lead` after a review), you are in a corrective round, not a fresh test pass:
+
+- **Fix only the findings you were given.** No opportunistic test refactors, no findings owned by another agent, no scope expansion. The review budget is one round.
+- **Dispute in writing rather than silently skipping.** If a finding is wrong, already covered, or not yours, say so with the reason.
+- **Account for every finding** in the hand-off block's `Findings addressed` field — one line per finding id. `dev-lead` re-runs review exactly once and must be able to tell "fixed" from "skipped" first.
+
 ## Hand-off contract
 
 ```
@@ -87,6 +95,7 @@ TESTS COMPLETE
 - Test run: ✅ <N>/<N> passing  (or  ❌ <N> failing — see below)
 - Coverage on touched files: <%> (was <%>)
 - Production code touched (must be reviewed): ⚠️ <none | list with reason>
+- Findings addressed: <corrective rounds only — one line per finding: "<id>: fixed in <file:line>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit the field entirely on a first-pass test run.>
 - Hand off to review on diff: <branch or files>
 ```
 
