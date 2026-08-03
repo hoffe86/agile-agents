@@ -17,8 +17,26 @@ Skip this skill entirely for any other tracker.
 
 Work-item operations go through the **Azure DevOps MCP server**
 (`microsoft/azure-devops-mcp`). If those tools are not available in the session,
-say so and stop — do not fall back to raw REST calls with a hand-rolled PAT, and
-do not silently switch to a different tracker.
+point the user at the setup block below and stop — do not fall back to raw REST
+calls with a hand-rolled PAT, and do not silently switch to a different tracker.
+
+The server is **not shipped with this plugin**: it takes the organisation as a
+positional argument, and Copilot CLI does no `${input:}` / `${env:}` expansion in
+MCP config, so a bundled config would hardcode someone else's org. Add it once to
+`~/.copilot/mcp-config.json` (replace `contoso`):
+
+```json
+"ado": {
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@azure-devops/mcp", "contoso", "-d", "core", "work", "work-items"]
+}
+```
+
+`-d core work work-items` keeps only the tools this skill uses; drop it for the
+full Azure DevOps surface. Microsoft also offers a remote server —
+`{"type":"http","url":"https://mcp.dev.azure.com/contoso"}` — which needs no
+Node and is their recommended default.
 
 Read `backlog.url`, `backlog.project`, `backlog.area_path`, and
 `backlog.default_iteration` from `solution-profile.yaml` rather than asking for

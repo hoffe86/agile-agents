@@ -24,6 +24,7 @@ usage() {
 PROFILE_PATH=""
 AGENTS_DIR=""
 SKILLS_DIR=""
+SKILLS_DIRS=()
 OUTPUT=""
 DRY_RUN=0
 
@@ -57,11 +58,14 @@ resolve_first() {
   "$repo_root/agents" || true)"
 if [[ -z "$SKILLS_DIR" ]]; then
   for d in "$repo_root"/plugins/dev-agents*/skills; do
-    [[ -d "$d" ]] && SKILLS_DIR="${SKILLS_DIR:+$SKILLS_DIR$'\n'}$d"
+    [[ -d "$d" ]] && SKILLS_DIRS+=("$d")
   done
-  [[ -z "$SKILLS_DIR" ]] && SKILLS_DIR="$(resolve_first \
-    "$repo_root/.github/skills" \
-    "$repo_root/skills" || true)"
+  if (( ${#SKILLS_DIRS[@]} == 0 )); then
+    d="$(resolve_first "$repo_root/.github/skills" "$repo_root/skills" || true)"
+    [[ -n "$d" ]] && SKILLS_DIRS+=("$d")
+  fi
+else
+  SKILLS_DIRS+=("$SKILLS_DIR")
 fi
 [[ -z "$OUTPUT" ]] && OUTPUT="$repo_root/AGENTS.md"
 
@@ -84,6 +88,7 @@ yaml_scalar() {
     return
   fi
   awk -v sec="$section" -v key="$key" '
+    { sub(/\r$/, "") }
     BEGIN { in_sec=0 }
     /^[A-Za-z_][A-Za-z0-9_]*:/ {
       gsub(/:.*/, "", $0)
@@ -109,6 +114,7 @@ yaml_list() {
     return
   fi
   awk -v sec="$section" -v key="$key" '
+    { sub(/\r$/, "") }
     BEGIN { in_sec=0; in_list=0 }
     /^[A-Za-z_][A-Za-z0-9_]*:/ {
       gsub(/:.*/, "", $0)
@@ -165,6 +171,7 @@ scalar_or() { local v="$1" d="$2"; [[ -z "$v" ]] && echo "$d" || echo "$v"; }
 read_frontmatter() {
   local file="$1"
   awk '
+    { sub(/\r$/, "") }
     BEGIN { in_fm=0; cur=""; buf="" }
     NR==1 && /^---[[:space:]]*$/ { in_fm=1; next }
     in_fm && /^---[[:space:]]*$/ { if (cur!="") print cur "|" buf; exit }
@@ -231,8 +238,8 @@ while IFS= read -r f; do
   desc="$(fm_get "$fm" description | tr -s ' ')"
   tools="$(fm_get "$fm" tools)"
   subs="$(fm_get "$fm" agents)"
-  [[ -z "$tools" ]] && tools="_default_" || tools="$(echo "$tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd ', ' -)"
-  [[ -z "$subs" ]]  && subs="_none_"   || subs="$(echo "$subs"  | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd ', ' -)"
+  [[ -z "$tools" ]] && tools="_default_" || tools="$(echo "$tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd, - | sed 's/,/, /g')"
+  [[ -z "$subs" ]]  && subs="_none_"   || subs="$(echo "$subs"  | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd, - | sed 's/,/, /g')"
   block="### \`$name\`"$'\n\n'"$desc"$'\n\n'"- **Tools**: $tools"$'\n'"- **Sub-agents**: $subs"$'\n'
   [[ -z "$agents_table" ]] && agents_table="$block" || agents_table="$agents_table"$'\n'"$block"
 done < <(find "$AGENTS_DIR" -maxdepth 1 -name '*.agent.md' -type f | sort)
@@ -240,9 +247,9 @@ done < <(find "$AGENTS_DIR" -maxdepth 1 -name '*.agent.md' -type f | sort)
 
 # ── skills list ────────────────────────────────────────────────────────────
 skills_list="_(skills directory not found)_"
-if [[ -n "$SKILLS_DIR" ]]; then
+if (( ${#SKILLS_DIRS[@]} > 0 )); then
   tmp=""
-  while IFS= read -r skills_root; do
+  for skills_root in "${SKILLS_DIRS[@]}"; do
     [[ -d "$skills_root" ]] || continue
     plugin="$(basename "$(dirname "$skills_root")")"
     while IFS= read -r d; do
@@ -256,7 +263,7 @@ if [[ -n "$SKILLS_DIR" ]]; then
       line="- **$name** (\`$plugin\`) — $first"
       [[ -z "$tmp" ]] && tmp="$line" || tmp="$tmp"$'\n'"$line"
     done < <(find "$skills_root" -mindepth 1 -maxdepth 1 -type d | sort)
-  done <<< "$SKILLS_DIR"
+  done
   [[ -n "$tmp" ]] && skills_list="$(echo "$tmp" | sort)"
 fi
 
@@ -275,24 +282,10 @@ fi
 # ── render ────────────────────────────────────────────────────────────────
 rendered="$(awk '/^## Tokens[[:space:]]*$/{exit} {print}' "$template_path")"
 
-substitute() {
-  local key="$1" val="$2"
-  python3 - "$key" "$val" <<'PY' || awk -v k="$key" -v v="$val" '{gsub("\\{\\{" k "\\}\\}", v); print}'
-import sys
-key, val = sys.argv[1], sys.argv[2]
-sys.stdout.write(sys.stdin.read().replace("{{"+key+"}}", val))
-PY
-}
-
-# Use python for safe in-memory substitution if available; else fall back.
+# Values are passed as environment (assignments MUST precede `python3` — placing
+# them after the script turns them into argv and every token renders empty).
 if command -v python3 >/dev/null 2>&1; then
-  rendered="$(printf '%s' "$rendered" | python3 -c '
-import sys, os
-text = sys.stdin.read()
-for k in ("PROJECT_NAME","GENERATED_ON","LANGUAGES","BACKLOG_SYSTEM","DOCS_ROOT","BRANCH_NAMING","COMMIT_CONVENTION","DEFAULT_BRANCH","ACTIVE_AGENTS_TABLE","SKILLS_LIST","MANDATORY_SKILLS_LIST","EVAL_POINTER"):
-    text = text.replace("{{"+k+"}}", os.environ.get(k,""))
-sys.stdout.write(text)
-' \
+  rendered="$(printf '%s' "$rendered" | \
     PROJECT_NAME="$project_name" \
     GENERATED_ON="$generated_on" \
     LANGUAGES="$languages" \
@@ -304,7 +297,14 @@ sys.stdout.write(text)
     ACTIVE_AGENTS_TABLE="$agents_table" \
     SKILLS_LIST="$skills_list" \
     MANDATORY_SKILLS_LIST="$mandatory_list" \
-    EVAL_POINTER="$eval_pointer")"
+    EVAL_POINTER="$eval_pointer" \
+    python3 -c '
+import sys, os
+text = sys.stdin.read()
+for k in ("PROJECT_NAME","GENERATED_ON","LANGUAGES","BACKLOG_SYSTEM","DOCS_ROOT","BRANCH_NAMING","COMMIT_CONVENTION","DEFAULT_BRANCH","ACTIVE_AGENTS_TABLE","SKILLS_LIST","MANDATORY_SKILLS_LIST","EVAL_POINTER"):
+    text = text.replace("{{"+k+"}}", os.environ.get(k,""))
+sys.stdout.write(text)
+')"
 else
   # Pure-bash fallback (slower).
   for pair in \

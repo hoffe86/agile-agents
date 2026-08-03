@@ -167,8 +167,8 @@ natural-language workflow.
 - **python-implementation** (`dev-agents-python`) — Implement Python features end-to-end using current best practices (type hints, src layout, ruff-clean, modern stdlib, async where appropriate).
 - **python-testing** (`dev-agents-python`) — Add or extend tests for Python code using pytest (the de-facto standard), then run them and chase coverage.
 - **read-repo-context** (`dev-agents`) — Canonical preamble every coding-suite agent loads at the start of a turn.
-- **refactor-method-complexity-reduce** (`dev-agents`) — Refactor given method `${input:methodName}` to reduce its cognitive complexity to `${input:complexityThreshold}` or below, by extracting helper methods.
 - **refactor** (`dev-agents`) — Surgical code refactoring to improve maintainability without changing behavior.
+- **refactor-method-complexity-reduce** (`dev-agents`) — Refactor given method `${input:methodName}` to reduce its cognitive complexity to `${input:complexityThreshold}` or below, by extracting helper methods.
 - **release-notes** (`dev-agents`) — Generate release notes (CHANGELOG entry + GitHub release body) from commit history between two refs.
 - **reviewer-read-only-rules** (`dev-agents`) — Defence-in-depth read-only contract that every review agent enforces.
 - **ruff-recursive-fix** (`dev-agents-python`) — Run Ruff checks with optional scope and rule overrides, apply safe and unsafe autofixes iteratively, review each change, and resolve remaining findings with targeted edits or user decisions.
