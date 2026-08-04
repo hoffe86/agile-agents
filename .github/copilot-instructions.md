@@ -141,7 +141,7 @@ Renaming any silently breaks the pipeline:
 - **Implement / Review** — coding + infrastructure + testing, then multi-lens review.
 
 ### Vendored skills
-24 of the 49 skills across all plugins are unmodified copies from
+A large share of the skills across all plugins are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The 25
@@ -155,9 +155,10 @@ ado-work-items, github-issues).
 
 ### User-scope skills
 The five skills under `user/skills/` (`working-style`, `trade-off-reporting`, `code-review`,
-`cloud-native-patterns`, `azure-drawio-mcp-diagramming`) are referenced by **every** agent.
-They are bundled into the plugin (the `skills` array includes `user/skills/`). If you also
-keep a runtime copy at `~/.copilot/skills/`, sync changes both ways.
+`cloud-native-patterns`, `azure-drawio-mcp-diagramming`) are bundled into the plugin (the
+`skills` array includes `user/skills/`) and reachable by every agent via description match.
+Only `working-style` and `trade-off-reporting` are named explicitly in the agent bodies. If you
+also keep a runtime copy at `~/.copilot/skills/`, sync changes both ways.
 
 ### Model-tier convention
 Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),

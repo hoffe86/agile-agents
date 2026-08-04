@@ -220,7 +220,7 @@ languages="$(format_languages)"
 generated_on="$(date -u +%Y-%m-%d)"
 
 active_agents="$(yaml_list ai_copilot active_agents "$PROFILE_PATH" || true)"
-mandatory_skills="$(yaml_list ai_copilot mandatory_skills "$PROFILE_PATH" | sort || true)"
+mandatory_skills="$(yaml_list ai_copilot mandatory_skills "$PROFILE_PATH" | LC_ALL=C sort || true)"
 
 is_active() {
   local name="$1"
@@ -239,11 +239,11 @@ while IFS= read -r f; do
   desc="$(fm_get "$fm" description | tr -s ' ')"
   tools="$(fm_get "$fm" tools)"
   subs="$(fm_get "$fm" agents)"
-  [[ -z "$tools" ]] && tools="_default_" || tools="$(echo "$tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd, - | sed 's/,/, /g')"
-  [[ -z "$subs" ]]  && subs="_none_"   || subs="$(echo "$subs"  | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd, - | sed 's/,/, /g')"
+  [[ -z "$tools" ]] && tools="_default_" || tools="$(echo "$tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort | paste -sd, - | sed 's/,/, /g')"
+  [[ -z "$subs" ]]  && subs="_none_"   || subs="$(echo "$subs"  | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort | paste -sd, - | sed 's/,/, /g')"
   block="### \`$name\`"$'\n\n'"$desc"$'\n\n'"- **Tools**: $tools"$'\n'"- **Sub-agents**: $subs"$'\n'
   [[ -z "$agents_table" ]] && agents_table="$block" || agents_table="$agents_table"$'\n'"$block"
-done < <(find "$AGENTS_DIR" -maxdepth 1 -name '*.agent.md' -type f | sort)
+done < <(find "$AGENTS_DIR" -maxdepth 1 -name '*.agent.md' -type f | LC_ALL=C sort)
 [[ -z "$agents_table" ]] && agents_table="_(no agents matched the active_agents filter)_"
 
 # ── skills list ────────────────────────────────────────────────────────────
@@ -263,9 +263,9 @@ if (( ${#SKILLS_DIRS[@]} > 0 )); then
       [[ ${#first} -gt 200 ]] && first="${first:0:197}..."
       line="- **$name** (\`$plugin\`) — $first"
       [[ -z "$tmp" ]] && tmp="$line" || tmp="$tmp"$'\n'"$line"
-    done < <(find "$skills_root" -mindepth 1 -maxdepth 1 -type d | sort)
+    done < <(find "$skills_root" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C sort)
   done
-  [[ -n "$tmp" ]] && skills_list="$(echo "$tmp" | sort)"
+  [[ -n "$tmp" ]] && skills_list="$(echo "$tmp" | LC_ALL=C sort)"
 fi
 
 if [[ -n "$mandatory_skills" ]]; then

@@ -62,6 +62,17 @@ function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 
+function Sort-Ordinal {
+    # PowerShell's Sort-Object is culture-aware and treats '-' as a minor difference,
+    # so it orders "refactor-method-…" before "refactor". `sort` in the bash twin is
+    # byte-order. Sort ordinally on both sides or the two generators drift.
+    param([string[]]$Items)
+    $list = [System.Collections.Generic.List[string]]::new()
+    foreach ($i in $Items) { [void]$list.Add([string]$i) }
+    $list.Sort([StringComparer]::Ordinal)
+    return $list.ToArray()
+}
+
 function Resolve-First {
     param([string[]]$Candidates)
     foreach ($c in $Candidates) { if ($c -and (Test-Path $c)) { return (Resolve-Path $c).Path } }
@@ -248,8 +259,8 @@ foreach ($f in $agentFiles) {
     $fm = Read-AgentFrontmatter -Path $f.FullName
     if (-not $fm -or -not $fm['name']) { continue }
     if ($activeAgents.Count -gt 0 -and ($activeAgents -notcontains $fm['name'])) { continue }
-    $tools  = if ($fm['tools'])  { ($fm['tools']  | Sort-Object) -join ', ' } else { '_default_' }
-    $subs   = if ($fm['agents']) { ($fm['agents'] | Sort-Object) -join ', ' } else { '_none_' }
+    $tools  = if ($fm['tools'])  { (Sort-Ordinal $fm['tools'])  -join ', ' } else { '_default_' }
+    $subs   = if ($fm['agents']) { (Sort-Ordinal $fm['agents']) -join ', ' } else { '_none_' }
     $desc   = ($fm['description'] -replace '\s+', ' ').Trim()
     $block  = "### ``$($fm['name'])```n`n$desc`n`n- **Tools**: $tools`n- **Sub-agents**: $subs`n"
     $agentBlocks.Add($block)
@@ -276,10 +287,10 @@ if ($SkillsDir) {
             }
         }
     }
-    if ($skillEntries.Count -gt 0) { $skillsList = (($skillEntries | Sort-Object) -join "`n") }
+    if ($skillEntries.Count -gt 0) { $skillsList = ((Sort-Ordinal $skillEntries) -join "`n") }
 }
 
-$mandatoryList = if ($mandatorySkills.Count -gt 0) { ($mandatorySkills | Sort-Object | ForEach-Object { "- ``$_``" }) -join "`n" } else { '_(none configured)_' }
+$mandatoryList = if ($mandatorySkills.Count -gt 0) { (Sort-Ordinal $mandatorySkills | ForEach-Object { "- ``$_``" }) -join "`n" } else { '_(none configured)_' }
 
 $evalPointer = if (Test-Path (Join-Path $repoRoot 'eval')) { 'see [`./eval/`](eval/)' } else { 'not configured (see plan H2)' }
 

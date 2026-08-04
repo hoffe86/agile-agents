@@ -49,13 +49,13 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | Reviewer | `infrastructure-review` | WAF, AVM, CAF, CIS Azure, OIDC, SLSA |
 | Reviewer | `test-review` | xUnit Test Patterns, Google Testing, Fowler test pyramid |
 
-**33 repo-scope skills** (`plugins/agile-agents-core/skills/`) — 17 hand-written + 16 vendored from
+**Repo-scope skills** (`plugins/agile-agents-core/skills/`) — hand-written plus a set vendored from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills)
 (intermixed flat). Includes `read-repo-context` — the foundation skill every agent loads first
 — and `reviewer-read-only-rules`, the defence-in-depth contract every review agent loads. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md) for the vendored index across all plugins.
 
-**16 companion skills** across six technology plugins — install only what your project uses:
+**Companion skills** across six technology plugins — install only what your project uses:
 
 | Plugin | Skills |
 |---|---|
@@ -66,9 +66,10 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | `agile-agents-ado` | `ado-work-items` |
 | `agile-agents-github` | `github-issues` |
 
-**5 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — referenced by every agent: `working-style`,
-`trade-off-reporting`, `code-review`, `cloud-native-patterns`, `azure-drawio-mcp-diagramming`.
-Bundled into the plugin.
+**5 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — bundled into the plugin and
+available to every agent by description match. `working-style` and `trade-off-reporting` are named
+explicitly by the agents; `code-review`, `cloud-native-patterns` and `azure-drawio-mcp-diagramming`
+are invoked on demand when the task matches.
 
 ## How it works — the RPI pipeline
 
