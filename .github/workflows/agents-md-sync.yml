@@ -51,4 +51,3 @@ jobs:
             echo "::error::generate-agents-md.sh produces different output than the .ps1."
             exit 1
           fi
-
