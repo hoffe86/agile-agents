@@ -31,13 +31,11 @@ jobs:
         run: |
           ./scripts/generate-agents-md.ps1 `
             -ProfilePath solution-profile.yaml `
-            -AgentsDir   agents `
-            -SkillsDir   skills `
             -Output      AGENTS.md
 
       - name: Fail if AGENTS.md drifted from sources
         run: |
-          if ! git diff --exit-code -- AGENTS.md; then
+          if ! git diff --exit-code -I'^> Generated from' -- AGENTS.md; then
             echo "::error::AGENTS.md is out of sync with solution-profile.yaml / agents / skills."
             echo "Run: pwsh scripts/generate-agents-md.ps1 and commit the result."
             exit 1
