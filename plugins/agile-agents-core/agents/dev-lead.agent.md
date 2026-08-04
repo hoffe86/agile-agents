@@ -229,6 +229,8 @@ Break the story into the **minimum** set of meaningful, **independently-implemen
 - **Fewest tasks that still slice cleanly.** If two tasks always ship together and touch the same files, they are one task. Task count is not a progress metric.
 - **Question every task once:** does the DoD fail if this task is dropped? If not, it belongs in Follow-ups, not the plan.
 
+**Reconcile against architect's task list.** When Stage 1 delegated to `architect`, its hand-off already carried a list of follow-on implementation tasks — a second opinion from the agent that read the contracts. Before presenting the plan, account for every task it named: present in your plan, merged into another task (say which), or dropped with a one-line reason. A task architect named that you cannot account for is a signal you missed something in the design, not noise to discard. On the lightweight research path there is no such list; skip this.
+
 Not every task needs every delivery stage. Record per task which stages apply:
 
 | Stage | Skip when |

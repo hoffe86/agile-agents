@@ -19,6 +19,8 @@ an abstract outline.
 2. ...
 (overall approach recorded as a comment on the parent story)
 
+**Architect tasks not carried into the plan:** <task — reason, one line each, or `none` / `n/a (lightweight research)`>
+
 **Stages I will run per task (autonomously after your approval):**
 - Coding — <skip / run + 1-line reason>
 - Testing — <skip / run + 1-line reason>
