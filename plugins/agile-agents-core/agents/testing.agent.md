@@ -16,7 +16,7 @@ description: >-
   infrastructure), end-to-end autonomous delivery (use dev-lead
   if present). Hands off to review when the suite is green.
 model_tier: mid  # mechanical test scaffolding and AAA patterning, framework auto-detected
-tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*, edit, agent, browser]
+tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, browser]
 argument-hint: "Describe the test work: cover new code, repair failing tests, or add edge-case coverage"
 ---
 

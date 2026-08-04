@@ -57,28 +57,28 @@ Read-only / advisory architect for application and cloud solution architecture (
 
 Performs a focused, READ-ONLY architectural review of a diff. Reviews boundary integrity (bounded contexts, layering, cross-service writes, contract changes), design patterns, ADR alignment, NFR impact, dependency direction (Clean Architecture inward-only), and Azure Well-Architected pillar implications when cloud is involved. Distinguishes reversible vs irreversible decisions. Cites arc42, C4, WAF, MADR, microservices.io, DDD canon, ISO 25010. USE FOR: architecture-only review of a diff, check bounded-context / layering integrity, audit public-contract / API / event-schema change, assess WAF impact of a code change, validate ADR alignment, review introduction of a new integration / dependency, review microservice boundary changes. Auto-invoked by review when the diff crosses boundaries, changes contracts, or touches >10 files. DO NOT USE FOR: full multi-lens review (use review), designing new architecture before code exists (use architect), security review (use security-review), IaC topology review (use infrastructure-review), making changes (this agent is read-only). NEVER modifies code.
 
-- **Tools**: azure-mcp/search, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `backlog-manager`
 
 Create, improve, review, and maintain backlog work items (Epics, Features, Product Backlog Items, Issues, Tasks) in the team's tracker. USE FOR: creating work items from conversations, improving story formulations, checking consistency across related items, drafting acceptance criteria, updating tracker fields, linking parent/child relationships, reviewing backlog quality, or materialising a dev-lead Plan as child tasks under a parent story (the Plan workflow). DO NOT USE FOR: writing code, tests, or IaC (use coding / testing / infrastructure), design or ADR decisions (use architect), reviewing a diff (use review), estimating / prioritising / progressing item state on your own authority (the team decides — you capture what was agreed), end-to-end autonomous delivery (use dev-lead).
 
-- **Tools**: agent, azure-mcp/search, browser, context7/*, edit, execute, microsoft-docs/*, microsoft/azure-devops-mcp/*, read, search, todo, vscode, web
+- **Tools**: agent, browser, context7/*, edit, execute, microsoft-docs/*, microsoft/azure-devops-mcp/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `coding`
 
 Implements features, fixes bugs, and refactors application code in any language the repo uses, following that ecosystem's current best practices. Deep skill support for C#/.NET (default .NET 10) and Python; other languages are handled from the repo's own conventions and the declared `tech_stack` profile. USE FOR: implement a feature, fix a bug, refactor code, add a class / module / function, integrate a library, migrate code between framework versions, apply a design pattern. DO NOT USE FOR: architecture / ADR / design decisions before code exists (use architect), Infrastructure-as-Code — Bicep / Terraform / Helm / Dockerfile / pipelines (use infrastructure), writing or fixing tests (use testing), reviewing or auditing code (use review), end-to-end autonomous delivery (use dev-lead if present). Hands off to testing when implementation is complete.
 
-- **Tools**: agent, azure-mcp/search, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `dev-lead`
 
 Autonomous development lead. Takes a single, already-prepared requirement or user story and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the story into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent story in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this story autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + testing + review, autonomous / unattended runs against a requirements file or backlog item, when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving one retry, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / testing / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
 
-- **Tools**: agent, azure-mcp/search, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: architect, backlog-manager, coding, infrastructure, review, testing
 
 ### `infrastructure-review`
@@ -99,28 +99,28 @@ Implements Infrastructure as Code (IaC) using Bicep, Terraform, Helm / Kustomize
 
 Orchestrates a multi-lens, READ-ONLY code review of a diff or set of changed files. Performs the general code-quality review itself (Clean Code / SOLID / standards / regressions / docs) and delegates specialised lenses to security-review (always), test-review (when tests or testable code change), architecture-review (when boundaries / contracts / >10 files change), and infrastructure-review (when IaC / pipelines change). Merges all findings into a single severity-ranked report with one final verdict (worst-of all specialists). USE FOR: review a PR or branch, audit a diff, "check this change", request full multi-lens review, code health check on uncommitted work. DO NOT USE FOR: only one specialised lens — call the specialist directly (security-review / test-review / architecture-review / infrastructure-review), making code changes (this agent is read-only), fixing the findings (delegate back to coding / infrastructure / testing), end-to-end delivery (use dev-lead if present). NEVER modifies code.
 
-- **Tools**: agent, azure-mcp/search, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: architecture-review, infrastructure-review, security-review, test-review
 
 ### `security-review`
 
 Performs a focused, READ-ONLY security review of a diff or set of changed files. Applies OWASP Top 10 / OWASP ASVS / CWE Top 25 / OWASP LLM Top 10 / NIST SSDF / Microsoft SDL / MCSB lenses. Catches injection, broken auth / authz, secrets, insecure deserialisation, SSRF, prompt injection, supply-chain, missing input validation, weak crypto, over-privilege. Produces severity-rated findings with canonical references (OWASP A0X / CWE-XXX / LLM0X) and concrete fixes. USE FOR: security-only review of a diff, threat-model-style code audit, check for secrets / hardcoded credentials, OWASP / CWE-aligned audit, AI / LLM safety review (prompt injection, jailbreak surface), supply-chain audit. Auto-invoked by review on every review. DO NOT USE FOR: full multi-lens review (use review — it invokes this agent automatically), fixing the findings (delegate back to coding / infrastructure), test-quality review (use test-review), architecture-level threat modelling before code exists (use architect + threat-model-analyst skill). NEVER modifies code.
 
-- **Tools**: azure-mcp/search, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `test-review`
 
 Performs a focused, READ-ONLY review of test code and test coverage in a diff. Reviews test quality (AAA structure, single responsibility per test, deterministic, isolated, fast), coverage of new / changed behaviour (happy path + edge cases + negative paths), test-double usage (mocking abuse, over-stubbing, fragile test patterns), and test infrastructure (fixtures, factories, no real secrets, no real network). Cites xUnit Test Patterns, Google Testing guidance, Fowler test pyramid, and language-specific best practices. USE FOR: test-only review of a diff, audit test quality, check coverage of new behaviour, find brittle / flaky / over-mocked tests, check AAA / naming conventions, review test infrastructure. Auto-invoked by review when the diff touches tests or adds testable production code. DO NOT USE FOR: full multi-lens review (use review), writing or fixing tests (use testing), security or architecture aspects of tests (use security-review / architecture-review). NEVER modifies code.
 
-- **Tools**: azure-mcp/search, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `testing`
 
 Adds, fixes, and runs tests for application code in any language the repo uses. Detects the existing test framework automatically and chases coverage of new / changed behaviour (not absolute %). Deep skill support for C#/.NET (xUnit / NUnit / MSTest / TUnit) and Python (pytest); other ecosystems are handled via the repo's existing test setup. USE FOR: write tests for new code, improve test coverage on a specific file / class / function, fix failing tests, add edge-case / negative-path tests, refactor brittle tests, set up test fixtures / factories, add integration tests for a feature. DO NOT USE FOR: implementing the production code under test (use coding first), reviewing test quality of someone else's diff (use test-review), IaC tests like Terratest / Pester (use infrastructure), end-to-end autonomous delivery (use dev-lead if present). Hands off to review when the suite is green.
 
-- **Tools**: agent, azure-mcp/search, browser, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, browser, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 

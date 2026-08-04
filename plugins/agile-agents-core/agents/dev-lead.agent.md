@@ -28,7 +28,7 @@ description: >-
   architect), pure review (use review), Infrastructure-as-Code
   only (use infrastructure). Never silently expands scope — if the
   requirement is ambiguous, asks once up-front and stops.
-tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*, agent]
+tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent]
 agents: ["architect", "backlog-manager", "coding", "testing", "infrastructure", "review"]
 model_tier: light  # supervisor is a light-tier orchestrator — high call volume, low reasoning load; heavy reasoning is delegated to specialists
 argument-hint: "Describe the requirement or story to deliver end-to-end (or point at a backlog item id)"
