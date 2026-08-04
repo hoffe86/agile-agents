@@ -241,7 +241,12 @@ $template = Get-Content -Raw -LiteralPath $templatePath
 $template = ($template -split '(?ms)^## Tokens\s*$')[0].TrimEnd() + "`n"
 
 # ── values ─────────────────────────────────────────────────────────────────────
-$projectName     = Get-ProfileValue $profile 'identity'      'project_name'      (Split-Path $repoRoot -Leaf)
+# Fall back to the git remote's repo name, not the checkout directory: CI clones into
+# a folder named after the repo, developers clone into whatever they like.
+$repoNameFallback = (& git -C $repoRoot config --get remote.origin.url 2>$null)
+$repoNameFallback = if ($repoNameFallback) { [IO.Path]::GetFileNameWithoutExtension($repoNameFallback.Trim().TrimEnd('/')) }
+                    else { Split-Path $repoRoot -Leaf }
+$projectName     = Get-ProfileValue $profile 'identity'      'project_name'      $repoNameFallback
 $defaultBranch   = Get-ProfileValue $profile 'identity'      'default_branch'    'main'
 $docLocation        = Get-ProfileValue $profile 'documentation' 'location'         'unspecified'
 $docPlatform     = Get-ProfileValue $profile 'documentation' 'platform'         'unspecified'

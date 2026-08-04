@@ -1,5 +1,5 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
-# AGENTS.md — agent
+# AGENTS.md — agile-agents
 
 > Generated from `solution-profile.yaml` on 2026-08-04.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
@@ -13,7 +13,7 @@ authoritative, richer machine-readable contract remains
 
 ## Project context
 
-- **Project**: agent
+- **Project**: agile-agents
 - **Primary language(s)**: unspecified
 - **Backlog platform**: unspecified
 - **Documentation**: unspecified (platform: unspecified)

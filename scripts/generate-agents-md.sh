@@ -209,7 +209,12 @@ read_frontmatter() {
 fm_get() { local fm="$1" k="$2"; echo "$fm" | awk -F'|' -v k="$k" '$1==k {sub(/^[^|]*\|/,""); print; exit}'; }
 
 # ── values ─────────────────────────────────────────────────────────────────
-project_name="$(scalar_or "$(yaml_scalar identity project_name "$PROFILE_PATH")" "$(basename "$repo_root")")"
+# Fall back to the git remote's repo name, not the checkout directory: CI clones into
+# a folder named after the repo, developers clone into whatever they like.
+repo_name_fallback="$(git -C "$repo_root" config --get remote.origin.url 2>/dev/null || true)"
+repo_name_fallback="$(basename "${repo_name_fallback%/}" .git)"
+[ -n "$repo_name_fallback" ] || repo_name_fallback="$(basename "$repo_root")"
+project_name="$(scalar_or "$(yaml_scalar identity project_name "$PROFILE_PATH")" "$repo_name_fallback")"
 default_branch="$(scalar_or "$(yaml_scalar identity default_branch "$PROFILE_PATH")" "main")"
 doc_location="$(scalar_or "$(yaml_scalar documentation location "$PROFILE_PATH")" "unspecified")"
 doc_platform="$(scalar_or "$(yaml_scalar documentation platform "$PROFILE_PATH")" "unspecified")"
