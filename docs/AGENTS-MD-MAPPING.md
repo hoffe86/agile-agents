@@ -39,7 +39,7 @@ CLIs without losing our richer model**.
 | `identity.project_name` | `# AGENTS.md — <name>` header + `## Project context` |
 | `identity.default_branch` | `## Project context` → Default branch |
 | `documentation.docs_root` | `## Project context` → Documentation root |
-| `backlog.system` | `## Project context` → Backlog system |
+| `backlog.platform` | `## Project context` → Backlog platform |
 | `backlog.branch_naming` | `## Project context` → Branch naming |
 | `backlog.commit_convention` | `## Project context` → Commit convention |
 | `tech_stack.primary_languages[]` | `## Project context` → Primary language(s) |

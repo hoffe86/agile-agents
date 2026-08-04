@@ -13,7 +13,7 @@ owns *what a well-formed item looks like*, tracker-agnostically.
 | Layer | Load when |
 |---|---|
 | [`references/work-item-content.md`](references/work-item-content.md) | Writing or reviewing the **body** of an item — structure per type, writing rules, BDD scenarios, Definition of Ready. |
-| A **tracker-mechanics skill** — `ado-work-items` or `github-issues`, shipped in the matching `agile-agents-<tracker>` plugin | Reading from or writing to the tracker — field mapping, formatting, linking, comment templates, sanitisation. Match it to `solution-profile.yaml: backlog.system`. If no such skill is installed, follow the tracker's own conventions and say so in the hand-off. |
+| A **tracker-mechanics skill** — `ado-work-items` or `github-issues`, shipped in the matching `agile-agents-<tracker>` plugin | Reading from or writing to the tracker — field mapping, formatting, linking, comment templates, sanitisation. Match it to `solution-profile.yaml: backlog.platform`. If no such skill is installed, follow the tracker's own conventions and say so in the hand-off. |
 
 ## Rules that apply to both
 

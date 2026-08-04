@@ -106,7 +106,7 @@ breach).
 The work-item tracker is the **source of truth** for the plan — not the local filesystem.
 `backlog-manager` is the only agent that writes to it; every other agent treats it as
 read-only context. Which tracker (Azure DevOps, GitHub Issues, Jira, Linear) is declared once
-in `solution-profile.yaml` under `backlog.system` + `backlog.url`. Task creation is gated by
+in `solution-profile.yaml` under `backlog.platform` + `backlog.url`. Task creation is gated by
 `backlog.create_tasks` (default `false`); when off, the plan stays in-conversation.
 
 ## Quality, eval & cost
@@ -186,7 +186,7 @@ the [`agents-md-sync`](.github/workflows/agents-md-sync.yml) CI workflow — **d
 
 Every agent reads **`solution-profile.yaml`** first (alongside `copilot-instructions.md`). It's
 the single machine-readable source for the repo's operational facts: identity, documentation
-root, backlog system + URL, tech stack, infrastructure, CI/CD, compliance, SLOs, and AI/Copilot
+root, backlog platform + URL, tech stack, infrastructure, CI/CD, compliance, SLOs, and AI/Copilot
 policy. Profile fields **override** an agent's defaults; safety / security defaults remain
 non-negotiable. Copy [`solution-profile.yaml`](solution-profile.yaml) into a target repo's
 `.github/` and fill in what applies.

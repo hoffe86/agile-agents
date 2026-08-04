@@ -167,7 +167,7 @@ Before delegating *anything*, read the requirement and answer:
 discovers what the repo already tells you, asks the human only for what it can't, writes
 `.github/solution-profile.yaml`, and verifies the six required fields
 (`identity.project_name`, `identity.lifecycle_stage`, `documentation.docs_root`,
-`backlog.system`, `tech_stack.primary_languages`, `tech_stack.test_discipline`).
+`backlog.platform`, `tech_stack.primary_languages`, `tech_stack.test_discipline`).
 
 Never cold-interrogate the user for something the repo already tells you, and never invent a
 value to get past the required-field check.
@@ -250,13 +250,13 @@ Update todo `status` ('pending' → 'in_progress' → 'done' / 'blocked') as you
 When `backlog.create_tasks` is true, **delegate to `backlog-manager`** to materialise the plan in the tracker:
 
 **Input:** the **parent story id** (from Intake), the decomposed task list (title + ACs + approach note per task), the approach summary from Stage 1, and the propagated `backlog.*` + `team_communication.code_language` profile subset.
-**Expected output:** the `TASKS PLANNED` hand-off block — parent link, one line per created child task (id + title + AC count + state), the tracker system, and the link pattern.
+**Expected output:** the `TASKS PLANNED` hand-off block — parent link, one line per created child task (id + title + AC count + state), the tracker platform, and the link pattern.
 
 `backlog-manager` creates each task as a **child work item linked to the parent story**, in state `New` and tagged **`pending-approval`** (provisional — the human approves at Stage 1.7). It records the **overall approach as a comment on the parent story** and the per-task approach note on each child item. It does **not** progress state, estimate, or prioritise.
 
 **Gate:** a well-formed `TASKS PLANNED` block with every task linked to the parent. A tracker-write failure (auth / permission / API) fires **stop condition #11** — stop before the approval gate; do not silently fall back to file-only planning.
 
-When `backlog.create_tasks` is false (or `backlog.system: none`), skip this stage and carry the task list inline in the plan presented at Stage 1.7.
+When `backlog.create_tasks` is false (or `backlog.platform: none`), skip this stage and carry the task list inline in the plan presented at Stage 1.7.
 
 ### Stage 1.7 — Plan approval (mandatory human gate)
 

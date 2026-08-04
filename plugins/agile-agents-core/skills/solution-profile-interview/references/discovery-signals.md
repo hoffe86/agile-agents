@@ -28,7 +28,7 @@ absent, leave the field empty rather than guessing.
 
 | Field | Signals |
 |---|---|
-| `system` | `git remote -v` host — github.com → `github-issues`; dev.azure.com / visualstudio.com → `ado-boards`; gitlab.com → `gitlab-issues`. Also `.azuredevops/` → `ado-boards` |
+| `platform` | `git remote -v` host — github.com → `github-issues`; dev.azure.com / visualstudio.com → `ado-boards`; gitlab.com → `gitlab-issues`. Also `.azuredevops/` → `ado-boards` |
 | `url` / `project` | the matching remote URL and its org/project path segments |
 | `branch_naming` | most common prefix pattern across `git branch -a` |
 | `commit_convention` | `git log --oneline -50` matching `^(feat\|fix\|chore\|docs\|refactor\|test)(\(.+\))?!?:` → `conventional-commits`; leading emoji → `gitmoji` |
