@@ -91,6 +91,7 @@ As orchestrator you also:
 
 In addition to `read-repo-context`, `working-style`, and `trade-off-reporting`, the dev-lead drives these orchestration-level skills directly:
 
+- **`solution-profile-interview`** — Stage 0 profile bootstrap. Discovers what the repo already tells you (`references/discovery-signals.md`), asks the human only for the decisions and contractual facts no scan can produce, writes `.github/solution-profile.yaml`, and verifies the six required fields. Also runnable standalone when a user asks to set up or repair the profile.
 - **`run-event-log`** — emit one JSONL event per stage transition / agent dispatch / gate result. Use `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows). Which transition maps to which event: `references/dev-lead-event-map.md`; semantics + examples: `references/event-types.md`; contract: `references/event-schema.json`. The dev-lead mints the `run_id` (UUIDv7) at Stage 0 and propagates it to every sub-agent via the hand-off prompt as `COPILOT_RUN_ID`.
 - **`cost-budget`** — read `cost_envelope` from `solution-profile.yaml` at Stage 0, checkpoint after every stage with `skills/cost-budget/scripts/sum-costs.sh`, abort with the report at `skills/cost-budget/references/cost-stop-report.md` on breach.
 - **`test-bar-gate`** — pre-reviewer deterministic quality gate (lint → typecheck → unit-test). Invoked at the new Stage 4.5 via `skills/test-bar-gate/scripts/run-gate.sh`.
@@ -162,41 +163,24 @@ Before delegating *anything*, read the requirement and answer:
 - **What is ambiguous?** (acceptance criteria, target framework, deployment target, data shape, error semantics, performance budget, security posture.)
 - **What is the parent story?** When `backlog.create_tasks` is true, capture the **parent work-item id** (the already-prepared story the planned tasks will be linked under). If it's missing or you can't identify it, fire **stop condition #10** — never create unparented tasks.
 
-**Validate the operational profile.** Bootstrap with discover-then-confirm — never cold-interrogate the user for something the repo already tells you.
+**Validate the operational profile.** Load the **`solution-profile-interview`** skill — it
+discovers what the repo already tells you, asks the human only for what it can't, writes
+`.github/solution-profile.yaml`, and verifies the six required fields
+(`identity.project_name`, `identity.lifecycle_stage`, `documentation.docs_root`,
+`backlog.system`, `tech_stack.primary_languages`, `tech_stack.test_discipline`).
 
-1. **Load** `.github/solution-profile.yaml` if it exists; treat its declared values as user-confirmed (don't re-ask).
-2. **Auto-discover** missing or empty fields by scanning the workspace (read-only). Map filesystem signals to fields:
+Never cold-interrogate the user for something the repo already tells you, and never invent a
+value to get past the required-field check.
 
-   | Field | Signals to check |
-   |---|---|
-   | `identity.project_name` | repo folder name, `*.sln`, `package.json:name`, `pyproject.toml:project.name`, `Cargo.toml:package.name`, `go.mod` module |
-   | `identity.lifecycle_stage` | git tags (`v1.0+` → `production`); `release/*` branches; `CHANGELOG.md` 1.x entries; otherwise `prototype` / `mvp` |
-   | `documentation.docs_root` | existing `docs/`, `documentation/`, `Documentation/`, or paths cross-referenced from `README.md` |
-   | `backlog.system` | `git remote -v` host (github.com → `github-issues`; dev.azure.com → `ado-boards`; gitlab.com → `gitlab-issues`); presence of `.azuredevops/` |
-   | `backlog.url` | the matching remote URL |
-   | `tech_stack.primary_languages` | source file extensions + lockfiles (`*.sln`/`*.csproj` → C#; `package-lock.json`/`pnpm-lock.yaml` → JS/TS; `requirements.txt`/`pyproject.toml` → Python; `go.mod` → Go; `Cargo.toml` → Rust; `pom.xml`/`build.gradle*` → Java) |
-   | `tech_stack.frameworks` | dependency manifests (e.g. `Microsoft.AspNetCore.*`, `next`, `fastapi`, `gin-gonic/gin`) |
-   | `tech_stack.test_discipline` | `*.feature` files anywhere → `bdd`; `xunit`/`nunit`/`pytest`/`jest`/`vitest` config + `*Test*.cs` / `test_*.py` / `*.test.ts` density → `tdd`; otherwise leave empty and ask |
-   | `infrastructure.iac` | `*.bicep` → `bicep`; `*.tf` → `terraform`; `helm/` / `Chart.yaml` → `helm`; `kustomization.yaml` → `kustomize`; `Dockerfile` alone → `dockerfile` |
-   | `infrastructure.target_platform` | `Dockerfile` + `k8s/` → `kubernetes`; `host.json` → `azure-functions`; `staticwebapp.config.json` → `azure-static-web-apps` |
-   | `cicd.platform` | `.github/workflows/*.yml` → `github-actions`; `azure-pipelines*.yml` or `.azure-pipelines/` → `azure-pipelines`; `.gitlab-ci.yml` → `gitlab-ci` |
-   | `cicd.pipeline_files` | the actual file paths above |
-   | `team_communication.code_language` | language of `README.md` headings + top-of-file comments |
-   | `compliance_security.allowed_oss_licenses` | `LICENSE` file + `THIRD_PARTY_NOTICES*` |
-   | `engagement_context.third_parties` | `CODEOWNERS` external orgs; `package.json:author` / `*.csproj` `<Company>` |
-
-3. **Present a draft profile to the user** in one consolidated `ask_user` call. Mark each line with provenance: `✓` (confirmed from existing profile), `🔍` (auto-discovered — needs confirmation), `?` (couldn't infer — please fill). Ask the user to confirm/correct in one go. Group the unanswerable items (`?`) at the bottom — these are typically `compliance_security.regulatory_scope`, `operational.slo_*`, `engagement_context.*`, and `ai_copilot.active_agents`.
-4. **Persist** the merged result to `.github/solution-profile.yaml` (create if missing, update only the fields the user changed; preserve comments where possible). Treat the file as the source of truth from this point on.
-5. **Verify required fields** are now populated: `identity.project_name`, `identity.lifecycle_stage`, `documentation.docs_root`, `backlog.system`, `tech_stack.primary_languages` (≥ 1 entry), `tech_stack.test_discipline`. If any is still empty after the user's response, ask one focused follow-up — do not silently proceed.
-6. **Propagate to specialists.** When you delegate, prepend the relevant subset of the profile to their context payload (e.g. coding gets `tech_stack.*` + `documentation.*` + `compliance_security.allowed_oss_licenses`; infrastructure gets `infrastructure.*` + `cicd.*` + `compliance_security.*` + `operational.slo`; backlog-manager gets `backlog.*` + `team_communication.code_language`).
+**Propagate to specialists.** When you delegate, prepend the relevant subset of the profile to their context payload (e.g. coding gets `tech_stack.*` + `documentation.*` + `compliance_security.allowed_oss_licenses`; infrastructure gets `infrastructure.*` + `cicd.*` + `compliance_security.*` + `operational.slo`; backlog-manager gets `backlog.*` + `team_communication.code_language`).
 
 If anything load-bearing is ambiguous, **stop and ask the human one consolidated question** (use `ask_user`). Do not guess.
 
 **Stage 0 wiring (run start, cost envelope, event log):**
 
-7. **Mint the `run_id`** (UUIDv7) and export it as `COPILOT_RUN_ID` for the rest of the run. This id is propagated to every delegated specialist in their context payload so their events land in the same `.copilot-runs/<run-id>/events.jsonl` file.
-8. **Emit `run.start`** via `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows) with `agent=dev-lead`, `phase=intake`, `event_type=run_start`. The event schema is in `skills/run-event-log/references/event-schema.json`.
-9. **Load the cost envelope** from `solution-profile.yaml: cost_envelope`. Apply the gate logic from the `cost-budget` skill:
+1. **Mint the `run_id`** (UUIDv7) and export it as `COPILOT_RUN_ID` for the rest of the run. This id is propagated to every delegated specialist in their context payload so their events land in the same `.copilot-runs/<run-id>/events.jsonl` file.
+2. **Emit `run.start`** via `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows) with `agent=dev-lead`, `phase=intake`, `event_type=run_start`. The event schema is in `skills/run-event-log/references/event-schema.json`.
+3. **Load the cost envelope** from `solution-profile.yaml: cost_envelope`. Apply the gate logic from the `cost-budget` skill:
    - Envelope **missing** AND `engagement_context.engagement_type == external-project` → halt with `ask_user`; emit `run.abort` and stop.
    - Envelope missing on `internal` / `experiment` / `template` → warn ("⚠️ No `cost_envelope` set — run will not be cost-gated") and continue.
    - Envelope present → record `per_run_max_usd`, `per_phase_max_usd`, and any per-phase overrides into a budget tracker for use at every stage transition.

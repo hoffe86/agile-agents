@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agent
 
-> Generated from `solution-profile.yaml` on 2026-08-03.
+> Generated from `solution-profile.yaml` on 2026-08-04.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
 This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
@@ -174,6 +174,7 @@ natural-language workflow.
 - **ruff-recursive-fix** (`agile-agents-python`) — Run Ruff checks with optional scope and rule overrides, apply safe and unsafe autofixes iteratively, review each change, and resolve remaining findings with targeted edits or user decisions.
 - **run-event-log** (`agile-agents-core`) — Emit one JSON Lines event per phase boundary, tool call, and completion to `.copilot-runs/<run-id>/events.jsonl` for audit, cost tracking, and post-hoc analysis.
 - **security-review** (`agile-agents-core`) — AI-powered codebase security scanner that reasons about code like a security researcher — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matchin...
+- **solution-profile-interview** (`agile-agents-core`) — Bootstrap or repair `.github/solution-profile.yaml` by discovering what the repo already tells you and interviewing the human only for what it can't.
 - **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides.
 - **terraform-azurerm-set-diff-analyzer** (`agile-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
 - **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, and unit tests after `coding`/`testing` finish and before the reviewer fan-out.
