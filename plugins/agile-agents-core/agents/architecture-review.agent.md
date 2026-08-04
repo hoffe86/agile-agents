@@ -20,7 +20,7 @@ description: >-
   infrastructure-review), making changes (this agent is read-only).
   NEVER modifies code.
 model_tier: heavy  # boundary integrity, ADR alignment, and WAF reasoning require deep multi-file analysis
-tools: [vscode, execute, read, search, web, azure-mcp/search, todo]
+tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*]
 argument-hint: "Describe the architecture review scope: diff to audit, contract change, or boundary concern"
 ---
 

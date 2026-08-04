@@ -18,7 +18,7 @@ description: >-
   (use security-review / architecture-review).
   NEVER modifies code.
 model_tier: heavy  # coverage gap analysis and detecting brittle/over-mocked patterns require deep reasoning
-tools: [vscode, execute, read, search, web, azure-mcp/search, todo]
+tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*]
 argument-hint: "Describe the test review scope: diff to audit, suite to inspect, or coverage concern"
 ---
 

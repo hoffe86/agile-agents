@@ -18,6 +18,7 @@
     "copilot-cli"
   ],
   "category": "development",
+  "mcpServers": ".mcp.json",
   "skills": [
     "skills/"
   ]

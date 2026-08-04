@@ -22,7 +22,7 @@ description: >-
   architect).
   NEVER modifies code.
 model_tier: heavy  # WAF/CIS/MCSB/AVM cross-cutting analysis and supply-chain reasoning require deep review
-tools: [vscode, execute, read, search, web, azure-mcp/search, todo]
+tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*]
 argument-hint: "Describe the IaC review scope: diff to audit, pipeline change, or hardening concern"
 ---
 

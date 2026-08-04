@@ -13,7 +13,7 @@ description: >-
   (use review), estimating / prioritising / progressing item state on your own
   authority (the team decides — you capture what was agreed), end-to-end
   autonomous delivery (use dev-lead).
-tools: [vscode, execute, read, agent, edit, search, web, azure-mcp/search, browser, 'microsoft/azure-devops-mcp/*', todo]
+tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*, edit, agent, browser, 'microsoft/azure-devops-mcp/*']
 model_tier: mid  # mechanical authoring of well-structured work items; reasoning is bounded by the Definition of Ready + INVEST checklists
 argument-hint: "Describe the backlog task: create, improve, review, or update a work item"
 handoffs:

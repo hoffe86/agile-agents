@@ -16,7 +16,7 @@ description: >-
   end-to-end autonomous delivery (use dev-lead if present). Hands off
   to testing when implementation is complete.
 model_tier: mid  # mechanical code generation against established patterns and skills
-tools: [vscode, execute, read, edit, agent, search, web, azure-mcp/search, todo]
+tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*, edit, agent]
 argument-hint: "Describe the implementation: feature to add, bug to fix, or refactor scope"
 ---
 

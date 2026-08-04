@@ -18,7 +18,7 @@ description: >-
   / testing), end-to-end delivery (use dev-lead if present).
   NEVER modifies code.
 model_tier: heavy  # multi-lens synthesis and severity ranking across specialist findings requires deep reasoning
-tools: [read, agent, search, execute, azure-mcp/search]
+tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*, agent]
 agents: ["security-review", "test-review", "architecture-review", "infrastructure-review"]
 argument-hint: "Describe the review scope: PR / branch / diff to review, or 'uncommitted changes'"
 ---

@@ -71,6 +71,32 @@ available to every agent by description match. `working-style` and `trade-off-re
 explicitly by the agents; `code-review` and `cloud-native-patterns` are invoked on demand when
 the task matches.
 
+### MCP servers
+
+Plugins ship their own MCP servers; every agent declares them, so an uninstalled companion
+just means the tool isn't there.
+
+| Server | Shipped by | Why |
+|---|---|---|
+| `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. Technology-neutral, so it lives in core. |
+| `microsoft-docs` | `agile-agents-dotnet` | Microsoft Learn search / fetch / code samples. |
+| `azure-mcp` | *(user-installed)* | Live Azure resource context. Declared by every agent, shipped by Microsoft's own `azure` plugin. |
+| `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
+
+### Tool access
+
+Every agent gets the read/navigate set (`vscode, execute, read, search, web, todo`) plus the
+MCP servers above. On top of that:
+
+| Extra | Agents |
+|---|---|
+| `edit` | `architect`, `coding`, `testing`, `infrastructure`, `backlog-manager` |
+| `agent` (delegation) | the above + `dev-lead`, `review` |
+| `browser` | `testing` (E2E), `backlog-manager` (tracker web UI) |
+
+**Reviewers never get `edit`.** That's the defence-in-depth half of
+`reviewer-read-only-rules` — the contract is enforced in the prompt *and* by tool grant.
+
 ## How it works — the RPI pipeline
 
 `dev-lead` is the supervisor. It drives a single, already-prepared user story through four
