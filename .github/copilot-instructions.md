@@ -48,7 +48,7 @@ If a task needs an ecosystem with no skill, that is a gap to report, not a reaso
 the tooling into an agent.
 
 The suite is consumed **as a Copilot CLI plugin** — `copilot plugin marketplace add
-hoffe86/agent` then `copilot plugin install agile-agents-core@agile-agents-marketplace`, plus whichever
+hoffe86/agile-agents` then `copilot plugin install agile-agents-core@agile-agents-marketplace`, plus whichever
 `agile-agents-<technology>` companion plugins the project needs. The CLI loads `agents/`,
 `skills/`, and `user/skills/` directly from each plugin (see
 `plugins/<name>/.github/plugin/plugin.json`). Per-project config

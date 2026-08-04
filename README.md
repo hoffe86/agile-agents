@@ -9,7 +9,7 @@ over 11 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-ma
 ## Install
 
 ```shell
-copilot plugin marketplace add hoffe86/agent
+copilot plugin marketplace add hoffe86/agile-agents
 copilot plugin install agile-agents-core@agile-agents-marketplace
 ```
 
