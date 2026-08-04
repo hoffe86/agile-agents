@@ -66,10 +66,10 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | `agile-agents-ado` | `ado-work-items` |
 | `agile-agents-github` | `github-issues` |
 
-**5 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — bundled into the plugin and
+**4 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — bundled into the plugin and
 available to every agent by description match. `working-style` and `trade-off-reporting` are named
-explicitly by the agents; `code-review`, `cloud-native-patterns` and `azure-drawio-mcp-diagramming`
-are invoked on demand when the task matches.
+explicitly by the agents; `code-review` and `cloud-native-patterns` are invoked on demand when
+the task matches.
 
 ## How it works — the RPI pipeline
 

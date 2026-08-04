@@ -13,7 +13,7 @@ You are adding tests (or fixing them) in a Python project. Follow this workflow.
 - `pyproject.toml` `[tool.pytest.ini_options]`, `pytest.ini`, `tox.ini`, or files matching `test_*.py` / `*_test.py` → **pytest** (default).
 - `unittest.TestCase` subclasses → **unittest** (only if pytest is genuinely not in the project; pytest can run unittest tests anyway).
 
-If the SUT is a complex feature, invoke **`breakdown-test`** (vendored) first to enumerate the cases you should write.
+If the SUT is a complex feature, enumerate the cases you should write before starting: happy path, each boundary, each error branch, each documented edge case.
 
 If **no test directory exists**, create `tests/` at the repo root (or `tests/` inside the package if it's a `src/`-layout project), and add a minimal `conftest.py` only if you need shared fixtures.
 

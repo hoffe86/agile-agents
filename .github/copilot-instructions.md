@@ -154,8 +154,8 @@ test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standa
 ado-work-items, github-issues).
 
 ### User-scope skills
-The five skills under `user/skills/` (`working-style`, `trade-off-reporting`, `code-review`,
-`cloud-native-patterns`, `azure-drawio-mcp-diagramming`) are bundled into the plugin (the
+The skills under `user/skills/` (`working-style`, `trade-off-reporting`, `code-review`,
+`cloud-native-patterns`) are bundled into the plugin (the
 `skills` array includes `user/skills/`) and reachable by every agent via description match.
 Only `working-style` and `trade-off-reporting` are named explicitly in the agent bodies. If you
 also keep a runtime copy at `~/.copilot/skills/`, sync changes both ways.

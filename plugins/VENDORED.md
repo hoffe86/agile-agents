@@ -19,12 +19,8 @@ It is a one-line addition to frontmatter — nothing in the skill body is touche
 |---|---|---|
 | acquire-codebase-knowledge | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/acquire-codebase-knowledge |
 | aspire | `agile-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/aspire |
-| breakdown-feature-implementation | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/breakdown-feature-implementation |
-| breakdown-test | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/breakdown-test |
 | codeql | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/codeql |
 | conventional-commit | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/conventional-commit |
-| create-github-action-workflow-specification | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/create-github-action-workflow-specification |
-| create-implementation-plan | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/create-implementation-plan |
 | dotnet-design-pattern-review | `agile-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/dotnet-design-pattern-review |
 | editorconfig | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/editorconfig |
 | ef-core | `agile-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/ef-core |
@@ -34,7 +30,6 @@ It is a one-line addition to frontmatter — nothing in the skill body is touche
 | polyglot-test-agent | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/polyglot-test-agent |
 | pytest-coverage | `agile-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/pytest-coverage |
 | refactor | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/refactor |
-| refactor-method-complexity-reduce | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/refactor-method-complexity-reduce |
 | ruff-recursive-fix | `agile-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/ruff-recursive-fix |
 | security-review | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/security-review |
 | terraform-azurerm-set-diff-analyzer | `agile-agents-terraform` | https://github.com/github/awesome-copilot/tree/main/skills/terraform-azurerm-set-diff-analyzer |

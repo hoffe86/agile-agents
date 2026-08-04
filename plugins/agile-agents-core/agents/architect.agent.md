@@ -93,8 +93,8 @@ The architecture you propose must be implementable inside these constraints. **W
 
 | User intent | Local skill | Plus these tools/skills |
 |---|---|---|
-| Design a new system / feature | `architecture-design` | `create-implementation-plan` (vendored), `breakdown-feature-implementation` (vendored) |
-| Decompose into services / components | `architecture-design` | `breakdown-feature-implementation` (vendored) |
+| Design a new system / feature | `architecture-design` | — |
+| Decompose into services / components | `architecture-design` | — |
 | Azure service selection / topology | `architecture-design` | **`azure-cloudarchitect`** MCP tool, **`azure-wellarchitectedframework`** MCP tool, **`azure-enterprise-infra-planner`** plugin skill |
 | .NET design-pattern audit | `architecture-design` | `dotnet-design-pattern-review` (vendored) |
 | Security architecture / threat model | `architecture-design` | `threat-model-analyst` (vendored), `security-review` (vendored) |

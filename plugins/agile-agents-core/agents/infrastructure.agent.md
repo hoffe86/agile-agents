@@ -106,8 +106,7 @@ Beyond the routed primary skills:
 - **`update-avm-modules-in-bicep`** — keep AVM modules current.
 - **`terraform-azurerm-set-diff-analyzer`** — diff `azurerm` resource shapes across provider versions.
 - **`multi-stage-dockerfile`** — for container image authoring that pipelines will build.
-- **`create-github-action-workflow-specification`** — to spec a new workflow before writing YAML.
-- **`refactor`** / **`refactor-method-complexity-reduce`** — for cleaning up tangled IaC.
+- **`refactor`** — for cleaning up tangled IaC.
 - **`conventional-commit`** + **`git-commit`** — when the orchestrator decides to commit.
 
 Plugin skills available without vendoring:
