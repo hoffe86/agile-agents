@@ -22,20 +22,37 @@ identity:
   owner: ""                     # GitHub handle / email of the responsible owner.
   tech_lead: ""                 # GitHub handle / email of the tech lead.
 
-# ─── documentation ─── REQUIRED: docs_root ────────────────────────────────────
+# ─── documentation ─── REQUIRED: location ─────────────────────────────────────
 documentation:
-  docs_root: ""                 # REQUIRED. In-repo path (e.g. "docs/") OR external URL
-                                # (wiki / Confluence / SharePoint). Agents update docs here.
-  architecture_template: ""     # arc42 | c4-only | custom | none
+  platform: ""                  # Where the docs live as a *system*.
+                                # in-repo | separate-repo | github-wiki | ado-wiki |
+                                # confluence | sharepoint | notion | none
+                                # Empty → agents assume `in-repo`.
+  location: ""                  # REQUIRED. Resolves against `platform`:
+                                #   in-repo       → path, e.g. "docs/"
+                                #   separate-repo → clone URL (+ optional "#path/inside")
+                                #   *-wiki        → wiki URL
+                                #   confluence    → space or parent-page URL
+                                #   sharepoint    → document-library URL
+                                # Agents read here, and write here only when the platform is
+                                # writable from the workspace (in-repo). Otherwise they emit
+                                # the content and say where it needs to be pasted.
+  framework: ""                 # Documentation framework — the *table of contents* agents
+                                # follow when authoring or reviewing architecture docs.
+                                # arc42 | c4-only | togaf | 4+1 | custom | none
+                                # Empty → agents default to arc42 + C4 and say so.
+                                # `custom` → point `framework_reference` at the local template.
+  framework_reference: ""       # Path / URL to the project's own doc template. Required when
+                                # framework: custom — agents follow it instead of arc42.
   adr:
     location: ""                # In-repo path (e.g. "docs/adr/") or external URL.
     format: ""                  # madr | nygard | custom | none
   diagram_convention: ""        # mermaid-c4 | drawio | lucidchart | plantuml
   ai_documentation_dir: ""      # Optional. Where AI-generated design notes/diagrams land.
 
-# ─── backlog ─── REQUIRED: system ─────────────────────────────────────────────
+# ─── backlog ─── REQUIRED: platform ───────────────────────────────────────────
 backlog:
-  system: ""                    # REQUIRED. github-issues | ado-boards | jira | linear | none
+  platform: ""                  # REQUIRED. github-issues | ado-boards | jira | linear | none
   url: ""                       # Project URL (board / org / project).
   project: ""                   # ADO project name / Jira key / GitHub org-project.
   area_path: ""                 # ADO area path (if applicable).
@@ -53,7 +70,7 @@ backlog:
 # ─── rpi ─── Research → Plan → Implement → Review handover ─────────────────────
 rpi:
   handover_dir: ".copilot-tracking/"  # Ephemeral, gitignored cache for in-run handover artifacts.
-                                      #   The tracker (backlog.system) is the source of truth; these files are
+                                      #   The tracker (backlog.platform) is the source of truth; these files are
                                       #   rebuildable and the tracker wins on any conflict. Add to .gitignore.
 
 # ─── tech_stack ─── REQUIRED: primary_languages, test_discipline ──────────────

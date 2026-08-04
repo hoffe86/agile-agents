@@ -22,7 +22,7 @@ Look at any `*.Tests.csproj` (or similar) and the package references:
 
 If **no test project exists**, create one named `[ProjectName].Tests` next to the SUT, mirror the namespace, and pick the framework that matches the rest of the solution. If the solution is empty of tests, default to **xUnit v3**.
 
-If the SUT is a complex feature, invoke **`breakdown-test`** (vendored) first to enumerate the cases you should write.
+If the SUT is a complex feature, enumerate the cases you should write before starting: happy path, each boundary, each error branch, each documented edge case.
 
 ## 2. Test conventions (apply universally)
 

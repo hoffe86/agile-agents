@@ -4,6 +4,7 @@
 - **Date:** 2026-04
 - **Deciders:** Wave 1+2 implementation of the autonomous-coding-agents improvement plan (H3)
 - **Related research:** `docs/research/autonomous-coding-agents-2026.md` §6 (row H3); Stream A §13.3; Stream E §17, §22
+- **Note (2026-08):** stage numbers below are the ones in force when this ADR was accepted. The pipeline has since been renumbered sequentially (the fractional 1.5/1.6/1.7/2.5/4.5 are gone). The decision is unchanged — the gate still sits between Testing and Review. Old → new: 1.5→2, 1.6→3, 1.7→4, 2.5→5, 3→6, 4→7, 4.5→8, 5→9, 6→10.
 
 ## Context
 

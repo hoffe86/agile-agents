@@ -14,8 +14,6 @@ You are authoring or modifying CI/CD pipelines.
 - **Azure Pipelines** when the repo lives in Azure DevOps. Files: `azure-pipelines.yml` (root) or `.azuredevops/pipelines/*.yml`.
 - If both exist, the PR target / deployment target dictates which to extend; do not duplicate the same pipeline across platforms unnecessarily.
 
-For the **specification phase** of a new GitHub Actions workflow, invoke **`create-github-action-workflow-specification`** (vendored) to draft a clean spec before writing YAML.
-
 For NuGet trusted publishing (OIDC keyless publish to nuget.org), use **`nuget-trusted-publishing`** plugin skill.
 
 ## 2. Common conventions (both platforms)

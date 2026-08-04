@@ -18,7 +18,7 @@ description: >-
   / testing), end-to-end delivery (use dev-lead if present).
   NEVER modifies code.
 model_tier: heavy  # multi-lens synthesis and severity ranking across specialist findings requires deep reasoning
-tools: [read, agent, search, execute, azure-mcp/search]
+tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent]
 agents: ["security-review", "test-review", "architecture-review", "infrastructure-review"]
 argument-hint: "Describe the review scope: PR / branch / diff to review, or 'uncommitted changes'"
 ---
@@ -52,11 +52,11 @@ When `dev-lead` hands you a diff **plus** a set of `Findings addressed` lines fr
 
 ## Working context
 
-**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the ADR check. Treat these solution-profile fields as **declared conventions you must enforce against the diff**:
+**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the decision-record + decision-capture checks. Treat these solution-profile fields as **declared conventions you must enforce against the diff**:
 
 - `tech_stack.test_discipline` + `coverage_threshold` + `lint_format_tools`.
 - `backlog.commit_convention` + `branch_naming` + `pr_link_pattern`.
-- `documentation.docs_root` + `adr.location`.
+- `documentation.location` + `adr.location`.
 - `compliance_security.allowed_oss_licenses` + `secret_scanning_required`.
 - `ai_copilot.allowed_ai_providers` + `pii_handling_rule`.
 - `team_communication.code_language`.

@@ -1,7 +1,7 @@
 ---
 name: test-bar-gate
 description: >-
-  Pre-reviewer automated quality gate — runs lint, type-check, and unit tests after `coding`/`testing` finish and before the reviewer fan-out. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 4 (Testing) and Stage 5 (Review).
+  Pre-reviewer automated quality gate — runs lint, type-check, and unit tests after `coding`/`testing` finish and before the reviewer fan-out. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 7 (Testing) and Stage 9 (Review).
 applies_to: all
 ---
 
@@ -14,7 +14,7 @@ A deterministic, pre-reviewer quality gate. Runs cheap, fast checks (lint → ty
 Loaded by the `dev-lead` supervisor in this exact slot:
 
 ```
-Stage 4 (Testing) emits  ──►  TESTS COMPLETE
+Stage 7 (Testing) emits  ──►  TESTS COMPLETE
                               │
                               ▼
                     ┌─────────────────────┐
@@ -24,7 +24,7 @@ Stage 4 (Testing) emits  ──►  TESTS COMPLETE
               pass            │            fail
         ┌─────────────────────┴───────────────────────┐
         ▼                                             ▼
-Stage 5 reviewer fan-out                Return to `coding` or `testing`
+Stage 9 reviewer fan-out                Return to `coding` or `testing`
 (architecture / security /              with structured failure report.
 clean-code / test-quality /             One corrective retry allowed;
 iac reviews)                            second failure → halt + ask user.

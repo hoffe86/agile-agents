@@ -41,3 +41,13 @@ jobs:
             exit 1
           fi
 
+      # The .sh generator is a hand-maintained twin of the .ps1 that CI never runs
+      # otherwise, so it silently rots. Prove the two still agree.
+      - name: Fail if the bash generator drifted from the PowerShell one
+        run: |
+          git checkout -- AGENTS.md
+          ./scripts/generate-agents-md.sh --profile solution-profile.yaml --output /tmp/agents-sh.md
+          if ! diff -u -I'^> Generated from' AGENTS.md /tmp/agents-sh.md; then
+            echo "::error::generate-agents-md.sh produces different output than the .ps1."
+            exit 1
+          fi

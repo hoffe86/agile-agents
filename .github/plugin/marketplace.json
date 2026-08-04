@@ -13,7 +13,7 @@
     {
       "name": "agile-agents-core",
       "source": "agile-agents-core",
-      "description": "Agentic Agile Harness for GitHub Copilot CLI — an RPI (Research, Plan, Implement, Review) pipeline of 11 specialist agents and 38 skills. Language, IaC, and tracker specifics ship as companion plugins.",
+      "description": "Agentic Agile Harness for GitHub Copilot CLI — an RPI (Research, Plan, Implement, Review) pipeline of 11 specialist agents and a shared skill library. Language, IaC, and tracker specifics ship as companion plugins.",
       "version": "0.1.0",
       "category": "development",
       "keywords": [

@@ -24,7 +24,7 @@ If the codebase is unfamiliar, invoke the **`acquire-codebase-knowledge`** skill
 | Concern | Skill |
 |---|---|
 | Linting and autofix loop | `ruff-recursive-fix` (vendored) |
-| Refactoring methods | `refactor`, `refactor-method-complexity-reduce` (vendored) |
+| Refactoring methods | `refactor` (vendored) |
 | Building / publishing a PyPI package | `python-pypi-package-builder` (awesome-copilot, fetch on demand) |
 | Test coverage | `pytest-coverage` (vendored) — but tests are `testing`'s job |
 | `.editorconfig` | `editorconfig` (vendored) |

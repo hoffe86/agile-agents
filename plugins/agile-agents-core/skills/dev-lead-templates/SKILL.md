@@ -1,6 +1,6 @@
 ---
 name: dev-lead-templates
-description: Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 1.7), the conditional design-approval gate prompt (Stage 2.5), and the final Done/Stop report (Stage 6). Load only at the moment a template is needed; the dev-lead agent definition carries the decision logic, this skill carries the markdown shapes. Not used by any other agent.
+description: Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 4), the conditional design-approval gate prompt (Stage 5), and the final Done/Stop report (Stage 10). Load only at the moment a template is needed; the dev-lead agent definition carries the decision logic, this skill carries the markdown shapes. Not used by any other agent.
 applies_to: all
 ---
 
@@ -14,9 +14,9 @@ decisions rather than markdown.
 
 | Template | Load at | Reference |
 |---|---|---|
-| Plan approval (`ask_user`) | Stage 1.7 — after `backlog-manager` emitted `TASKS PLANNED` | [`references/plan-approval.md`](references/plan-approval.md) |
-| Design approval (`ask_user`) | Stage 2.5 — only when the conditional trigger fires | [`references/design-approval.md`](references/design-approval.md) |
-| Final report | Stage 6 — Done, Blocked, or Stopped | [`references/done-report.md`](references/done-report.md) |
+| Plan approval (`ask_user`) | Stage 4 — after `backlog-manager` emitted `TASKS PLANNED` | [`references/plan-approval.md`](references/plan-approval.md) |
+| Design approval (`ask_user`) | Stage 5 — only when the conditional trigger fires | [`references/design-approval.md`](references/design-approval.md) |
+| Final report | Stage 10 — Done, Blocked, or Stopped | [`references/done-report.md`](references/done-report.md) |
 
 Do not load all three up-front. Each is a leaf template with no cross-dependency.
 

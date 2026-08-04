@@ -1,6 +1,6 @@
 ---
 name: ado-work-items
-description: Azure DevOps Boards mechanics for reading and writing work items — MCP tool entry points, field mapping per work-item type (Epic / Feature / PBI / Issue / Task), markdown-vs-HTML formatting rules, cross-reference syntax, area path / iteration / tag conventions, severity scale, parent-child and predecessor linking, comment templates, and content sanitisation. Load only when `solution-profile.yaml: backlog.system == ado-boards`. Used by backlog-manager.
+description: Azure DevOps Boards mechanics for reading and writing work items — MCP tool entry points, field mapping per work-item type (Epic / Feature / PBI / Issue / Task), markdown-vs-HTML formatting rules, cross-reference syntax, area path / iteration / tag conventions, severity scale, parent-child and predecessor linking, comment templates, and content sanitisation. Load only when `solution-profile.yaml: backlog.platform == ado-boards`. Used by backlog-manager.
 applies_to: ado-boards
 ---
 

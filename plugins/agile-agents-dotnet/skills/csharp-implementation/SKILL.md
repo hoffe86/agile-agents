@@ -30,7 +30,7 @@ Compose with these skills as needed (most are available as plugins or vendored u
 | ASP.NET Core minimal API + OpenAPI | `aspnet-minimal-api-openapi` (plugin) |
 | .NET Aspire orchestration | `aspire` (vendored) |
 | EF Core data access | `ef-core` (vendored) |
-| Refactoring existing methods | `refactor`, `refactor-method-complexity-reduce` (vendored) |
+| Refactoring existing methods | `refactor` (vendored) |
 | Native interop | `dotnet-pinvoke` (plugin) |
 | MCP server in C# | `csharp-mcp-server-generator` (plugin) |
 | Single-file C# script | `csharp-scripts` (plugin) |

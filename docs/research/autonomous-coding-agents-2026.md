@@ -64,7 +64,7 @@ Authors prepare diffs and PR descriptions; humans perform the merge. No agent is
 
 ### 2.7 Skill inventory
 
-42 repo-scope skills under `skills/` — 16 hand-written + 26 vendored from `github/awesome-copilot` (catalogued in `skills/VENDORED.md`). Hand-written highlights: `read-repo-context`, `pr-description`, `release-notes`, `architecture-design`, `architecture-decision-records`, `code-review-checklist`, `csharp-implementation`, `python-implementation`, `bicep-implementation`, `terraform-azure-implementation`, `helm-kustomize-implementation`, `cicd-pipeline-implementation`, `iac-best-practices`. 5 user-scope skills (`~/.copilot/skills/`) referenced by every agent: `working-style`, `trade-off-reporting`, `code-review`, `cloud-native-patterns`, `azure-drawio-mcp-diagramming`.
+Skills live under `skills/` — a mix of hand-written and vendored from `github/awesome-copilot` (catalogued in `VENDORED.md`); see `AGENTS.md` for the current inventory. Hand-written highlights: `read-repo-context`, `pr-description`, `release-notes`, `architecture-design`, `architecture-decision-records`, `code-review-checklist`, `csharp-implementation`, `python-implementation`, `bicep-implementation`, `terraform-azure-implementation`, `helm-kustomize-implementation`, `cicd-pipeline-implementation`, `iac-best-practices`. User-scope skills referenced by the agents: `working-style`, `trade-off-reporting`, `code-review`, `cloud-native-patterns`.
 
 ### 2.8 ADR + trade-off surfacing
 

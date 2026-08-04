@@ -62,6 +62,17 @@ function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 
+function Sort-Ordinal {
+    # PowerShell's Sort-Object is culture-aware and treats '-' as a minor difference,
+    # so it orders "refactor-method-…" before "refactor". `sort` in the bash twin is
+    # byte-order. Sort ordinally on both sides or the two generators drift.
+    param([string[]]$Items)
+    $list = [System.Collections.Generic.List[string]]::new()
+    foreach ($i in $Items) { [void]$list.Add([string]$i) }
+    $list.Sort([StringComparer]::Ordinal)
+    return $list.ToArray()
+}
+
 function Resolve-First {
     param([string[]]$Candidates)
     foreach ($c in $Candidates) { if ($c -and (Test-Path $c)) { return (Resolve-Path $c).Path } }
@@ -230,10 +241,16 @@ $template = Get-Content -Raw -LiteralPath $templatePath
 $template = ($template -split '(?ms)^## Tokens\s*$')[0].TrimEnd() + "`n"
 
 # ── values ─────────────────────────────────────────────────────────────────────
-$projectName     = Get-ProfileValue $profile 'identity'      'project_name'      (Split-Path $repoRoot -Leaf)
+# Fall back to the git remote's repo name, not the checkout directory: CI clones into
+# a folder named after the repo, developers clone into whatever they like.
+$repoNameFallback = (& git -C $repoRoot config --get remote.origin.url 2>$null)
+$repoNameFallback = if ($repoNameFallback) { [IO.Path]::GetFileNameWithoutExtension($repoNameFallback.Trim().TrimEnd('/')) }
+                    else { Split-Path $repoRoot -Leaf }
+$projectName     = Get-ProfileValue $profile 'identity'      'project_name'      $repoNameFallback
 $defaultBranch   = Get-ProfileValue $profile 'identity'      'default_branch'    'main'
-$docsRoot        = Get-ProfileValue $profile 'documentation' 'docs_root'         'unspecified'
-$backlogSystem   = Get-ProfileValue $profile 'backlog'       'system'            'unspecified'
+$docLocation        = Get-ProfileValue $profile 'documentation' 'location'         'unspecified'
+$docPlatform     = Get-ProfileValue $profile 'documentation' 'platform'         'unspecified'
+$backlogPlatform   = Get-ProfileValue $profile 'backlog'       'platform'          'unspecified'
 $branchNaming    = Get-ProfileValue $profile 'backlog'       'branch_naming'     'unspecified'
 $commitConv      = Get-ProfileValue $profile 'backlog'       'commit_convention' 'unspecified'
 $languages       = Format-Languages (Get-ProfileValue $profile 'tech_stack' 'primary_languages' @())
@@ -247,8 +264,8 @@ foreach ($f in $agentFiles) {
     $fm = Read-AgentFrontmatter -Path $f.FullName
     if (-not $fm -or -not $fm['name']) { continue }
     if ($activeAgents.Count -gt 0 -and ($activeAgents -notcontains $fm['name'])) { continue }
-    $tools  = if ($fm['tools'])  { ($fm['tools']  | Sort-Object) -join ', ' } else { '_default_' }
-    $subs   = if ($fm['agents']) { ($fm['agents'] | Sort-Object) -join ', ' } else { '_none_' }
+    $tools  = if ($fm['tools'])  { (Sort-Ordinal $fm['tools'])  -join ', ' } else { '_default_' }
+    $subs   = if ($fm['agents']) { (Sort-Ordinal $fm['agents']) -join ', ' } else { '_none_' }
     $desc   = ($fm['description'] -replace '\s+', ' ').Trim()
     $block  = "### ``$($fm['name'])```n`n$desc`n`n- **Tools**: $tools`n- **Sub-agents**: $subs`n"
     $agentBlocks.Add($block)
@@ -275,10 +292,10 @@ if ($SkillsDir) {
             }
         }
     }
-    if ($skillEntries.Count -gt 0) { $skillsList = (($skillEntries | Sort-Object) -join "`n") }
+    if ($skillEntries.Count -gt 0) { $skillsList = ((Sort-Ordinal $skillEntries) -join "`n") }
 }
 
-$mandatoryList = if ($mandatorySkills.Count -gt 0) { ($mandatorySkills | Sort-Object | ForEach-Object { "- ``$_``" }) -join "`n" } else { '_(none configured)_' }
+$mandatoryList = if ($mandatorySkills.Count -gt 0) { (Sort-Ordinal $mandatorySkills | ForEach-Object { "- ``$_``" }) -join "`n" } else { '_(none configured)_' }
 
 $evalPointer = if (Test-Path (Join-Path $repoRoot 'eval')) { 'see [`./eval/`](eval/)' } else { 'not configured (see plan H2)' }
 
@@ -287,8 +304,9 @@ $map = [ordered]@{
     'PROJECT_NAME'           = $projectName
     'GENERATED_ON'           = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
     'LANGUAGES'              = $languages
-    'BACKLOG_SYSTEM'         = $backlogSystem
-    'DOCS_ROOT'              = $docsRoot
+    'BACKLOG_PLATFORM'         = $backlogPlatform
+    'DOC_LOCATION'              = $docLocation
+    'DOC_PLATFORM'              = $docPlatform
     'BRANCH_NAMING'          = $branchNaming
     'COMMIT_CONVENTION'      = $commitConv
     'DEFAULT_BRANCH'         = $defaultBranch

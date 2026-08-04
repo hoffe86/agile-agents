@@ -4,12 +4,12 @@ The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plu
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
 over 11 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-manager) plus
-38 skills, with up-front arc42/C4 + ADR conformance, multi-lens review, and an eval/cost layer.
+49 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 ## Install
 
 ```shell
-copilot plugin marketplace add hoffe86/agent
+copilot plugin marketplace add hoffe86/agile-agents
 copilot plugin install agile-agents-core@agile-agents-marketplace
 ```
 
@@ -38,7 +38,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | Role | Agent | Purpose |
 |------|-------|---------|
 | Supervisor | `dev-lead` | Orchestrates the RPI pipeline (Research → Plan → Implement → Review) across architect, backlog-manager, coding, testing, and review with gates |
-| Author | `architect` | Read-only/advisory: serves the Research phase — verifies the change fits the prepared concept (arc42/C4) + accepted ADRs, cites them, reports ADR gaps; never authors ADRs |
+| Author | `architect` | Read-only/advisory: serves the Research phase — verifies the change fits the prepared concept (in the framework declared by `documentation.framework`) + any accepted decision records, cites them, reports decision gaps; never authors ADRs |
 | Author | `coding` | Implements features/fixes (C# / Python) |
 | Author | `testing` | Writes & runs tests (xUnit/NUnit/MSTest/TUnit, pytest) |
 | Author | `infrastructure` | Bicep, Terraform, Helm/Kustomize, CI/CD pipelines |
@@ -49,13 +49,13 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | Reviewer | `infrastructure-review` | WAF, AVM, CAF, CIS Azure, OIDC, SLSA |
 | Reviewer | `test-review` | xUnit Test Patterns, Google Testing, Fowler test pyramid |
 
-**33 repo-scope skills** (`plugins/agile-agents-core/skills/`) — 17 hand-written + 16 vendored from
+**Repo-scope skills** (`plugins/agile-agents-core/skills/`) — hand-written plus a set vendored from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills)
 (intermixed flat). Includes `read-repo-context` — the foundation skill every agent loads first
 — and `reviewer-read-only-rules`, the defence-in-depth contract every review agent loads. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md) for the vendored index across all plugins.
 
-**16 companion skills** across six technology plugins — install only what your project uses:
+**Companion skills** across six technology plugins — install only what your project uses:
 
 | Plugin | Skills |
 |---|---|
@@ -66,17 +66,45 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | `agile-agents-ado` | `ado-work-items` |
 | `agile-agents-github` | `github-issues` |
 
-**5 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — referenced by every agent: `working-style`,
-`trade-off-reporting`, `code-review`, `cloud-native-patterns`, `azure-drawio-mcp-diagramming`.
-Bundled into the plugin.
+**4 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — bundled into the plugin and
+available to every agent by description match. `working-style` and `trade-off-reporting` are named
+explicitly by the agents; `code-review` and `cloud-native-patterns` are invoked on demand when
+the task matches.
+
+### MCP servers
+
+Plugins ship their own MCP servers; every agent declares them, so an uninstalled companion
+just means the tool isn't there.
+
+| Server | Shipped by | Why |
+|---|---|---|
+| `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
+| `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
+| `azure-mcp` | *(user-installed — Microsoft's own [`azure`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context. Declared only by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. |
+| `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
+
+### Tool access
+
+Every agent gets the read/navigate set (`vscode, execute, read, search, web, todo`) plus the
+MCP servers above. On top of that:
+
+| Extra | Agents |
+|---|---|
+| `edit` | `architect`, `coding`, `testing`, `infrastructure`, `backlog-manager` |
+| `agent` (delegation) | the above + `dev-lead`, `review` |
+| `browser` | `testing` (E2E), `backlog-manager` (tracker web UI) |
+
+**Reviewers never get `edit`.** That's the defence-in-depth half of
+`reviewer-read-only-rules` — the contract is enforced in the prompt *and* by tool grant.
 
 ## How it works — the RPI pipeline
 
 `dev-lead` is the supervisor. It drives a single, already-prepared user story through four
 phases — **R**esearch → **P**lan → **I**mplement → **R**eview — delegating each phase to
 specialist agents, gating their output, and reporting one Definition-of-Done verdict. The
-arc42 / C4 concept and the accepted ADRs are authored **up-front by humans**; the pipeline
-conforms to them and never writes them — a missing decision is escalated, not invented.
+concept (arc42, C4, or whatever `documentation.framework` declares) and any accepted decision
+records are authored **up-front by humans**; the pipeline conforms to them and never writes
+them — a missing decision is escalated, not invented. Projects without ADRs are supported.
 
 ```
 Intake → Research → Plan → Create tasks → ⛔ HUMAN PLAN APPROVAL ⛔ → Implement → Test-Bar Gate → Review → Done
@@ -85,7 +113,7 @@ Intake → Research → Plan → Create tasks → ⛔ HUMAN PLAN APPROVAL ⛔ �
 | Phase | What happens | Agents | Hand-off block |
 |---|---|---|---|
 | **Intake** | `dev-lead` captures the Definition of Done, out-of-scope, the **parent story id** (when creating tasks), confirms the `solution-profile.yaml`, and mints the run id. | `dev-lead` | — |
-| **Research** | Read-only verification against the prepared concept + accepted ADRs: confirm the story is implementable, verify codebase / APIs / patterns, surface any ADR gap. Lightweight (`dev-lead` reads) or delegated to `architect` when scope warrants a new boundary / dependency / trade-off. | `dev-lead`, `architect` | `ARCHITECTURE DESIGN COMPLETE` |
+| **Research** | Read-only verification against the prepared concept + any accepted decision records: confirm the story is implementable, verify codebase / APIs / patterns, surface any decision gap. Lightweight (`dev-lead` reads) or delegated to `architect` when scope warrants a new boundary / dependency / trade-off. | `dev-lead`, `architect` | `ARCHITECTURE DESIGN COMPLETE` |
 | **Plan** | Decompose the story into meaningful, independently-implementable **tasks**, each with its own acceptance criteria + a short approach note. | `dev-lead` | — |
 | **Create tasks** | `backlog-manager` creates one child work item per task, **linked to the parent story** (provisional, tagged `pending-approval`), records the overall approach as a comment on the parent, and returns the task list. The tracker is the source of truth; local handover files are an ephemeral, gitignored cache. Gated by `backlog.create_tasks`. | `backlog-manager` | `TASKS PLANNED` |
 | **⛔ Plan approval** | The **only mandatory human checkpoint** — it fires **after** the tasks exist so the human reviews concrete, linked work items. Approve → tags removed, autonomous run begins; Adjust → tasks revised; Cancel → provisional tasks cleaned up. | human | — |
@@ -106,7 +134,7 @@ breach).
 The work-item tracker is the **source of truth** for the plan — not the local filesystem.
 `backlog-manager` is the only agent that writes to it; every other agent treats it as
 read-only context. Which tracker (Azure DevOps, GitHub Issues, Jira, Linear) is declared once
-in `solution-profile.yaml` under `backlog.system` + `backlog.url`. Task creation is gated by
+in `solution-profile.yaml` under `backlog.platform` + `backlog.url`. Task creation is gated by
 `backlog.create_tasks` (default `false`); when off, the plan stays in-conversation.
 
 ## Quality, eval & cost
@@ -186,7 +214,8 @@ the [`agents-md-sync`](.github/workflows/agents-md-sync.yml) CI workflow — **d
 
 Every agent reads **`solution-profile.yaml`** first (alongside `copilot-instructions.md`). It's
 the single machine-readable source for the repo's operational facts: identity, documentation
-root, backlog system + URL, tech stack, infrastructure, CI/CD, compliance, SLOs, and AI/Copilot
+platform + location + framework, backlog platform + URL, tech stack, infrastructure, CI/CD,
+compliance, SLOs, and AI/Copilot
 policy. Profile fields **override** an agent's defaults; safety / security defaults remain
 non-negotiable. Copy [`solution-profile.yaml`](solution-profile.yaml) into a target repo's
 `.github/` and fill in what applies.
@@ -199,7 +228,7 @@ pipeline: `IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `INFRASTRUCTURE COMPLETE`
 `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`, `TASKS PLANNED`.
 
 ### Vendored skills are read-only
-The 24 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
+The 19 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
 place — extend via a wrapper skill or contribute upstream and re-sync. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md).
 

@@ -1,4 +1,4 @@
-# Plan-approval prompt (dev-lead Stage 1.7)
+# Plan-approval prompt (dev-lead Stage 4)
 
 The **only mandatory human checkpoint**. Rendered via `ask_user` *after* the child
 tasks exist in the tracker, so the human reviews concrete, linked work items — not
@@ -19,6 +19,8 @@ an abstract outline.
 2. ...
 (overall approach recorded as a comment on the parent story)
 
+**Architect tasks not carried into the plan:** <task — reason, one line each, or `none` / `n/a (lightweight research)`>
+
 **Stages I will run per task (autonomously after your approval):**
 - Coding — <skip / run + 1-line reason>
 - Testing — <skip / run + 1-line reason>
@@ -34,7 +36,7 @@ review verdict ❌ Block.
 ## Handling the answer
 
 - **Approve** → have `backlog-manager` remove the `pending-approval` tag from the
-  created tasks, then proceed to Stage 3 and run autonomously through Done.
+  created tasks, then proceed to Stage 6 and run autonomously through Done.
 - **Adjust** → take the human's edits, have `backlog-manager` revise the affected
   tasks (add / remove / re-scope), re-render this template, ask again. No silent
   re-planning.
