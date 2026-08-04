@@ -122,7 +122,7 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 
 | Stage | RPI phase | Name | Purpose | Delegate |
 |---|---|---|---|---|
-| 0 | — | Intake & ambiguity check | Discover-then-confirm operational profile; capture DoD + out-of-scope; capture **parent story id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
+| 0 | — | Intake & ambiguity check | **Profile interview (blocking — six required fields)**; capture DoD + out-of-scope; capture **parent story id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
 | 1 | Research | Verification | Read-only verification against the prepared concept + accepted ADRs; deeper design only when scope warrants | `architect` (conditional) |
 | 1.5 | Plan | Decompose into tasks | Break the story into meaningful, independently-implementable tasks — each with ACs + approach note | — |
 | 1.6 | Plan | Create tasks in tracker | Create one child work item per task, linked to the parent story (provisional, `pending-approval`); record approach as a story comment | `backlog-manager` |
@@ -152,25 +152,30 @@ Each stage has an entry condition, a delegated agent, and an exit gate. You neve
   9. **In-flight architecture escalation** — coding (or infrastructure) reports it cannot deliver inside the approved plan without a new dependency, boundary, contract, or Azure service. Treat as ambiguity: stop and route the question to architect (see Stage 3 entry).
   10. **Missing parent story id** when `backlog.create_tasks` is true — child tasks cannot be linked without a parent. Stop at Intake and ask for the parent work-item id; never create unparented tasks.
   11. **Tracker-write failure** — `backlog-manager` could not create / link / comment on work items (auth, permissions, API error). Stop before the plan-approval gate; do not fall back to file-only planning silently. The tracker is the source of truth.
+  12. **Required profile field still empty after the Stage 0 interview** — one of the six required fields could not be discovered and the human hasn't supplied it. Stop at Intake; do not enter Stage 1 with an incomplete profile and do not invent a value to get past the check.
 - When you stop, use `ask_user` with one consolidated question and set the affected SQL todo to `blocked` with the reason.
 
 ### Stage 0 — Intake & ambiguity check
 
-Before delegating *anything*, read the requirement and answer:
+**Step 1 — Validate the operational profile (blocking).** Do this *first*, before the intake
+questions below and before any delegation — the intake questions themselves read profile
+fields. Load the **`solution-profile-interview`** skill: it discovers what the repo already
+tells you, asks the human only for what it can't, writes `.github/solution-profile.yaml`, and
+verifies the six required fields (`identity.project_name`, `identity.lifecycle_stage`,
+`documentation.docs_root`, `backlog.platform`, `tech_stack.primary_languages`,
+`tech_stack.test_discipline`).
+
+**You may not enter Stage 1 until all six are populated.** If any is still empty after the
+interview, fire **stop condition #12**. Never cold-interrogate the user for something the
+repo already tells you, and never invent a value to get past the check — a fabricated
+`test_discipline` or `docs_root` silently misdirects every downstream specialist.
+
+**Step 2 — Read the requirement** and answer:
 
 - **What is the observable outcome?** (one sentence — the Definition of Done.)
 - **What is explicitly out of scope?** (call it out — protects against drift.)
 - **What is ambiguous?** (acceptance criteria, target framework, deployment target, data shape, error semantics, performance budget, security posture.)
 - **What is the parent story?** When `backlog.create_tasks` is true, capture the **parent work-item id** (the already-prepared story the planned tasks will be linked under). If it's missing or you can't identify it, fire **stop condition #10** — never create unparented tasks.
-
-**Validate the operational profile.** Load the **`solution-profile-interview`** skill — it
-discovers what the repo already tells you, asks the human only for what it can't, writes
-`.github/solution-profile.yaml`, and verifies the six required fields
-(`identity.project_name`, `identity.lifecycle_stage`, `documentation.docs_root`,
-`backlog.platform`, `tech_stack.primary_languages`, `tech_stack.test_discipline`).
-
-Never cold-interrogate the user for something the repo already tells you, and never invent a
-value to get past the required-field check.
 
 **Propagate to specialists.** When you delegate, prepend the relevant subset of the profile to their context payload (e.g. coding gets `tech_stack.*` + `documentation.*` + `compliance_security.allowed_oss_licenses`; infrastructure gets `infrastructure.*` + `cicd.*` + `compliance_security.*` + `operational.slo`; backlog-manager gets `backlog.*` + `team_communication.code_language`).
 
