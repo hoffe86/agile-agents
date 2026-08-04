@@ -24,6 +24,7 @@ usage() {
 PROFILE_PATH=""
 AGENTS_DIR=""
 SKILLS_DIR=""
+SKILLS_DIRS=()
 OUTPUT=""
 DRY_RUN=0
 
@@ -41,7 +42,7 @@ done
 
 # ── repo root ────────────────────────────────────────────────────────────────
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || cd "$script_dir/.." && pwd)"
+repo_root="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || (cd "$script_dir/.." && pwd))"
 
 resolve_first() {
   for p in "$@"; do [[ -n "$p" && -e "$p" ]] && { echo "$p"; return 0; }; done
@@ -53,10 +54,19 @@ resolve_first() {
   "$repo_root/solution-profile.yaml" || true)"
 [[ -z "$AGENTS_DIR" ]] && AGENTS_DIR="$(resolve_first \
   "$repo_root/.github/agents" \
+  "$repo_root/plugins/agile-agents-core/agents" \
   "$repo_root/agents" || true)"
-[[ -z "$SKILLS_DIR" ]] && SKILLS_DIR="$(resolve_first \
-  "$repo_root/.github/skills" \
-  "$repo_root/skills" || true)"
+if [[ -z "$SKILLS_DIR" ]]; then
+  for d in "$repo_root"/plugins/agile-agents*/skills; do
+    [[ -d "$d" ]] && SKILLS_DIRS+=("$d")
+  done
+  if (( ${#SKILLS_DIRS[@]} == 0 )); then
+    d="$(resolve_first "$repo_root/.github/skills" "$repo_root/skills" || true)"
+    [[ -n "$d" ]] && SKILLS_DIRS+=("$d")
+  fi
+else
+  SKILLS_DIRS+=("$SKILLS_DIR")
+fi
 [[ -z "$OUTPUT" ]] && OUTPUT="$repo_root/AGENTS.md"
 
 [[ -z "$PROFILE_PATH" ]] && { echo "solution-profile.yaml not found" >&2; exit 1; }
@@ -78,6 +88,7 @@ yaml_scalar() {
     return
   fi
   awk -v sec="$section" -v key="$key" '
+    { sub(/\r$/, "") }
     BEGIN { in_sec=0 }
     /^[A-Za-z_][A-Za-z0-9_]*:/ {
       gsub(/:.*/, "", $0)
@@ -103,6 +114,7 @@ yaml_list() {
     return
   fi
   awk -v sec="$section" -v key="$key" '
+    { sub(/\r$/, "") }
     BEGIN { in_sec=0; in_list=0 }
     /^[A-Za-z_][A-Za-z0-9_]*:/ {
       gsub(/:.*/, "", $0)
@@ -159,6 +171,7 @@ scalar_or() { local v="$1" d="$2"; [[ -z "$v" ]] && echo "$d" || echo "$v"; }
 read_frontmatter() {
   local file="$1"
   awk '
+    { sub(/\r$/, "") }
     BEGIN { in_fm=0; cur=""; buf="" }
     NR==1 && /^---[[:space:]]*$/ { in_fm=1; next }
     in_fm && /^---[[:space:]]*$/ { if (cur!="") print cur "|" buf; exit }
@@ -225,8 +238,8 @@ while IFS= read -r f; do
   desc="$(fm_get "$fm" description | tr -s ' ')"
   tools="$(fm_get "$fm" tools)"
   subs="$(fm_get "$fm" agents)"
-  [[ -z "$tools" ]] && tools="_default_" || tools="$(echo "$tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd ', ' -)"
-  [[ -z "$subs" ]]  && subs="_none_"   || subs="$(echo "$subs"  | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd ', ' -)"
+  [[ -z "$tools" ]] && tools="_default_" || tools="$(echo "$tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd, - | sed 's/,/, /g')"
+  [[ -z "$subs" ]]  && subs="_none_"   || subs="$(echo "$subs"  | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | paste -sd, - | sed 's/,/, /g')"
   block="### \`$name\`"$'\n\n'"$desc"$'\n\n'"- **Tools**: $tools"$'\n'"- **Sub-agents**: $subs"$'\n'
   [[ -z "$agents_table" ]] && agents_table="$block" || agents_table="$agents_table"$'\n'"$block"
 done < <(find "$AGENTS_DIR" -maxdepth 1 -name '*.agent.md' -type f | sort)
@@ -234,20 +247,24 @@ done < <(find "$AGENTS_DIR" -maxdepth 1 -name '*.agent.md' -type f | sort)
 
 # ── skills list ────────────────────────────────────────────────────────────
 skills_list="_(skills directory not found)_"
-if [[ -n "$SKILLS_DIR" && -d "$SKILLS_DIR" ]]; then
+if (( ${#SKILLS_DIRS[@]} > 0 )); then
   tmp=""
-  while IFS= read -r d; do
-    sm="$d/SKILL.md"
-    [[ -f "$sm" ]] || continue
-    fm="$(read_frontmatter "$sm")"
-    name="$(fm_get "$fm" name)"; [[ -z "$name" ]] && continue
-    desc="$(fm_get "$fm" description | tr -s ' ')"
-    first="$(echo "$desc" | sed -E 's/([.!?])[[:space:]].*/\1/')"
-    [[ ${#first} -gt 200 ]] && first="${first:0:197}..."
-    line="- **$name** — $first"
-    [[ -z "$tmp" ]] && tmp="$line" || tmp="$tmp"$'\n'"$line"
-  done < <(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d | sort)
-  [[ -n "$tmp" ]] && skills_list="$tmp"
+  for skills_root in "${SKILLS_DIRS[@]}"; do
+    [[ -d "$skills_root" ]] || continue
+    plugin="$(basename "$(dirname "$skills_root")")"
+    while IFS= read -r d; do
+      sm="$d/SKILL.md"
+      [[ -f "$sm" ]] || continue
+      fm="$(read_frontmatter "$sm")"
+      name="$(fm_get "$fm" name)"; [[ -z "$name" ]] && continue
+      desc="$(fm_get "$fm" description | tr -s ' ')"
+      first="$(echo "$desc" | sed -E 's/([.!?])[[:space:]].*/\1/')"
+      [[ ${#first} -gt 200 ]] && first="${first:0:197}..."
+      line="- **$name** (\`$plugin\`) — $first"
+      [[ -z "$tmp" ]] && tmp="$line" || tmp="$tmp"$'\n'"$line"
+    done < <(find "$skills_root" -mindepth 1 -maxdepth 1 -type d | sort)
+  done
+  [[ -n "$tmp" ]] && skills_list="$(echo "$tmp" | sort)"
 fi
 
 if [[ -n "$mandatory_skills" ]]; then
@@ -265,24 +282,10 @@ fi
 # ── render ────────────────────────────────────────────────────────────────
 rendered="$(awk '/^## Tokens[[:space:]]*$/{exit} {print}' "$template_path")"
 
-substitute() {
-  local key="$1" val="$2"
-  python3 - "$key" "$val" <<'PY' || awk -v k="$key" -v v="$val" '{gsub("\\{\\{" k "\\}\\}", v); print}'
-import sys
-key, val = sys.argv[1], sys.argv[2]
-sys.stdout.write(sys.stdin.read().replace("{{"+key+"}}", val))
-PY
-}
-
-# Use python for safe in-memory substitution if available; else fall back.
+# Values are passed as environment (assignments MUST precede `python3` — placing
+# them after the script turns them into argv and every token renders empty).
 if command -v python3 >/dev/null 2>&1; then
-  rendered="$(printf '%s' "$rendered" | python3 -c '
-import sys, os
-text = sys.stdin.read()
-for k in ("PROJECT_NAME","GENERATED_ON","LANGUAGES","BACKLOG_SYSTEM","DOCS_ROOT","BRANCH_NAMING","COMMIT_CONVENTION","DEFAULT_BRANCH","ACTIVE_AGENTS_TABLE","SKILLS_LIST","MANDATORY_SKILLS_LIST","EVAL_POINTER"):
-    text = text.replace("{{"+k+"}}", os.environ.get(k,""))
-sys.stdout.write(text)
-' \
+  rendered="$(printf '%s' "$rendered" | \
     PROJECT_NAME="$project_name" \
     GENERATED_ON="$generated_on" \
     LANGUAGES="$languages" \
@@ -294,7 +297,14 @@ sys.stdout.write(text)
     ACTIVE_AGENTS_TABLE="$agents_table" \
     SKILLS_LIST="$skills_list" \
     MANDATORY_SKILLS_LIST="$mandatory_list" \
-    EVAL_POINTER="$eval_pointer")"
+    EVAL_POINTER="$eval_pointer" \
+    python3 -c '
+import sys, os
+text = sys.stdin.read()
+for k in ("PROJECT_NAME","GENERATED_ON","LANGUAGES","BACKLOG_SYSTEM","DOCS_ROOT","BRANCH_NAMING","COMMIT_CONVENTION","DEFAULT_BRANCH","ACTIVE_AGENTS_TABLE","SKILLS_LIST","MANDATORY_SKILLS_LIST","EVAL_POINTER"):
+    text = text.replace("{{"+k+"}}", os.environ.get(k,""))
+sys.stdout.write(text)
+')"
 else
   # Pure-bash fallback (slower).
   for pair in \

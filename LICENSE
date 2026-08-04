@@ -24,7 +24,7 @@ SOFTWARE.
 
 Third-party content
 
-The vendored skills under skills/ (enumerated in skills/VENDORED.md) are
+The vendored skills under plugins/agile-agents-core/skills/ (enumerated in plugins/VENDORED.md) are
 unmodified copies from github/awesome-copilot and remain under their original
 license:
 

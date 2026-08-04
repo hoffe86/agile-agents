@@ -1,0 +1,23 @@
+{
+  "name": "agile-agents-github",
+  "description": "GitHub Issues tracker mechanics for the Agentic Agile Harness — issue CRUD, sub-issue hierarchy, labels, and project fields used by the backlog-manager agent.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": {
+    "name": "hoffe86",
+    "url": "https://github.com/hoffe86"
+  },
+  "homepage": "https://github.com/hoffe86/agent",
+  "repository": "https://github.com/hoffe86/agent",
+  "keywords": [
+    "github",
+    "github-issues",
+    "backlog",
+    "tracker",
+    "copilot-cli"
+  ],
+  "category": "development",
+  "skills": [
+    "skills/"
+  ]
+}
