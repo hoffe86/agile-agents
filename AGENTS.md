@@ -146,7 +146,7 @@ natural-language workflow.
 - **cost-budget** (`agile-agents-core`) — Read the per-run / per-phase cost envelope from `solution-profile.yaml: cost_envelope`, gate run start (refuse if envelope is missing on production-tier engagements), checkpoint at every phase tran...
 - **csharp-implementation** (`agile-agents-dotnet`) — Implement C#/.NET features end-to-end using current best practices (modern C# language features, async correctness, DI, SOLID, secure-by-default).
 - **csharp-testing** (`agile-agents-dotnet`) — Add or extend tests for C#/.NET code using xUnit, NUnit, MSTest, or TUnit (whichever the solution already uses), then run them and pursue coverage.
-- **dev-lead-templates** (`agile-agents-core`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 1.7), the conditional design-approval gate prompt (Stage 2.5), and the final Done/Stop report (Stage 6).
+- **dev-lead-templates** (`agile-agents-core`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 4), the conditional design-approval gate prompt (Stage 5), and the final Done/Stop report (Stage 10).
 - **dotnet-design-pattern-review** (`agile-agents-dotnet`) — Review the C#/.NET code for design pattern implementation and suggest improvements.
 - **e2e-testing** (`agile-agents-core`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
 - **editorconfig** (`agile-agents-core`) — Generates a comprehensive and best-practice-oriented .editorconfig file based on project analysis and user preferences.

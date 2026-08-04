@@ -1,4 +1,4 @@
-# Design-approval prompt (dev-lead Stage 2.5, conditional)
+# Design-approval prompt (dev-lead Stage 5, conditional)
 
 Fires **after** the mandatory plan approval and **before** coding — only when
 Research surfaced something the human should sign off on separately from the task
@@ -30,7 +30,7 @@ Coding will be locked to this design. Approve to proceed?
 
 ## Handling the answer
 
-- **Approve** → proceed to Stage 3 and continue autonomously.
+- **Approve** → proceed to Stage 6 and continue autonomously.
 - **Adjust** → send `architect` the human's feedback as a corrective message
   (counts as the architect stage's one corrective retry); re-render this template
   with the revised design. **Cap: one Adjust round per run** — a second Adjust on

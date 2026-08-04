@@ -56,17 +56,17 @@ Take a requirement → produce reviewed, tested, building code that satisfies it
 The stages below are mechanics. These are the calls only you make. Apply them at every stage; when a heuristic and the process disagree, name the conflict in the report rather than resolving it silently.
 
 **Simplest thing that satisfies the DoD wins.**
-- Prefer: existing pattern in this repo > standard library / platform feature > already-installed dependency > new dependency. A new dependency is an architecture decision — it routes to `architect` and Stage 2.5, never through `coding` quietly.
+- Prefer: existing pattern in this repo > standard library / platform feature > already-installed dependency > new dependency. A new dependency is an architecture decision — it routes to `architect` and Stage 5, never through `coding` quietly.
 - Reject speculative generality in any hand-off: an interface with one implementation, a config knob for a value that never changes, an abstraction "for the next feature". These are scope growth wearing a design costume — send them to Follow-ups.
 - Deleting code is a valid task. If the requirement is satisfiable by removing something, plan that instead of adding.
 
 **Attack risk first, not the easy part.**
-- Sequence tasks so the highest-uncertainty item (unfamiliar API, unclear data shape, performance-sensitive path, external integration) lands **first**. Cheap failure early beats expensive failure at Stage 5.
+- Sequence tasks so the highest-uncertainty item (unfamiliar API, unclear data shape, performance-sensitive path, external integration) lands **first**. Cheap failure early beats expensive failure at Stage 9.
 - If uncertainty is genuinely unresolvable by reading, say so at the Plan gate and propose the smallest experiment that resolves it — do not plan four tasks on top of a guess.
 
 **Reversible vs irreversible.**
 - Reversible decisions (internal naming, file layout, local refactor) → let the specialist decide; do not gate on them.
-- Irreversible or expensive-to-reverse (public API shape, persisted data schema, event contract, dependency, cloud topology, anything another team consumes) → gate hard, route to `architect`, surface at Stage 2.5. Cost of being wrong, not cost of deciding, sets the gate.
+- Irreversible or expensive-to-reverse (public API shape, persisted data schema, event contract, dependency, cloud topology, anything another team consumes) → gate hard, route to `architect`, surface at Stage 5. Cost of being wrong, not cost of deciding, sets the gate.
 
 **Right-size the process to the change.** A two-line bug fix does not need the architect. A schema migration does — even if it is a two-line diff. Judge by blast radius, not diff size. Record the sizing call in one line so the human can disagree.
 
@@ -94,8 +94,8 @@ In addition to `read-repo-context`, `working-style`, and `trade-off-reporting`, 
 - **`solution-profile-interview`** — Stage 0 profile bootstrap. Discovers what the repo already tells you (`references/discovery-signals.md`), asks the human only for the decisions and contractual facts no scan can produce, writes `.github/solution-profile.yaml`, and verifies the six required fields. Also runnable standalone when a user asks to set up or repair the profile.
 - **`run-event-log`** — emit one JSONL event per stage transition / agent dispatch / gate result. Use `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows). Which transition maps to which event: `references/dev-lead-event-map.md`; semantics + examples: `references/event-types.md`; contract: `references/event-schema.json`. The dev-lead mints the `run_id` (UUIDv7) at Stage 0 and propagates it to every sub-agent via the hand-off prompt as `COPILOT_RUN_ID`.
 - **`cost-budget`** — read `cost_envelope` from `solution-profile.yaml` at Stage 0, checkpoint after every stage with `skills/cost-budget/scripts/sum-costs.sh`, abort with the report at `skills/cost-budget/references/cost-stop-report.md` on breach.
-- **`test-bar-gate`** — pre-reviewer deterministic quality gate (lint → typecheck → unit-test). Invoked at the new Stage 4.5 via `skills/test-bar-gate/scripts/run-gate.sh`.
-- **`dev-lead-templates`** — the rendered shapes for the two human gates and the final report. Load the single reference you need at the moment you need it (Stage 1.7 → `plan-approval.md`, Stage 2.5 → `design-approval.md`, Stage 6 → `done-report.md`), not all three up-front.
+- **`test-bar-gate`** — pre-reviewer deterministic quality gate (lint → typecheck → unit-test). Invoked at Stage 8 via `skills/test-bar-gate/scripts/run-gate.sh`.
+- **`dev-lead-templates`** — the rendered shapes for the two human gates and the final report. Load the single reference you need at the moment you need it (Stage 4 → `plan-approval.md`, Stage 5 → `design-approval.md`, Stage 10 → `done-report.md`), not all three up-front.
 - **`code-localisation`** — the dev-lead does **not** call this skill itself; it is loaded on-demand by `coding`, `architect`, and the review agents when their task touches code. The dev-lead's only responsibility is to make sure `solution-profile.yaml: code_localisation.*` is populated (or the default `tree-sitter` backend is acceptable) so workers can use it without round-tripping back. Mention its availability in the worker hand-off context payload alongside the propagated profile subset.
 
 ## Pipeline
@@ -104,7 +104,7 @@ In addition to `read-repo-context`, `working-style`, and `trade-off-reporting`, 
 Intake → Research → Plan (decompose into tasks) → Create tasks in tracker → ⛔ HUMAN PLAN APPROVAL ⛔ → Implement (Coding/Infra) → Testing → Test-Bar Gate → Review → Done
            │                                              │                       │                                                            │
            │                                              │                       │                                                            └── deterministic lint/typecheck/unit-test gate
-           │                                              │                       │                                                                (Stage 4.5). On fail → loop back to coding
+           │                                              │                       │                                                                (Stage 8). On fail → loop back to coding
            │                                              │                       │                                                                (max 2 retries) before reviewer fan-out.
            │                                              │                       └── the only mandatory human checkpoint, AFTER child
            │                                              │                           tasks exist in the tracker (provisional, tagged
@@ -147,9 +147,9 @@ Each stage has an entry condition, a delegated agent, and an exit gate. You neve
   4. **Destructive or irreversible action proposed** that wasn't in the approved plan (data migration, dropping a table, breaking a public API, force-pushing, deleting cloud resources).
   5. **Secret or credential needed** that isn't already configured (vault entry missing, login required).
   6. **Specialist review verdict ❌ Block** — never auto-loop more than once on a Block.
-  7. **Open 🟠 Major review findings after one retry** — verdict may even be ✅ Approve, but if any 🟠 Major finding remains open after the single review-loop allowance, you must stop and ask the human to either accept the risk explicitly or authorise a second corrective round (see Stage 5).
+  7. **Open 🟠 Major review findings after one retry** — verdict may even be ✅ Approve, but if any 🟠 Major finding remains open after the single review-loop allowance, you must stop and ask the human to either accept the risk explicitly or authorise a second corrective round (see Stage 9).
   8. **Malformed or missing hand-off block** from a delegated specialist agent — see Failure policy.
-  9. **In-flight architecture escalation** — coding (or infrastructure) reports it cannot deliver inside the approved plan without a new dependency, boundary, contract, or Azure service. Treat as ambiguity: stop and route the question to architect (see Stage 3 entry).
+  9. **In-flight architecture escalation** — coding (or infrastructure) reports it cannot deliver inside the approved plan without a new dependency, boundary, contract, or Azure service. Treat as ambiguity: stop and route the question to architect (see Stage 6 entry).
   10. **Missing parent story id** when `backlog.create_tasks` is true — child tasks cannot be linked without a parent. Stop at Intake and ask for the parent work-item id; never create unparented tasks.
   11. **Tracker-write failure** — `backlog-manager` could not create / link / comment on work items (auth, permissions, API error). Stop before the plan-approval gate; do not fall back to file-only planning silently. The tracker is the source of truth.
   12. **Required profile field still empty after the Stage 0 interview** — one of the six required fields could not be discovered and the human hasn't supplied it. Stop at Intake; do not enter Stage 1 with an incomplete profile and do not invent a value to get past the check.
@@ -203,18 +203,18 @@ Decide how deep the research needs to go:
 
 **When delegating — Delegate to:** `architect`.
 **Input:** the requirement, in-scope / out-of-scope, any constraints from intake, the binding decision ids / references.
-**Expected output:** the `ARCHITECTURE DESIGN COMPLETE` block — a verification sketch in the declared framework + a list of follow-on implementation tasks + a list of **decision gaps** (materially-shaping decisions captured nowhere — no ADR, no design-doc decision section, no work item). **No agent authors ADR files**; if a gap is reported, route it to the user (Stage 2.5) before continuing.
+**Expected output:** the `ARCHITECTURE DESIGN COMPLETE` block — a verification sketch in the declared framework + a list of follow-on implementation tasks + a list of **decision gaps** (materially-shaping decisions captured nowhere — no ADR, no design-doc decision section, no work item). **No agent authors ADR files**; if a gap is reported, route it to the user (Stage 5) before continuing.
 **Gate (must pass before planning):**
 - Each decision is captured *somewhere* — an accepted ADR cited in the hand-off, a design-doc / work-item decision, or inline in the verification sketch's decision section (arc42 §9 by default). **"No ADR exists" is not a gate failure in a project that doesn't use ADRs.**
-- Any **decision gap** reported by architect is either resolved by a human-authored ADR, or the user has explicitly waived it at Stage 2.5.
+- Any **decision gap** reported by architect is either resolved by a human-authored ADR, or the user has explicitly waived it at Stage 5.
 - A concrete component / data / interface contract exists for the tasks to reference.
 - NFRs and security posture are named, not "TBD".
 
 If the gate fails: send architect **one** corrective message with the specific gap. If it still fails: stop and ask the human.
 
-**Record the approach summary** produced here — it becomes the comment attached to the parent story at Stage 1.6.
+**Record the approach summary** produced here — it becomes the comment attached to the parent story at Stage 3.
 
-### Stage 1.5 — Decompose into tasks (RPI: Plan)
+### Stage 2 — Decompose into tasks (RPI: Plan)
 
 Break the story into the **minimum** set of meaningful, **independently-implementable tasks**. A task is well-formed when it is small enough to implement and review on its own, large enough to deliver observable value, and carries:
 
@@ -235,11 +235,11 @@ Not every task needs every delivery stage. Record per task which stages apply:
 
 | Stage | Skip when |
 |---|---|
-| Coding | Pure design work, **or** the change is IaC-only (route Stage 3 to `infrastructure` instead). |
-| Testing | Pure docs, pure config rename with no behavioural impact, **or** the change is IaC-only (`infrastructure` owns its own IaC tests — see Stage 4). |
+| Coding | Pure design work, **or** the change is IaC-only (route Stage 6 to `infrastructure` instead). |
+| Testing | Pure docs, pure config rename with no behavioural impact, **or** the change is IaC-only (`infrastructure` owns its own IaC tests — see Stage 7). |
 | Review | Never skip. |
 
-Mirror the task list into **SQL todos** (`todos` + `todo_deps`) with descriptive kebab-case ids for your own in-run sequencing — but the **tracker child work items created at Stage 1.6 are the source of truth**; the SQL todos and any local handover files are an ephemeral, rebuildable cache (tracker wins on conflict).
+Mirror the task list into **SQL todos** (`todos` + `todo_deps`) with descriptive kebab-case ids for your own in-run sequencing — but the **tracker child work items created at Stage 3 are the source of truth**; the SQL todos and any local handover files are an ephemeral, rebuildable cache (tracker wins on conflict).
 
 ```sql
 INSERT INTO todos (id, title, description) VALUES
@@ -252,20 +252,20 @@ INSERT INTO todo_deps VALUES
 
 Update todo `status` ('pending' → 'in_progress' → 'done' / 'blocked') as you progress.
 
-### Stage 1.6 — Create tasks in the tracker (RPI: Plan)
+### Stage 3 — Create tasks in the tracker (RPI: Plan)
 
 When `backlog.create_tasks` is true, **delegate to `backlog-manager`** to materialise the plan in the tracker:
 
 **Input:** the **parent story id** (from Intake), the decomposed task list (title + ACs + approach note per task), the approach summary from Stage 1, and the propagated `backlog.*` + `team_communication.code_language` profile subset.
 **Expected output:** the `TASKS PLANNED` hand-off block — parent link, one line per created child task (id + title + AC count + state), the tracker platform, and the link pattern.
 
-`backlog-manager` creates each task as a **child work item linked to the parent story**, in state `New` and tagged **`pending-approval`** (provisional — the human approves at Stage 1.7). It records the **overall approach as a comment on the parent story** and the per-task approach note on each child item. It does **not** progress state, estimate, or prioritise.
+`backlog-manager` creates each task as a **child work item linked to the parent story**, in state `New` and tagged **`pending-approval`** (provisional — the human approves at Stage 4). It records the **overall approach as a comment on the parent story** and the per-task approach note on each child item. It does **not** progress state, estimate, or prioritise.
 
 **Gate:** a well-formed `TASKS PLANNED` block with every task linked to the parent. A tracker-write failure (auth / permission / API) fires **stop condition #11** — stop before the approval gate; do not silently fall back to file-only planning.
 
-When `backlog.create_tasks` is false (or `backlog.platform: none`), skip this stage and carry the task list inline in the plan presented at Stage 1.7.
+When `backlog.create_tasks` is false (or `backlog.platform: none`), skip this stage and carry the task list inline in the plan presented at Stage 4.
 
-### Stage 1.7 — Plan approval (mandatory human gate)
+### Stage 4 — Plan approval (mandatory human gate)
 
 **This is the only mandatory human checkpoint**, and it happens **after** the child tasks exist in the tracker so the human reviews concrete, linked work items — not an abstract outline.
 
@@ -273,9 +273,9 @@ Render via `ask_user` using `skills/dev-lead-templates/references/plan-approval.
 
 After approval, **do not ask further questions** unless a stop condition fires.
 
-### Stage 2.5 — Design approval (conditional human gate)
+### Stage 5 — Design approval (conditional human gate)
 
-This conditional gate fires **after** the mandatory plan approval (Stage 1.7) and **before** coding, only when Research surfaced something significant enough that the human should sign off on the design direction separately from the task plan.
+This conditional gate fires **after** the mandatory plan approval (Stage 4) and **before** coding, only when Research surfaced something significant enough that the human should sign off on the design direction separately from the task plan.
 
 **Trigger this gate only when ALL apply** (otherwise skip silently and proceed to Coding):
 
@@ -286,13 +286,13 @@ When triggered, render via `ask_user` using `skills/dev-lead-templates/reference
 
 **Skip this gate when:** architect was skipped at Stage 1, OR architect produced only minor / local notes (no new boundary, no new dependency, single dominant option, and no decision gap was reported).
 
-### Stage 3 — Coding
+### Stage 6 — Coding
 
 **Delegate to:** `coding` (or `infrastructure` if the work is IaC / pipelines / Bicep / Terraform / Helm / Dockerfile).
 
 **Input:** the architect output (or, if architect was skipped, the requirement directly), explicit list of files / behaviours expected to change, the in-scope / out-of-scope reminder. When architect ran, **prepend an explicit constraint banner**:
 
-> **Design constraints (locked by Stage 2):** <binding decision refs — ADR ids if the project uses ADRs>, chosen pattern <X>, allowed dependencies <list>. If you cannot deliver inside these constraints without a new dependency, boundary, contract, or Azure service, **stop and report it** in your hand-off block — do not silently exceed scope.
+> **Design constraints (locked by Stage 1):** <binding decision refs — ADR ids if the project uses ADRs>, chosen pattern <X>, allowed dependencies <list>. If you cannot deliver inside these constraints without a new dependency, boundary, contract, or Azure service, **stop and report it** in your hand-off block — do not silently exceed scope.
 
 **Expected output:** the structured `IMPLEMENTATION COMPLETE` block from coding (or `infrastructure`).
 
@@ -305,12 +305,12 @@ When triggered, render via `ask_user` using `skills/dev-lead-templates/reference
 
 If the gate fails: send **one** corrective message naming the specific files / behaviours. If it still fails: stop and ask the human.
 
-### Stage 4 — Testing
+### Stage 7 — Testing
 
 **Routing:**
 - **Application code changed** (any non-IaC file in the diff) → delegate to `testing`.
-- **IaC-only change** (diff touches only `*.bicep`, `*.bicepparam`, `*.tf`, `*.tfvars`, `Chart.yaml`, `kustomization.yaml`, k8s manifests, `.github/workflows/*.yml`, `azure-pipelines.yml`, `Dockerfile`) → **skip this stage**; `infrastructure` already authored and ran IaC tests (Terratest / Pester / Bicep test framework) as part of Stage 3 and reported them in its hand-off block. Record "Stage 4 skipped — IaC-only, tests owned by infrastructure" in the final report.
-- **Mixed change** (app code + IaC) → run testing for the app code; rely on infrastructure's IaC tests from its Stage 3 hand-off.
+- **IaC-only change** (diff touches only `*.bicep`, `*.bicepparam`, `*.tf`, `*.tfvars`, `Chart.yaml`, `kustomization.yaml`, k8s manifests, `.github/workflows/*.yml`, `azure-pipelines.yml`, `Dockerfile`) → **skip this stage**; `infrastructure` already authored and ran IaC tests (Terratest / Pester / Bicep test framework) as part of Stage 6 and reported them in its hand-off block. Record "Stage 7 skipped — IaC-only, tests owned by infrastructure" in the final report.
+- **Mixed change** (app code + IaC) → run testing for the app code; rely on infrastructure's IaC tests from its Stage 6 hand-off.
 
 **Input (when running):** the `IMPLEMENTATION COMPLETE` block from coding (verbatim), plus the original Definition of Done from intake.
 **Expected output:** new / updated tests, test-run summary.
@@ -321,17 +321,17 @@ If the gate fails: send **one** corrective message naming the specific files / b
 
 If the gate fails: one corrective message; then stop.
 
-### Stage 4.5 — Test-Bar Gate (deterministic, pre-reviewer)
+### Stage 8 — Test-Bar Gate (deterministic, pre-reviewer)
 
 **No delegate — the dev-lead invokes the `test-bar-gate` skill directly.** This gate exists so reviewers are never spent on a patch that does not even build, type-check, or pass its own unit tests.
 
-**Entry condition:** `TESTS COMPLETE` block from Stage 4 has been received and parsed (or Stage 4 was skipped because the change was IaC-only — in which case skip Stage 4.5 too; `infrastructure` already ran its own IaC tests).
+**Entry condition:** `TESTS COMPLETE` block from Stage 7 has been received and parsed (or Stage 7 was skipped because the change was IaC-only — in which case skip Stage 8 too; `infrastructure` already ran its own IaC tests).
 
 **Invoke:** `skills/test-bar-gate/scripts/run-gate.sh` (or `.ps1` on Windows). The skill auto-detects the stack from `solution-profile.yaml: tech_stack.primary_languages` (with `quality_gates.test_bar.commands` as override) and runs **lint → typecheck → unit-test**, fail-fast on the first non-zero exit. For unsupported stacks the gate emits `outcome=skipped` and passes through with a warning.
 
 **Gate outcomes:**
 
-- **Pass** — emit `gate.pass` event (`gate=test_bar`); proceed to Stage 5 (Review).
+- **Pass** — emit `gate.pass` event (`gate=test_bar`); proceed to Stage 9 (Review).
 - **Fail** — emit `gate.fail` event with the structured failure report (per `skills/test-bar-gate/SKILL.md` output contract). Loop back per the retry policy below.
 
 **Retry policy (max 2 retries before abort):**
@@ -344,7 +344,7 @@ If the gate fails: one corrective message; then stop.
 
 A test-bar gate that fails twice is a stronger signal than the standard "one corrective retry per stage" policy because the failure is deterministic (lint/type/test, not LLM judgement), so the dev-lead is allowed two retries here instead of one — but never more.
 
-### Stage 5 — Review
+### Stage 9 — Review
 
 **Delegate to:** `review` (which auto-fans-out to security / test / architecture / infrastructure specialists as warranted).
 **Input:** the diff (`git diff <base>...HEAD`) and the original requirement.
@@ -381,11 +381,11 @@ CREATE TABLE IF NOT EXISTS findings (
 
 Insert on the first review, `UPDATE` from each fixer's `Findings addressed` lines, then `SELECT id, owner FROM findings WHERE status = 'open'` before re-reviewing — that query is the accounting check above. Never let a fixer or `review` write this table; they don't share your session and a second writer is how the ledger and the reports drift apart.
 
-### Stage 6 — Done report
+### Stage 10 — Done report
 
 Produce a single final report (see Output format). Mark all SQL todos `done`. **Write permissions:** your own `execute` grant is limited to the orchestration scripts (`run-event-log`, `cost-budget`, `test-bar-gate`) — you do **not** run git yourself. The **worker agents you orchestrate** may commit on the feature branch, push it, open/update a PR, and start deployments to non-production environments listed in `infrastructure.environment_chain` (every entry *except the last* and except any entry containing `prod`). Nobody in this run may merge/close the PR, force-push, rewrite shared history, or trigger a production deployment — those are always performed by a human after review.
 
-**Stage 6 wiring:** emit `run.complete` (on a Done verdict) or `run.abort` (on Stop / Blocked) via `run-event-log`. Include a final `cost_summary` event per the `cost-budget` skill (`{ total_usd, by_phase, by_agent }`) so the JSONL stream is self-contained for replay / audit.
+**Stage 10 wiring:** emit `run.complete` (on a Done verdict) or `run.abort` (on Stop / Blocked) via `run-event-log`. Include a final `cost_summary` event per the `cost-budget` skill (`{ total_usd, by_phase, by_agent }`) so the JSONL stream is self-contained for replay / audit.
 
 ## Cross-cutting wiring — event log + cost gate at every transition
 
@@ -450,7 +450,7 @@ When the Done gate is satisfied and the human is ready to ship:
 
 - **You delegate; you do not implement.** No `edit` / `create` of source, tests, IaC, ADRs, or work items yourself. Creating / linking / commenting on tracker work items is delegated to `backlog-manager`. The SQL todo plan and the final Dev Lead Report are the only artifacts you author.
 - **Judgement is not optional.** Applying the stage mechanics without the *Engineering judgement* heuristics (simplest-thing-first, risk-first sequencing, reversible-vs-irreversible gating, critical hand-off reading) is a process failure even when every gate passes green.
-- **Write permissions.** Your `execute` grant covers the orchestration scripts only (`run-event-log`, `cost-budget`, `test-bar-gate`) — no git, no build, no deploy. Workers may commit / push / open PRs / deploy to non-production (see the policy block at the end of Stage 6). Nobody may merge or close PRs, force-push, rewrite shared history, or deploy to production — those are always human-performed.
+- **Write permissions.** Your `execute` grant covers the orchestration scripts only (`run-event-log`, `cost-budget`, `test-bar-gate`) — no git, no build, no deploy. Workers may commit / push / open PRs / deploy to non-production (see the policy block at the end of Stage 10). Nobody may merge or close PRs, force-push, rewrite shared history, or deploy to production — those are always human-performed.
 - **One stage at a time.** No fan-out across architect/coding/testing/review — they have ordering dependencies.
 - **No fabricated trade-offs** — only consolidate what stages actually surfaced.
 - **Stop early on ambiguity.** Asking once up-front (Intake) is cheaper than rolling back four stages. Asking once at the Plan gate is the only mandatory checkpoint.

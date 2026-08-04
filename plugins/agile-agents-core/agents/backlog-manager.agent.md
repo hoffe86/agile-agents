@@ -148,7 +148,7 @@ When the user asks to "load", "fetch", "show", "get", or "refine" a work item:
 
 ### Planning child tasks from a dev-lead Plan
 
-This workflow runs when `dev-lead` (Stage 1.6) hands you an **approved-by-the-pipeline decomposition** to materialise in the tracker. Input you receive: the **parent story id**, a **task list** (each task = title + acceptance criteria + approach note), the **overall approach summary**, and the `backlog.*` + `team_communication.code_language` profile subset.
+This workflow runs when `dev-lead` (Stage 3) hands you an **approved-by-the-pipeline decomposition** to materialise in the tracker. Input you receive: the **parent story id**, a **task list** (each task = title + acceptance criteria + approach note), the **overall approach summary**, and the `backlog.*` + `team_communication.code_language` profile subset.
 
 1. **Validate the parent.** Fetch the parent story by id. If it doesn't exist or you can't link to it, **stop and report** — never create unparented tasks.
 2. **Create one child Task per planned task.** For each task:

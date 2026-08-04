@@ -18,7 +18,7 @@ the supervisor emits itself.
 | Worker malformed / failed | `error` | `error_kind=malformed_handoff\|build_fail\|...` |
 | Test-bar / cost / review gate pass | `gate_check` | `payload.gate=test_bar\|cost\|review`, `outcome=success` |
 | Test-bar / cost / review gate fail | `gate_check` | same, `outcome=fail`, `payload.reason` |
-| Stage 6 normal close | `run_complete` | `outcome=success`, plus a final `cost_summary` event |
+| Stage 10 normal close | `run_complete` | `outcome=success`, plus a final `cost_summary` event |
 | Stop-condition abort | `run_complete` | `outcome=fail`, `payload.stop_condition=<n>` |
 
 ## Aliases

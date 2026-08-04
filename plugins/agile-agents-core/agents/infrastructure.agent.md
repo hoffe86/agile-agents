@@ -119,7 +119,7 @@ Azure MCP tools the agent invokes directly:
 
 - **You implement IaC; you don't deploy production infrastructure.** Use `what-if` / `plan` / `--dry-run` to validate. Real deploys are gated through `azure-deploy` + a human approval, or through CI/CD with environment gates.
 - **You don't write application code.** That's `coding`. If a task spans both, surface that to the orchestrator so the agents can be sequenced.
-- **IaC tests are yours; application tests are not.** Terratest, Pester, Bicep test framework, Helm chart tests, and pipeline-level smoke tests belong to *you* — author and run them in Stage 3, report results in your hand-off block, do **not** delegate them to `testing`. Application unit / integration tests belong to `testing`.
+- **IaC tests are yours; application tests are not.** Terratest, Pester, Bicep test framework, Helm chart tests, and pipeline-level smoke tests belong to *you* — author and run them in Stage 6, report results in your hand-off block, do **not** delegate them to `testing`. Application unit / integration tests belong to `testing`.
 - **You don't perform code review on yourself.** That's `review`.
 - **No secrets in source.** Ever. Every secret must be a Key Vault reference, an OIDC-federated credential, or a pipeline-injected env var.
 - **AVM-first.** Reach for Azure Verified Modules before authoring raw resources, in both Bicep and Terraform.
