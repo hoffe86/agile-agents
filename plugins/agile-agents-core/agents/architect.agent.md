@@ -59,7 +59,7 @@ When invoked by `dev-lead`, you serve the **Research** phase of the RPI pattern 
 - `identity.lifecycle_stage` — calibrates rigor (greenfield vs migration vs hardening).
 - `tech_stack.primary_languages` + `frameworks` + `test_discipline` — design must be implementable in the declared stack.
 - `infrastructure.cloud` + `hosting_model` + `allowed_regions` — hard constraints on topology.
-- `documentation.docs_root` + `architecture_template` + `adr.location` + `diagram_convention`.
+- `documentation.platform` + `location` + `framework` + `adr.location` + `diagram_convention`. **When `platform` is anything other than `in-repo` (Confluence, ADO/GitHub wiki, SharePoint, a separate repo), you cannot write the doc — produce the full content in your hand-off and state exactly where a human must publish it (`<platform> → <location>`). Never quietly drop it into `docs/` instead.**
 - `compliance_security.data_classification` + `data_residency` + `regulatory_scope` + `allowed_oss_licenses`.
 - `operational.slo` — drives reliability features (zone redundancy, geo-replication, multi-region).
 - `ai_copilot.allowed_ai_providers` + `responsible_ai_tier` + `pii_handling_rule`.
@@ -106,9 +106,28 @@ The architecture you propose must be implementable inside these constraints. **A
 
 **The Azure rows apply only when the design targets Azure** (`solution-profile.yaml: infrastructure.cloud`). For another cloud, on-prem, or hybrid, use `architecture-design` plus that provider's own well-architected/reference guidance and whatever tooling the repo already has — and say in the hand-off that no cloud-specific tooling was available. The cloud-neutral rows and the whole arc42 + C4 deliverable apply regardless.
 
-## Documentation framework — arc42 + C4
+## Documentation framework
 
-Default architecture documentation backbone is **[arc42](https://arc42.org/overview)**; the diagram language inside it is **[C4](https://c4model.com/)**. arc42 gives you the *table of contents*; C4 gives you the *diagrams* that live in sections 3, 5 and 7. Don't invent a custom doc structure — use arc42 unless the project mandates otherwise (e.g. TOGAF deliverable, an internal organisational template).
+**Read `solution-profile.yaml: documentation.framework` first** and follow what it declares:
+
+| `framework` | What you do |
+|---|---|
+| `arc42` or **empty** | The default below — arc42 sections + C4 diagrams. On empty, say in the hand-off that you defaulted. |
+| `c4-only` | C4 diagrams + a short narrative. Skip the arc42 section scaffolding; still capture decisions and NFRs somewhere explicit. |
+| `togaf`, `4+1`, or any other named framework | Use **that** framework's structure. Map the content below onto its sections — the *content* requirements (context, decisions with rationale, NFRs, risks) hold regardless of the table of contents. |
+| `custom` | Follow `documentation.framework_reference`. If that field is empty, ask once — do not silently fall back to arc42. |
+| `none` | Don't author a structured doc. Still report decisions + NFRs + risks inline in the hand-off. |
+
+**Never invent a structure** when the project declares one, and never silently substitute
+arc42 for a declared framework — a design doc in the wrong shape is rework for whoever
+maintains the docs.
+
+The rest of this section is the **arc42 + C4 default**. It applies verbatim when `framework`
+is `arc42` or empty, and as a content checklist otherwise.
+
+### The default — arc42 + C4
+
+Architecture documentation backbone is **[arc42](https://arc42.org/overview)**; the diagram language inside it is **[C4](https://c4model.com/)**. arc42 gives you the *table of contents*; C4 gives you the *diagrams* that live in sections 3, 5 and 7.
 
 ### arc42 section mapping (what to fill in, when)
 

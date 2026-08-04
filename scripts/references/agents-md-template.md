@@ -16,7 +16,7 @@ authoritative, richer machine-readable contract remains
 - **Project**: {{PROJECT_NAME}}
 - **Primary language(s)**: {{LANGUAGES}}
 - **Backlog platform**: {{BACKLOG_PLATFORM}}
-- **Documentation root**: {{DOCS_ROOT}}
+- **Documentation**: {{DOC_LOCATION}} (platform: {{DOC_PLATFORM}})
 - **Branch naming**: {{BRANCH_NAMING}}
 - **Commit convention**: {{COMMIT_CONVENTION}}
 - **Default branch**: {{DEFAULT_BRANCH}}
@@ -88,7 +88,8 @@ regenerate with `scripts/generate-agents-md.ps1`._
 | `{{GENERATED_ON}}` | runtime (UTC, `yyyy-MM-dd`) | Date only, for determinism. |
 | `{{LANGUAGES}}` | `tech_stack.primary_languages[].name(@version)` | Comma-joined; `unspecified` if empty. |
 | `{{BACKLOG_PLATFORM}}` | `backlog.platform` | `unspecified` if empty. |
-| `{{DOCS_ROOT}}` | `documentation.docs_root` | `unspecified` if empty. |
+| `{{DOC_LOCATION}}` | `documentation.location` | `unspecified` if empty. |
+| `{{DOC_PLATFORM}}` | `documentation.platform` | `unspecified` if empty (agents assume `in-repo`). |
 | `{{BRANCH_NAMING}}` | `backlog.branch_naming` | `unspecified` if empty. |
 | `{{COMMIT_CONVENTION}}` | `backlog.commit_convention` | `unspecified` if empty. |
 | `{{DEFAULT_BRANCH}}` | `identity.default_branch` | Defaults to `main`. |

@@ -56,7 +56,7 @@ When `dev-lead` hands you a diff **plus** a set of `Findings addressed` lines fr
 
 - `tech_stack.test_discipline` + `coverage_threshold` + `lint_format_tools`.
 - `backlog.commit_convention` + `branch_naming` + `pr_link_pattern`.
-- `documentation.docs_root` + `adr.location`.
+- `documentation.location` + `adr.location`.
 - `compliance_security.allowed_oss_licenses` + `secret_scanning_required`.
 - `ai_copilot.allowed_ai_providers` + `pii_handling_rule`.
 - `team_communication.code_language`.

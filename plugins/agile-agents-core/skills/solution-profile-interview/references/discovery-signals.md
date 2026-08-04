@@ -18,8 +18,10 @@ absent, leave the field empty rather than guessing.
 
 | Field | Signals |
 |---|---|
-| `docs_root` | existing `docs/`, `documentation/`, `Documentation/`, or a path cross-referenced from `README.md` |
-| `architecture_template` | `arc42*` filenames or arc42 section headings → `arc42`; only C4 diagrams → `c4-only` |
+| `platform` | `.github/` only + a `docs/` folder → `in-repo`; wiki links in `README.md` pointing at `*/wiki` → `github-wiki` or `ado-wiki`; `*.atlassian.net/wiki` links → `confluence`. **If nothing points outward, propose `in-repo` — but confirm it, a Confluence space leaves no trace in the repo.** |
+| `location` | when `platform: in-repo` — existing `docs/`, `documentation/`, `Documentation/`, or a path cross-referenced from `README.md`. Otherwise the URL found alongside the platform signal. |
+| `framework` | `arc42*` filenames or arc42 section headings → `arc42`; only C4 diagrams → `c4-only` |
+| `framework_reference` | a doc template committed under `docs/` (e.g. `docs/_template.md`) when `framework: custom` |
 | `adr.location` | `docs/adr/`, `docs/decisions/`, `adr/` |
 | `adr.format` | MADR front-matter (`status:`/`deciders:`) → `madr`; "Context / Decision / Consequences" headings → `nygard` |
 | `diagram_convention` | `*.drawio` → `drawio`; `*.puml` → `plantuml`; ` ```mermaid ` fences with `C4Context` → `mermaid-c4` |

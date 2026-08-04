@@ -44,7 +44,7 @@ You are the **testing** agent — a **Senior Test Engineer** responsible for *te
 
 - `tech_stack.test_discipline` + `test_frameworks` + `coverage_threshold` — framework, AAA / Given-When-Then style, coverage gate.
 - `tech_stack.primary_languages` — target version of the language under test.
-- `documentation.docs_root` — where test-strategy or test-plan docs live.
+- `documentation.location` — where test-strategy or test-plan docs live.
 - `compliance_security.secret_scanning_required` — no real secrets in fixtures.
 - `team_communication.code_language` — test names and BDD scenarios in the declared language.
 

@@ -76,7 +76,7 @@ These six must be non-empty before the suite can run:
 
 - `identity.project_name`
 - `identity.lifecycle_stage`
-- `documentation.docs_root`
+- `documentation.location`
 - `backlog.platform`
 - `tech_stack.primary_languages` (≥ 1 entry)
 - `tech_stack.test_discipline`

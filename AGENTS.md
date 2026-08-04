@@ -16,7 +16,7 @@ authoritative, richer machine-readable contract remains
 - **Project**: agent
 - **Primary language(s)**: unspecified
 - **Backlog platform**: unspecified
-- **Documentation root**: unspecified
+- **Documentation**: unspecified (platform: unspecified)
 - **Branch naming**: unspecified
 - **Commit convention**: unspecified
 - **Default branch**: main

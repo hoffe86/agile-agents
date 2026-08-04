@@ -211,7 +211,8 @@ fm_get() { local fm="$1" k="$2"; echo "$fm" | awk -F'|' -v k="$k" '$1==k {sub(/^
 # ── values ─────────────────────────────────────────────────────────────────
 project_name="$(scalar_or "$(yaml_scalar identity project_name "$PROFILE_PATH")" "$(basename "$repo_root")")"
 default_branch="$(scalar_or "$(yaml_scalar identity default_branch "$PROFILE_PATH")" "main")"
-docs_root="$(scalar_or "$(yaml_scalar documentation docs_root "$PROFILE_PATH")" "unspecified")"
+doc_location="$(scalar_or "$(yaml_scalar documentation location "$PROFILE_PATH")" "unspecified")"
+doc_platform="$(scalar_or "$(yaml_scalar documentation platform "$PROFILE_PATH")" "unspecified")"
 backlog_platform="$(scalar_or "$(yaml_scalar backlog platform "$PROFILE_PATH")" "unspecified")"
 branch_naming="$(scalar_or "$(yaml_scalar backlog branch_naming "$PROFILE_PATH")" "unspecified")"
 commit_conv="$(scalar_or "$(yaml_scalar backlog commit_convention "$PROFILE_PATH")" "unspecified")"
@@ -290,7 +291,8 @@ if command -v python3 >/dev/null 2>&1; then
     GENERATED_ON="$generated_on" \
     LANGUAGES="$languages" \
     BACKLOG_PLATFORM="$backlog_platform" \
-    DOCS_ROOT="$docs_root" \
+    DOC_LOCATION="$doc_location" \
+    DOC_PLATFORM="$doc_platform" \
     BRANCH_NAMING="$branch_naming" \
     COMMIT_CONVENTION="$commit_conv" \
     DEFAULT_BRANCH="$default_branch" \
@@ -301,7 +303,7 @@ if command -v python3 >/dev/null 2>&1; then
     python3 -c '
 import sys, os
 text = sys.stdin.read()
-for k in ("PROJECT_NAME","GENERATED_ON","LANGUAGES","BACKLOG_PLATFORM","DOCS_ROOT","BRANCH_NAMING","COMMIT_CONVENTION","DEFAULT_BRANCH","ACTIVE_AGENTS_TABLE","SKILLS_LIST","MANDATORY_SKILLS_LIST","EVAL_POINTER"):
+for k in ("PROJECT_NAME","GENERATED_ON","LANGUAGES","BACKLOG_PLATFORM","DOC_LOCATION","DOC_PLATFORM","BRANCH_NAMING","COMMIT_CONVENTION","DEFAULT_BRANCH","ACTIVE_AGENTS_TABLE","SKILLS_LIST","MANDATORY_SKILLS_LIST","EVAL_POINTER"):
     text = text.replace("{{"+k+"}}", os.environ.get(k,""))
 sys.stdout.write(text)
 ')"
@@ -312,7 +314,8 @@ else
     "GENERATED_ON|$generated_on" \
     "LANGUAGES|$languages" \
     "BACKLOG_PLATFORM|$backlog_platform" \
-    "DOCS_ROOT|$docs_root" \
+    "DOC_LOCATION|$doc_location" \
+    "DOC_PLATFORM|$doc_platform" \
     "BRANCH_NAMING|$branch_naming" \
     "COMMIT_CONVENTION|$commit_conv" \
     "DEFAULT_BRANCH|$default_branch" \

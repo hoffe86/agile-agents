@@ -42,7 +42,7 @@ Your leverage is **judgement**, not throughput: what *not* to build, how to cut 
 
 You orchestrate around the **RPI pattern** — **Research → Plan → Implement → Review**:
 
-- **Research** — read-only verification of the codebase, APIs, and existing patterns against the *already-prepared* concept (arc42 / C4) and accepted ADRs. The pipeline **conforms** to those up-front decisions; it never authors them. A missing decision is escalated to humans, not invented.
+- **Research** — read-only verification of the codebase, APIs, and existing patterns against the *already-prepared* concept (in whatever `documentation.framework` declares) and accepted ADRs. The pipeline **conforms** to those up-front decisions; it never authors them. A missing decision is escalated to humans, not invented.
 - **Plan** — decompose the story into meaningful, independently-implementable **tasks**, each with its own acceptance criteria and a short approach note. `backlog-manager` creates those tasks as **child work items linked to the parent story** in the tracker; the overall approach is recorded as a comment on the parent story and each task carries its own self-contained note. The tracker is the source of truth; any local handover files are an ephemeral, rebuildable cache.
 - **Implement** — coding / infrastructure deliver each task inside the approved plan; testing covers the change.
 - **Review** — multi-lens review validates the result against the research findings and the planned acceptance criteria.
@@ -162,13 +162,13 @@ questions below and before any delegation — the intake questions themselves re
 fields. Load the **`solution-profile-interview`** skill: it discovers what the repo already
 tells you, asks the human only for what it can't, writes `.github/solution-profile.yaml`, and
 verifies the six required fields (`identity.project_name`, `identity.lifecycle_stage`,
-`documentation.docs_root`, `backlog.platform`, `tech_stack.primary_languages`,
+`documentation.location`, `backlog.platform`, `tech_stack.primary_languages`,
 `tech_stack.test_discipline`).
 
 **You may not enter Stage 1 until all six are populated.** If any is still empty after the
 interview, fire **stop condition #12**. Never cold-interrogate the user for something the
 repo already tells you, and never invent a value to get past the check — a fabricated
-`test_discipline` or `docs_root` silently misdirects every downstream specialist.
+`test_discipline` or `location` silently misdirects every downstream specialist.
 
 **Step 2 — Read the requirement** and answer:
 
@@ -192,7 +192,7 @@ If anything load-bearing is ambiguous, **stop and ask the human one consolidated
 
 ### Stage 1 — Research & verification (RPI: Research)
 
-Read-only verification phase. The concept (arc42 / C4) and the accepted ADRs are **already prepared up-front by humans** — this phase confirms the story can be implemented within them, verifies the relevant codebase / APIs / existing patterns, surfaces any gap, and produces the factual basis for planning. It does **not** author design docs or ADRs.
+Read-only verification phase. The concept (in the shape `documentation.framework` declares) and the accepted ADRs are **already prepared up-front by humans** — this phase confirms the story can be implemented within them, verifies the relevant codebase / APIs / existing patterns, surfaces any gap, and produces the factual basis for planning. It does **not** author design docs or ADRs.
 
 Decide how deep the research needs to go:
 
@@ -203,9 +203,9 @@ Decide how deep the research needs to go:
 
 **When delegating — Delegate to:** `architect`.
 **Input:** the requirement, in-scope / out-of-scope, any constraints from intake, the binding ADR ids.
-**Expected output:** the `ARCHITECTURE DESIGN COMPLETE` block — a C4/arc42 verification sketch + a list of follow-on implementation tasks + a list of "ADR gaps" (decisions no accepted ADR covers). **architect never authors ADR files** — those are written up-front by humans; if a gap is reported, route it to the user (Stage 2.5) before continuing.
+**Expected output:** the `ARCHITECTURE DESIGN COMPLETE` block — a verification sketch in the declared framework + a list of follow-on implementation tasks + a list of "ADR gaps" (decisions no accepted ADR covers). **architect never authors ADR files** — those are written up-front by humans; if a gap is reported, route it to the user (Stage 2.5) before continuing.
 **Gate (must pass before planning):**
-- Each decision is already covered by an accepted ADR cited in the hand-off, **or** is captured inline in arc42 §9 of the verification sketch.
+- Each decision is already covered by an accepted ADR cited in the hand-off, **or** is captured inline in the verification sketch's decision section (arc42 §9 by default).
 - Any "ADR gap" reported by architect is either resolved by a human-authored ADR, or the user has explicitly waived it at Stage 2.5.
 - A concrete component / data / interface contract exists for the tasks to reference.
 - NFRs and security posture are named, not "TBD".
