@@ -4,7 +4,7 @@ The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plu
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
 over 11 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-manager) plus
-38 skills, with up-front arc42/C4 + ADR conformance, multi-lens review, and an eval/cost layer.
+49 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 ## Install
 
@@ -38,7 +38,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | Role | Agent | Purpose |
 |------|-------|---------|
 | Supervisor | `dev-lead` | Orchestrates the RPI pipeline (Research → Plan → Implement → Review) across architect, backlog-manager, coding, testing, and review with gates |
-| Author | `architect` | Read-only/advisory: serves the Research phase — verifies the change fits the prepared concept (arc42/C4) + accepted ADRs, cites them, reports ADR gaps; never authors ADRs |
+| Author | `architect` | Read-only/advisory: serves the Research phase — verifies the change fits the prepared concept (in the framework declared by `documentation.framework`) + any accepted decision records, cites them, reports decision gaps; never authors ADRs |
 | Author | `coding` | Implements features/fixes (C# / Python) |
 | Author | `testing` | Writes & runs tests (xUnit/NUnit/MSTest/TUnit, pytest) |
 | Author | `infrastructure` | Bicep, Terraform, Helm/Kustomize, CI/CD pipelines |
@@ -76,8 +76,9 @@ the task matches.
 `dev-lead` is the supervisor. It drives a single, already-prepared user story through four
 phases — **R**esearch → **P**lan → **I**mplement → **R**eview — delegating each phase to
 specialist agents, gating their output, and reporting one Definition-of-Done verdict. The
-arc42 / C4 concept and the accepted ADRs are authored **up-front by humans**; the pipeline
-conforms to them and never writes them — a missing decision is escalated, not invented.
+concept (arc42, C4, or whatever `documentation.framework` declares) and any accepted decision
+records are authored **up-front by humans**; the pipeline conforms to them and never writes
+them — a missing decision is escalated, not invented. Projects without ADRs are supported.
 
 ```
 Intake → Research → Plan → Create tasks → ⛔ HUMAN PLAN APPROVAL ⛔ → Implement → Test-Bar Gate → Review → Done
@@ -86,7 +87,7 @@ Intake → Research → Plan → Create tasks → ⛔ HUMAN PLAN APPROVAL ⛔ �
 | Phase | What happens | Agents | Hand-off block |
 |---|---|---|---|
 | **Intake** | `dev-lead` captures the Definition of Done, out-of-scope, the **parent story id** (when creating tasks), confirms the `solution-profile.yaml`, and mints the run id. | `dev-lead` | — |
-| **Research** | Read-only verification against the prepared concept + accepted ADRs: confirm the story is implementable, verify codebase / APIs / patterns, surface any ADR gap. Lightweight (`dev-lead` reads) or delegated to `architect` when scope warrants a new boundary / dependency / trade-off. | `dev-lead`, `architect` | `ARCHITECTURE DESIGN COMPLETE` |
+| **Research** | Read-only verification against the prepared concept + any accepted decision records: confirm the story is implementable, verify codebase / APIs / patterns, surface any decision gap. Lightweight (`dev-lead` reads) or delegated to `architect` when scope warrants a new boundary / dependency / trade-off. | `dev-lead`, `architect` | `ARCHITECTURE DESIGN COMPLETE` |
 | **Plan** | Decompose the story into meaningful, independently-implementable **tasks**, each with its own acceptance criteria + a short approach note. | `dev-lead` | — |
 | **Create tasks** | `backlog-manager` creates one child work item per task, **linked to the parent story** (provisional, tagged `pending-approval`), records the overall approach as a comment on the parent, and returns the task list. The tracker is the source of truth; local handover files are an ephemeral, gitignored cache. Gated by `backlog.create_tasks`. | `backlog-manager` | `TASKS PLANNED` |
 | **⛔ Plan approval** | The **only mandatory human checkpoint** — it fires **after** the tasks exist so the human reviews concrete, linked work items. Approve → tags removed, autonomous run begins; Adjust → tasks revised; Cancel → provisional tasks cleaned up. | human | — |
@@ -187,7 +188,8 @@ the [`agents-md-sync`](.github/workflows/agents-md-sync.yml) CI workflow — **d
 
 Every agent reads **`solution-profile.yaml`** first (alongside `copilot-instructions.md`). It's
 the single machine-readable source for the repo's operational facts: identity, documentation
-root, backlog platform + URL, tech stack, infrastructure, CI/CD, compliance, SLOs, and AI/Copilot
+platform + location + framework, backlog platform + URL, tech stack, infrastructure, CI/CD,
+compliance, SLOs, and AI/Copilot
 policy. Profile fields **override** an agent's defaults; safety / security defaults remain
 non-negotiable. Copy [`solution-profile.yaml`](solution-profile.yaml) into a target repo's
 `.github/` and fill in what applies.
@@ -200,7 +202,7 @@ pipeline: `IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `INFRASTRUCTURE COMPLETE`
 `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`, `TASKS PLANNED`.
 
 ### Vendored skills are read-only
-The 24 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
+The 19 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
 place — extend via a wrapper skill or contribute upstream and re-sync. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md).
 
