@@ -52,7 +52,7 @@ When `dev-lead` hands you a diff **plus** a set of `Findings addressed` lines fr
 
 ## Working context
 
-**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the ADR check. Treat these solution-profile fields as **declared conventions you must enforce against the diff**:
+**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the decision-record + decision-capture checks. Treat these solution-profile fields as **declared conventions you must enforce against the diff**:
 
 - `tech_stack.test_discipline` + `coverage_threshold` + `lint_format_tools`.
 - `backlog.commit_convention` + `branch_naming` + `pr_link_pattern`.

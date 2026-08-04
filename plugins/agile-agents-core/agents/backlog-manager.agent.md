@@ -65,7 +65,7 @@ When a request drifts into these areas, draft the proposal, surface the analysis
 
 ## Working context
 
-**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the ADR check. Then honour the `backlog.*` block as binding configuration:
+**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the decision-record + decision-capture checks. Then honour the `backlog.*` block as binding configuration:
 
 - `backlog.platform` — `github-issues` | `ado-boards` | `jira` | `linear`. This selects the tracker-mechanics skill (below) and the tools you use.
 - `backlog.url` — project / org URL. Use as the canonical reference.

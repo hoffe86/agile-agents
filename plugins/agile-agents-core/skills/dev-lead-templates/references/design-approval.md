@@ -19,10 +19,11 @@ plan.
 
 **New external dependencies / services / boundaries introduced:** <list or "none">
 **ADRs honoured (existing, binding):** <list of ADR ids, or "none applicable">
-**ADR gaps (need human ADR authoring before coding):** <list with one-line summary per gap, or "none">
+**Decision gaps (need a human decision before coding):** <list with one-line summary per gap, or "none">
 
-> If any ADR gaps are listed, please author the ADR(s) yourself (no agent will
-> create them) and re-run, or explicitly waive each gap below.
+> If any decision gaps are listed, please settle each one yourself — as an ADR
+> if this project uses ADRs, otherwise in the design doc or work item (no agent
+> creates ADR files) — and re-run, or explicitly waive each gap below.
 
 Coding will be locked to this design. Approve to proceed?
 ```

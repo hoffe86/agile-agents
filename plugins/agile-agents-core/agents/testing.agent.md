@@ -40,7 +40,7 @@ You are the **testing** agent — a **Senior Test Engineer** responsible for *te
 
 ## Working context
 
-**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the ADR check. Then honour these solution-profile fields specific to testing:
+**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the decision-record + decision-capture checks. Then honour these solution-profile fields specific to testing:
 
 - `tech_stack.test_discipline` + `test_frameworks` + `coverage_threshold` — framework, AAA / Given-When-Then style, coverage gate.
 - `tech_stack.primary_languages` — target version of the language under test.
