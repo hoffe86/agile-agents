@@ -42,7 +42,7 @@ $NotServers = @('agent', 'browser', 'edit', 'execute', 'read', 'search', 'todo',
 
 $hedge = 'not bundled|when installed|is installed|if installed|when available|is available|if available|when present|is present|separately installed|may install|not shipped|does not ship|none of them ship|only when|external|without vendoring'
 
-$agentFiles = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Recurse -Filter '*.agent.md' -File
+$agentFiles = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Recurse -Filter '*.agent.md' -File -Force
 if (-not $agentFiles) { throw "No agent files found under $RepoRoot/plugins" }
 
 # Agent names and plugin names also appear in backticks inside the skills
@@ -50,12 +50,16 @@ if (-not $agentFiles) { throw "No agent files found under $RepoRoot/plugins" }
 $agentNames  = $agentFiles | ForEach-Object { $_.BaseName -replace '\.agent$', '' }
 $pluginNames = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Directory | ForEach-Object { $_.Name }
 
-$shippedSkills = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Recurse -Filter 'SKILL.md' -File |
+$shippedSkills = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Recurse -Filter 'SKILL.md' -File -Force |
     ForEach-Object { $_.Directory.Name } | Sort-Object -Unique
 
-$shippedServers = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Recurse -Filter '.mcp.json' -File |
+# -Force matters: on Linux PowerShell treats dot-files as hidden, so without it
+# .mcp.json is invisible, $shippedServers comes back empty, and every grant in
+# the repo is reported as unshipped.
+$shippedServers = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Recurse -Filter '.mcp.json' -File -Force |
     ForEach-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).mcpServers.PSObject.Properties.Name } |
     Sort-Object -Unique
+if (-not $shippedServers) { throw "No MCP servers discovered - .mcp.json lookup is broken, not the agents." }
 
 $failures = [System.Collections.Generic.List[string]]::new()
 
