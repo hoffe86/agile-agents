@@ -120,7 +120,7 @@ Performs a focused, READ-ONLY review of test code and test coverage in a diff. R
 
 Adds, fixes, and runs tests for application code in any language the repo uses. Detects the existing test framework automatically and chases coverage of new / changed behaviour (not absolute %). Deep skill support for C#/.NET (xUnit / NUnit / MSTest / TUnit) and Python (pytest); other ecosystems are handled via the repo's existing test setup. USE FOR: write tests for new code, improve test coverage on a specific file / class / function, fix failing tests, add edge-case / negative-path tests, refactor brittle tests, set up test fixtures / factories, add integration tests for a feature. DO NOT USE FOR: implementing the production code under test (use coding first), reviewing test quality of someone else's diff (use test-review), IaC tests like Terratest / Pester (use infrastructure), end-to-end autonomous delivery (use dev-lead if present). Hands off to review when the suite is green.
 
-- **Tools**: agent, browser, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 

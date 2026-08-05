@@ -69,6 +69,8 @@ A timeout is a **failure**, not a skip. "It did not come up within 60s" is exact
 
 Scope boundary: this slot answers *"does it come up?"* — one process, one health probe. It is not integration testing. If the app cannot start without a database, a queue, and three collaborators, that is `e2e-testing` with a compose file, not this gate.
 
+For a web UI, a passing smoke check is a weak claim: an HTTP 200 says the server answered, not that the page renders. When the slot passes but the UI is suspect, that is the cue to escalate to `webapp-testing` and drive a real browser (console errors, failed requests, accessibility tree). The gate deliberately stays a plain HTTP poll — deterministic, no browser download on the critical path — and hands the harder question to the agent that owns it.
+
 ## Stack detection
 
 Resolved in this order — first hit wins:

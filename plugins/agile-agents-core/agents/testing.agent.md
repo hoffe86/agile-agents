@@ -16,7 +16,7 @@ description: >-
   infrastructure), end-to-end autonomous delivery (use dev-lead
   if present). Hands off to review when the suite is green.
 model_tier: mid  # mechanical test scaffolding and AAA patterning, framework auto-detected
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, browser]
+tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, edit, agent, browser]
 argument-hint: "Describe the test work: cover new code, repair failing tests, or add edge-case coverage"
 ---
 
@@ -68,7 +68,12 @@ Route by the repo's actual stack (`solution-profile.yaml: tech_stack.primary_lan
 - **A skill for the language is available** → invoke it (currently **`csharp-testing`**, which itself routes to `csharp-xunit`, `csharp-nunit`, `csharp-mstest`, or `csharp-tunit` based on the project; **`python-testing`** then **`pytest-coverage`** for coverage analysis). Do not assume the set is fixed — skills are added and may ship in separate plugins.
 - **No skill for the language is available** (TypeScript / Go / Java / Rust / … , or the expected skill isn't installed) → detect the framework the repo already uses (test manifest, config file, CI workflow, existing test files) and follow its conventions. **`polyglot-test-agent`** is the fallback for cross-language test patterns. Everything else in this agent — craft bias, hard rules, hand-off contract — is language-neutral and still applies. Say in your hand-off that you worked without a language skill.
 
-For web-UI / end-to-end testing, **`e2e-testing`** and **`webapp-testing`** (vendored).
+For web-UI / end-to-end testing, **`e2e-testing`** and **`webapp-testing`** (vendored). These answer two different questions and both are available:
+
+- **`e2e-testing`** — author and run a durable Playwright / Selenium **suite** that ships with the repo and runs in CI. Use it when the deliverable is a test file.
+- **`webapp-testing`** — drive a browser **interactively** through the `playwright/*` MCP tools (shipped by `agile-agents-core`): open the page, read the accessibility tree, inspect console errors and failed network requests, screenshot. Use it to *find out what is actually wrong* — a 200 response with a white screen, a broken hydration, a CSP violation — none of which an HTTP status check can see. Findings become assertions in the suite; the interactive session itself is not the deliverable.
+
+Reach for interactive driving when a test fails for a reason the failure output does not explain, or when the smoke slot reports the app up but the UI does not work. Always close the browser when you are done.
 
 ## Hard rules
 
