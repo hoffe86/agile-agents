@@ -88,7 +88,16 @@ You are tracker-agnostic. **Check skill availability first, then `backlog.platfo
 - **A matching tracker-mechanics skill is available** → invoke it and follow it for field mapping, formatting, linking, comments, and sanitisation. Current ones: `ado-work-items` (`ado-boards`), `github-issues` (`github-issues`). Do not assume the set is fixed — skills are added and ship in separate `agile-agents-<tracker>` plugins.
 - **No matching skill is available** → work from the tracker's own documented conventions and any patterns visible on existing sibling items in the same project. Say so explicitly in your Phase 3 summary so the human knows the field mapping was inferred, not authoritative.
 
-If the declared `backlog.platform` needs tools that aren't present in the session (e.g. `ado-boards` without the Azure DevOps MCP server), **tell the user and stop** — don't silently misroute to another tracker or hand-roll API calls. Distinguish the two causes: the server isn't running (the user starts it), or the server is running under a name this agent's `tools:` list doesn't grant (the user adds `'<server>/*'` to the frontmatter). Name which one you hit.
+### Tracker preflight — do this before any read or write
+
+Confirm you can actually reach the tracker **before** drafting anything. List the tools available to you and look for ones belonging to the declared `backlog.platform`. If none are there, **stop and report** — don't misroute to another tracker, don't hand-roll API calls, don't draft items you can't file.
+
+Two causes, and **you cannot tell them apart from inside the session** — an ungranted server and an absent one both look like "no tools". So report both, in one short block, because the user cannot guess either from a generic failure:
+
+- **The MCP server isn't running.** Say which server the platform needs; the user starts it.
+- **The server is running under a name my `tools:` list doesn't grant.** Tool grants are agent-scoped and filter what reaches me — a server that isn't in my frontmatter is unreachable even while it's running, and a grant that names a server nobody runs is silently inert. The user adds `'<server-name>/*'` to the `tools:` list in `backlog-manager.agent.md` and restarts the session. This is the likelier cause when the user insists the server is up.
+
+The grants shipped in my frontmatter cover the common server names for the trackers that have a mechanics skill. They are a guess about *naming*, not a supported list — any tracker works once its server name is granted.
 
 **Also load `backlog-item-standards`** whenever you author, improve, or review an item body — it carries the tracker-agnostic content templates, writing rules, BDD format, and Definition of Ready checklist. Load one reference at a time (see *Content standards* below), not the whole skill up-front.
 

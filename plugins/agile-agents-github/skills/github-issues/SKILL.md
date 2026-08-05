@@ -23,6 +23,10 @@ Issue operations go through the built-in GitHub tools: `issue_write`
 
 If those tools are unavailable, say so and stop — do not fall back to shelling
 out `gh` with an ad-hoc token, and do not silently switch to a different tracker.
+Tool grants are agent-scoped and this skill cannot grant them: `backlog-manager.agent.md`
+in `agile-agents-core` carries `'github/*'`. If your GitHub MCP server is registered
+under a different name, add `'<name>/*'` there — a server that isn't granted is
+unreachable even while it is running.
 
 ## Field layout
 

@@ -68,6 +68,14 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | `agile-agents-ado` | `ado-work-items` |
 | `agile-agents-github` | `github-issues` |
 
+**Tracker MCP servers are named by you, not by this harness.** Tool grants are
+agent-scoped — a skill cannot grant them — so `backlog-manager` ships grants for the
+common server names (`github`, `ado`, `azure-devops`, …). If yours is registered under a
+different name, add `'<your-server>/*'` to the `tools:` list in
+`plugins/agile-agents-core/agents/backlog-manager.agent.md`. A server that isn't granted
+is unreachable even while it's running; `backlog-manager` preflights for this and tells
+you which of the two causes it hit.
+
 **`agile-agents-azure` is grounding, not automation.** It carries the Azure substitutions core
 deliberately does not know — CAF naming and tagging, AVM selection and pinning, secure-by-default
 resource settings, the Well-Architected pillars as concrete review checks, and the MCSB / CIS Azure
