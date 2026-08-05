@@ -50,7 +50,7 @@ full convention map.
 
 Read-only / advisory architect for application and cloud solution architecture (deepest support for Azure; other clouds and on-prem are handled from the provider's own guidance). Produces design artifacts (C4 sketches L1–L3, arc42-style one-pagers, technology recommendations, integration patterns, NFR analysis) that coding and infrastructure then implement. Decisions are captured inline in the design doc (arc42 §9 as a short table) and surfaced as trade-off bullets. USE FOR: design new system or component, evaluate architecture options, choose Azure services or topology, draft C4 / arc42 documentation, analyze NFRs / quality attributes, design integration / eventing patterns, plan API contracts before implementation, assess WAF impact of a design choice. DO NOT USE FOR: writing application code (use coding), writing IaC (use infrastructure), reviewing existing code (use review or architecture-review), running or fixing tests (use testing), end-to-end autonomous feature delivery (use dev-lead if present), authoring Architecture Decision Records (ADRs are written up-front by humans before the agent fleet runs — architect honours them and reports decision gaps, but never creates ADR files).
 
-- **Tools**: agent, azure-mcp/search, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, azure-mcp-server/*, azure-mcp/*, azure/*, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `architecture-review`
@@ -85,14 +85,14 @@ Autonomous development lead. Takes a single, already-prepared requirement or use
 
 Performs a focused, READ-ONLY review of Infrastructure-as-Code changes — Bicep, Terraform, Helm / Kustomize, GitHub Actions, Azure Pipelines, Dockerfiles. Cloud-agnostic by contract; the deepest ruleset is Azure (Well-Architected Framework, Azure Verified Modules, CAF naming + tagging, CIS Azure Benchmark, Microsoft Cloud Security Benchmark), other clouds are reviewed against their own provider guidance and the repo's conventions. Always applies pipeline supply-chain hardening (OIDC over static credentials, pinned actions, build-once-promote-artifacts, SLSA). USE FOR: IaC-only review of a diff, audit Bicep / Terraform / Helm / Kustomize change, review pipeline (GitHub Actions / Azure Pipelines) hardening, check naming + tagging, check verified-module usage, audit Dockerfile, check secrets handling and OIDC adoption, WAF-pillar review of Azure infrastructure. Auto-invoked by review when the diff touches *.bicep / *.bicepparam / *.tf / *.tfvars / Chart.yaml / kustomization.yaml / k8s manifests / .github/workflows/*.yml / azure-pipelines.yml / Dockerfile. DO NOT USE FOR: full multi-lens review (use review), writing or modifying IaC (use infrastructure), application code review (use review), architectural / topology decisions before IaC exists (use architect). NEVER modifies code.
 
-- **Tools**: azure-mcp/search, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: azure-mcp-server/*, azure-mcp/*, azure/*, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `infrastructure`
 
 Implements Infrastructure as Code (IaC) using Bicep, Terraform, Helm / Kustomize, Dockerfiles, and GitHub Actions / Azure Pipelines for CI/CD. Cloud-agnostic by contract, with the deepest skill support for Azure (AVM modules, CAF naming + tagging, WAF alignment); other clouds and on-prem are handled from the repo's own conventions and the provider's documentation. Picks the right technology-specific skill based on what already exists in the repo, then applies cross-cutting IaC best practices (managed identity over secrets, least-privilege, OIDC, pinned versions). USE FOR: write or modify Bicep / Terraform / Helm chart / Kustomize overlay / Dockerfile, create or update a CI/CD workflow, provision cloud resources, set up network topology / private endpoints, add workload identity + RBAC, configure a secrets store, define naming + tagging, harden a pipeline (OIDC, pinned actions, build-once-promote). DO NOT USE FOR: architecture / topology decisions before IaC exists (use architect), application code (use coding), reviewing existing IaC (use infrastructure-review), end-to-end autonomous delivery (use dev-lead if present). Owns its own IaC tests (Terratest / Pester / Bicep test framework) end-to-end — does NOT hand those off to testing (which is scoped to application unit / integration tests only). Hands off to infrastructure-review and review.
 
-- **Tools**: agent, azure-mcp/search, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, azure-mcp-server/*, azure-mcp/*, azure/*, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `review`

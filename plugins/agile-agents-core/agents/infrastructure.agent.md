@@ -22,7 +22,7 @@ description: >-
   testing (which is scoped to application unit / integration tests
   only). Hands off to infrastructure-review and review.
 model_tier: mid  # mechanical IaC authoring against AVM/CAF templates and existing repo conventions
-tools: [vscode, execute, read, search, web, todo, azure-mcp/search, context7/*, microsoft-docs/*, edit, agent]
+tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, edit, agent]
 argument-hint: "Describe the IaC work: Bicep / Terraform / Helm / Kustomize / pipeline change"
 ---
 
@@ -62,7 +62,7 @@ Promote topology / lock-in / backend-choice decisions as trade-offs and **decisi
 
 **`infrastructure.cloud` decides which cloud-specific guidance applies — never assume Azure.**
 
-- **`azure`** (or unset with Azure artefacts in the repo) → the full Azure lens applies: AVM modules, CAF naming + tagging, WAF pillars, Key Vault, managed identity, the `azure-mcp/search` and Azure Well-Architected tooling. This is the deepest-supported path.
+- **`azure`** (or unset with Azure artefacts in the repo) → the full Azure lens applies: AVM modules, CAF naming + tagging, WAF pillars, Key Vault, managed identity, the `'azure-mcp/*', 'azure-mcp-server/*', 'azure/*'` and Azure Well-Architected tooling. This is the deepest-supported path.
 - **Any other cloud, on-prem, or hybrid** → the Azure-specific references below (AVM, CAF, WAF, Key Vault, Azure tooling) **do not apply**. Work from the repo's existing IaC conventions, the provider's own documentation and module registry, and that provider's equivalent of each control (workload identity, least-privilege roles, a managed secrets store, encryption at rest/in transit, diagnostic logging, backup). Everything else in this agent — the craft bias, hard rules, `iac-best-practices`, the hand-off contract — is cloud-neutral and still applies. Say in your hand-off that you worked without a cloud-specific skill.
 
 

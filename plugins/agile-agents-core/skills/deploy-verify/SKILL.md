@@ -60,6 +60,7 @@ If the strategy or the triggers say this branch will not reach a dev deploy, emi
 5. **Read the outcome.** On failure, extract the failing stage/job name and the error tail. A pipeline URL alone is not a report.
 6. **Assert convergence** — the strong check, and the reason this skill is worth more than "the pipeline went green". Re-run `terraform plan` / `az deployment group what-if` against the deployed environment. **An empty diff is the pass condition.** A non-empty diff after a successful apply means the IaC is not idempotent — it will drift on every subsequent run. Report that as a failure even though the pipeline reported success.
 7. **Application liveness**, when the pipeline does not already assert it: one request to the deployed health endpoint. Same shape as the smoke slot in `test-bar-gate`, pointed at the deployed URL rather than localhost.
+8. **Post-deploy telemetry**, when the Azure MCP tools are available (`azure-mcp/*` — from Microsoft's [`azure-skills`](https://github.com/microsoft/azure-skills) plugin) and the workload has App Insights or Log Analytics wired: query the exception and failed-request counts for the few minutes since the deploy. A deployment that succeeds and then throws on first request is the failure mode a status check is blindest to. Tools absent → skip this step and say so; never treat missing telemetry as a pass *or* a failure.
 
 ## Teardown
 
@@ -81,6 +82,7 @@ Feeds the same corrective loop as the test bar — one retry, then halt and ask.
 | Non-empty diff on the convergence re-plan | `infrastructure` |
 | Application build or deploy step | `coding` |
 | Application health check after a successful deploy | `coding` |
+| Exceptions / failed requests in post-deploy telemetry | `coding` — the deploy worked, the app does not |
 | Pipeline definition itself (syntax, auth, missing variable) | `infrastructure` |
 | Quota, policy denial, missing role assignment | **halt — ask the user.** These need a subscription owner, not another agent round. |
 

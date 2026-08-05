@@ -66,6 +66,21 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | `agile-agents-ado` | `ado-work-items` |
 | `agile-agents-github` | `github-issues` |
 
+**There is deliberately no `agile-agents-azure` plugin.** Microsoft already ships
+[`microsoft/azure-skills`](https://github.com/microsoft/azure-skills) — ~25 Azure skills plus the
+Azure MCP Server (200+ tools, 40+ services) and Foundry MCP, maintained by the team that owns the
+platform. This harness routes *into* it rather than duplicating it: `iac-best-practices` and the
+IaC implementation skills already hand off to `azure-prepare`, `azure-validate`, `azure-deploy`,
+`azure-quotas` and `azure-rbac` by name. If your project does Azure work, install it alongside:
+
+```console
+copilot plugin marketplace add microsoft/azure-skills
+copilot plugin install azure@azure-skills
+```
+
+Without it, the Azure lens degrades to the documentation-grounded guidance in this bundle (AVM,
+CAF, WAF, CIS Azure, MCSB via `microsoft-docs`) — correct, but with no live subscription context.
+
 **4 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — bundled into the plugin and
 available to every agent by description match. `working-style` and `trade-off-reporting` are named
 explicitly by the agents; `code-review` and `cloud-native-patterns` are invoked on demand when
@@ -81,7 +96,7 @@ just means the tool isn't there.
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
 | `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots. Declared only by `testing`. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs). |
-| `azure-mcp` | *(user-installed — Microsoft's own [`azure`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context. Declared only by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. |
+| `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
 | `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
 
 ### Tool access
