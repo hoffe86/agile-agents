@@ -62,7 +62,7 @@ Promote topology / lock-in / backend-choice decisions as trade-offs and **decisi
 
 **`infrastructure.cloud` decides which cloud-specific guidance applies — never assume Azure.**
 
-- **`azure`** (or unset with Azure artefacts in the repo) → the full Azure lens applies: AVM modules, CAF naming + tagging, WAF pillars, Key Vault, managed identity, the `'azure-mcp/*', 'azure-mcp-server/*', 'azure/*'` and Azure Well-Architected tooling. This is the deepest-supported path.
+- **`azure`** (or unset with Azure artefacts in the repo) → the full Azure lens applies: AVM modules, CAF naming + tagging, WAF pillars, Key Vault, managed identity, and the Azure MCP tooling (`azure-mcp/*`) when installed. This is the deepest-supported path.
 - **Any other cloud, on-prem, or hybrid** → the Azure-specific references below (AVM, CAF, WAF, Key Vault, Azure tooling) **do not apply**. Work from the repo's existing IaC conventions, the provider's own documentation and module registry, and that provider's equivalent of each control (workload identity, least-privilege roles, a managed secrets store, encryption at rest/in transit, diagnostic logging, backup). Everything else in this agent — the craft bias, hard rules, `iac-best-practices`, the hand-off contract — is cloud-neutral and still applies. Say in your hand-off that you worked without a cloud-specific skill.
 
 
@@ -111,10 +111,10 @@ Beyond the routed primary skills:
 - **`refactor`** — for cleaning up tangled IaC.
 - **`conventional-commit`** + **`git-commit`** — when the orchestrator decides to commit.
 
-Plugin skills available without vendoring:
+Skills from **separately installed** plugins (chiefly `microsoft/azure-skills`) — use when present, never assume:
 **`azure-prepare`**, **`azure-deploy`**, **`azure-validate`**, **`azure-quotas`**, **`azure-rbac`**, **`azure-resource-lookup`**, **`azure-resource-visualizer`**, **`azure-storage`**, **`azure-upgrade`**, **`azure-compliance`**, **`azure-cost-optimization`**, **`azure-diagnostics`**, **`azure-kubernetes`**, **`azure-aigateway`**, **`azure-cloud-migrate`**, **`appinsights-instrumentation`**, **`secret-scanning`**, **`nuget-trusted-publishing`**, **`entra-app-registration`**, **`customize-cloud-agent`**.
 
-Azure MCP tools the agent invokes directly:
+Azure MCP tools (not skills) the agent invokes directly when the Azure MCP server is installed:
 **`azure-bicepschema`** (resource schemas), **`azure-azureterraformbestpractices`** (TF rules), **`azure-wellarchitectedframework`** (architectural review), **`azure-pricing`** (cost), **`azure-aks`** (AKS metadata), **`azure-azurebackup`**, **`azure-keyvault`**, **`azure-monitor`**, **`azure-policy`**.
 
 ## Hard rules

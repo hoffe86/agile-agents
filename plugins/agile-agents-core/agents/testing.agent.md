@@ -65,7 +65,7 @@ Cite `solution-profile.yaml: <path.to.field>` in your hand-off when a profile fi
 
 Route by the repo's actual stack (`solution-profile.yaml: tech_stack.primary_languages` + `test_frameworks`), not by assumption. **Check availability first, then language** — a language skill is a bonus, never a precondition:
 
-- **A skill for the language is available** → invoke it (currently **`csharp-testing`**, which itself routes to `csharp-xunit`, `csharp-nunit`, `csharp-mstest`, or `csharp-tunit` based on the project; **`python-testing`** then **`pytest-coverage`** for coverage analysis). Do not assume the set is fixed — skills are added and may ship in separate plugins.
+- **A skill for the language is available** → invoke it (currently **`csharp-testing`**, which itself routes to `csharp-xunit`, `csharp-nunit`, `csharp-mstest`, or `csharp-tunit` when those separately installed plugin skills are present; **`python-testing`** then **`pytest-coverage`** for coverage analysis). Do not assume the set is fixed — skills are added and may ship in separate plugins.
 - **No skill for the language is available** (TypeScript / Go / Java / Rust / … , or the expected skill isn't installed) → detect the framework the repo already uses (test manifest, config file, CI workflow, existing test files) and follow its conventions. **`polyglot-test-agent`** is the fallback for cross-language test patterns. Everything else in this agent — craft bias, hard rules, hand-off contract — is language-neutral and still applies. Say in your hand-off that you worked without a language skill.
 
 For web-UI / end-to-end testing, **`e2e-testing`** and **`webapp-testing`** (vendored). These answer two different questions and both are available:

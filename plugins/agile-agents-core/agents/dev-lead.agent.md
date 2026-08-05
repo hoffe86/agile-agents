@@ -354,7 +354,7 @@ A gate that fails twice is a stronger signal than the standard "one corrective r
 **Input:** the diff (`git diff <base>...HEAD`) and the original requirement.
 **Expected output:** the merged review report with a single verdict (✅ Approve / 🔁 Request changes / ❌ Block).
 
-**Docs-only carve-out:** if `git diff --name-only <base>...HEAD` returns **only** files matching `*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, or `.editorconfig` (i.e. no code, no config, no IaC, no workflow, no schema), `review` may skip the full `security-review` fan-out — but `secret-scanning` still runs unconditionally on the diff. The skip and its justification must appear in the merged report. Any non-docs file in the diff disables the carve-out.
+**Docs-only carve-out:** if `git diff --name-only <base>...HEAD` returns **only** files matching `*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, or `.editorconfig` (i.e. no code, no config, no IaC, no workflow, no schema), `review` may skip the full `security-review` fan-out — but secret scanning still runs unconditionally on the diff. The skip and its justification must appear in the merged report. Any non-docs file in the diff disables the carve-out.
 
 **Gate (must pass for Done):**
 - Verdict is **✅ Approve**.
