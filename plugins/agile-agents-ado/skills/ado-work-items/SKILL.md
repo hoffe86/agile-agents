@@ -16,7 +16,10 @@ Skip this skill entirely for any other tracker.
 ## Tooling
 
 Work-item operations go through the **Azure DevOps MCP server**
-(`microsoft/azure-devops-mcp`). If those tools are not available in the session,
+(`microsoft/azure-devops-mcp`). The agent grants the four server names people
+actually use — `ado`, `azure-devops`, `azure-devops-mcp`, `microsoft/azure-devops-mcp` —
+so any of them works; `ado` is the one used below. If those tools are
+not available in the session,
 point the user at the setup block below and stop — do not fall back to raw REST
 calls with a hand-rolled PAT, and do not silently switch to a different tracker.
 
