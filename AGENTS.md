@@ -62,9 +62,9 @@ Performs a focused, READ-ONLY architectural review of a diff. Reviews boundary i
 
 ### `backlog-manager`
 
-Create, improve, review, and maintain backlog work items (Epics, Features, Product Backlog Items, Issues, Tasks) in the team's tracker. USE FOR: creating work items from conversations, improving story formulations, checking consistency across related items, drafting acceptance criteria, updating tracker fields, linking parent/child relationships, reviewing backlog quality, or materialising a dev-lead Plan as child tasks under a parent story (the Plan workflow). DO NOT USE FOR: writing code, tests, or IaC (use coding / testing / infrastructure), design or ADR decisions (use architect), reviewing a diff (use review), estimating / prioritising / progressing item state on your own authority (the team decides — you capture what was agreed), end-to-end autonomous delivery (use dev-lead).
+Create, improve, review, and maintain backlog work items (Epics, Features, Product Backlog Items, Issues, Tasks) in the team's tracker. USE FOR: creating work items from conversations, improving story formulations, checking consistency across related items, drafting acceptance criteria, updating tracker fields, linking parent/child relationships, reviewing backlog quality, or materialising a dev-lead Plan as child tasks under a parent story (the Plan workflow). DO NOT USE FOR: writing code, tests, or IaC (use coding / testing / infrastructure), design or ADR decisions (use architect), reviewing a diff (use review), estimating / prioritising / progressing item state on your own authority (the team decides — you capture what was agreed), end-to-end autonomous delivery (use dev-lead). # `tools` is a filter, not a hint: a tracker server that is not listed here is unreachable even when # it is running. `github` and the ADO server names are granted below because those trackers ship a # mechanics skill. On any other tracker, add `'<your-server>/*'` here.
 
-- **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, edit, execute, microsoft-docs/*, microsoft/azure-devops-mcp/*, read, search, todo, vscode, web
+- **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, edit, execute, github/*, microsoft-docs/*, microsoft/azure-devops-mcp/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `coding`
