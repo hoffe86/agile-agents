@@ -4,7 +4,7 @@ The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plu
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
 over 11 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-manager) plus
-49 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
+50 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 ## Install
 

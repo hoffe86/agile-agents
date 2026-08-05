@@ -98,6 +98,10 @@ infrastructure:
   naming_convention: ""         # E.g. "caf" or path to local convention doc.
   tagging_convention: ""        # E.g. "caf" or path to local convention doc.
   module_source: ""             # E.g. "avm" (Azure Verified Modules), "internal", "mixed".
+  deploy_verify: "off"          # off | dev — may the agent push the branch and let the pipeline
+                                # deploy to the first non-prod environment to prove pipeline + IaC +
+                                # app actually deploy? "off" (default) = validate with plan/what-if
+                                # only. "dev" requires environment_chain and cicd.platform to be set.
 
 # ─── cicd ─────────────────────────────────────────────────────────────────────
 cicd:
@@ -105,6 +109,10 @@ cicd:
   pipeline_paths: []            # E.g. [".github/workflows/", "azure-pipelines.yml"]
   required_checks: []           # Status-check names that must pass to merge.
   release_strategy: ""          # trunk | gitflow | release-branches | env-branches
+                                # Read by `deploy-verify`: on trunk-based a feature-branch push
+                                # normally triggers the dev deploy; on gitflow / env-branches it
+                                # usually does not, so the skill reports "not reachable" instead
+                                # of waiting for a pipeline run that will never start.
   artifact_registry: ""         # acr | ghcr | docker-hub | jfrog | nuget-org
   deployment_method: ""         # oidc | service-principal | managed-identity | manual
 
@@ -224,6 +232,12 @@ quality_gates:
 # Test-layer toggles that go beyond the unit-test discipline declared in `tech_stack`.
 # Today only `e2e` is wired up — drives the `e2e-testing` skill (plugins/agile-agents-core/skills/e2e-testing/).
 testing:
+  smoke:
+    # Local "does it even come up?" check. Runs at Stage 8 after the unit tests,
+    # before the reviewers. Leave `command` empty to skip the slot entirely.
+    command: []                 # E.g. ["func", "start"] or ["dotnet", "run", "--project", "src/Api"].
+    url: ""                     # Health endpoint polled until it answers (e.g. "http://localhost:7071/api/health").
+    timeout_s: 60               # Give up (and fail the gate) after this many seconds.
   e2e:
     framework: "none"           # playwright | selenium | cypress | none (default none)
     base_url: ""                # Target URL the suite hits (e.g. "https://stage.contoso.com").

@@ -146,6 +146,7 @@ natural-language workflow.
 - **cost-budget** (`agile-agents-core`) — Read the per-run / per-phase cost envelope from `solution-profile.yaml: cost_envelope`, gate run start (refuse if envelope is missing on production-tier engagements), checkpoint at every phase tran...
 - **csharp-implementation** (`agile-agents-dotnet`) — Implement C#/.NET features end-to-end using current best practices (modern C# language features, async correctness, DI, SOLID, secure-by-default).
 - **csharp-testing** (`agile-agents-dotnet`) — Add or extend tests for C#/.NET code using xUnit, NUnit, MSTest, or TUnit (whichever the solution already uses), then run them and pursue coverage.
+- **deploy-verify** (`agile-agents-core`) — Opt-in deployed verification — push the feature branch, let the project's own CI/CD pipeline deploy pipeline + IaC + application to the first non-production environment, and report whether it actua...
 - **dev-lead-templates** (`agile-agents-core`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 4), the conditional design-approval gate prompt (Stage 5), and the final Done/Stop report (Stage 10).
 - **dotnet-design-pattern-review** (`agile-agents-dotnet`) — Review the C#/.NET code for design pattern implementation and suggest improvements.
 - **e2e-testing** (`agile-agents-core`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
@@ -172,7 +173,7 @@ natural-language workflow.
 - **solution-profile-interview** (`agile-agents-core`) — Bootstrap or repair `.github/solution-profile.yaml` by discovering what the repo already tells you and interviewing the human only for what it can't.
 - **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides.
 - **terraform-azurerm-set-diff-analyzer** (`agile-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
-- **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, and unit tests after `coding`/`testing` finish and before the reviewer fan-out.
+- **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and an opt-in local smoke check (does the app come up?) after `coding`/`testing` finish and before the reviewer fan-out.
 - **threat-model-analyst** (`agile-agents-core`) — Full STRIDE-A threat model analysis and incremental update skill for repositories and systems.
 - **update-avm-modules-in-bicep** (`agile-agents-bicep`) — Update Azure Verified Modules (AVM) to latest versions in Bicep files.
 - **webapp-testing** (`agile-agents-core`) — Toolkit for interacting with and testing local web applications using Playwright.
