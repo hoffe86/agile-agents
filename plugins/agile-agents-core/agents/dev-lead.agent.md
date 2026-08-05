@@ -200,7 +200,7 @@ Decide how deep the research needs to go:
 | Research depth | When |
 |---|---|
 | Lightweight (dev-lead reads code / APIs itself) | Change is local, < ~3 files, no new boundary / contract / dependency, no new Azure resource, fully covered by existing ADRs. |
-| Delegate to `architect` | New boundary / contract / dependency / Azure resource, a non-trivial trade-off, or a suspected decision gap. |
+| Delegate to `architect` | New boundary / contract / dependency / cloud resource, a non-trivial trade-off, or a suspected decision gap. |
 
 **When delegating — Delegate to:** `architect`.
 **Input:** the requirement, in-scope / out-of-scope, any constraints from intake, the binding decision ids / references.
@@ -281,7 +281,7 @@ This conditional gate fires **after** the mandatory plan approval (Stage 4) and 
 **Trigger this gate only when ALL apply** (otherwise skip silently and proceed to Coding):
 
 - `architect` actually ran during Research (Stage 1) — not the lightweight path.
-- Architect introduced a new external dependency / Azure service / module boundary, OR the chosen option's trade-off "cost" is non-trivial (i.e., it's reasonable for a sane reviewer to prefer the rejected alternative), OR architect reported **at least one **decision gap**** that needs human authoring before coding can safely start.
+- Architect introduced a new external dependency / managed service / module boundary, OR the chosen option's trade-off "cost" is non-trivial (i.e., it's reasonable for a sane reviewer to prefer the rejected alternative), OR architect reported **at least one **decision gap**** that needs human authoring before coding can safely start.
 
 When triggered, render via `ask_user` using `skills/dev-lead-templates/references/design-approval.md` — that reference carries the prompt shape, the three choices, and how to handle each answer (including the **one Adjust round per run** cap).
 

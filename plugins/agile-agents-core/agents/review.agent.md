@@ -127,7 +127,7 @@ When in doubt, **invoke the specialist** — false positives are cheap; missed f
 
 ## Skills you compose with (for the general review)
 
-- **`dotnet-design-pattern-review`** — for non-trivial C#/.NET design-pattern usage at the line level.
+- **The design-pattern review skill for the declared language** — for non-trivial framework-idiomatic design-pattern usage at the line level, when that ecosystem's companion plugin is installed.
 - **`conventional-commit`** — to flag commit-message hygiene issues if present.
 
 > **Do not load `code-review-checklist`.** Its Sections C (tests) and F (security) instruct *self-review*, which contradicts this agent's mandatory delegation to `test-review` and `security-review`. The general-review dimensions and severities are already inlined in this file (see "Apply working-style to review" above) — that is the canonical source for this agent.
@@ -180,7 +180,7 @@ When in doubt, **invoke the specialist** — false positives are cheap; missed f
 - **[C1] [General | Security | Tests | Architecture | Infra]** — <file:line> — <finding>
   - **Fix:** <concrete>
   - **Owner:** coding | testing | infrastructure | architect
-  - **Reference:** <OWASP / CWE / xUnit Pattern / arc42 / WAF / etc.>
+  - **Reference:** <OWASP / CWE / xUnit Pattern / arc42 / well-architected pillar / etc.>
 
 ### 🟠 Major
 - **[M1] ...**

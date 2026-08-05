@@ -121,6 +121,8 @@ compliance_security:
   data_classification: ""       # public | internal | confidential | restricted
   data_residency: []            # ISO country codes the data must stay in (e.g. ["DE", "EU"]).
   regulatory_scope: []          # E.g. ["gdpr", "bsi-su3", "hipaa", "fedramp", "il5", "iso-27001"]
+  security_benchmarks: []       # Benchmarks reviewers cite control ids from. E.g. ["mcsb", "cis-azure"],
+                                # ["cis-aws"], ["cis-kubernetes"], ["nist-800-53"]. Empty → OWASP/CWE only.
   threat_model_location: ""     # Path / URL to threat model doc.
   sbom_required: false          # true → builds must emit SBOM (CycloneDX / SPDX).
   signing_required: false       # true → artefacts/images must be signed (cosign / notary).

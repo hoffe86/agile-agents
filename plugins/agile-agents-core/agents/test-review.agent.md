@@ -73,7 +73,7 @@ You are the **test-review** agent — a **Senior Test Engineer** reviewing test 
 ## Skills you compose with
 
 - **`polyglot-test-agent`** (vendored) — cross-language test scaffolding reference.
-- **`pytest-coverage`** (vendored) — Python coverage analysis.
+- **The coverage-analysis skill for the declared language** — when that ecosystem's companion plugin is installed.
 - **`csharp-testing` / `python-testing`** (local) — language-specific test conventions used in this repo.
 - **`webapp-testing`** (vendored) — for E2E / browser tests.
 
