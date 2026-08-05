@@ -85,6 +85,21 @@
       ]
     },
     {
+      "name": "agile-agents-azure",
+      "source": "agile-agents-azure",
+      "description": "Azure platform grounding for the Agentic Agile Harness — CAF naming and tagging, Azure Verified Modules, secure-by-default resource settings, the Well-Architected pillars as review checks, and MCSB / CIS Azure control ids. Pairs with microsoft/azure-skills for live-subscription work.",
+      "version": "0.1.0",
+      "category": "development",
+      "keywords": [
+        "azure",
+        "well-architected",
+        "caf",
+        "avm",
+        "mcp",
+        "copilot-cli"
+      ]
+    },
+    {
       "name": "agile-agents-ado",
       "source": "agile-agents-ado",
       "description": "Azure DevOps Boards tracker mechanics for the Agentic Agile Harness — work-item CRUD, WIQL queries, field and state conventions, and parent/child linking used by the backlog-manager agent.",

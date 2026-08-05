@@ -20,6 +20,7 @@ copilot plugin install agile-agents-dotnet@agile-agents-marketplace     # C# / .
 copilot plugin install agile-agents-python@agile-agents-marketplace     # Python
 copilot plugin install agile-agents-bicep@agile-agents-marketplace      # Bicep IaC
 copilot plugin install agile-agents-terraform@agile-agents-marketplace  # Terraform IaC
+copilot plugin install agile-agents-azure@agile-agents-marketplace     # Azure platform grounding
 copilot plugin install agile-agents-ado@agile-agents-marketplace        # Azure DevOps Boards
 copilot plugin install agile-agents-github@agile-agents-marketplace     # GitHub Issues
 ```
@@ -55,7 +56,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 — and `reviewer-read-only-rules`, the defence-in-depth contract every review agent loads. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md) for the vendored index across all plugins.
 
-**Companion skills** across six technology plugins — install only what your project uses:
+**Companion skills** across seven technology plugins — install only what your project uses:
 
 | Plugin | Skills |
 |---|---|
@@ -63,23 +64,30 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | `agile-agents-python` | `python-implementation`, `python-testing`, `pytest-coverage`, `ruff-recursive-fix` |
 | `agile-agents-bicep` | `bicep-implementation`, `update-avm-modules-in-bicep` |
 | `agile-agents-terraform` | `terraform-azure-implementation`, `terraform-azurerm-set-diff-analyzer`, `import-infrastructure-as-code` |
+| `agile-agents-azure` | `azure-platform-grounding` |
 | `agile-agents-ado` | `ado-work-items` |
 | `agile-agents-github` | `github-issues` |
 
-**There is deliberately no `agile-agents-azure` plugin.** Microsoft already ships
-[`microsoft/azure-skills`](https://github.com/microsoft/azure-skills) — ~25 Azure skills plus the
-Azure MCP Server (200+ tools, 40+ services) and Foundry MCP, maintained by the team that owns the
-platform. This harness routes *into* it rather than duplicating it: `iac-best-practices` and the
-IaC implementation skills already hand off to `azure-prepare`, `azure-validate`, `azure-deploy`,
-`azure-quotas` and `azure-rbac` by name. If your project does Azure work, install it alongside:
+**`agile-agents-azure` is grounding, not automation.** It carries the Azure substitutions core
+deliberately does not know — CAF naming and tagging, AVM selection and pinning, secure-by-default
+resource settings, the Well-Architected pillars as concrete review checks, and the MCSB / CIS Azure
+control ids reviewers cite. All of it applies to a *diff or a design*, before anything is deployed,
+which is what an agent reviewing a pull request actually needs.
+
+For **live-subscription** work — scanning deployed resources, querying real spend, provisioning,
+diagnostics — install Microsoft's own
+[`microsoft/azure-skills`](https://github.com/microsoft/azure-skills) alongside it. It ships ~28
+operational Azure skills plus the Azure MCP Server (200+ tools, 40+ services), maintained by the
+team that owns the platform. This harness does not duplicate any of it:
 
 ```console
 copilot plugin marketplace add microsoft/azure-skills
 copilot plugin install azure@azure-skills
 ```
 
-Without it, the Azure lens degrades to the documentation-grounded guidance in this bundle (AVM,
-CAF, WAF, CIS Azure, MCSB via `microsoft-docs`) — correct, but with no live subscription context.
+Without either plugin, the Azure lens degrades to the neutral cloud lens plus whatever
+`microsoft-docs` returns — correct, but with no conventions to enforce and no live subscription
+context.
 
 **4 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — bundled into the plugin and
 available to every agent by description match. `working-style` and `trade-off-reporting` are named

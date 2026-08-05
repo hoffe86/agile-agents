@@ -136,6 +136,7 @@ natural-language workflow.
 - **architecture-decision-records** (`agile-agents-core`) — Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format.
 - **architecture-design** (`agile-agents-core`) — Author or update a software/solution architecture design document.
 - **aspire** (`agile-agents-dotnet`) — Aspire skill covering the Aspire CLI, AppHost orchestration, service discovery, integrations, MCP server, VS Code extension, Dev Containers, GitHub Codespaces, templates, dashboard, and deployment.
+- **azure-platform-grounding** (`agile-agents-azure`) — Azure grounding for authoring and reviewing — Cloud Adoption Framework (CAF) resource naming abbreviations and required tags, Azure Verified Module (AVM) selection and pinning, secure-by-default re...
 - **backlog-item-standards** (`agile-agents-core`) — Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definitio...
 - **bicep-implementation** (`agile-agents-bicep`) — Implement Azure infrastructure using Bicep with Azure Verified Modules (AVM) wherever possible, following Microsoft's published Bicep best practices and Well-Architected Framework.
 - **cicd-pipeline-implementation** (`agile-agents-core`) — Implement CI/CD pipelines for infrastructure and application code using GitHub Actions or Azure Pipelines (YAML).
@@ -155,7 +156,7 @@ natural-language workflow.
 - **git-commit** (`agile-agents-core`) — Execute git commit with conventional commit message analysis, intelligent staging, and message generation.
 - **github-issues** (`agile-agents-github`) — GitHub Issues mechanics for reading and writing work items — tool entry points, the single-body field layout with section headings, cross-reference and closing-keyword syntax, labels / milestones /...
 - **helm-kustomize-implementation** (`agile-agents-core`) — Implement Kubernetes deployments via raw manifests, Helm charts, or Kustomize overlays — with AKS in mind.
-- **iac-best-practices** (`agile-agents-core`) — Cross-cutting Infrastructure-as-Code best practices that apply regardless of tool (Bicep, Terraform, Helm, Kustomize, ARM, Pulumi).
+- **iac-best-practices** (`agile-agents-core`) — Cross-cutting Infrastructure-as-Code best practices that apply regardless of tool (Bicep, Terraform, Helm, Kustomize, ARM, Pulumi) or cloud.
 - **import-infrastructure-as-code** (`agile-agents-terraform`) — Import existing Azure resources into Terraform using Azure CLI discovery and Azure Verified Modules (AVM).
 - **multi-stage-dockerfile** (`agile-agents-core`) — Create optimized multi-stage Dockerfiles for any language or framework
 - **polyglot-test-agent** (`agile-agents-core`) — Generates comprehensive, workable unit tests for any programming language using a multi-agent pipeline.

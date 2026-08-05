@@ -73,6 +73,7 @@ agent/                               Marketplace root
 │   ├── agile-agents-python/           4 skills — Python
 │   ├── agile-agents-bicep/            2 skills — Bicep IaC
 │   ├── agile-agents-terraform/        3 skills — Terraform IaC
+│   ├── agile-agents-azure/            1 skill  — Azure platform grounding (CAF / AVM / WAF / MCSB)
 │   ├── agile-agents-ado/              1 skill  — Azure DevOps Boards tracker mechanics
 │   └── agile-agents-github/           1 skill  — GitHub Issues tracker mechanics
 ├── scripts/                         generate-agents-md.{ps1,sh} + references/
