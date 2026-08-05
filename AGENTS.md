@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-08-04.
+> Generated from `solution-profile.yaml` on 2026-08-05.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
 This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
@@ -64,7 +64,7 @@ Performs a focused, READ-ONLY architectural review of a diff. Reviews boundary i
 
 Create, improve, review, and maintain backlog work items (Epics, Features, Product Backlog Items, Issues, Tasks) in the team's tracker. USE FOR: creating work items from conversations, improving story formulations, checking consistency across related items, drafting acceptance criteria, updating tracker fields, linking parent/child relationships, reviewing backlog quality, or materialising a dev-lead Plan as child tasks under a parent story (the Plan workflow). DO NOT USE FOR: writing code, tests, or IaC (use coding / testing / infrastructure), design or ADR decisions (use architect), reviewing a diff (use review), estimating / prioritising / progressing item state on your own authority (the team decides — you capture what was agreed), end-to-end autonomous delivery (use dev-lead).
 
-- **Tools**: agent, browser, context7/*, edit, execute, microsoft-docs/*, microsoft/azure-devops-mcp/*, read, search, todo, vscode, web
+- **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, edit, execute, microsoft-docs/*, microsoft/azure-devops-mcp/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `coding`
