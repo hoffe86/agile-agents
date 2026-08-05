@@ -1,0 +1,24 @@
+{
+  "name": "agile-agents-azure",
+  "description": "Azure platform grounding for the Agentic Agile Harness — CAF naming and tagging, Azure Verified Modules, secure-by-default resource settings, the Well-Architected pillars as review checks, and MCSB / CIS Azure control ids. Install alongside agile-agents-core when the solution profile declares infrastructure.cloud: azure. Pairs with microsoft/azure-skills for live-subscription work.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": {
+    "name": "hoffe86",
+    "url": "https://github.com/hoffe86"
+  },
+  "homepage": "https://github.com/hoffe86/agile-agents",
+  "repository": "https://github.com/hoffe86/agile-agents",
+  "keywords": [
+    "azure",
+    "well-architected",
+    "caf",
+    "avm",
+    "mcp",
+    "copilot-cli"
+  ],
+  "category": "development",
+  "skills": [
+    "skills/"
+  ]
+}

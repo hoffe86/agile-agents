@@ -4,7 +4,7 @@ The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plu
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
 over 11 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-manager) plus
-49 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
+50 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 ## Install
 
@@ -20,6 +20,7 @@ copilot plugin install agile-agents-dotnet@agile-agents-marketplace     # C# / .
 copilot plugin install agile-agents-python@agile-agents-marketplace     # Python
 copilot plugin install agile-agents-bicep@agile-agents-marketplace      # Bicep IaC
 copilot plugin install agile-agents-terraform@agile-agents-marketplace  # Terraform IaC
+copilot plugin install agile-agents-azure@agile-agents-marketplace     # Azure platform grounding
 copilot plugin install agile-agents-ado@agile-agents-marketplace        # Azure DevOps Boards
 copilot plugin install agile-agents-github@agile-agents-marketplace     # GitHub Issues
 ```
@@ -55,7 +56,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 — and `reviewer-read-only-rules`, the defence-in-depth contract every review agent loads. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md) for the vendored index across all plugins.
 
-**Companion skills** across six technology plugins — install only what your project uses:
+**Companion skills** across seven technology plugins — install only what your project uses:
 
 | Plugin | Skills |
 |---|---|
@@ -63,8 +64,38 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | `agile-agents-python` | `python-implementation`, `python-testing`, `pytest-coverage`, `ruff-recursive-fix` |
 | `agile-agents-bicep` | `bicep-implementation`, `update-avm-modules-in-bicep` |
 | `agile-agents-terraform` | `terraform-azure-implementation`, `terraform-azurerm-set-diff-analyzer`, `import-infrastructure-as-code` |
+| `agile-agents-azure` | `azure-platform-grounding` |
 | `agile-agents-ado` | `ado-work-items` |
 | `agile-agents-github` | `github-issues` |
+
+**Tracker MCP servers are named by you, not by this harness.** Tool grants are
+agent-scoped — a skill cannot grant them — so `backlog-manager` ships grants for the
+common server names (`github`, `ado`, `azure-devops`, …). If yours is registered under a
+different name, add `'<your-server>/*'` to the `tools:` list in
+`plugins/agile-agents-core/agents/backlog-manager.agent.md`. A server that isn't granted
+is unreachable even while it's running; `backlog-manager` preflights for this and tells
+you which of the two causes it hit.
+
+**`agile-agents-azure` is grounding, not automation.** It carries the Azure substitutions core
+deliberately does not know — CAF naming and tagging, AVM selection and pinning, secure-by-default
+resource settings, the Well-Architected pillars as concrete review checks, and the MCSB / CIS Azure
+control ids reviewers cite. All of it applies to a *diff or a design*, before anything is deployed,
+which is what an agent reviewing a pull request actually needs.
+
+For **live-subscription** work — scanning deployed resources, querying real spend, provisioning,
+diagnostics — install Microsoft's own
+[`microsoft/azure-skills`](https://github.com/microsoft/azure-skills) alongside it. It ships ~28
+operational Azure skills plus the Azure MCP Server (200+ tools, 40+ services), maintained by the
+team that owns the platform. This harness does not duplicate any of it:
+
+```console
+copilot plugin marketplace add microsoft/azure-skills
+copilot plugin install azure@azure-skills
+```
+
+Without either plugin, the Azure lens degrades to the neutral cloud lens plus whatever
+`microsoft-docs` returns — correct, but with no conventions to enforce and no live subscription
+context.
 
 **4 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — bundled into the plugin and
 available to every agent by description match. `working-style` and `trade-off-reporting` are named
@@ -80,7 +111,8 @@ just means the tool isn't there.
 |---|---|---|
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
-| `azure-mcp` | *(user-installed — Microsoft's own [`azure`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context. Declared only by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. |
+| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots. Declared only by `testing`. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs). |
+| `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
 | `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
 
 ### Tool access

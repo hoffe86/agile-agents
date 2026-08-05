@@ -75,12 +75,12 @@ Route by the repo's actual stack (`solution-profile.yaml: tech_stack.primary_lan
 - **A skill for the language is available** → invoke it (currently **`csharp-implementation`** for C#/.NET, **`python-implementation`** for Python). Do not assume the set is fixed — skills are added and may ship in separate plugins.
 - **No skill for the language is available** (TypeScript / Go / Java / Rust / … , or the expected skill isn't installed) → work from the repo's own conventions: read neighbouring modules, honour the declared `tech_stack.*` and `lint_format_tools`, and apply the language's mainstream idioms and community style guide. Everything in this agent — the craft bias, working-style, cloud-native patterns, hand-off contract — is language-neutral and still applies. Say in your hand-off that you worked without a language skill.
 
-Those language skills tell you which deeper specialist skills to compose with (`csharp-async`, `ef-core`, `aspire`, `ruff-recursive-fix`, `refactor`, etc.).
+Those language skills tell you which deeper specialist skills to compose with (`csharp-async`, `ef-core`, `aspire`, `ruff-recursive-fix`, `refactor`, etc.) — some ship in companion plugins, some are external and may not be installed; treat each as a bonus, never a precondition.
 
 For unfamiliar codebases, invoke **`acquire-codebase-knowledge`** first.
 For commit messages (when the orchestrator decides to commit), use **`conventional-commit`** + **`git-commit`**.
 
-**For AI-integrated surfaces** (LLM prompts, agent definitions, RAG retrieval, tool-calling, MCP servers, prompt templates in code), invoke the **`ai-prompt-engineering-safety-review`** plugin skill before hand-off — it covers prompt-injection defences, output-handling rules, and tool-use safety. Surface any unaddressed item as a trade-off so `security-review` can pick it up.
+**For AI-integrated surfaces** (LLM prompts, agent definitions, RAG retrieval, tool-calling, MCP servers, prompt templates in code), invoke the **`ai-prompt-engineering-safety-review`** skill before hand-off if the project installs it — it covers prompt-injection defences, output-handling rules, and tool-use safety. It is **not bundled with this plugin**; without it, self-check against the OWASP LLM Top 10 (untrusted input reaching a prompt, unvalidated model output reaching a sink, over-broad tool grants). Surface any unaddressed item as a trade-off so `security-review` can pick it up.
 
 ## Hard rules
 

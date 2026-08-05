@@ -116,7 +116,7 @@ IaC / pipeline issues → **delegated to `infrastructure-review`**.
 
 | Diff signature | Specialist to invoke |
 |---|---|
-| **Almost always** | `security-review` — **carve-out:** if **every** changed file matches the docs-only allow-list (`*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, `.editorconfig`) and the diff contains **no code, no config, no IaC, no workflow, no schema**, the full security-review may be skipped — but `secret-scanning` still runs unconditionally on the diff (catches a credential pasted into a README). Note the skip and the reason explicitly in the report. |
+| **Almost always** | `security-review` — **carve-out:** if **every** changed file matches the docs-only allow-list (`*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, `.editorconfig`) and the diff contains **no code, no config, no IaC, no workflow, no schema**, the full security-review may be skipped — but secret scanning still runs unconditionally on the diff (catches a credential pasted into a README). Note the skip and the reason explicitly in the report. |
 | Diff touches `*test*`, `*spec*`, `tests/`, `__tests__/`, or adds testable production code without tests | `test-review` |
 | Diff crosses module / service boundaries, changes a public API / event / schema, adds a new external integration, or touches > 10 files | `architecture-review` |
 | Diff touches `*.bicep`, `*.bicepparam`, `*.tf`, `*.tfvars`, `Chart.yaml`, `kustomization.yaml`, k8s manifests, `.github/workflows/*.yml`, `azure-pipelines.yml`, `Dockerfile` | `infrastructure-review` |
@@ -127,12 +127,12 @@ When in doubt, **invoke the specialist** — false positives are cheap; missed f
 
 ## Skills you compose with (for the general review)
 
-- **`dotnet-design-pattern-review`** — for non-trivial C#/.NET design-pattern usage at the line level.
+- **The design-pattern review skill for the declared language** — for non-trivial framework-idiomatic design-pattern usage at the line level, when that ecosystem's companion plugin is installed.
 - **`conventional-commit`** — to flag commit-message hygiene issues if present.
 
 > **Do not load `code-review-checklist`.** Its Sections C (tests) and F (security) instruct *self-review*, which contradicts this agent's mandatory delegation to `test-review` and `security-review`. The general-review dimensions and severities are already inlined in this file (see "Apply working-style to review" above) — that is the canonical source for this agent.
 
-(Specialists load their own knowledge-base skills — `security-knowledge-base`, `architecture-knowledge-base`, `iac-knowledge-base` — you don't need to load those yourself.)
+(Specialists load their own knowledge-base skills — `security-knowledge-base`, `architecture-knowledge-base`, `iac-knowledge-base` — when those are installed; none of them ship with this plugin, and each specialist degrades to citing the underlying standards directly. Either way you don't load them yourself.)
 
 ## Review priorities (in order, for the general review you do yourself)
 
@@ -180,7 +180,7 @@ When in doubt, **invoke the specialist** — false positives are cheap; missed f
 - **[C1] [General | Security | Tests | Architecture | Infra]** — <file:line> — <finding>
   - **Fix:** <concrete>
   - **Owner:** coding | testing | infrastructure | architect
-  - **Reference:** <OWASP / CWE / xUnit Pattern / arc42 / WAF / etc.>
+  - **Reference:** <OWASP / CWE / xUnit Pattern / arc42 / well-architected pillar / etc.>
 
 ### 🟠 Major
 - **[M1] ...**

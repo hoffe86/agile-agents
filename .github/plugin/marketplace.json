@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Marketplace for Agile Agents — the Agentic Agile Harness.",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -14,7 +14,7 @@
       "name": "agile-agents-core",
       "source": "agile-agents-core",
       "description": "Agentic Agile Harness for GitHub Copilot CLI — an RPI (Research, Plan, Implement, Review) pipeline of 11 specialist agents and a shared skill library. Language, IaC, and tracker specifics ship as companion plugins.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "development",
       "keywords": [
         "agents",
@@ -85,10 +85,25 @@
       ]
     },
     {
+      "name": "agile-agents-azure",
+      "source": "agile-agents-azure",
+      "description": "Azure platform grounding for the Agentic Agile Harness — CAF naming and tagging, Azure Verified Modules, secure-by-default resource settings, the Well-Architected pillars as review checks, and MCSB / CIS Azure control ids. Pairs with microsoft/azure-skills for live-subscription work.",
+      "version": "0.1.0",
+      "category": "development",
+      "keywords": [
+        "azure",
+        "well-architected",
+        "caf",
+        "avm",
+        "mcp",
+        "copilot-cli"
+      ]
+    },
+    {
       "name": "agile-agents-ado",
       "source": "agile-agents-ado",
       "description": "Azure DevOps Boards tracker mechanics for the Agentic Agile Harness — work-item CRUD, WIQL queries, field and state conventions, and parent/child linking used by the backlog-manager agent.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "development",
       "keywords": [
         "azure-devops",
@@ -103,7 +118,7 @@
       "name": "agile-agents-github",
       "source": "agile-agents-github",
       "description": "GitHub Issues tracker mechanics for the Agentic Agile Harness — issue CRUD, sub-issue hierarchy, labels, and project fields used by the backlog-manager agent.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "development",
       "keywords": [
         "github",

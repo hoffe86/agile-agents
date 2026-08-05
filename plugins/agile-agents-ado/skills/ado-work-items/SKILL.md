@@ -16,10 +16,13 @@ Skip this skill entirely for any other tracker.
 ## Tooling
 
 Work-item operations go through the **Azure DevOps MCP server**
-(`microsoft/azure-devops-mcp`). The agent grants the four server names people
-actually use — `ado`, `azure-devops`, `azure-devops-mcp`, `microsoft/azure-devops-mcp` —
-so any of them works; `ado` is the one used below. If those tools are
-not available in the session,
+(`microsoft/azure-devops-mcp`). Tool grants are agent-scoped — this skill cannot
+grant them — so `backlog-manager.agent.md` in `agile-agents-core` carries the four
+server names people actually use (`ado`, `azure-devops`, `azure-devops-mcp`,
+`microsoft/azure-devops-mcp`); any of them works, and `ado` is the one used below.
+**If your server is registered under a different name, add `'<name>/*'` to that
+agent's `tools:` list** — a server that isn't granted is unreachable even while it
+is running. If the tools are not available in the session,
 point the user at the setup block below and stop — do not fall back to raw REST
 calls with a hand-rolled PAT, and do not silently switch to a different tracker.
 

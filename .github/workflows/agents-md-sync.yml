@@ -10,6 +10,7 @@ on:
       - 'scripts/references/agents-md-template.md'
       - 'AGENTS.md'
       - '.github/workflows/agents-md-sync.yml'
+      - 'scripts/audit-references.ps1'
   pull_request:
     paths:
       - 'solution-profile.yaml'
@@ -18,6 +19,7 @@ on:
       - 'scripts/generate-agents-md.*'
       - 'scripts/references/agents-md-template.md'
       - 'AGENTS.md'
+      - 'scripts/audit-references.ps1'
   workflow_dispatch:
 
 jobs:
@@ -51,3 +53,15 @@ jobs:
             echo "::error::generate-agents-md.sh produces different output than the .ps1."
             exit 1
           fi
+
+  # Six times an agent has instructed "always load skill X" or granted
+  # "server/*" where nothing shipped X or server. Unmatched grants are inert and
+  # missing skills degrade silently, so every instance survived review.
+  audit-references:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit skill and MCP-server references in agent files
+        shell: pwsh
+        run: ./scripts/audit-references.ps1

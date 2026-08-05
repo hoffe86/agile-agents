@@ -1,13 +1,13 @@
 ---
 name: test-bar-gate
 description: >-
-  Pre-reviewer automated quality gate — runs lint, type-check, and unit tests after `coding`/`testing` finish and before the reviewer fan-out. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 7 (Testing) and Stage 9 (Review).
+  Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and an opt-in local smoke check (does the app come up?) after `coding`/`testing` finish and before the reviewer fan-out. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 7 (Testing) and Stage 9 (Review).
 applies_to: all
 ---
 
 # Test-Bar Gate
 
-A deterministic, pre-reviewer quality gate. Runs cheap, fast checks (lint → type-check → unit-tests) so that expensive reviewer agents are never spent on a patch that does not even build or pass its own tests.
+A deterministic, pre-reviewer quality gate. Runs cheap, fast checks (lint → type-check → unit-tests → optional local smoke) so that expensive reviewer agents are never spent on a patch that does not even build, pass its own tests, or start.
 
 ## When this skill fires
 
@@ -34,13 +34,42 @@ The gate **never** runs before `TESTS COMPLETE` — we want the unit-test layer 
 
 ## What runs
 
-Three checks, **in order**, **fail-fast on the first non-zero exit code**:
+Up to four checks, **in order**, **fail-fast on the first non-zero exit code**:
 
 1. **lint** — formatting / style / lint rules
 2. **typecheck** — static type or compile check
 3. **test** — unit tests only (no integration, no e2e — those belong to a later gate)
+4. **smoke** — *opt-in.* Start the app and confirm it comes up. Skipped entirely unless `testing.smoke.command` is set.
 
 Fail-fast is the default because a lint/format failure usually means a typecheck or test run will produce noisy, derivative errors that drown the real signal. Adopters may set `quality_gates.test_bar.fail_fast: false` in `solution-profile.yaml` to run all three regardless and aggregate failures (useful in CI dashboards, rarely useful for the agent loop).
+
+### The smoke slot
+
+Unit tests prove the units. They do not prove the host boots — a bad DI registration, a missing connection string, a broken `host.json`, or an unresolvable startup dependency all pass the first three checks and fail the moment anyone runs the thing. The smoke slot closes that gap for the cost of one process start.
+
+It is **opt-in and has no defaults** — startup commands vary too much per project to guess, and a wrong guess costs a wasted timeout on every run. Configure it explicitly:
+
+```yaml
+testing:
+  smoke:
+    command: ["func", "start"]                          # or ["dotnet", "run", "--project", "src/Api"]
+    url: "http://localhost:7071/api/health"
+    timeout_s: 60
+```
+
+Procedure:
+
+1. `testing.smoke.command` empty → emit `outcome=skipped, reason=not_configured` and pass through. No warning; this is a normal configuration.
+2. Start the command as a **background** process from repo root.
+3. Poll `testing.smoke.url` every 2s until it returns any HTTP status < 500, or `timeout_s` elapses.
+4. **Always** stop the process — on success, on timeout, and on any error. A leaked listener breaks the next run by holding the port. Stop it by PID; never by process name.
+5. Outcome: `success` if the URL answered in time; `failure` otherwise, with the last ~20 lines of the process's combined stdout/stderr as `stderr_tail` (a startup crash prints its stack there, and it is the only diagnostic the slot produces).
+
+A timeout is a **failure**, not a skip. "It did not come up within 60s" is exactly the signal the slot exists to give.
+
+Scope boundary: this slot answers *"does it come up?"* — one process, one health probe. It is not integration testing. If the app cannot start without a database, a queue, and three collaborators, that is `e2e-testing` with a compose file, not this gate.
+
+For a web UI, a passing smoke check is a weak claim: an HTTP 200 says the server answered, not that the page renders. When the slot passes but the UI is suspect, that is the cue to escalate to `webapp-testing` and drive a real browser (console errors, failed requests, accessibility tree). The gate deliberately stays a plain HTTP poll — deterministic, no browser download on the critical path — and hands the harder question to the agent that owns it.
 
 ## Stack detection
 
@@ -127,6 +156,7 @@ Choose between `coding` and `testing` like this:
 | lint         | the author whose patch introduced the violation (usually `coding`; `testing` if only test files changed) |
 | typecheck    | `coding` |
 | test         | `coding` if a test exposed a real defect; `testing` if the test itself is wrong |
+| smoke        | `coding` — a host that will not boot is a source defect. `infrastructure` only when the failure is a missing local setting / connection string it owns. |
 
 When in doubt, pick `coding` — a failing test on `main` blocks the reviewer fan-out either way.
 

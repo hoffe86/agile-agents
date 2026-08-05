@@ -94,7 +94,8 @@ In addition to `read-repo-context`, `working-style`, and `trade-off-reporting`, 
 - **`solution-profile-interview`** — Stage 0 profile bootstrap. Discovers what the repo already tells you (`references/discovery-signals.md`), asks the human only for the decisions and contractual facts no scan can produce, writes `.github/solution-profile.yaml`, and verifies the six required fields. Also runnable standalone when a user asks to set up or repair the profile.
 - **`run-event-log`** — emit one JSONL event per stage transition / agent dispatch / gate result. Use `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows). Which transition maps to which event: `references/dev-lead-event-map.md`; semantics + examples: `references/event-types.md`; contract: `references/event-schema.json`. The dev-lead mints the `run_id` (UUIDv7) at Stage 0 and propagates it to every sub-agent via the hand-off prompt as `COPILOT_RUN_ID`.
 - **`cost-budget`** — read `cost_envelope` from `solution-profile.yaml` at Stage 0, checkpoint after every stage with `skills/cost-budget/scripts/sum-costs.sh`, abort with the report at `skills/cost-budget/references/cost-stop-report.md` on breach.
-- **`test-bar-gate`** — pre-reviewer deterministic quality gate (lint → typecheck → unit-test). Invoked at Stage 8 via `skills/test-bar-gate/scripts/run-gate.sh`.
+- **`test-bar-gate`** — pre-reviewer deterministic quality gate (lint → typecheck → unit-test → opt-in local smoke). Invoked at Stage 8a via `skills/test-bar-gate/scripts/run-gate.sh`.
+- **`deploy-verify`** — opt-in Stage 8b gate. Pushes the feature branch and lets the project's own pipeline deploy to `infrastructure.environment_chain[0]`, proving pipeline + IaC + app actually deploy (quota, policy, RBAC, idempotency — none of which `plan` / `what-if` can see). Gated on `infrastructure.deploy_verify: dev`; default `off` skips it silently. Never targets production.
 - **`dev-lead-templates`** — the rendered shapes for the two human gates and the final report. Load the single reference you need at the moment you need it (Stage 4 → `plan-approval.md`, Stage 5 → `design-approval.md`, Stage 10 → `done-report.md`), not all three up-front.
 - **`code-localisation`** — the dev-lead does **not** call this skill itself; it is loaded on-demand by `coding`, `architect`, and the review agents when their task touches code. The dev-lead's only responsibility is to make sure `solution-profile.yaml: code_localisation.*` is populated (or the default `tree-sitter` backend is acceptable) so workers can use it without round-tripping back. Mention its availability in the worker hand-off context payload alongside the propagated profile subset.
 
@@ -124,15 +125,15 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 |---|---|---|---|---|
 | 0 | — | Intake & ambiguity check | **Profile interview (blocking — six required fields)**; capture DoD + out-of-scope; capture **parent story id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
 | 1 | Research | Verification | Read-only verification against the prepared concept + binding decisions; deeper design only when scope warrants | `architect` (conditional) |
-| 1.5 | Plan | Decompose into tasks | Break the story into meaningful, independently-implementable tasks — each with ACs + approach note | — |
-| 1.6 | Plan | Create tasks in tracker | Create one child work item per task, linked to the parent story (provisional, `pending-approval`); record approach as a story comment | `backlog-manager` |
-| 1.7 | ⛔ | Plan approval | Single mandatory checkpoint — human reviews the created tasks before autonomous execution | user |
-| 2.5 | ⛔ | Design approval (conditional) | Only when Research introduced a new dep / boundary / non-trivial trade-off, or reported an decision gap | user |
-| 3 | Implement | Coding & infrastructure | Implementation in approved plan + IaC where needed | `coding`, `infrastructure` |
-| 4 | Implement | Testing | Cover the change to the declared discipline + threshold | `testing` |
-| 4.5 | Implement | Test-Bar Gate | Deterministic lint → typecheck → unit-test gate before reviewers spend tokens; loop to coding on fail (max 2 retries) | — (skill: `test-bar-gate`) |
-| 5 | Review | Review | Reviewer fan-out (security / architecture / infra / test) merged by `review` | `review` |
-| 6 | — | Done | Consolidate trade-offs, summarise outcome vs DoD; **emit `run.complete` (or `run.abort`)** | — |
+| 2 | Plan | Decompose into tasks | Break the story into meaningful, independently-implementable tasks — each with ACs + approach note | — |
+| 3 | Plan | Create tasks in tracker | Create one child work item per task, linked to the parent story (provisional, `pending-approval`); record approach as a story comment | `backlog-manager` |
+| 4 | ⛔ | Plan approval | Single mandatory checkpoint — human reviews the created tasks before autonomous execution | user |
+| 5 | ⛔ | Design approval (conditional) | Only when Research introduced a new dep / boundary / non-trivial trade-off, or reported an decision gap | user |
+| 6 | Implement | Coding & infrastructure | Implementation in approved plan + IaC where needed | `coding`, `infrastructure` |
+| 7 | Implement | Testing | Cover the change to the declared discipline + threshold | `testing` |
+| 8 | Implement | Automated gates | Deterministic lint → typecheck → unit-test → smoke gate, then opt-in deploy-verify to dev; loop to the author on fail (max 2 retries) | — (skills: `test-bar-gate`, `deploy-verify`) |
+| 9 | Review | Review | Reviewer fan-out (security / architecture / infra / test) merged by `review` | `review` |
+| 10 | — | Done | Consolidate trade-offs, summarise outcome vs DoD; **emit `run.complete` (or `run.abort`)** | — |
 
 Each stage has an entry condition, a delegated agent, and an exit gate. You never advance past a failed gate without either (a) one corrective retry with explicit feedback, or (b) stopping and asking the human.
 
@@ -199,7 +200,7 @@ Decide how deep the research needs to go:
 | Research depth | When |
 |---|---|
 | Lightweight (dev-lead reads code / APIs itself) | Change is local, < ~3 files, no new boundary / contract / dependency, no new Azure resource, fully covered by existing ADRs. |
-| Delegate to `architect` | New boundary / contract / dependency / Azure resource, a non-trivial trade-off, or a suspected decision gap. |
+| Delegate to `architect` | New boundary / contract / dependency / cloud resource, a non-trivial trade-off, or a suspected decision gap. |
 
 **When delegating — Delegate to:** `architect`.
 **Input:** the requirement, in-scope / out-of-scope, any constraints from intake, the binding decision ids / references.
@@ -280,7 +281,7 @@ This conditional gate fires **after** the mandatory plan approval (Stage 4) and 
 **Trigger this gate only when ALL apply** (otherwise skip silently and proceed to Coding):
 
 - `architect` actually ran during Research (Stage 1) — not the lightweight path.
-- Architect introduced a new external dependency / Azure service / module boundary, OR the chosen option's trade-off "cost" is non-trivial (i.e., it's reasonable for a sane reviewer to prefer the rejected alternative), OR architect reported **at least one **decision gap**** that needs human authoring before coding can safely start.
+- Architect introduced a new external dependency / managed service / module boundary, OR the chosen option's trade-off "cost" is non-trivial (i.e., it's reasonable for a sane reviewer to prefer the rejected alternative), OR architect reported **at least one **decision gap**** that needs human authoring before coding can safely start.
 
 When triggered, render via `ask_user` using `skills/dev-lead-templates/references/design-approval.md` — that reference carries the prompt shape, the three choices, and how to handle each answer (including the **one Adjust round per run** cap).
 
@@ -321,28 +322,31 @@ If the gate fails: send **one** corrective message naming the specific files / b
 
 If the gate fails: one corrective message; then stop.
 
-### Stage 8 — Test-Bar Gate (deterministic, pre-reviewer)
+### Stage 8 — Automated Gates (deterministic, pre-reviewer)
 
-**No delegate — the dev-lead invokes the `test-bar-gate` skill directly.** This gate exists so reviewers are never spent on a patch that does not even build, type-check, or pass its own unit tests.
+**No delegate — the dev-lead invokes the gate skills directly.** These gates exist so reviewers are never spent on a patch that does not even build, type-check, pass its own unit tests, or start.
 
-**Entry condition:** `TESTS COMPLETE` block from Stage 7 has been received and parsed (or Stage 7 was skipped because the change was IaC-only — in which case skip Stage 8 too; `infrastructure` already ran its own IaC tests).
+**Entry condition:** `TESTS COMPLETE` block from Stage 7 has been received and parsed (or Stage 7 was skipped because the change was IaC-only — in which case skip the test bar too; `infrastructure` already ran its own IaC tests. Deploy-verify below still applies to IaC-only changes).
 
-**Invoke:** `skills/test-bar-gate/scripts/run-gate.sh` (or `.ps1` on Windows). The skill auto-detects the stack from `solution-profile.yaml: tech_stack.primary_languages` (with `quality_gates.test_bar.commands` as override) and runs **lint → typecheck → unit-test**, fail-fast on the first non-zero exit. For unsupported stacks the gate emits `outcome=skipped` and passes through with a warning.
+**8a — Test bar.** Invoke `skills/test-bar-gate/scripts/run-gate.sh` (or `.ps1` on Windows). The skill auto-detects the stack from `solution-profile.yaml: tech_stack.primary_languages` (with `quality_gates.test_bar.commands` as override) and runs **lint → typecheck → unit-test → smoke**, fail-fast on the first non-zero exit. The smoke slot (start the app, poll a health URL) is skipped unless `testing.smoke.command` is set. For unsupported stacks the gate emits `outcome=skipped` and passes through with a warning.
+
+**8b — Deploy-verify (opt-in).** Only when 8a passed **and** `infrastructure.deploy_verify` is `dev`. Load `skills/deploy-verify/SKILL.md`: push the feature branch, let the project's own pipeline deploy to `environment_chain[0]`, then assert the pipeline succeeded and a re-plan comes back empty. Default is `off` → skip silently; any other unmet precondition → skip with a stated reason. **Never production.** This gate spends real cloud time and money, so it runs last and only when explicitly enabled.
 
 **Gate outcomes:**
 
-- **Pass** — emit `gate.pass` event (`gate=test_bar`); proceed to Stage 9 (Review).
+- **Pass** — emit `gate.pass` event (`gate=test_bar`, and `gate=deploy_verify` when it ran); proceed to Stage 9 (Review).
 - **Fail** — emit `gate.fail` event with the structured failure report (per `skills/test-bar-gate/SKILL.md` output contract). Loop back per the retry policy below.
+- **Skipped** — record it in the final report. A run that never verified must not read as a run that verified.
 
 **Retry policy (max 2 retries before abort):**
 
 | Attempt | Action |
 |---|---|
-| 1st fail | Send the structured failure report back to `coding` (or `testing` if only test files are at fault — see the `test-bar-gate` retry table). One corrective message naming the failed check + offending file/line. |
+| 1st fail | Send the structured failure report back to `coding` (or `testing` if only test files are at fault, or `infrastructure` for a deploy-verify failure — see the retry tables in the two gate skills). One corrective message naming the failed check + offending file/line. |
 | 2nd fail | Same — second and final corrective retry. |
 | 3rd fail | **Halt the run.** Emit `run.abort` with reason `test_bar_unrecoverable`. Do not call reviewers. Use `ask_user` to surface the persistent failure and let the human decide. |
 
-A test-bar gate that fails twice is a stronger signal than the standard "one corrective retry per stage" policy because the failure is deterministic (lint/type/test, not LLM judgement), so the dev-lead is allowed two retries here instead of one — but never more.
+A gate that fails twice is a stronger signal than the standard "one corrective retry per stage" policy because the failure is deterministic (lint/type/test/deploy, not LLM judgement), so the dev-lead is allowed two retries here instead of one — but never more. **Exception:** a deploy-verify failure attributed to quota, policy denial, or a missing role assignment halts immediately with no retry — no agent can resolve those, and retrying burns the envelope on a deterministic failure.
 
 ### Stage 9 — Review
 
@@ -350,7 +354,7 @@ A test-bar gate that fails twice is a stronger signal than the standard "one cor
 **Input:** the diff (`git diff <base>...HEAD`) and the original requirement.
 **Expected output:** the merged review report with a single verdict (✅ Approve / 🔁 Request changes / ❌ Block).
 
-**Docs-only carve-out:** if `git diff --name-only <base>...HEAD` returns **only** files matching `*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, or `.editorconfig` (i.e. no code, no config, no IaC, no workflow, no schema), `review` may skip the full `security-review` fan-out — but `secret-scanning` still runs unconditionally on the diff. The skip and its justification must appear in the merged report. Any non-docs file in the diff disables the carve-out.
+**Docs-only carve-out:** if `git diff --name-only <base>...HEAD` returns **only** files matching `*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, or `.editorconfig` (i.e. no code, no config, no IaC, no workflow, no schema), `review` may skip the full `security-review` fan-out — but secret scanning still runs unconditionally on the diff. The skip and its justification must appear in the merged report. Any non-docs file in the diff disables the carve-out.
 
 **Gate (must pass for Done):**
 - Verdict is **✅ Approve**.
