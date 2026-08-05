@@ -18,12 +18,12 @@ Author a pull-request description that is **scannable in 30 seconds** and **comp
 1. The accumulated **stage hand-offs** for this run (architect / coding / testing / infrastructure / review reports). The "WHY" comes from these — not from the diff.
 2. The **diff** (`git --no-pager diff <base>..<head> --stat` for the file map, then targeted `--patch` reads for the largest hunks).
 3. **Repo conventions** via `read-repo-context` — especially:
-   - PR-template path (`.github/pull_request_template.md`) — if present, **conform to its structure** and add the sections below as additional content.
+   - PR-template path — GitHub reads `.github/pull_request_template.md`; Azure DevOps reads `.azuredevops/pull_request_template.md`, `docs/pull_request_template.md`, or one at the repo root. If present, **conform to its structure** and add the sections below as additional content.
    - `CONTRIBUTING.md` PR rules.
    - Issue-tracker linkage convention (GitHub `Fixes #N` / `Closes #N`, ADO `AB#N`, Jira `PROJ-N`).
 4. The **solution-profile** (if present) — to pick up the project's PR-description conventions and the issue tracker URL pattern.
 
-## Output structure (default — overridden by `.github/pull_request_template.md` if present)
+## Output structure (default — overridden by the repo's PR template if one is present)
 
 ```markdown
 ## Summary
@@ -87,4 +87,4 @@ Grouped by intent (omit empty groups):
 
 ## Hand-off
 
-Return the rendered PR body as a fenced markdown block. The orchestrator (or human) is responsible for actually opening the PR via `gh pr create --body-file -` or the platform UI.
+Return the rendered PR body as a fenced markdown block. The orchestrator (or human) is responsible for actually opening the PR — `gh pr create --body-file <file>` on GitHub, `az repos pr create --description "$(Get-Content <file> -Raw)"` on Azure DevOps, or the platform UI. Pick from `project.repo_url`, not from the tracker: the code host and the board host are independent.
