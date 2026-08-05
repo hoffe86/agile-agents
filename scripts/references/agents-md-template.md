@@ -37,7 +37,7 @@ completion — those block names are canonical and parsed by
 - `TESTS COMPLETE` (testing)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
-- `REVIEW COMPLETE` (every reviewer)
+- `REVIEW COMPLETE` (review — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
 
 Agents **never commit or merge** — they propose changes for human review.

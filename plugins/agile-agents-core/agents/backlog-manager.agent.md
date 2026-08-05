@@ -16,7 +16,8 @@ description: >-
 # `tools` is a filter, not a hint: a tracker server that is not listed here is unreachable even when
 # it is running. `github` and the ADO server names are granted below because those trackers ship a
 # mechanics skill. On any other tracker, add `'<your-server>/*'` here.
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, browser, 'github/*', 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', 'microsoft/azure-devops-mcp/*']
+# Grants are `<server>/<tool>` — exactly one slash. A grant with two resolves to the wrong server.
+tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, browser, 'github/*', 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*']
 model_tier: mid  # mechanical authoring of well-structured work items; reasoning is bounded by the Definition of Ready + INVEST checklists
 argument-hint: "Describe the backlog task: create, improve, review, or update a work item"
 handoffs:

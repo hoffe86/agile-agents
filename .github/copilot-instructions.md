@@ -67,8 +67,8 @@ agent/                               Marketplace root
 │   ├── agile-agents-core/             The autonomous-coding agent harness
 │   │   ├── .github/plugin/plugin.json   Copilot CLI plugin manifest (name: agile-agents-core)
 │   │   ├── agents/                  11 *.agent.md (1 supervisor + 4 authors + 5 reviewers + backlog-manager)
-│   │   ├── skills/                  33 technology-neutral repo-scope skills
-│   │   └── user/skills/             5 user-scope skills (bundled into the plugin)
+│   │   ├── skills/                  30 technology-neutral repo-scope skills
+│   │   └── user/skills/             4 user-scope skills (bundled into the plugin)
 │   ├── agile-agents-dotnet/           5 skills — C# / .NET
 │   ├── agile-agents-python/           4 skills — Python
 │   ├── agile-agents-bicep/            2 skills — Bicep IaC
@@ -125,7 +125,7 @@ Renaming any silently breaks the pipeline:
 - `TESTS COMPLETE` (testing)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
-- `REVIEW COMPLETE` (every review agent)
+- `REVIEW COMPLETE` (review — the specialist reviewers report into it, they do not emit it)
 - `TASKS PLANNED` (backlog-manager — the Plan-phase task-creation hand-off)
 
 ### RPI pipeline + tasks-in-tracker
@@ -177,7 +177,7 @@ language. Reference files live in `<skill-name>/references/`, scripts in
 ecosystem, otherwise a comma-separated list of the ecosystems it actually assumes
 (`dotnet`, `python`, `azure, terraform`, `kubernetes, helm, kustomize`, `docker`,
 `github-actions`, …). It is **required on every skill**; a missing value is a defect, not
-a default. The split today is 27 `all` / 20 scoped.
+a default. The split today is 29 `all` / 22 scoped.
 
 Why declare it rather than exclude tech-specific skills: skills load on demand, so a
 scoped skill costs nothing when the task doesn't touch that ecosystem — but an
