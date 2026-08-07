@@ -87,4 +87,4 @@ Grouped by intent (omit empty groups):
 
 ## Hand-off
 
-Return the rendered PR body as a fenced markdown block. The orchestrator (or human) is responsible for actually opening the PR — `gh pr create --body-file <file>` on GitHub, `az repos pr create --description "$(Get-Content <file> -Raw)"` on Azure DevOps, or the platform UI. Pick from `project.repo_url`, not from the tracker: the code host and the board host are independent.
+Return the rendered PR body as a fenced markdown block. The orchestrator (or human) is responsible for actually opening the PR — `gh pr create --body-file <file>` on GitHub, `az repos pr create --description "$(Get-Content <file> -Raw)"` on Azure DevOps, or the platform UI. Pick from `identity.repo_url`, not from the tracker: the code host and the board host are independent.
