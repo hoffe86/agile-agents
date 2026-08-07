@@ -14,11 +14,11 @@ authoritative, richer machine-readable contract remains
 ## Project context
 
 - **Project**: agile-agents
-- **Primary language(s)**: unspecified
-- **Backlog platform**: unspecified
-- **Documentation**: unspecified (platform: unspecified)
+- **Primary language(s)**: powershell, python, shell
+- **Backlog platform**: github-issues
+- **Documentation**: docs/ (platform: in-repo)
 - **Branch naming**: unspecified
-- **Commit convention**: unspecified
+- **Commit convention**: conventional-commits
 - **Default branch**: main
 
 ## How to interact

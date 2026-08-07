@@ -3,7 +3,7 @@ name: AGENTS.md sync check
 on:
   push:
     paths:
-      - 'plugins/agile-agents-core/skills/solution-profile-interview/references/solution-profile.template.yaml'
+      - '.github/solution-profile.yaml'
       - 'plugins/agile-agents-core/agents/**'
       - 'plugins/agile-agents*/skills/**'
       - 'scripts/generate-agents-md.*'
@@ -13,7 +13,7 @@ on:
       - 'scripts/audit-references.ps1'
   pull_request:
     paths:
-      - 'plugins/agile-agents-core/skills/solution-profile-interview/references/solution-profile.template.yaml'
+      - '.github/solution-profile.yaml'
       - 'plugins/agile-agents-core/agents/**'
       - 'plugins/agile-agents*/skills/**'
       - 'scripts/generate-agents-md.*'
@@ -32,7 +32,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/generate-agents-md.ps1 `
-            -ProfilePath plugins/agile-agents-core/skills/solution-profile-interview/references/solution-profile.template.yaml `
+            -ProfilePath .github/solution-profile.yaml `
             -Output      AGENTS.md
 
       - name: Fail if AGENTS.md drifted from sources
@@ -48,7 +48,7 @@ jobs:
       - name: Fail if the bash generator drifted from the PowerShell one
         run: |
           git checkout -- AGENTS.md
-          ./scripts/generate-agents-md.sh --profile plugins/agile-agents-core/skills/solution-profile-interview/references/solution-profile.template.yaml --output /tmp/agents-sh.md
+          ./scripts/generate-agents-md.sh --profile .github/solution-profile.yaml --output /tmp/agents-sh.md
           if ! diff -u -I'^> Generated from' AGENTS.md /tmp/agents-sh.md; then
             echo "::error::generate-agents-md.sh produces different output than the .ps1."
             exit 1
