@@ -24,8 +24,19 @@ placeholders."* An empty field is honest; a guessed one is a landmine.
 ### 1. Load what exists
 
 Read `.github/solution-profile.yaml` if present. **Treat every non-empty value as
-user-confirmed** and never re-ask it. If the file is absent, start from the template at the
-repo root of the agile-agents repo so comments and field order survive.
+user-confirmed** and never re-ask it.
+
+If the file is absent, **copy the template** — do not retype it. The template ships next to
+this file at `<skill-dir>/references/solution-profile.template.yaml`, where `<skill-dir>` is
+the directory of the `SKILL.md` you just loaded (you know that absolute path — it is how you
+read this). Copy it to `.github/solution-profile.yaml` with a real file copy (`Copy-Item` /
+`cp`), then edit values in place.
+
+**Do not reproduce the profile from memory.** It has ~130 fields across 17 top-level
+sections, and every field carries a comment listing its allowed values — those comments are
+what you consult in step 4. A remembered version silently drops sections and invents key
+names, producing a file the other agents cannot read. If the copy genuinely fails, stop and
+report the path you tried rather than writing a substitute.
 
 ### 2. Discover (read-only)
 

@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-08-05.
+> Generated from `solution-profile.yaml` on 2026-08-07.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
 This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
@@ -14,11 +14,11 @@ authoritative, richer machine-readable contract remains
 ## Project context
 
 - **Project**: agile-agents
-- **Primary language(s)**: unspecified
-- **Backlog platform**: unspecified
-- **Documentation**: unspecified (platform: unspecified)
+- **Primary language(s)**: powershell, python, shell
+- **Backlog platform**: github-issues
+- **Documentation**: docs/ (platform: in-repo)
 - **Branch naming**: unspecified
-- **Commit convention**: unspecified
+- **Commit convention**: conventional-commits
 - **Default branch**: main
 
 ## How to interact
@@ -62,7 +62,7 @@ Performs a focused, READ-ONLY architectural review of a diff. Reviews boundary i
 
 ### `backlog-manager`
 
-Create, improve, review, and maintain backlog work items (Epics, Features, Product Backlog Items, Issues, Tasks) in the team's tracker. USE FOR: creating work items from conversations, improving story formulations, checking consistency across related items, drafting acceptance criteria, updating tracker fields, linking parent/child relationships, reviewing backlog quality, or materialising a dev-lead Plan as child tasks under a parent story (the Plan workflow). DO NOT USE FOR: writing code, tests, or IaC (use coding / testing / infrastructure), design or ADR decisions (use architect), reviewing a diff (use review), estimating / prioritising / progressing item state on your own authority (the team decides — you capture what was agreed), end-to-end autonomous delivery (use dev-lead). # `tools` is a filter, not a hint: a tracker server that is not listed here is unreachable even when # it is running. `github` and the ADO server names are granted below because those trackers ship a # mechanics skill. On any other tracker, add `'<your-server>/*'` here. # Grants are `<server>/<tool>` — exactly one slash. A grant with two resolves to the wrong server.
+Create, improve, review, and maintain backlog work items (Epics, Features, Product Backlog Items, Issues, Tasks) in the team's tracker. USE FOR: creating work items from conversations, improving story formulations, checking consistency across related items, drafting acceptance criteria, updating tracker fields, linking parent/child relationships, reviewing backlog quality, or materialising a dev-lead Plan as child tasks under a parent story (the Plan workflow). DO NOT USE FOR: writing code, tests, or IaC (use coding / testing / infrastructure), design or ADR decisions (use architect), reviewing a diff (use review), estimating / prioritising / progressing item state on your own authority (the team decides — you capture what was agreed), end-to-end autonomous delivery (use dev-lead). # `tools` is a filter, not a hint: a tracker server that is not listed here is unreachable even when # it is running. `github` and the ADO server names are granted below because those trackers ship a # mechanics skill. On any other tracker, add `'<your-server>/*'` here. # A grant must match the server's registered name exactly, and that name may itself contain a slash # (`microsoft/azure-devops-mcp`) — copy it verbatim from your mcp-config.json.
 
 - **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, edit, execute, github/*, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_

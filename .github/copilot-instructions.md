@@ -82,7 +82,8 @@ agent/                               Marketplace root
 │   ├── adr/                         Architecture decision records (0001–0007)
 │   ├── research/                    Whitepaper + spikes
 │   └── AGENTS-MD-MAPPING.md         Folder→agent mapping for the generator
-├── solution-profile.yaml            Per-project operational profile (template)
+├── solution-profile.yaml            Per-project operational profile — template ships in
+│                                    plugins/agile-agents-core/skills/solution-profile-interview/references/
 ├── AGENTS.md                        Generated — do not hand-edit
 └── README.md
 ```

@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 # Servers the harness deliberately does not ship: the user wires these up
 # themselves (org-specific endpoints, credentials, subscriptions).
 $ExternalServers = @(
-    'ado', 'azure-devops', 'azure-devops-mcp',
+    'ado', 'azure-devops', 'azure-devops-mcp', 'microsoft/azure-devops-mcp',
     'azure', 'azure-mcp', 'azure-mcp-server',
     'github'
 )
@@ -111,13 +111,11 @@ foreach ($file in $agentFiles) {
             $grant  = $m.Groups[1].Value
             $server = $grant -replace '/.*$', ''
             if ($server -in $NotServers) { continue }
-            # A grant is `<server>/<tool>` — exactly one slash, and the regex above already
-            # consumed it, so any slash left in the captured name means the grant has two.
-            # Two makes the CLI look for a server named by the first segment, so it grants nothing.
-            if ($grant.Contains('/')) {
-                $failures.Add("$rel`:$($toolsLine.LineNumber)  tool grant '$grant/*' has more than one slash, so it resolves to a server named '$server' and grants nothing. Use '<server>/*'.")
-                continue
-            }
+            # A server name may itself contain a slash (`microsoft/azure-devops-mcp`,
+            # `microsoftdocs/mcp`), so match the whole grant before falling back to the
+            # first segment. Verified: a server registered as `vendor/probesrv` is reached
+            # by the grant `vendor/probesrv/*`.
+            if ($grant -in $ExternalServers) { continue }
             if ($server -in $ExternalServers) { continue }
             if ($server -notin $shippedServers) {
                 $failures.Add("$rel`:$($toolsLine.LineNumber)  tool grant '$grant' names server '$server', which no plugin .mcp.json defines and which is not in the external allow-list.")

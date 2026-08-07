@@ -6,8 +6,8 @@
 # portable to Claude Code, Copilot CLI, Cursor, Aider, etc.
 #
 # Output is deterministic — agents and skills are sorted alphabetically and
-# the timestamp is date-only UTC. Uses `yq` (mikefarah) when available,
-# falls back to awk/grep for the small fieldset.
+# the timestamp is date-only UTC. YAML is read by a small awk parser; do not
+# reintroduce a `yq` path — a second parser only ever drifts from this one.
 #
 # Usage:
 #   scripts/generate-agents-md.sh [--profile PATH] [--agents-dir DIR]
@@ -15,6 +15,12 @@
 #                                 [--dry-run] [-h|--help]
 
 set -euo pipefail
+
+# ${#s} and ${s:0:n} count bytes under the C locale but characters under a UTF-8 one.
+# The .ps1 counts characters (.NET strings), so without this the two generators truncate
+# long descriptions at different points on any runner that leaves LANG unset. The sorts
+# below stay pinned to LC_ALL=C per command and are unaffected.
+export LC_ALL=C.UTF-8
 
 usage() {
   sed -n '2,15p' "$0"
@@ -75,18 +81,11 @@ fi
 template_path="$script_dir/references/agents-md-template.md"
 [[ -f "$template_path" ]] || { echo "template not found: $template_path" >&2; exit 1; }
 
-HAVE_YQ=0
-command -v yq >/dev/null 2>&1 && HAVE_YQ=1
-
 # ── tiny YAML field reader (top-level section.key, scalars + simple lists) ──
 # Strategy: locate "<section>:" line, then within that block (until next
 # zero-indent key) find "  <key>:" and return the rhs (or list items).
 yaml_scalar() {
   local section="$1" key="$2" file="$3"
-  if (( HAVE_YQ )); then
-    yq -r ".${section}.${key} // \"\"" "$file" 2>/dev/null | sed 's/^null$//'
-    return
-  fi
   awk -v sec="$section" -v key="$key" '
     { sub(/\r$/, "") }
     BEGIN { in_sec=0 }
@@ -109,10 +108,6 @@ yaml_scalar() {
 
 yaml_list() {
   local section="$1" key="$2" file="$3"
-  if (( HAVE_YQ )); then
-    yq -r ".${section}.${key}[]? // empty" "$file" 2>/dev/null
-    return
-  fi
   awk -v sec="$section" -v key="$key" '
     { sub(/\r$/, "") }
     BEGIN { in_sec=0; in_list=0 }

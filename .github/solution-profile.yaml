@@ -1,0 +1,270 @@
+# solution-profile.yaml — single source of truth for repo-level operational facts.
+#
+# Every agent in the suite reads this file FIRST (alongside .github/copilot-instructions.md).
+# Profile fields override the agent's defaults; safety/security defaults remain non-negotiable.
+# `dev-lead` validates that the **required** fields below are present at Stage 0 Intake and
+# halts with a `ask_user` if any are missing.
+#
+# `copilot-instructions.md` stays as freeform prose for narrative context. This file is for
+# the operational facts agents would otherwise have to discover or guess each invocation.
+#
+# Drop unknown / not-applicable optional fields. Don't fill in placeholders.
+
+# ─── identity ─── REQUIRED: project_name, lifecycle_stage ─────────────────────
+identity:
+  project_name: "agile-agents"              # REQUIRED. Human-readable (e.g. "TeamPlay Agentic Bot").
+  codename: ""                  # Optional internal/short name.
+  customer: ""                  # Project / business unit / client. Empty for internal.
+  business_unit: ""             # E.g. owning team or org unit (free-text).
+  lifecycle_stage: ""           # REQUIRED. poc | pilot | production | sunset
+  repo_url: "https://github.com/hoffe86/agile-agents"                  # Canonical URL.
+  default_branch: "main"
+  owner: ""                     # GitHub handle / email of the responsible owner.
+  tech_lead: ""                 # GitHub handle / email of the tech lead.
+
+# ─── documentation ─── REQUIRED: location ─────────────────────────────────────
+documentation:
+  platform: "in-repo"                  # Where the docs live as a *system*.
+                                # in-repo | separate-repo | github-wiki | ado-wiki |
+                                # confluence | sharepoint | notion | none
+                                # Empty → agents assume `in-repo`.
+  location: "docs/"                  # REQUIRED. Resolves against `platform`:
+                                #   in-repo       → path, e.g. "docs/"
+                                #   separate-repo → clone URL (+ optional "#path/inside")
+                                #   *-wiki        → wiki URL
+                                #   confluence    → space or parent-page URL
+                                #   sharepoint    → document-library URL
+                                # Agents read here, and write here only when the platform is
+                                # writable from the workspace (in-repo). Otherwise they emit
+                                # the content and say where it needs to be pasted.
+  framework: ""                 # Documentation framework — the *table of contents* agents
+                                # follow when authoring or reviewing architecture docs.
+                                # arc42 | c4-only | togaf | 4+1 | custom | none
+                                # Empty → agents default to arc42 + C4 and say so.
+                                # `custom` → point `framework_reference` at the local template.
+  framework_reference: ""       # Path / URL to the project's own doc template. Required when
+                                # framework: custom — agents follow it instead of arc42.
+  adr:
+    location: "docs/adr/"                # In-repo path (e.g. "docs/adr/") or external URL.
+    format: "nygard"                  # madr | nygard | custom | none
+  diagram_convention: ""        # mermaid-c4 | drawio | lucidchart | plantuml
+  ai_documentation_dir: ""      # Optional. Where AI-generated design notes/diagrams land.
+
+# ─── backlog ─── REQUIRED: platform ───────────────────────────────────────────
+backlog:
+  platform: "github-issues"                  # REQUIRED. github-issues | ado-boards | jira | linear | none
+  url: "https://github.com/hoffe86/agile-agents"                       # Project URL (board / org / project).
+  project: "hoffe86/agile-agents"                   # ADO project name / Jira key / GitHub org-project.
+  area_path: ""                 # ADO area path (if applicable).
+  default_iteration: ""         # ADO iteration / Jira sprint pattern (optional).
+  branch_naming: ""             # E.g. "feature/<work-item-id>-<slug>", "fix/<id>-<slug>".
+  pr_link_pattern: ""           # E.g. "Closes #<n>" (GitHub), "AB#<n>" (ADO Boards).
+  commit_convention: "conventional-commits"         # conventional-commits | gitmoji | freeform
+  required_commit_trailers: ["Co-authored-by"]  # E.g. ["Signed-off-by", "Co-authored-by"]
+  task_type: "Task"             # Work-item type used for planned child tasks (ADO: Task; GitHub: Issue; Jira: Sub-task).
+  create_tasks: false           # When true, dev-lead's Plan phase has backlog-manager create one child task
+                                #   per planned task under the parent story (provisional, tagged `pending-approval`),
+                                #   then the human approves the plan. Requires a parent story id at intake.
+  task_granularity: ""          # Optional hint: how finely to split (e.g. "one task per component/behaviour", "thin vertical slices").
+
+# ─── rpi ─── Research → Plan → Implement → Review handover ─────────────────────
+rpi:
+  handover_dir: ".copilot-tracking/"  # Ephemeral, gitignored cache for in-run handover artifacts.
+                                      #   The tracker (backlog.platform) is the source of truth; these files are
+                                      #   rebuildable and the tracker wins on any conflict. Add to .gitignore.
+
+# ─── tech_stack ─── REQUIRED: primary_languages, test_discipline ──────────────
+tech_stack:
+  primary_languages:            # REQUIRED. At least one entry.
+    - { name: "powershell" }
+    - { name: "python" }
+    - { name: "shell" }
+  frameworks: []                # E.g. ["aspnetcore", "ef-core", "fastapi"]
+  package_managers: []          # E.g. ["nuget", "pip", "uv", "npm"]
+  test_discipline: ""           # REQUIRED. tdd | bdd | test-after | none
+  test_frameworks: []           # E.g. ["xunit", "fluentassertions"], ["pytest", "pytest-cov"]
+  coverage_threshold: null      # Integer percent (e.g. 80) or null if not enforced.
+  lint_format_tools: []         # E.g. ["dotnet-format", "ruff", "black", "eslint"]
+  build_tools: []               # E.g. ["dotnet", "uv", "make"]
+
+# ─── infrastructure ───────────────────────────────────────────────────────────
+infrastructure:
+  iac_tool: ""                  # bicep | terraform | arm | pulumi | none
+  iac_root: ""                  # Path to IaC root (e.g. "infra/").
+  cloud: ""                     # azure | aws | gcp | on-prem | hybrid
+  allowed_regions: []           # E.g. ["westeurope", "northeurope"] — hard constraint.
+  hosting_model: ""             # aks | aca | functions | app-service | vm | on-prem | edge
+  environment_chain: []         # E.g. ["dev", "test", "stage", "prod"]
+  secrets_store: ""             # key-vault | github-secrets | ado-library | hashicorp-vault
+  naming_convention: ""         # E.g. "caf" or path to local convention doc.
+  tagging_convention: ""        # E.g. "caf" or path to local convention doc.
+  module_source: ""             # E.g. "avm" (Azure Verified Modules), "internal", "mixed".
+  deploy_verify: "off"          # off | dev — may the agent push the branch and let the pipeline
+                                # deploy to the first non-prod environment to prove pipeline + IaC +
+                                # app actually deploy? "off" (default) = validate with plan/what-if
+                                # only. "dev" requires environment_chain and cicd.platform to be set.
+
+# ─── cicd ─────────────────────────────────────────────────────────────────────
+cicd:
+  platform: "github-actions"                  # github-actions | azure-pipelines | gitlab-ci | jenkins
+  pipeline_paths: [".github/workflows/"]            # E.g. [".github/workflows/", "azure-pipelines.yml"]
+  required_checks: []           # Status-check names that must pass to merge.
+  release_strategy: "trunk"          # trunk | gitflow | release-branches | env-branches
+                                # Read by `deploy-verify`: on trunk-based a feature-branch push
+                                # normally triggers the dev deploy; on gitflow / env-branches it
+                                # usually does not, so the skill reports "not reachable" instead
+                                # of waiting for a pipeline run that will never start.
+  artifact_registry: ""         # acr | ghcr | docker-hub | jfrog | nuget-org
+  deployment_method: ""         # oidc | service-principal | managed-identity | manual
+
+# ─── compliance_security ──────────────────────────────────────────────────────
+compliance_security:
+  data_classification: ""       # public | internal | confidential | restricted
+  data_residency: []            # ISO country codes the data must stay in (e.g. ["DE", "EU"]).
+  regulatory_scope: []          # E.g. ["gdpr", "bsi-su3", "hipaa", "fedramp", "il5", "iso-27001"]
+  security_benchmarks: []       # Benchmarks reviewers cite control ids from. E.g. ["mcsb", "cis-azure"],
+                                # ["cis-aws"], ["cis-kubernetes"], ["nist-800-53"]. Empty → OWASP/CWE only.
+  threat_model_location: ""     # Path / URL to threat model doc.
+  sbom_required: false          # true → builds must emit SBOM (CycloneDX / SPDX).
+  signing_required: false       # true → artefacts/images must be signed (cosign / notary).
+  allowed_oss_licenses: []      # E.g. ["MIT", "Apache-2.0", "BSD-3-Clause"] — denylist anything else.
+  secret_scanning_required: true
+
+# ─── operational ──────────────────────────────────────────────────────────────
+operational:
+  slo:
+    availability: ""            # E.g. "99.9%"
+    p95_ms: null                # Integer ms (e.g. 200).
+    rto: ""                     # E.g. "1h"
+    rpo: ""                     # E.g. "15m"
+  observability_stack: ""       # app-insights | grafana | datadog | prometheus | dynatrace
+  workspace_ids: {}             # E.g. { log_analytics: "...", app_insights: "..." }
+  cost_band_eur_monthly:
+    low: null                   # Steady-state lower bound.
+    high: null                  # Steady-state upper bound.
+    cap: null                   # Hard cap → above this triggers cost-alert.
+  on_call_contact: ""           # Team distro / Teams channel / PagerDuty schedule.
+  runbook_location: ""          # Path / URL to ops runbooks.
+
+# ─── team_communication ───────────────────────────────────────────────────────
+team_communication:
+  team_channel_url: ""          # Teams or Slack channel URL.
+  time_zone: ""                 # IANA tz (e.g. "Europe/Berlin").
+  working_hours: ""             # E.g. "09:00-18:00 CET, Mon-Fri"
+  code_language: "en"           # Language for code, comments, commits, PRs.
+  ui_languages: []              # E.g. ["en", "de"] — what the product ships in.
+  review_policy:
+    min_reviewers: 1
+    code_owners_required: false # true → CODEOWNERS approvals are blocking.
+
+# ─── engagement_context ───────────────────────────────────────────────────────
+# Generic engagement metadata. Use only what applies; vendor-specific frameworks
+# (e.g. delivery methodologies, internal phase names) belong in vendor-internal
+# notes, not here.
+engagement_context:
+  engagement_type: ""           # internal | external-project | open-source | partner
+  delivery_phase: ""            # discovery | design | build | run | sunset
+  contract_type: ""             # fixed-price | time-and-materials | retainer | none
+  ip_ownership: ""              # client | vendor | shared | open-source
+  third_parties: []             # Other vendors / partners involved (free-text bullets).
+  contractual_constraints: []   # Constraints the agents must respect (NDAs, residency,
+                                # exclusivity, sub-processor lists) as free-text bullets.
+
+# ─── ai_copilot ───────────────────────────────────────────────────────────────
+ai_copilot:
+  allowed_ai_providers: []      # E.g. ["azure-openai-tenant-only", "foundry"]
+  foundry_project_url: ""       # Microsoft Foundry project URL (if used).
+  approved_models: []           # E.g. ["gpt-5.4", "claude-opus-4.7", "gpt-4.1"]
+  responsible_ai_tier: ""       # low | medium | high — drives RAI review depth.
+  pii_handling_rule: ""         # E.g. "no-pii-to-llm", "redact-then-send", "tenant-bound-only"
+  active_agents: []             # Subset of the agent suite that applies in this repo.
+                                # E.g. ["dev-lead", "architect", "coding", "testing", "review"]
+  mandatory_skills: []          # Skills that must always load (in addition to agent defaults).
+
+# ─── code_localisation ────────────────────────────────────────────────────────
+# Drives the `code-localisation` skill (plugins/agile-agents-core/skills/code-localisation/) — picks the
+# small set of files an agent should actually read for a code-touching task instead of
+# grepping blindly. Skip backend selection details with `backend: auto` and let the
+# skill detect what's available (tree-sitter wins by default; mcp if `mcp_server` set;
+# embedding+rerank if an Azure OpenAI endpoint is reachable).
+code_localisation:
+  backend: "auto"               # tree-sitter | embedding-rerank | mcp | auto (default auto)
+  mcp_server: ""                # Used only when backend=mcp. URL of a Sourcegraph-style
+                                # or `mcp-semantic-code` MCP endpoint. Empty → not used.
+  max_results: 20               # Cap on ranked files returned to the agent.
+  repo_map_max_files: 5000      # Hard ceiling on files scanned by tree-sitter repo-map.
+                                # Protects against runaway maps on monorepos.
+
+# ─── quality_gates ────────────────────────────────────────────────────────────
+# Pre-reviewer automated gates. Today only `test_bar` is wired up (lint → typecheck →
+# unit-tests, fail-fast). Sits between Stage 4 (Testing) and Stage 5 (Review) in the
+# `dev-lead` pipeline so reviewer agents are never spent on a patch that doesn't build.
+# Per-stack default commands live in `plugins/agile-agents-core/skills/test-bar-gate/references/commands.yaml`;
+# the sub-blocks below let a project override any single command without redefining the
+# whole palette.
+quality_gates:
+  test_bar:
+    enabled: true
+    stacks: []                  # Empty → auto-detect from tech_stack.primary_languages
+                                # and tool hints. Override with e.g. ["python", "typescript"].
+    fail_fast: true             # Stop at the first non-zero check; set false to aggregate.
+    coverage_threshold_percent: 0      # 0 → coverage gate disabled. Otherwise hard floor (e.g. 80).
+    mutation_score_threshold_percent: 0  # 0 → mutation gate disabled (Stryker / mutmut etc.).
+    # Per-check overrides. Leave `command: ""` to use the per-stack default from
+    # commands.yaml. Set `enabled: false` to skip a check explicitly (with a note in PR).
+    lint:
+      command: ""
+      enabled: true
+    typecheck:
+      command: ""
+      enabled: true
+    unit_test:
+      command: ""
+      enabled: true
+    integration_test:
+      command: ""
+      enabled: false            # Off by default — slow, often needs containers / secrets.
+    coverage:
+      command: ""
+      enabled: false            # On only when coverage_threshold_percent > 0.
+    mutation:
+      command: ""
+      enabled: false            # On only when mutation_score_threshold_percent > 0.
+
+# ─── testing ──────────────────────────────────────────────────────────────────
+# Test-layer toggles that go beyond the unit-test discipline declared in `tech_stack`.
+# Today only `e2e` is wired up — drives the `e2e-testing` skill (plugins/agile-agents-core/skills/e2e-testing/).
+testing:
+  smoke:
+    # Local "does it even come up?" check. Runs at Stage 8 after the unit tests,
+    # before the reviewers. Leave `command` empty to skip the slot entirely.
+    command: []                 # E.g. ["func", "start"] or ["dotnet", "run", "--project", "src/Api"].
+    url: ""                     # Health endpoint polled until it answers (e.g. "http://localhost:7071/api/health").
+    timeout_s: 60               # Give up (and fail the gate) after this many seconds.
+  e2e:
+    framework: "none"           # playwright | selenium | cypress | none (default none)
+    base_url: ""                # Target URL the suite hits (e.g. "https://stage.contoso.com").
+    headless: true              # Headless in CI; flip locally for debugging.
+    parallelism: 1              # Workers / shards. Bump once selectors are stable.
+    flake_retries: 2            # Per-test retry budget. >2 usually masks real flakes.
+
+# ─── cost_envelope ────────────────────────────────────────────────────────────
+# Per-AI-run budget for the agent suite — DISTINCT from `operational.cost_band_eur_monthly`,
+# which is steady-state app cost. Drives the `cost-budget` skill (plugins/agile-agents-core/skills/cost-budget/):
+# refuses to start external-project runs without an envelope, checkpoints at every phase
+# transition, hard-halts on breach. Tier defaults align with cost-budget/references/tier-defaults.md.
+cost_envelope:
+  enabled: true
+  tier: "medium"                # small | medium | large (default medium). Drives default caps.
+  max_usd_per_run: 25.00        # Hard cap on a single end-to-end run (sum of all agents).
+                                # Tier defaults: small ≈ 5, medium ≈ 25, large ≈ 100.
+  max_tokens_per_run: 2000000   # Aggregate token cap (input + output across all agents).
+  max_minutes_per_run: 60       # Wall-clock cap. Catches stuck loops even when token spend is fine.
+  stop_on_breach: true          # true → emit cost-stop-report and halt; false → warn-only (rare).
+  currency: "USD"               # Reporting currency. Conversion not done — set to the rate-card unit.
+
+# ─── legal ────────────────────────────────────────────────────────────────────
+legal:
+  license: "MIT"                   # SPDX id or "proprietary".
+  trust_code_refs: []           # Links to applicable code-of-conduct / client-policy docs.
+  oss_contribution_policy: ""   # allowed | review-required | denied
