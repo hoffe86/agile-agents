@@ -16,6 +16,12 @@
 
 set -euo pipefail
 
+# ${#s} and ${s:0:n} count bytes under the C locale but characters under a UTF-8 one.
+# The .ps1 counts characters (.NET strings), so without this the two generators truncate
+# long descriptions at different points on any runner that leaves LANG unset. The sorts
+# below stay pinned to LC_ALL=C per command and are unaffected.
+export LC_ALL=C.UTF-8
+
 usage() {
   sed -n '2,15p' "$0"
   exit 0
