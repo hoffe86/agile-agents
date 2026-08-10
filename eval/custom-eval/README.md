@@ -20,7 +20,7 @@ typical surface area of a real-world software delivery engagement. Each task is 
 | 02 | `python-di-refactor`                | Python refactor + DI (python-implementation, code-review-checklist) |
 | 03 | `bicep-storage-waf`                 | Bicep + Azure WAF baseline (bicep-implementation, iac-best-practices) |
 | 04 | `adr-library-tradeoff`              | ADR authoring (architecture-decision-records, trade-off-reporting) |
-| 05 | `pr-description`                    | Release-notes / PR-description authoring (working-style) |
+| 05 | `pr-description`                    | Release-notes / PR-description authoring (engineering-standards) |
 | 06 | `gha-oidc-deploy`                   | GitHub Actions + OIDC to Azure (cicd-pipeline-implementation) |
 | 07 | `test-coverage-uplift`              | Unit + integration test backfill (csharp-testing, code-review-checklist) |
 | 08 | `threat-model-api`                  | Threat-modelling (security-review reviewer agent) |

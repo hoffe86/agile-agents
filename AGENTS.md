@@ -156,6 +156,7 @@ natural-language workflow.
 - **e2e-testing** (`agile-agents-core`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
 - **editorconfig** (`agile-agents-core`) — Generates a comprehensive and best-practice-oriented .editorconfig file based on project analysis and user preferences.
 - **ef-core** (`agile-agents-dotnet`) — Get best practices for Entity Framework Core
+- **engineering-standards** (`agile-agents-core`) — The engineering quality bar every agent in the suite works to — Clean Code, SOLID, DDD, Clean Architecture, security-by-default, error handling, immutability, configuration over hardcoding, Infrast...
 - **git-commit** (`agile-agents-core`) — Execute git commit with conventional commit message analysis, intelligent staging, and message generation.
 - **github-issues** (`agile-agents-github`) — GitHub Issues mechanics for reading and writing work items — tool entry points, the single-body field layout with section headings, cross-reference and closing-keyword syntax, labels / milestones /...
 - **helm-kustomize-implementation** (`agile-agents-core`) — Implement Kubernetes deployments via raw manifests, Helm charts, or Kustomize overlays — with AKS in mind.

@@ -78,7 +78,7 @@ The stages below are mechanics. These are the calls only you make. Apply them at
 
 ## Working context
 
-**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and runs the decision-record + decision-capture checks.
+**Load the `read-repo-context` skill first** — it reads `.github/copilot-instructions.md` (and equivalents), loads `.github/solution-profile.yaml`, applies `engineering-standards` + `trade-off-reporting`, and runs the decision-record + decision-capture checks.
 
 As orchestrator you also:
 
@@ -89,7 +89,7 @@ As orchestrator you also:
 
 ### Skills the dev-lead loads
 
-In addition to `read-repo-context`, `working-style`, and `trade-off-reporting`, the dev-lead drives these orchestration-level skills directly:
+In addition to `read-repo-context`, `engineering-standards`, and `trade-off-reporting`, the dev-lead drives these orchestration-level skills directly:
 
 - **`solution-profile-interview`** — Stage 0 profile bootstrap. Discovers what the repo already tells you (`references/discovery-signals.md`), asks the human only for the decisions and contractual facts no scan can produce, writes `.github/solution-profile.yaml`, and verifies the six required fields. Also runnable standalone when a user asks to set up or repair the profile.
 - **`run-event-log`** — emit one JSONL event per stage transition / agent dispatch / gate result. Use `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows). Which transition maps to which event: `references/dev-lead-event-map.md`; semantics + examples: `references/event-types.md`; contract: `references/event-schema.json`. You are the **only** agent that emits events: you alone know the phase structure, and usage is attributed to phases by timestamp, so workers need not (and do not) instrument themselves.

@@ -74,10 +74,10 @@ agent/                               Marketplace root
 │   │   ├── .github/plugin/plugin.json   Plugin manifest (name: agile-agents-core)
 │   │   ├── agents/                  11 *.agent.md (1 supervisor + 4 authors
 │   │   │                            + 5 reviewers + backlog-manager)
-│   │   ├── skills/                  30 technology-neutral repo-scope skills, incl.
+│   │   ├── skills/                  31 technology-neutral repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
-│   │   └── user/skills/             4 user-scope skills (bundled into the plugin)
+│   │   └── user/skills/             3 user-scope skills (bundled into the plugin)
 │   ├── agile-agents-dotnet/         5 skills — C# / .NET
 │   ├── agile-agents-python/         4 skills — Python
 │   ├── agile-agents-bicep/          2 skills — Bicep IaC
@@ -253,21 +253,28 @@ Consequences worth preserving:
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-32 are hand-written and are the ones to edit — 28 repo-scope (csharp/python-implementation,
+32 are hand-written and are the ones to edit — 29 repo-scope (csharp/python-implementation,
 csharp/python-testing, code-review-checklist,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
-architecture-design, architecture-decision-records, read-repo-context,
+architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
 test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standards,
 ado-work-items, github-issues, azure-platform-grounding, deploy-verify,
-solution-profile-interview) plus the four user-scope skills below.
+solution-profile-interview) plus the three user-scope skills below.
 
 ### User-scope skills
-The skills under `user/skills/` (`working-style`, `trade-off-reporting`, `code-review`,
-`cloud-native-patterns`) are bundled into the plugin (the
-`skills` array includes `user/skills/`) and reachable by every agent via description match.
-Only `working-style` and `trade-off-reporting` are named explicitly in the agent bodies. If you
-also keep a runtime copy at `~/.copilot/skills/`, sync changes both ways.
+The skills under `user/skills/` (`trade-off-reporting`, `code-review`, `cloud-native-patterns`)
+are bundled into the plugin (the `skills` array includes `user/skills/`) and reachable by every
+agent via description match. Only `trade-off-reporting` is named explicitly in the agent bodies.
+
+**Personal preferences are deliberately not shipped.** The suite ships
+`engineering-standards` (the technology-neutral quality bar: Clean Code / SOLID / DDD /
+Clean Architecture, security-by-default, operational practices, the pre-PR checklist) and
+nothing about how any individual likes to be talked to. Tone, verbosity, proactivity and
+how someone phrases a directive belong in that person's own `~/.copilot/skills/working-style/`,
+outside the plugin — `read-repo-context` §3 honours one if present and falls back to the
+repository's own instructions if not. **Never add a person's preferences to a plugin skill**:
+this harness is installed by many people, and one person's tone is another's noise.
 
 ### Model-tier convention
 Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),
