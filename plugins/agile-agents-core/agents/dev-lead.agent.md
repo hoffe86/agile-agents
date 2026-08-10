@@ -129,7 +129,7 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 | 3 | Plan | Create tasks in tracker | Create one child work item per task, linked to the parent story (provisional, `pending-approval`); record approach as a story comment | `backlog-manager` |
 | 4 | ⛔ | Plan approval | Single mandatory checkpoint — human reviews the created tasks before autonomous execution | user |
 | 5 | ⛔ | Design approval (conditional) | Only when Research introduced a new dep / boundary / non-trivial trade-off, or reported an decision gap | user |
-| 6 | Implement | Coding & infrastructure | Implementation in approved plan + IaC where needed | `coding`, `infrastructure` |
+| 6 | Implement | Coding & infrastructure | Deliver the approved tracker tasks **one at a time in dependency order**; IaC where needed | `coding`, `infrastructure` |
 | 7 | Implement | Testing | Cover the change to the declared discipline + threshold | `testing` |
 | 8 | Implement | Automated gates | Deterministic lint → typecheck → unit-test → smoke gate, then opt-in deploy-verify to dev; loop to the author on fail (max 2 retries) | — (skills: `test-bar-gate`, `deploy-verify`) |
 | 9 | Review | Review | Reviewer fan-out (security / architecture / infra / test) merged by `review` | `review` |
@@ -240,7 +240,7 @@ Not every task needs every delivery stage. Record per task which stages apply:
 | Testing | Pure docs, pure config rename with no behavioural impact, **or** the change is IaC-only (`infrastructure` owns its own IaC tests — see Stage 7). |
 | Review | Never skip. |
 
-Mirror the task list into **SQL todos** (`todos` + `todo_deps`) with descriptive kebab-case ids for your own in-run sequencing — but the **tracker child work items created at Stage 3 are the source of truth**; the SQL todos and any local handover files are an ephemeral, rebuildable cache (tracker wins on conflict).
+Mirror the task list into **SQL todos** (`todos` + `todo_deps`) with descriptive kebab-case ids — **Stage 6 dispatches from this table**, so record a `todo_deps` row for every ordering constraint you actually rely on. The **tracker child work items created at Stage 3 remain the source of truth**; the SQL todos and any local handover files are an ephemeral, rebuildable cache (tracker wins on conflict).
 
 ```sql
 INSERT INTO todos (id, title, description) VALUES
@@ -291,20 +291,38 @@ When triggered, render via `ask_user` using `skills/dev-lead-templates/reference
 
 **Delegate to:** `coding` (or `infrastructure` if the work is IaC / pipelines / Bicep / Terraform / Helm / Dockerfile).
 
+**Execution order — one delegation per task, dependency-ordered.** The approved child tasks are the unit of delegation, not the story. Take the next task whose dependencies are all `done`:
+
+```sql
+SELECT t.* FROM todos t
+WHERE t.status = 'pending'
+  AND NOT EXISTS (
+    SELECT 1 FROM todo_deps td JOIN todos dep ON td.depends_on = dep.id
+    WHERE td.todo_id = t.id AND dep.status != 'done');
+```
+
+Mark it `in_progress` before dispatching and `done` once its gate passes, so a context compaction mid-run resumes from the table instead of re-deriving the plan. Each delegation carries **that task's** ACs and approach note — not the whole story. A worker handed the full story drifts beyond the task you asked for, and its diff can no longer be attributed to a tracker item. When the ready set is empty but pending tasks remain, the dependency graph has a cycle — stop and report it rather than picking arbitrarily.
+
+**Deliver tasks sequentially — do not dispatch implementation tasks in parallel.** Every sub-agent shares one working tree, so concurrent writers interleave edits and neither the build nor the Stage 8 gate can attribute a failure to a task. Independent in the dependency graph does not mean disjoint in the diff — two unrelated tasks routinely touch the same file. Parallel fan-out is safe only for **read-only** agents, which is exactly why Stage 9 uses it and this stage does not. (If wall-clock ever justifies it, the mechanism is a git worktree per task with a merge step — not concurrent agents in one tree.)
+
+**Stages 7–9 run once**, over the combined diff of all tasks — reviewers judge the finished change, not each increment.
+
 **Input:** the architect output (or, if architect was skipped, the requirement directly), explicit list of files / behaviours expected to change, the in-scope / out-of-scope reminder. When architect ran, **prepend an explicit constraint banner**:
 
 > **Design constraints (locked by Stage 1):** <binding decision refs — ADR ids if the project uses ADRs>, chosen pattern <X>, allowed dependencies <list>. If you cannot deliver inside these constraints without a new dependency, boundary, contract, or Azure service, **stop and report it** in your hand-off block — do not silently exceed scope.
 
-**Expected output:** the structured `IMPLEMENTATION COMPLETE` block from coding (or `infrastructure`).
+**Expected output:** the structured `IMPLEMENTATION COMPLETE` block from coding (or `infrastructure`), **one per task**.
 
-**Gate (must pass before testing):**
+**Gate (runs per task, before that task is marked `done`):**
 - Build is green — using the repo's own build command (`solution-profile.yaml: quality_gates`, or what its CI runs).
 - No drive-by changes outside the scope you authorised.
-- The behaviours coding declared as "added/modified" match the requirement.
+- The behaviours coding declared as "added/modified" match **that task's acceptance criteria**.
 - The hand-off block is well-formed (all required fields present and parseable — see Failure policy).
 - coding did **not** report an unmet design constraint. If the `Open questions for review` field flags a missing dependency / boundary / contract that wasn't in the ADR, treat it as **stop condition #9 (in-flight architecture escalation)** — do not advance to testing; loop back to architect with the gap.
 
-If the gate fails: send **one** corrective message naming the specific files / behaviours. If it still fails: stop and ask the human.
+If the gate fails: send **one** corrective message naming the specific files / behaviours. If it still fails: mark the task `blocked` and stop — do not start the next task on top of a failed one, since its diff would then be entangled with the failure.
+
+Advance to Stage 7 only when every task is `done`.
 
 ### Stage 7 — Testing
 
@@ -313,7 +331,7 @@ If the gate fails: send **one** corrective message naming the specific files / b
 - **IaC-only change** (diff touches only `*.bicep`, `*.bicepparam`, `*.tf`, `*.tfvars`, `Chart.yaml`, `kustomization.yaml`, k8s manifests, `.github/workflows/*.yml`, `azure-pipelines.yml`, `Dockerfile`) → **skip this stage**; `infrastructure` already authored and ran IaC tests (Terratest / Pester / Bicep test framework) as part of Stage 6 and reported them in its hand-off block. Record "Stage 7 skipped — IaC-only, tests owned by infrastructure" in the final report.
 - **Mixed change** (app code + IaC) → run testing for the app code; rely on infrastructure's IaC tests from its Stage 6 hand-off.
 
-**Input (when running):** the `IMPLEMENTATION COMPLETE` block from coding (verbatim), plus the original Definition of Done from intake.
+**Input (when running):** **every** `IMPLEMENTATION COMPLETE` block from Stage 6 (verbatim, one per task), plus the original Definition of Done from intake.
 **Expected output:** new / updated tests, test-run summary.
 **Gate (must pass before review):**
 - All tests pass locally (application tests AND infrastructure's reported IaC tests where applicable).
@@ -408,7 +426,7 @@ You are the only memory between stages. Each delegation message must carry forwa
 
 - **Research → Plan (backlog-manager):** the parent story id, the decomposed task list (title + ACs + approach note per task), and the approach summary to attach as a story comment.
 - **Architect → Coding:** chosen pattern / library / topology, contracts, NFRs to honour, **the binding decision(s) the design honours** — ADR id(s) where the project uses ADRs, otherwise the design-doc / work-item reference (existing, human-authored — no agent created them).
-- **Coding → Testing:** the verbatim `IMPLEMENTATION COMPLETE` block; the Definition of Done.
+- **Coding → Testing:** every per-task `IMPLEMENTATION COMPLETE` block verbatim; the Definition of Done.
 - **Testing → Review:** test summary; the diff base.
 - **Review → fixers:** only the finding ids that name that fixer as owner, verbatim (id + file:line + proposed fix). Don't dump the whole report on each, and don't paraphrase.
 - **Fixers → Review (corrective round):** the `Findings addressed` lines, including the reasons on any `disputed` finding, so `review` adjudicates rather than re-raising blind.
