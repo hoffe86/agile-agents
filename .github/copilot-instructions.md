@@ -65,8 +65,9 @@ agent/                               Marketplace root
 │   │                                template it ships (see below)
 │   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace,
 │   │                                pluginRoot ./plugins)
-│   └── workflows/                   3 workflows -> CI checks audit-references,
-│                                    check-agents-md-in-sync, trajectory
+│   └── workflows/                   4 workflows -> CI checks audit-references,
+│                                    check-agents-md-in-sync, trajectory,
+│                                    plugin-versions
 ├── plugins/                         One folder per plugin
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
 │   ├── agile-agents-core/           The autonomous-coding agent harness
@@ -84,7 +85,8 @@ agent/                               Marketplace root
 │   ├── agile-agents-azure/          1 skill  — Azure platform grounding (CAF / AVM / WAF)
 │   ├── agile-agents-ado/            1 skill  — Azure DevOps Boards tracker mechanics
 │   └── agile-agents-github/         1 skill  — GitHub Issues tracker mechanics
-├── scripts/                         generate-agents-md.{ps1,sh}, audit-references.ps1
+├── scripts/                         generate-agents-md.{ps1,sh}, audit-references.ps1,
+│                                    check-plugin-versions.ps1
 ├── eval/                            swe-bench-subset + custom-eval + trajectory + baselines.md
 ├── docs/
 │   ├── adr/                         Architecture decision records (0001–0008)
@@ -299,10 +301,16 @@ unbumped fix ships to nobody. Bump in three places, kept consistent: that plugin
 Leave untouched plugins alone — a bump with no content change publishes a release
 identical to the last one and makes the number stop meaning anything.
 
-**Nothing checks this**, and it has been missed twice. To audit, compare each plugin's tree
-hash at the commit that last set its version against `HEAD`. Note the trap that caused both
-misses: anchoring on *"the last commit that touched `plugin.json`"* and diffing **forward**
-cannot see a change made **in** that same commit.
+`scripts/check-plugin-versions.ps1` enforces all of it, as the `plugin-versions` CI check.
+Run it locally with `-BaseRef origin/main`; without a base ref it checks only that the
+manifests and the marketplace agree. It was written after the rule had been missed twice,
+and replaying it over the offending PR reproduces the miss — seven plugins changed, all
+still on `0.1.0`.
+
+It compares against the **merge base**, because bumping is per PR, not per commit. That
+also sidesteps the trap that hid both misses from manual audit: anchoring on *"the last
+commit that touched `plugin.json`"* and diffing **forward** cannot see a change made **in**
+that same commit.
 
 ### solution-profile.yaml is the contract
 The template in `plugins/agile-agents-core/skills/solution-profile-interview/references/`
