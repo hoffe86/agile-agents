@@ -54,7 +54,7 @@ If the strategy or the triggers say this branch will not reach a dev deploy, emi
 ## Procedure
 
 1. **Confirm the target.** Resolve `environment_chain[0]`. Re-assert it is not production. This is the one check worth doing twice.
-2. **Push the branch.** Commit any uncommitted work on the feature branch first; push. Never force-push, never push to the default branch.
+2. **Push the branch.** Commit any uncommitted work on the feature branch first; push. Never force-push, never push to the default branch. Setting `deploy_verify: dev` **is** the authorisation for this push and this commit — it is the whole point of the opt-in, so do not re-ask for git approval here. It authorises nothing beyond it: no PR is opened, merged or closed by this skill.
 3. **Find the run.** Locate the pipeline run triggered by that head SHA. If no run appears within ~2 minutes, emit `skipped, reason=no_pipeline_run` — the triggers did not match, which is information, not a failure.
 4. **Poll to completion**, bounded by `cost_envelope.max_minutes_per_run` (whatever remains of it). On timeout: `failure, reason=timeout`, and report the run URL so a human can pick it up.
 5. **Read the outcome.** On failure, extract the failing stage/job name and the error tail. A pipeline URL alone is not a report.

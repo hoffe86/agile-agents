@@ -150,11 +150,20 @@ directions, which is why it has produced a bug in three separate PRs.
    "not installed" look identical. Any agent that depends on an external server must
    preflight and report **both** causes with the fix for each — never just "unavailable".
 
-### No agent runs git
-No agent in a run commits, pushes, branches, or opens a PR — `dev-lead` prepares the
-commands for a human instead. This is a deliberate boundary, not a missing capability, and
-it must be stated as such: when it was merely absent, agents diagnosed it as a broken MCP
-server and reported a tooling failure.
+### Write-permission policy (keep every agent consistent with this)
+Two gates, one hard boundary:
+- **Git writes** (branch / commit / push / open or update a PR) are **approval-gated**: allowed
+  once the user explicitly approves, prepared-and-handed-over otherwise. Approval is per-run and
+  never inferred from silence or from the Stage 4 plan approval.
+- **Deployments to non-production** go through the project's own pipeline and are **profile-gated**
+  on `infrastructure.deploy_verify: dev`. Non-production means any `environment_chain` entry except
+  the last and except any entry containing `prod`.
+- **Completing / merging / closing a PR is human-only, always** — as are force-pushing, rewriting
+  shared history, deleting shared branches, and production deploys. No profile key unlocks these.
+
+Reviewers remain read-only regardless (`reviewer-read-only-rules`). State a refusal as a
+**boundary or a pending approval**, never as a missing tool: when the ban was merely absent,
+agents diagnosed it as a broken MCP server and reported a tooling failure.
 
 The PR command derives from **`identity.repo_url`**, never from `backlog.platform` — code
 host and board host are independent, and a project may keep code on GitHub with work items

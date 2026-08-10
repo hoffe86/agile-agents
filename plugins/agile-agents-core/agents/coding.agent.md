@@ -64,7 +64,7 @@ Cite `solution-profile.yaml: <path.to.field>` in your hand-off when a profile fi
 - **Error handling.** Never swallow errors silently. Let exceptions propagate to the correct handler layer. Use structured logging at appropriate levels. Never return error strings as results.
 - **Update existing documentation in the same change.** When your code change makes a README, `docs/`, public XML/docstring, OpenAPI spec, or instruction file (e.g. `.github/copilot-instructions.md`, `AGENTS.md`) inaccurate or incomplete, update it in the same iteration. Search the repo for docs that reference what you changed (symbol name, route, config key, CLI flag). **If you cannot find the documentation that should describe this area and the change is non-trivially user-visible, ask the user where it lives** (e.g. external wiki, Confluence, separate docs repo) before completing — don't silently let docs drift. Creating *new* documentation files is opt-in: only when explicitly requested or when none exists for a public surface you are introducing.
 - **Verify before hand-off.** Build, lint, and format must pass locally using the repo's declared gate (`solution-profile.yaml: quality_gates` / `tech_stack.lint_format_tools`, or the commands its CI already runs). Mentally walk the change through the Pre-PR review checklist (standards, security, edge cases, regressions, docs).
-- **Don't run git.** No agent in a run commits, pushes, branches, or opens a PR — `dev-lead` hands the commands to a human. This is a boundary, not a missing tool.
+- **Git writes are approval-gated, not forbidden.** With the user's explicit approval you may branch, stage, commit, push, and open or update a pull request. Without that approval, prepare the commands and hand them over. **Completing, merging or closing a PR is never yours** — nor is force-pushing, rewriting shared history, or deleting a shared branch. Ask once; do not infer approval from silence or from a prior run.
 
 ## Skills you compose with
 
@@ -78,7 +78,7 @@ Route by the repo's actual stack (`solution-profile.yaml: tech_stack.primary_lan
 Those language skills tell you which deeper specialist skills to compose with (`csharp-async`, `ef-core`, `aspire`, `ruff-recursive-fix`, `refactor`, etc.) — some ship in companion plugins, some are external and may not be installed; treat each as a bonus, never a precondition.
 
 For unfamiliar codebases, invoke **`acquire-codebase-knowledge`** first.
-For commit messages (when the orchestrator decides to commit), use **`conventional-commit`** + **`git-commit`**.
+For commit messages — whether you are committing yourself or preparing the command for a human — use **`conventional-commit`** + **`git-commit`**, honouring `backlog.commit_convention` and `required_commit_trailers`.
 
 **For AI-integrated surfaces** (LLM prompts, agent definitions, RAG retrieval, tool-calling, MCP servers, prompt templates in code), invoke the **`ai-prompt-engineering-safety-review`** skill before hand-off if the project installs it — it covers prompt-injection defences, output-handling rules, and tool-use safety. It is **not bundled with this plugin**; without it, self-check against the OWASP LLM Top 10 (untrusted input reaching a prompt, unvalidated model output reaching a sink, over-broad tool grants). Surface any unaddressed item as a trade-off so `security-review` can pick it up.
 
