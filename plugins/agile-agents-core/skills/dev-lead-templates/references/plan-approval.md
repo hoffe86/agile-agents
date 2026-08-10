@@ -17,9 +17,11 @@ an abstract outline.
 **Tasks created (provisional — tagged `pending-approval`):**
 1. <task-id> — <title> (<N> ACs)
 2. ...
-(overall approach recorded as a comment on the parent story)
+(overall approach recorded as a comment on the parent work item)
 
 **Architect tasks not carried into the plan:** <task — reason, one line each, or `none` / `n/a (lightweight research)`>
+
+**Acceptance criteria not covered by any task:** <criterion — reason it is out of scope, one line each, or `none — every criterion maps to a task`>
 
 **Stages I will run per task (autonomously after your approval):**
 - Coding — <skip / run + 1-line reason>

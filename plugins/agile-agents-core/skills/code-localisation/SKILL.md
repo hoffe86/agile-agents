@@ -29,29 +29,29 @@ Load when **all** of:
 
 ## Backends
 
-Selection is read from `solution-profile.yaml: code_localisation.backend`. Default if missing or empty: `tree-sitter`.
+Selection is read from `solution-profile.yaml: code_localisation.backend`. Default if missing or empty: `auto` — which resolves to `mcp` when `mcp_server` is set, else `embedding-rerank` when `embedding_endpoint` is set, else `tree-sitter`.
 
 | Backend            | Profile value         | When                                                                  |
 |--------------------|-----------------------|-----------------------------------------------------------------------|
 | Tree-sitter repo-map | `tree-sitter`       | Default. Zero external deps, multi-language, good for small/medium repos.|
-| Embedding + LLM rerank | `embedding`       | Azure OpenAI / OpenAI endpoint available; medium-large repos; semantic queries. |
+| Embedding + LLM rerank | `embedding-rerank` | An OpenAI-compatible embeddings endpoint is available; medium-large repos; semantic queries. |
 | MCP semantic-code server | `mcp`           | Project provides a Sourcegraph-style or `mcp-semantic-code` MCP endpoint; monorepos. |
 
 Detailed catalogue, pseudo-code, and decision matrix: see `references/localisation-backends.md`.
 
 ## How to invoke
 
-1. Read `solution-profile.yaml: code_localisation.backend` and `code_localisation.max_files` (default cap **15**, floor **5**).
+1. Read `solution-profile.yaml: code_localisation.backend` and `code_localisation.max_results` (default cap **20**, floor **5**).
 2. Dispatch:
    - **`tree-sitter`** → run `scripts/repo_map.py --root <repo> --query "<task description>" --max-files <cap>`.
-   - **`embedding`** → call the configured embedding endpoint (`code_localisation.embedding_endpoint`, `code_localisation.embedding_model`); top-K cosine similarity then a single LLM rerank pass with full file content of the top candidates.
+   - **`embedding-rerank`** → call the configured embedding endpoint (`code_localisation.embedding_endpoint`, `code_localisation.embedding_model`); top-K cosine similarity then a single LLM rerank pass with full file content of the top candidates.
    - **`mcp`** → call the MCP server named in `code_localisation.mcp_server` with the task description as the query.
 3. Validate the response shape (see Output contract).
 4. Pass the result forward in your hand-off so reviewers and downstream workers don't re-localise.
 
 ## Output contract
 
-A ranked JSON array, 5–15 entries (capped by `code_localisation.max_files`):
+A ranked JSON array, 5–20 entries (capped by `code_localisation.max_results`):
 
 ```json
 [
@@ -78,8 +78,8 @@ The agent never fails the turn just because localisation failed; it degrades to 
 
 ## Honoured profile fields
 
-- `code_localisation.backend` — `tree-sitter` | `embedding` | `mcp` (default `tree-sitter`).
-- `code_localisation.max_files` — int, default 15.
-- `code_localisation.embedding_endpoint`, `code_localisation.embedding_model` — required when backend is `embedding`.
+- `code_localisation.backend` — `tree-sitter` | `embedding-rerank` | `mcp` | `auto` (default `auto`).
+- `code_localisation.max_results` — int, default 20.
+- `code_localisation.embedding_endpoint`, `code_localisation.embedding_model` — required when backend is `embedding-rerank`.
 - `code_localisation.mcp_server` — required when backend is `mcp`.
-- `tech_stack.languages` — used to bound the fallback glob.
+- `tech_stack.primary_languages` — used to bound the fallback glob.
