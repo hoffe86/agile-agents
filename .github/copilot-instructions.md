@@ -125,6 +125,39 @@ flat tree can't silently drop an artifact by forgetting a manifest line. Every `
 and every `skills/<name>/` subfolder sits directly under its parent; there are no `coding/`
 or `backlog/` category folders.
 
+### Tool grants (four rules, each learned the hard way)
+An agent's `tools:` frontmatter is a **filter, not a hint** — a server that is running and
+configured is still unreachable if it is not granted. Getting this wrong is silent in both
+directions, which is why it has produced a bug in three separate PRs.
+
+1. **A grant must name the server exactly as it is registered** — copied verbatim from
+   `mcp-config.json`, not guessed. A registered name may itself contain a slash
+   (`microsoft/azure-devops-mcp`, `microsoftdocs/mcp`), so `audit-references.ps1` matches
+   the **whole grant** first and only then falls back to the first segment. An earlier probe
+   concluded that a grant may carry at most one slash and an arity check was added on that
+   basis; it was wrong and had to be reverted — the probe registered the server as
+   `probesrv` and then tested the grant `vendor/probesrv/*`, which cannot separate "the
+   second slash is invalid" from "that is not this server's name".
+2. **Grants live in agent frontmatter. A skill cannot grant anything.** Skill-level
+   `allowed-tools:` is inert — measured on CLI 1.0.79, same skill and prompt, only the
+   agent's `tools:` changed the outcome. It is inert for confirmation prompts too.
+3. **An unmatched grant is free.** It neither errors nor warns, so covering every alias a
+   server is registered under (`ado/*`, `azure-devops/*`, `azure-devops-mcp/*`) is the right
+   move in a harness whose users each keep their own `mcp-config.json`.
+4. **Rule 3 is also why the failure is invisible.** From inside a session, "not granted" and
+   "not installed" look identical. Any agent that depends on an external server must
+   preflight and report **both** causes with the fix for each — never just "unavailable".
+
+### No agent runs git
+No agent in a run commits, pushes, branches, or opens a PR — `dev-lead` prepares the
+commands for a human instead. This is a deliberate boundary, not a missing capability, and
+it must be stated as such: when it was merely absent, agents diagnosed it as a broken MCP
+server and reported a tooling failure.
+
+The PR command derives from **`identity.repo_url`**, never from `backlog.platform` — code
+host and board host are independent, and a project may keep code on GitHub with work items
+in Azure Boards.
+
 ### Hand-off block-name canon (do not change)
 Worker agents emit a recognisable terminator block on completion — `dev-lead` parses these.
 Renaming any silently breaks the pipeline:
@@ -148,6 +181,18 @@ Renaming any silently breaks the pipeline:
   (`rpi.handover_dir`) are an ephemeral, gitignored cache.
 - **Implement / Review** — coding + infrastructure + testing, then multi-lens review. Stage 10
   verifies the delivered change covers the *requirement*, not merely that every task passed.
+
+Tasks are dispatched **one at a time**, even when the dependency graph says they are
+independent. Sub-agents share one working tree, so concurrent writers interleave edits and
+no gate can attribute a failure to a task — independent in the graph is not disjoint in the
+diff. (`review` fans out in parallel only because all four specialists are read-only.) The
+upgrade path is a git worktree per task plus a merge step; do not "fix" this by spawning
+concurrent writers.
+
+Acceptance criteria are captured **verbatim at intake** and verified at Stage 10 against
+**evidence** — a test name or a review finding. Every gate used to compare against its
+predecessor and none against the source, which looks closed-loop but lets a criterion lost
+at decomposition pass silently.
 
 Say **requirement**, not *story* or *user story*. A requirement can arrive as a tracker item
 or as a markdown file, and the pipeline must not assume a tracker exists.
@@ -215,8 +260,12 @@ also keep a runtime copy at `~/.copilot/skills/`, sync changes both ways.
 ### Model-tier convention
 Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),
 `mid` (mechanical authoring: `coding`, `infrastructure`, `testing`, `backlog-manager`), or
-`heavy` (deep reasoning: `architect` and all review agents). Preserve the tier when editing;
-downgrading a heavy agent silently degrades review quality.
+`heavy` (deep reasoning: `architect` and all review agents).
+
+**Nothing reads it.** It is declared by all 11 agents and consumed by no script, no
+manifest, and not by the CLI — whose own frontmatter field is `model`. Treat it as recorded
+intent (the rationale lives in ADR 0007 and `cost-budget/references/tier-defaults.md`), keep
+it accurate when editing, and do not expect changing it to change which model runs.
 
 ### Skill format
 Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`,
@@ -255,9 +304,40 @@ hash at the commit that last set its version against `HEAD`. Note the trap that 
 misses: anchoring on *"the last commit that touched `plugin.json`"* and diffing **forward**
 cannot see a change made **in** that same commit.
 
+### solution-profile.yaml is the contract
+The template in `plugins/agile-agents-core/skills/solution-profile-interview/references/`
+defines the key names. When the harness and the template disagree, **move the harness onto
+the template** — profiles already bootstrapped in consumer repos cannot be migrated.
+
+This has forked twice, and both forks were invisible because a missing key reads empty and
+does nothing: the cost gate read `per_run_max_usd` against a template defining
+`max_usd_per_run` (words reversed, no per-phase key at all), and `code-localisation` read
+four keys the template never had. A gate documented as non-negotiable could not fire.
+
+So: adding a profile read means adding the key to the template in the same change, and any
+key nothing reads is dead weight — `cicd.release_strategy` sat unread until `deploy-verify`
+became its first consumer.
+
+Watch the YAML 1.1 booleans: `deploy_verify: "off"` **must stay quoted**, or it parses as
+`false` and compares unequal to every string branch.
+
 ### AGENTS.md generation
 `AGENTS.md` is generated from `solution-profile.yaml` + agent/skill frontmatter by
 `scripts/generate-agents-md.ps1` / `.sh`. The generator discovers **every**
 `plugins/agile-agents*/skills` directory and tags each skill with its plugin. **Do not hand-edit
 it** — the `agents-md-sync` workflow fails the build if it drifts. Re-run the generator and
-commit the result after changing agents, skills, or the profile.
+commit the result after changing agents, skills, or the profile. The `.ps1` writes a stray
+root `agents/` as a side effect; delete it before committing.
+
+**The two generators must agree, and both ways they diverged were CI-only** — red on a
+runner, unreproducible locally:
+- **Locale.** `${#s}` and `${s:0:n}` count bytes under `C` and characters under UTF-8,
+  while the `.ps1` always counts characters — so long skill descriptions truncated at
+  different points depending on whether the runner set `LANG`.
+- **`yq` on `PATH`.** A jq-only expression that mikefarah yq rejects made every list-valued
+  field come back empty, with stderr suppressed. True on GitHub's runners, false on a
+  typical dev box.
+
+Both were invisible until this repo had a profile with populated lists. When touching
+either generator, check parity with and without `yq`, and under `LC_ALL=C` as well as
+UTF-8.
