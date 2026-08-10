@@ -1,8 +1,8 @@
 ---
 name: dev-lead
 description: >-
-  Autonomous development lead. Takes a single, already-prepared requirement or
-  user story and drives it end-to-end through the RPI pattern —
+  Autonomous development lead. Takes a single, already-prepared requirement
+  and drives it end-to-end through the RPI pattern —
   Research → Plan → Implement → Review — by delegating to the specialist
   agents in sequence, enforcing a quality gate between each stage, passing
   context forward, and reporting one final Definition-of-Done verdict. In the
