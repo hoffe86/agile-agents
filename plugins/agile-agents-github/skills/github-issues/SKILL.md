@@ -108,7 +108,8 @@ most of the neutral vocabulary has no direct equivalent and must degrade honestl
 
 | Neutral | GitHub |
 |---|---|
-| `in_progress` | no state. Set the repo''s existing in-progress label **only if one already exists**, or the Projects v2 Status field when the issue is on a board; otherwise post a status comment. |
+| `in_progress` | no state. Set the repo's existing in-progress label **only if one already exists**, or the Projects v2 Status field when the issue is on a board; otherwise post a status comment. |
+| `implemented` | no state. GitHub cannot express code-complete-but-unverified: an issue is open or it is closed. Comment, or move the Projects v2 Status column when the issue is on a board. **Never** `closed` — that is `done`. |
 | `blocked` | no state. Existing blocked label if the repo has one, plus the `Blocked` comment template naming the blocker. |
 | `done` | `closed` with `state_reason: completed`. |
 
@@ -119,7 +120,7 @@ Rules:
   agreed to and that nothing else in the repo uses.
 - **Projects v2 Status is a project field, not an issue field** — it exists only when the
   issue is on a board, and its column names are per-project. Discover them via the
-  project''s fields; don''t assume `Todo` / `In Progress` / `Done`.
+  project's fields; don't assume `Todo` / `In Progress` / `Done`.
 - **Closing always takes a `state_reason`** (`completed` here). A bare close loses the why.
 - Do **not** reopen a closed issue to reflect a `blocked` transition — comment instead.
   Reopening rewrites history that the closing PR already recorded.

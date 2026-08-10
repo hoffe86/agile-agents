@@ -313,7 +313,7 @@ WHERE t.status = 'pending'
     WHERE td.todo_id = t.id AND dep.status != 'done');
 ```
 
-Mark it `in_progress` before dispatching and `done` once its gate passes, so a context compaction mid-run resumes from the table instead of re-deriving the plan. **Mirror both transitions onto the tracker item** — see *Tracker status* below. Each delegation carries **that task's** ACs and approach note — not the whole requirement. A worker handed the full requirement drifts beyond the task you asked for, and its diff can no longer be attributed to a tracker item. When the ready set is empty but pending tasks remain, the dependency graph has a cycle — stop and report it rather than picking arbitrarily.
+Mark it `in_progress` before dispatching and `done` once its gate passes, so a context compaction mid-run resumes from the table instead of re-deriving the plan. **Mirror both onto the tracker item** — `in_progress` on dispatch, `implemented` when its gate passes; the tracker's `done` comes later, at Stage 10 (see *Tracker status*). Each delegation carries **that task's** ACs and approach note — not the whole requirement. A worker handed the full requirement drifts beyond the task you asked for, and its diff can no longer be attributed to a tracker item. When the ready set is empty but pending tasks remain, the dependency graph has a cycle — stop and report it rather than picking arbitrarily.
 
 **Deliver tasks sequentially — do not dispatch implementation tasks in parallel.** Every sub-agent shares one working tree, so concurrent writers interleave edits and neither the build nor the Stage 8 gate can attribute a failure to a task. Independent in the dependency graph does not mean disjoint in the diff — two unrelated tasks routinely touch the same file. Parallel fan-out is safe only for **read-only** agents, which is exactly why Stage 9 uses it and this stage does not. (If wall-clock ever justifies it, the mechanism is a git worktree per task with a merge step — not concurrent agents in one tree.)
 
@@ -441,12 +441,15 @@ The tracker is the source of truth for *what the work is*; while a run is execut
 also the only place a human can watch it happen without reading your transcript. Keep the
 child work items in step with the run.
 
-**You name the state; you never spell it.** Speak only the neutral lifecycle vocabulary —
-the same three values the SQL `todos` table uses:
+**You name the state; you never spell it.** Speak only this neutral vocabulary —
+`in_progress`, `blocked` and `done` are the SQL `todos` values you already maintain;
+`implemented` exists only on the tracker, because a board has to distinguish written
+from verified where the todo table does not:
 
 | Neutral state | Set it when |
 |---|---|
 | `in_progress` | immediately **before** dispatching that task's delegation (Stage 6). |
+| `implemented` | that task's gate passed at Stage 6 — code-complete, not yet verified against the requirement. |
 | `blocked`     | the task's gate failed its one corrective retry, or a dependency ended blocked. |
 | `done`        | **only at Stage 10**, after requirement-coverage verification. |
 
@@ -460,9 +463,15 @@ hardcodes them silently no-ops on the next tracker.
 
 **Do not close a task at the Stage 6 gate.** A passing per-task gate means the code
 compiles and matches that task's ACs; testing, review, and coverage verification are all
-still ahead of it. `done` on the tracker means the requirement it serves was verified —
-which is why it is set at Stage 10 and nowhere earlier. The SQL `done` at Stage 6 is a
-different claim (code-complete) and deliberately does not propagate.
+still ahead of it. `implemented` is exactly that claim — code-complete, unverified — and it
+is the most a Stage 6 gate can honestly make. `done` means the requirement the task serves
+was verified, which is why it is set at Stage 10 and nowhere earlier.
+
+**Expect `implemented` to have nowhere to go.** It is the state trackers most often lack —
+many go straight from active to closed, and some have no in-progress concept at all. When
+`backlog-manager` reports it commented instead of transitioning, that is the designed
+outcome: the item stays where it is and the run carries on. Never compensate by setting
+`done` early — a terminal state claims a verification this run has not performed yet.
 
 **A failed status write does not stop the run.** Unlike the Stage 3 task *creation*
 failure (stop condition #11 — without work items there is no approved plan to execute),

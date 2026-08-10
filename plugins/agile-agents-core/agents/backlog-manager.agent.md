@@ -203,8 +203,10 @@ Emit this exact block when the Plan workflow completes:
 ### Status updates from a dev-lead run
 
 Runs after plan approval, whenever `dev-lead` reports that a task it is executing changed
-state. Input you receive: the **child task id**, one of the three **neutral** lifecycle
-states — `in_progress`, `blocked`, `done` — and a factual sentence of context.
+state. Input you receive: the **child task id**, one of the four **neutral** lifecycle
+states — `in_progress`, `implemented`, `blocked`, `done` — and a factual sentence of
+context. `implemented` means code-complete but not yet verified against the requirement;
+`done` means verified.
 
 `dev-lead` is tracker-agnostic by design and will never send you a tracker's own state
 name. Resolving the neutral state to a real one is your job, in this order:
@@ -224,6 +226,11 @@ name. Resolving the neutral state to a real one is your job, in this order:
 Then:
 
 - Apply **one** transition per request. Never batch-advance items you weren't named.
+- **`implemented` is the state trackers most often lack.** Where none carries it, leave
+  the item where it is and comment (rule 3) — do **not** resolve it to the tracker's
+  terminal state. Closing on code-completeness claims a verification that has not
+  happened, and it is not recoverable by a later transition: the team has already seen
+  the item leave the board.
 - **Verify it landed** by re-reading the item; a write that silently no-ops is the failure
   mode worth catching. Report the state you actually observe, not the one you requested.
 - If it fails (permission, an illegal transition, a required field the state demands),
