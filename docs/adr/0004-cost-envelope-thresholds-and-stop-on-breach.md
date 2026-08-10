@@ -97,6 +97,27 @@ three together catch the realistic failure modes.
   field makes the chosen tier explicit in the profile, which is grep-able
   in audits.
 
+## Amendment (2026-08) - the cost unit changed, the decision did not
+
+The three-orthogonal-caps decision stands. Two mechanics in it turned out to
+be unimplementable as written and were replaced:
+
+- **`sum-costs.sh` is gone.** It summed `cost_usd` fields that agents were
+  asked to emit - but an agent cannot observe its own token consumption, so
+  those fields were never populated and the gate silently reported $0.00 and
+  passed. Replaced by `skills/cost-budget/scripts/collect-usage.py`, which
+  reads the runtime's own usage store and attributes it to phases by
+  timestamp window. Nothing is self-reported.
+- **The USD caps are inert by default.** The runtime meters in AIU, and cache
+  reads bill at a fraction of fresh input, so any flat per-token USD rate
+  overstates a real run by roughly an order of magnitude. `max_aiu_per_run` /
+  `max_aiu_per_phase` are now the enforced caps; `max_usd_*` applies only when
+  `cost_envelope.usd_per_aiu` supplies an org rate, and an unrated run reports
+  USD as *unmetered* rather than as zero.
+
+`max_tokens_per_run` and `max_minutes_per_run` are unchanged and now actually
+enforceable.
+
 ## References
 
 - `solution-profile.yaml` lines 206–219 (`cost_envelope`)

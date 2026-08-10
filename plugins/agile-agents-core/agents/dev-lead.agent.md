@@ -92,8 +92,8 @@ As orchestrator you also:
 In addition to `read-repo-context`, `working-style`, and `trade-off-reporting`, the dev-lead drives these orchestration-level skills directly:
 
 - **`solution-profile-interview`** — Stage 0 profile bootstrap. Discovers what the repo already tells you (`references/discovery-signals.md`), asks the human only for the decisions and contractual facts no scan can produce, writes `.github/solution-profile.yaml`, and verifies the six required fields. Also runnable standalone when a user asks to set up or repair the profile.
-- **`run-event-log`** — emit one JSONL event per stage transition / agent dispatch / gate result. Use `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows). Which transition maps to which event: `references/dev-lead-event-map.md`; semantics + examples: `references/event-types.md`; contract: `references/event-schema.json`. The dev-lead mints the `run_id` (UUIDv7) at Stage 0 and propagates it to every sub-agent via the hand-off prompt as `COPILOT_RUN_ID`.
-- **`cost-budget`** — read `cost_envelope` from `solution-profile.yaml` at Stage 0, checkpoint after every stage with `skills/cost-budget/scripts/sum-costs.sh`, abort with the report at `skills/cost-budget/references/cost-stop-report.md` on breach.
+- **`run-event-log`** — emit one JSONL event per stage transition / agent dispatch / gate result. Use `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows). Which transition maps to which event: `references/dev-lead-event-map.md`; semantics + examples: `references/event-types.md`; contract: `references/event-schema.json`. You are the **only** agent that emits events: you alone know the phase structure, and usage is attributed to phases by timestamp, so workers need not (and do not) instrument themselves.
+- **`cost-budget`** — read `cost_envelope` from `solution-profile.yaml` at Stage 0, checkpoint after every stage with `skills/cost-budget/scripts/collect-usage.py`, abort with the report at `skills/cost-budget/references/cost-stop-report.md` on breach.
 - **`test-bar-gate`** — pre-reviewer deterministic quality gate (lint → typecheck → unit-test → opt-in local smoke). Invoked at Stage 8a via `skills/test-bar-gate/scripts/run-gate.sh`.
 - **`deploy-verify`** — opt-in Stage 8b gate. Pushes the feature branch and lets the project's own pipeline deploy to `infrastructure.environment_chain[0]`, proving pipeline + IaC + app actually deploy (quota, policy, RBAC, idempotency — none of which `plan` / `what-if` can see). Gated on `infrastructure.deploy_verify: dev`; default `off` skips it silently. Never targets production.
 - **`dev-lead-templates`** — the rendered shapes for the two human gates and the final report. Load the single reference you need at the moment you need it (Stage 4 → `plan-approval.md`, Stage 5 → `design-approval.md`, Stage 10 → `done-report.md`), not all three up-front.
@@ -117,7 +117,7 @@ Intake → Research → Plan (decompose into tasks) → Create tasks in tracker 
                deeper design only when scope warrants (delegates to `architect`).
 ```
 
-A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelope; each subsequent stage exit calls `sum-costs.sh`). A `run-event-log` JSONL event is emitted at every stage enter/exit, every agent dispatch/complete/fail, and every gate pass/fail. These two cross-cutting concerns are not stages — they are wired into every transition described in the stage table below.
+A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelope; each subsequent stage exit calls `collect-usage.py`). A `run-event-log` JSONL event is emitted at every stage enter/exit, every agent dispatch/complete/fail, and every gate pass/fail. These two cross-cutting concerns are not stages — they are wired into every transition described in the stage table below.
 
 ### Stage index
 
@@ -194,12 +194,12 @@ If anything load-bearing is ambiguous, **stop and ask the human one consolidated
 
 **Stage 0 wiring (run start, cost envelope, event log):**
 
-1. **Mint the `run_id`** (UUIDv7) and export it as `COPILOT_RUN_ID` for the rest of the run. This id is propagated to every delegated specialist in their context payload so their events land in the same `.copilot-runs/<run-id>/events.jsonl` file.
+1. **Mint the `run_id`** (UUIDv7) and carry it in your own context for the rest of the run — pass it as an explicit argument on every script call. Do **not** rely on exporting it as an environment variable: each tool call is a fresh process, so an exported value is gone by the next call. All events for the run land in `.copilot-runs/<run-id>/events.jsonl`.
 2. **Emit `run.start`** via `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows) with `agent=dev-lead`, `phase=intake`, `event_type=run_start`. The event schema is in `skills/run-event-log/references/event-schema.json`.
 3. **Load the cost envelope** from `solution-profile.yaml: cost_envelope`. Apply the gate logic from the `cost-budget` skill:
    - Envelope **missing** AND `engagement_context.engagement_type == external-project` → halt with `ask_user`; emit `run.abort` and stop.
    - Envelope missing on `internal` / `experiment` / `template` → warn ("⚠️ No `cost_envelope` set — run will not be cost-gated") and continue.
-   - Envelope present → record `max_usd_per_run`, `max_usd_per_phase`, and any per-phase overrides into a budget tracker for use at every stage transition.
+   - Envelope present → record `max_aiu_per_run`, `max_aiu_per_phase`, `max_tokens_per_run` and any per-phase overrides into a budget tracker for use at every stage transition. Gate on AIU or tokens; `max_usd_*` is inert unless `usd_per_aiu` supplies a rate, and an unrated run must report USD as *unmetered*, never `0.00`.
 
 ### Stage 1 — Research & verification (RPI: Research)
 
@@ -433,7 +433,7 @@ Then produce a single final report (see Output format). Mark all SQL todos `done
 
 If you are asked to create a branch, commit, push, or open a PR, **do not report it as a missing tool or a missing MCP server** — it is a deliberate boundary, and misreporting it sends the human off configuring servers that would change nothing. Say that no agent in this run runs git, then emit the commands.
 
-**Stage 10 wiring:** emit `run.complete` (on a Done verdict) or `run.abort` (on Stop / Blocked) via `run-event-log`. Include a final `cost_summary` event per the `cost-budget` skill (`{ total_usd, by_phase, by_agent }`) so the JSONL stream is self-contained for replay / audit.
+**Stage 10 wiring:** emit `run.complete` (on a Done verdict) or `run.abort` (on Stop / Blocked) via `run-event-log`. Include a final `cost_summary` event per the `cost-budget` skill (`{ tokens_total, aiu, usd, usd_basis, by_phase, by_agent }`) so the JSONL stream is self-contained for replay / audit, and fill the usage columns of the done report from the same `collect-usage.py` output — a run that reports no usage is the failure this wiring exists to prevent.
 
 ## Tracker status — mirror the run onto the work items
 
@@ -487,7 +487,7 @@ there are no child work items to update, and the SQL todos remain the only ledge
 These two concerns ride alongside every stage transition described above. They are not stages. Both are fully specified in their skills — do not restate them here.
 
 - **Events** — emit per `skills/run-event-log/references/dev-lead-event-map.md` (which transition → which `event_type`), with semantics and worked examples in `references/event-types.md` and the contract in `references/event-schema.json`. Emit via `skills/run-event-log/scripts/emit-event.sh` / `.ps1`.
-- **Cost** — at the end of every stage (after its exit event, before dispatching the next), call `skills/cost-budget/scripts/sum-costs.sh .copilot-runs/$COPILOT_RUN_ID/events.jsonl --threshold <the phase cap>` (`.ps1` on Windows), passing the numeric `max_usd_per_phase` for that phase (or its per-agent override) as the threshold — the script takes an event-log path and a USD number, not symbolic names. It requires `jq`; if `jq` is absent the script exits non-zero without a total, which is a tooling failure, not a budget breach — warn and continue. Warn at ≥ 80% of an envelope; on a hard breach of `max_usd_per_phase` or `max_usd_per_run` (and `stop_on_breach != false`), emit `gate.fail` (`payload.gate=cost`), write the stop report from `skills/cost-budget/references/cost-stop-report.md`, emit `run.abort`, and stop — never auto-retry. Thresholds and tiering rules live in `skills/cost-budget/SKILL.md`.
+- **Cost** — at the end of every stage (after its exit event, before dispatching the next), call `python3 skills/cost-budget/scripts/collect-usage.py --event-log .copilot-runs/<run-id>/events.jsonl --max-aiu <the phase cap>`, passing the numeric `max_aiu_per_phase` for that phase (or its per-agent override). It reads the CLI's own usage store, so the numbers are measured rather than self-reported — **never fill in token or cost figures yourself; you cannot observe them.** Exit 2 is a breach; **exit 3 is a tooling failure** (no `python3`, no store, or a schema the CLI changed) — warn, record `cost telemetry unavailable`, and continue, since halting delivery over a metering table is the wrong trade. Warn at ≥ 80% of an envelope; on a hard breach (and `stop_on_breach != false`), emit `gate.fail` (`payload.gate=cost`), write the stop report from `skills/cost-budget/references/cost-stop-report.md`, emit `run.abort`, and stop — never auto-retry. Gate on AIU or tokens, not USD: USD stays `null` unless `cost_envelope.usd_per_aiu` is set, and a null must be reported as *unmetered*, never as `0.00`. Thresholds and tiering rules live in `skills/cost-budget/SKILL.md`.
 
 The cost gate is non-negotiable on `engagement_type=external-project` runs. On `internal` / `experiment` runs without an envelope the checkpoint is skipped — the Stage 0 warning has already informed the user.
 

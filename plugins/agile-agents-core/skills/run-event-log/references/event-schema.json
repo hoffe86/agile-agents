@@ -2,10 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoffe86/agile-agents/skills/run-event-log/event-schema.json",
   "title": "Coding-suite run event",
-  "description": "One structured JSON Lines event emitted by a coding-suite agent (dev-lead, architect, coding, testing, infrastructure, or any reviewer) at a phase boundary, on a non-trivial tool call, on a quality-gate decision, or on completion. Append-only — see SKILL.md. Sentinel blocks remain canonical hand-off; this event log is additive telemetry.",
+  "description": "One structured JSON Lines event emitted by a coding-suite agent (dev-lead, architect, coding, testing, infrastructure, or any reviewer) at a phase boundary, on a non-trivial tool call, on a quality-gate decision, or on completion. Append-only \u2014 see SKILL.md. Sentinel blocks remain canonical hand-off; this event log is additive telemetry.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["timestamp", "run_id", "agent", "phase", "event_type"],
+  "required": [
+    "timestamp",
+    "run_id",
+    "agent",
+    "phase",
+    "event_type"
+  ],
   "properties": {
     "timestamp": {
       "type": "string",
@@ -55,7 +61,7 @@
     },
     "correlation_id": {
       "type": "string",
-      "description": "Optional grouping key — typically the parent task or work-item id. Lets analysis tooling group events that belong to the same logical user request across multiple runs."
+      "description": "Optional grouping key \u2014 typically the parent task or work-item id. Lets analysis tooling group events that belong to the same logical user request across multiple runs."
     },
     "parent_event_id": {
       "type": "string",
@@ -63,23 +69,12 @@
     },
     "outcome": {
       "type": "string",
-      "enum": ["success", "fail", "partial"],
+      "enum": [
+        "success",
+        "fail",
+        "partial"
+      ],
       "description": "Required for phase_complete, run_complete, gate_check. Forbidden for phase_start / run_start."
-    },
-    "tokens_in": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Prompt tokens consumed by the model call associated with this event (or sum of calls within the phase, for phase_complete)."
-    },
-    "tokens_out": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Completion tokens produced by the model call associated with this event."
-    },
-    "cost_usd": {
-      "type": "number",
-      "minimum": 0,
-      "description": "Estimated USD cost. Reporters should use the price card embedded by the cost-budget skill (lands in H4)."
     },
     "duration_ms": {
       "type": "integer",
@@ -93,7 +88,7 @@
     "args_summary": {
       "type": "string",
       "maxLength": 200,
-      "description": "Redacted ≤200-char summary of tool arguments. NEVER include secrets, full file contents, or PII. For restricted projects, hash file paths (SHA-256 first 12 hex chars) before including them."
+      "description": "Redacted \u2264200-char summary of tool arguments. NEVER include secrets, full file contents, or PII. For restricted projects, hash file paths (SHA-256 first 12 hex chars) before including them."
     },
     "error_kind": {
       "type": "string",
@@ -132,10 +127,7 @@
       "phase": "coding",
       "event_type": "tool_call",
       "tool_name": "edit",
-      "args_summary": "infra/modules/storage.bicep — add privateEndpoint resource (lines 42-78)",
-      "tokens_in": 4210,
-      "tokens_out": 612,
-      "cost_usd": 0.018,
+      "args_summary": "infra/modules/storage.bicep \u2014 add privateEndpoint resource (lines 42-78)",
       "duration_ms": 2300
     },
     {
@@ -158,9 +150,6 @@
       "phase": "wrap-up",
       "event_type": "run_complete",
       "outcome": "success",
-      "tokens_in": 84210,
-      "tokens_out": 19880,
-      "cost_usd": 0.612,
       "duration_ms": 524000
     }
   ]

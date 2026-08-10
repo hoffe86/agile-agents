@@ -10,8 +10,7 @@
 
 .EXAMPLE
     .\emit-event.ps1 -RunId 01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f `
-        -Agent coding -Phase coding -EventType phase_complete `
-        -Outcome success -TokensIn 12450 -TokensOut 3120 -CostUsd 0.087 -DurationMs 184000
+        -Agent coding -Phase coding -EventType phase_complete -Outcome success -DurationMs 184000
 #>
 [CmdletBinding()]
 param(
@@ -25,9 +24,6 @@ param(
     [string] $ErrorKind,
     [string] $CorrelationId,
     [string] $ParentEventId,
-    [int]    $TokensIn  = -1,
-    [int]    $TokensOut = -1,
-    [double] $CostUsd   = [double]::NaN,
     [int]    $DurationMs = -1,
     [hashtable] $Payload
 )
@@ -59,9 +55,6 @@ $evt = [ordered]@{
 if ($CorrelationId)            { $evt.correlation_id  = $CorrelationId }
 if ($ParentEventId)            { $evt.parent_event_id = $ParentEventId }
 if ($Outcome)                  { $evt.outcome         = $Outcome }
-if ($TokensIn  -ge 0)          { $evt.tokens_in       = $TokensIn }
-if ($TokensOut -ge 0)          { $evt.tokens_out      = $TokensOut }
-if (-not [double]::IsNaN($CostUsd)) { $evt.cost_usd   = $CostUsd }
 if ($DurationMs -ge 0)         { $evt.duration_ms     = $DurationMs }
 if ($ToolName)                 { $evt.tool_name       = $ToolName }
 if ($ArgsSummary)              { $evt.args_summary    = $ArgsSummary }

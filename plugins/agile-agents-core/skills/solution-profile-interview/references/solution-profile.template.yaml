@@ -270,13 +270,21 @@ testing:
 cost_envelope:
   enabled: true
   tier: "medium"                # small | medium | large (default medium). Drives default caps.
-  max_usd_per_run: 25.00        # Hard cap on a single end-to-end run (sum of all agents).
+  max_usd_per_run: 25.00        # Inert unless usd_per_aiu is set: the runtime meters AIU,
+                                # not currency, so USD is derived or reported as unmetered.
                                 # Tier defaults: small ≈ 5, medium ≈ 25, large ≈ 100.
   max_usd_per_phase: 8.00       # Cap on any single phase. Checked by dev-lead at every
                                 # stage transition, so a runaway phase is caught mid-run
                                 # rather than only at the end.
   max_usd_per_phase_overrides: {}   # Optional per-agent override, e.g.
                                     # { architect: 4.00, review: 3.00 }
+  max_aiu_per_run: 30000        # AI units - the runtime's own metered cost unit, and the only
+                                # figure it actually reports. Gate here, not on USD.
+  max_aiu_per_phase: 8000       # Cap on any single phase, checked at every stage transition.
+  max_aiu_per_phase_overrides: {}   # Optional per-agent override, e.g. { architect: 4000 }
+  usd_per_aiu:                  # Optional org rate card. Without it every USD figure is
+                                # reported as unmetered rather than as 0.00 - an agent cannot
+                                # observe its own spend, so nothing is guessed.
   max_tokens_per_run: 2000000   # Aggregate token cap (input + output across all agents).
   max_minutes_per_run: 60       # Wall-clock cap. Catches stuck loops even when token spend is fine.
   stop_on_breach: true          # true → emit cost-stop-report and halt; false → warn-only (rare).
