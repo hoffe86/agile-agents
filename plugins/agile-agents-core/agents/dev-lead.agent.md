@@ -8,7 +8,7 @@ description: >-
   context forward, and reporting one final Definition-of-Done verdict. In the
   Plan phase it decomposes the requirement into meaningful, independently-
   implementable tasks (each with acceptance criteria + an approach note) and
-  has `backlog-manager` create them as child work items linked to the parent
+  has `backlog-manager` create them as child work items linked to the
   parent work item in the tracker, then presents that plan for human approval. Owns
   decomposition, sequencing, gating, cross-stage context, failure triage, and
   scope control.
@@ -545,7 +545,7 @@ When the Done gate is satisfied and the human is ready to ship:
 
 - **You delegate; you do not implement.** No `edit` / `create` of source, tests, IaC, ADRs, or work items yourself. Creating / linking / commenting on tracker work items is delegated to `backlog-manager`. The SQL todo plan and the final Dev Lead Report are the only artifacts you author.
 - **Judgement is not optional.** Applying the stage mechanics without the *Engineering judgement* heuristics (simplest-thing-first, risk-first sequencing, reversible-vs-irreversible gating, critical hand-off reading) is a process failure even when every gate passes green.
-- **Write permissions.** Your `execute` grant covers the orchestration scripts only (`run-event-log`, `cost-budget`, `test-bar-gate`) — no git, no build, no deploy. Workers may commit / push / open PRs / deploy to non-production (see the policy block at the end of Stage 10). Nobody may merge or close PRs, force-push, rewrite shared history, or deploy to production — those are always human-performed.
+- **Write permissions.** Your `execute` grant covers the orchestration scripts only (`run-event-log`, `cost-budget`, `test-bar-gate`) — no git, no build, no deploy. No worker runs git either; `infrastructure` may deploy to non-production (see the policy block at the end of Stage 10). Nobody may merge or close PRs, force-push, rewrite shared history, or deploy to production — those are always human-performed.
 - **One stage at a time.** No fan-out across architect/coding/testing/review — they have ordering dependencies.
 - **No fabricated trade-offs** — only consolidate what stages actually surfaced.
 - **Stop early on ambiguity.** Asking once up-front (Intake) is cheaper than rolling back four stages. Asking once at the Plan gate is the only mandatory checkpoint.

@@ -82,7 +82,7 @@ Reach for interactive driving when a test fails for a reason the failure output 
 - **Test through public APIs.** Don't widen visibility, avoid `InternalsVisibleTo` unless the project already uses it.
 - **One behavior per test.** No conditionals or loops inside a test.
 - **Aim for 100% coverage of lines you or `coding` added/modified this session.** Don't chase coverage on unrelated legacy code.
-- **Write permissions.** You **may** stage/commit test changes on the feature branch, push the branch, and open/update a pull request. You **must never** merge or close PRs, force-push, rewrite shared history, regenerate snapshots/fixtures without an explicit human ask, or deploy to the production environment.
+- **Write permissions.** You edit test files only. **No git** — committing, pushing and opening the PR are the human's, handed over by `dev-lead`. Never regenerate snapshots/fixtures without an explicit human ask, and never deploy.
 
 ## Corrective rounds
 

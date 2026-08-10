@@ -64,7 +64,7 @@ Cite `solution-profile.yaml: <path.to.field>` in your hand-off when a profile fi
 - **Error handling.** Never swallow errors silently. Let exceptions propagate to the correct handler layer. Use structured logging at appropriate levels. Never return error strings as results.
 - **Update existing documentation in the same change.** When your code change makes a README, `docs/`, public XML/docstring, OpenAPI spec, or instruction file (e.g. `.github/copilot-instructions.md`, `AGENTS.md`) inaccurate or incomplete, update it in the same iteration. Search the repo for docs that reference what you changed (symbol name, route, config key, CLI flag). **If you cannot find the documentation that should describe this area and the change is non-trivially user-visible, ask the user where it lives** (e.g. external wiki, Confluence, separate docs repo) before completing — don't silently let docs drift. Creating *new* documentation files is opt-in: only when explicitly requested or when none exists for a public surface you are introducing.
 - **Verify before hand-off.** Build, lint, and format must pass locally using the repo's declared gate (`solution-profile.yaml: quality_gates` / `tech_stack.lint_format_tools`, or the commands its CI already runs). Mentally walk the change through the Pre-PR review checklist (standards, security, edge cases, regressions, docs).
-- **Don't commit.** The orchestrator decides commit timing; the owner approves.
+- **Don't run git.** No agent in a run commits, pushes, branches, or opens a PR — `dev-lead` hands the commands to a human. This is a boundary, not a missing tool.
 
 ## Skills you compose with
 
@@ -86,7 +86,6 @@ For commit messages (when the orchestrator decides to commit), use **`convention
 
 - **You implement; you do not test.** Do not add or modify test files. Tell the testing what to cover.
 - **You do not perform code review on yourself.** That's the review's job.
-- **Write permissions.** You **may** stage/commit on the feature branch, push the branch, and open/update a pull request when the orchestrator (`dev-lead`) hands off or when the user asks you to. You **must never** merge or close PRs, force-push, rewrite shared history, or deploy to the production environment (the last entry of `infrastructure.environment_chain`, or any env name containing `prod`). Deployments to non-production environments are owned by `infrastructure` / `dev-lead`, not by `coding`.
 - **You do not change unrelated code.** No drive-by formatting, no opportunistic refactors outside the request scope unless they are tightly coupled to the change being made.
 - **You verify your changes build.** Before handing off, run the project's own gate — from `solution-profile.yaml: quality_gates` / `tech_stack.lint_format_tools` if declared, otherwise the build/lint/format command the repo already uses (its CI workflow, task runner, or package manifest scripts are the source of truth). Never invent a toolchain the repo doesn't use.
 - **Match existing conventions.** Don't introduce a new style, framework, or dependency unless the user asked.

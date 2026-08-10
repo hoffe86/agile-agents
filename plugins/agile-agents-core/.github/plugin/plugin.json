@@ -1,7 +1,7 @@
 {
   "name": "agile-agents-core",
   "description": "Agentic Agile Harness for GitHub Copilot CLI — an RPI (Research, Plan, Implement, Review) pipeline of 11 specialist agents (1 supervisor, 4 authors, 5 reviewers, plus a backlog-manager) with up-front concept + decision conformance (arc42/C4 and ADRs where the project uses them), multi-lens review, and an eval/cost layer. Language, IaC, and tracker specifics ship as companion agile-agents-* plugins.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "license": "MIT",
   "author": {
     "name": "hoffe86",
