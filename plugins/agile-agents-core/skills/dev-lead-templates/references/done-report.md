@@ -21,12 +21,12 @@ why" — answer that first.
 ## What was delivered
 - <observable behaviours, mapped to the Definition of Done>
 
-## Story coverage
+## Requirement coverage
 | # | Acceptance criterion | Delivered by | Evidence | Status |
 |---|---|---|---|---|
-| ac-1 | <verbatim from the story> | <task id + title> | <test name / review finding> | ✅ covered |
-| ac-2 | <verbatim from the story> | — | — | ⚠️ out of scope (<reason agreed at Stage 2>) |
-| ac-3 | <verbatim from the story> | <task, blocked> | — | ❌ not covered |
+| ac-1 | <verbatim from the requirement> | <task id + title> | <test name / review finding> | ✅ covered |
+| ac-2 | <verbatim from the requirement> | — | — | ⚠️ out of scope (<reason agreed at Stage 2>) |
+| ac-3 | <verbatim from the requirement> | <task, blocked> | — | ❌ not covered |
 
 ## Trade-offs (consolidated)
 - **Architect:** <chose X over Y because… cost… revisit if…>
@@ -49,7 +49,7 @@ why" — answer that first.
 
 ## Rules
 
-- **Every acceptance criterion captured at Intake appears in the Story coverage
+- **Every acceptance criterion captured at Intake appears in the Requirement coverage
   table** — including the ones that ended uncovered or out of scope. A criterion
   missing from the table is how a dropped requirement ships unnoticed; a table
   where every row is ✅ but one criterion never appears is worse than an honest ❌.

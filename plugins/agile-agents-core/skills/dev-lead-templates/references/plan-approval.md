@@ -17,7 +17,7 @@ an abstract outline.
 **Tasks created (provisional — tagged `pending-approval`):**
 1. <task-id> — <title> (<N> ACs)
 2. ...
-(overall approach recorded as a comment on the parent story)
+(overall approach recorded as a comment on the parent work item)
 
 **Architect tasks not carried into the plan:** <task — reason, one line each, or `none` / `n/a (lightweight research)`>
 
