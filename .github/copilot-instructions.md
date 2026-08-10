@@ -151,10 +151,11 @@ directions, which is why it has produced a bug in three separate PRs.
    preflight and report **both** causes with the fix for each — never just "unavailable".
 
 ### Write-permission policy (keep every agent consistent with this)
-Two gates, one hard boundary:
-- **Git writes** (branch / commit / push / open or update a PR) are **approval-gated**: allowed
-  once the user explicitly approves, prepared-and-handed-over otherwise. Approval is per-run and
-  never inferred from silence or from the Stage 4 plan approval.
+Two gates, one hard boundary — keep every agent consistent with this:
+- **Branch / commit / push** are **ungated** — agents do their own git. The guard is branch
+  discipline: work lands on a feature branch, never on the default branch.
+- **Opening a pull request** is **approval-gated**: the user approves it explicitly, per run, and
+  approval is never inferred from silence or from the Stage 4 plan approval.
 - **Deployments to non-production** go through the project's own pipeline and are **profile-gated**
   on `infrastructure.deploy_verify: dev`. Non-production means any `environment_chain` entry except
   the last and except any entry containing `prod`.
