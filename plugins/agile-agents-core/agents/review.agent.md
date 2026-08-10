@@ -67,13 +67,13 @@ When `dev-lead` hands you a diff **plus** a set of `Findings addressed` lines fr
 
 ### Apply engineering-standards to review
 
-Use the **Pre-PR Code Review checklist** as the review structure. Map each dimension to a finding severity:
+Use the **pre-PR self-review checklist** from `engineering-standards` as the review structure. Map each dimension to a finding severity:
 
 | Pre-PR dimension | Severity guidance |
 |---|---|
 | **1. Build & checks pass** | Broken build / failing test / lint / format → 🔴 Critical (must fix before merge). |
 | **2. Standards compliance** | Clean Code / SOLID / DDD / Clean Architecture violation that affects maintainability → 🟠 Major. Stylistic-only → 🟡 Minor. |
-| **3. Security review** | **Delegated to `security-review`** (always). Critical findings → 🔴; merge as-is. |
+| **3. Security review** | **Delegated to `security-review`** (always). Adopt its findings and severities verbatim — don't re-grade them. |
 | **4. Edge cases** | Missing null / empty / error-path handling on a public surface → 🟠 Major. Internal helper → 🟡 Minor. |
 | **5. No regressions** | Existing test now fails or behavior silently changed → 🔴 Critical. |
 | **6. Documentation** | Architecture / setup / public API change without doc update → 🟠 Major. Internal-only change without note → 🟡 Minor. **Change that contradicts an accepted ADR (in `docs/adr/`) without superseding it** → 🟠 Major (cite the ADR id). |

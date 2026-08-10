@@ -118,4 +118,5 @@ structure for its general code-quality pass.
 - Don't leave dead code or TODO comments without an action behind them.
 - Don't create a separate endpoint or tool when an existing one can be extended with a
   parameter.
-- Don't commit to the default branch, and don't open a PR without approval.
+- Don't commit to the default branch, and don't open a PR without approval. (Read-only
+  review agents commit nothing at all — see `reviewer-read-only-rules`.)
