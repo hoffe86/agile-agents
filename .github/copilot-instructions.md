@@ -179,8 +179,8 @@ Renaming any silently breaks the pipeline:
   + approach note). When `backlog.create_tasks` is true, `backlog-manager` creates them as
   **child work items linked to the parent work item** (provisional, tagged `pending-approval`)
   and emits `TASKS PLANNED`. The **mandatory human plan-approval gate fires after task
-  creation**. Tasks live in the tracker, not as files — local handover files
-  (`rpi.handover_dir`) are an ephemeral, gitignored cache.
+  creation**. Tasks live in the tracker, not as files; in-run hand-off state is the
+  orchestrator's own task list, and the tracker wins on any conflict.
 - **Implement / Review** — coding + infrastructure + testing, then multi-lens review. Stage 10
   verifies the delivered change covers the *requirement*, not merely that every task passed.
 

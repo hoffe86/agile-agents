@@ -40,7 +40,7 @@ For Azure-targeted designs, lean on:
 
 ## 3. Deliverable structure
 
-Produce a markdown file at `docs/architecture/<topic>/<topic>-design.md` (create folders as needed). Use this skeleton — every section is required unless explicitly N/A:
+Produce a markdown file at `<dir>/<topic>/<topic>-design.md` (create folders as needed), where `<dir>` is `solution-profile.yaml: documentation.ai_documentation_dir` when set, otherwise `docs/architecture/`. A project that keeps AI-generated design notes apart from hand-written docs has already said so in the profile — don't override it. Use this skeleton — every section is required unless explicitly N/A:
 
 ```markdown
 # <Topic> — Architecture Design
