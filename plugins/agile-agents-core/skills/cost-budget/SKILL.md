@@ -22,9 +22,9 @@ Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuc
 
    ```yaml
    cost_envelope:
-     per_run_max_usd: 25.00
-     per_phase_max_usd: 8.00
-     per_phase_max_usd_overrides:
+     max_usd_per_run: 25.00
+     max_usd_per_phase: 8.00
+     max_usd_per_phase_overrides:
        architect: 4.00
        reviewer-architecture: 3.00
      model_tiers:           # optional — pin specific models per tier
@@ -40,7 +40,7 @@ Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuc
 
 3. **Checkpoints at every phase transition** (called by `dev-lead` between stages — e.g. architect → coding, coding → testing, testing → review):
    - Sum `cost_usd` from `.copilot-runs/<run-id>/events.jsonl` for events whose `phase` matches the just-finished phase (use `scripts/sum-costs.ps1` or `.sh`).
-   - Compare to `per_phase_max_usd` (or the per-agent override).
+   - Compare to `max_usd_per_phase` (or the per-agent override).
    - **Soft warn** if ≥ 80% of the limit.
    - **Hard halt** if exceeded by ≥ 10% — emit the structured stop report from `references/cost-stop-report.md` and stop the run.
 

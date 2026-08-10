@@ -26,7 +26,7 @@ Emitted by the `cost-budget` skill when a per-phase or per-run envelope is excee
 Choose one and reply:
 
 1. **Approve overrun** — accept the cost as-is and resume from the next stage.
-2. **Raise envelope** — bump `cost_envelope.per_phase_max_usd` (or per-agent override / `per_run_max_usd`) in `solution-profile.yaml` and resume.
+2. **Raise envelope** — bump `cost_envelope.max_usd_per_phase` (or per-agent override / `max_usd_per_run`) in `solution-profile.yaml` and resume.
 3. **Split scope** — abandon this run, narrow the input (e.g. one feature instead of three), and start a fresh run within the original envelope.
 
 Do **not** auto-retry. The same prompt with the same agents is overwhelmingly likely to land in the same place.
@@ -60,6 +60,6 @@ Do **not** auto-retry. The same prompt with the same agents is overwhelmingly li
 Choose one and reply:
 
 1. **Approve overrun** — accept $11.40 for this phase and continue to `testing`.
-2. **Raise envelope** — bump `cost_envelope.per_phase_max_usd_overrides.coding` to `12.00` and resume.
+2. **Raise envelope** — bump `cost_envelope.max_usd_per_phase_overrides.coding` to `12.00` and resume.
 3. **Split scope** — drop one of the three checkout flows from the brief and re-run.
 ```

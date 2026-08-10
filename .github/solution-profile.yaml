@@ -258,6 +258,8 @@ cost_envelope:
   tier: "medium"                # small | medium | large (default medium). Drives default caps.
   max_usd_per_run: 25.00        # Hard cap on a single end-to-end run (sum of all agents).
                                 # Tier defaults: small ≈ 5, medium ≈ 25, large ≈ 100.
+  max_usd_per_phase: 8.00       # Cap on any single phase, checked at every stage transition.
+  max_usd_per_phase_overrides: {}   # Optional per-agent override, e.g. { architect: 4.00 }
   max_tokens_per_run: 2000000   # Aggregate token cap (input + output across all agents).
   max_minutes_per_run: 60       # Wall-clock cap. Catches stuck loops even when token spend is fine.
   stop_on_breach: true          # true → emit cost-stop-report and halt; false → warn-only (rare).

@@ -190,6 +190,10 @@ code_localisation:
   backend: "auto"               # tree-sitter | embedding-rerank | mcp | auto (default auto)
   mcp_server: ""                # Used only when backend=mcp. URL of a Sourcegraph-style
                                 # or `mcp-semantic-code` MCP endpoint. Empty → not used.
+  embedding_endpoint: ""        # Used only when backend=embedding-rerank. URL of the
+                                # embeddings endpoint. Empty → backend unavailable.
+  embedding_model: ""           # e.g. "text-embedding-3-large".
+  embedding_index_path: ".code-localisation/index/"   # Where the embedding index lives.
   max_results: 20               # Cap on ranked files returned to the agent.
   repo_map_max_files: 5000      # Hard ceiling on files scanned by tree-sitter repo-map.
                                 # Protects against runaway maps on monorepos.
@@ -257,6 +261,11 @@ cost_envelope:
   tier: "medium"                # small | medium | large (default medium). Drives default caps.
   max_usd_per_run: 25.00        # Hard cap on a single end-to-end run (sum of all agents).
                                 # Tier defaults: small ≈ 5, medium ≈ 25, large ≈ 100.
+  max_usd_per_phase: 8.00       # Cap on any single phase. Checked by dev-lead at every
+                                # stage transition, so a runaway phase is caught mid-run
+                                # rather than only at the end.
+  max_usd_per_phase_overrides: {}   # Optional per-agent override, e.g.
+                                    # { architect: 4.00, review: 3.00 }
   max_tokens_per_run: 2000000   # Aggregate token cap (input + output across all agents).
   max_minutes_per_run: 60       # Wall-clock cap. Catches stuck loops even when token spend is fine.
   stop_on_breach: true          # true → emit cost-stop-report and halt; false → warn-only (rare).

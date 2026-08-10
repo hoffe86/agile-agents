@@ -113,6 +113,6 @@ IMPLEMENTATION COMPLETE
 - Internal-only changes: <refactors, private helpers, plumbing not visible to callers; "none" if everything is in the Public surface list>
 - Build status: ✅ passes  /  ⚠️ warnings: <list>  /  ❌ failures: <list>
 - Findings addressed: <corrective rounds only — one line per finding: "<id>: fixed in <file:line>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit the field entirely on a first-pass implementation.>
-- Unmet design constraint (if any): <only fill in if you could not deliver inside the architect's locked design without a new dependency, boundary, contract, or Azure service — describe the gap so dev-lead can route back to architect>
+- Unmet design constraint (if any): <only fill in if you could not deliver inside the architect's locked design without a new dependency, boundary, contract, or cloud resource — describe the gap so dev-lead can route back to architect>
 - Open questions for review: <if any>
 ```

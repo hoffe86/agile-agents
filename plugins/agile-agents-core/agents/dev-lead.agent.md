@@ -150,7 +150,7 @@ Each stage has an entry condition, a delegated agent, and an exit gate. You neve
   6. **Specialist review verdict ❌ Block** — never auto-loop more than once on a Block.
   7. **Open 🟠 Major review findings after one retry** — verdict may even be ✅ Approve, but if any 🟠 Major finding remains open after the single review-loop allowance, you must stop and ask the human to either accept the risk explicitly or authorise a second corrective round (see Stage 9).
   8. **Malformed or missing hand-off block** from a delegated specialist agent — see Failure policy.
-  9. **In-flight architecture escalation** — coding (or infrastructure) reports it cannot deliver inside the approved plan without a new dependency, boundary, contract, or Azure service. Treat as ambiguity: stop and route the question to architect (see Stage 6 entry).
+  9. **In-flight architecture escalation** — coding (or infrastructure) reports it cannot deliver inside the approved plan without a new dependency, boundary, contract, or cloud resource. Treat as ambiguity: stop and route the question to architect (see Stage 6 entry).
   10. **Missing parent story id** when `backlog.create_tasks` is true — child tasks cannot be linked without a parent. Stop at Intake and ask for the parent work-item id; never create unparented tasks.
   11. **Tracker-write failure** — `backlog-manager` could not create / link / comment on work items (auth, permissions, API error). Stop before the plan-approval gate; do not fall back to file-only planning silently. The tracker is the source of truth.
   12. **Required profile field still empty after the Stage 0 interview** — one of the six required fields could not be discovered and the human hasn't supplied it. Stop at Intake; do not enter Stage 1 with an incomplete profile and do not invent a value to get past the check.
@@ -199,7 +199,7 @@ If anything load-bearing is ambiguous, **stop and ask the human one consolidated
 3. **Load the cost envelope** from `solution-profile.yaml: cost_envelope`. Apply the gate logic from the `cost-budget` skill:
    - Envelope **missing** AND `engagement_context.engagement_type == external-project` → halt with `ask_user`; emit `run.abort` and stop.
    - Envelope missing on `internal` / `experiment` / `template` → warn ("⚠️ No `cost_envelope` set — run will not be cost-gated") and continue.
-   - Envelope present → record `per_run_max_usd`, `per_phase_max_usd`, and any per-phase overrides into a budget tracker for use at every stage transition.
+   - Envelope present → record `max_usd_per_run`, `max_usd_per_phase`, and any per-phase overrides into a budget tracker for use at every stage transition.
 
 ### Stage 1 — Research & verification (RPI: Research)
 
@@ -209,7 +209,7 @@ Decide how deep the research needs to go:
 
 | Research depth | When |
 |---|---|
-| Lightweight (dev-lead reads code / APIs itself) | Change is local, < ~3 files, no new boundary / contract / dependency, no new Azure resource, fully covered by existing ADRs. |
+| Lightweight (dev-lead reads code / APIs itself) | Change is local, < ~3 files, no new boundary / contract / dependency, no new cloud resource, fully covered by existing ADRs. |
 | Delegate to `architect` | New boundary / contract / dependency / cloud resource, a non-trivial trade-off, or a suspected decision gap. |
 
 **When delegating — Delegate to:** `architect`.
@@ -321,7 +321,7 @@ Mark it `in_progress` before dispatching and `done` once its gate passes, so a c
 
 **Input:** the architect output (or, if architect was skipped, the requirement directly), explicit list of files / behaviours expected to change, the in-scope / out-of-scope reminder. When architect ran, **prepend an explicit constraint banner**:
 
-> **Design constraints (locked by Stage 1):** <binding decision refs — ADR ids if the project uses ADRs>, chosen pattern <X>, allowed dependencies <list>. If you cannot deliver inside these constraints without a new dependency, boundary, contract, or Azure service, **stop and report it** in your hand-off block — do not silently exceed scope.
+> **Design constraints (locked by Stage 1):** <binding decision refs — ADR ids if the project uses ADRs>, chosen pattern <X>, allowed dependencies <list>. If you cannot deliver inside these constraints without a new dependency, boundary, contract, or cloud resource, **stop and report it** in your hand-off block — do not silently exceed scope.
 
 **Expected output:** the structured `IMPLEMENTATION COMPLETE` block from coding (or `infrastructure`), **one per task**.
 
@@ -440,7 +440,7 @@ If you are asked to create a branch, commit, push, or open a PR, **do not report
 These two concerns ride alongside every stage transition described above. They are not stages. Both are fully specified in their skills — do not restate them here.
 
 - **Events** — emit per `skills/run-event-log/references/dev-lead-event-map.md` (which transition → which `event_type`), with semantics and worked examples in `references/event-types.md` and the contract in `references/event-schema.json`. Emit via `skills/run-event-log/scripts/emit-event.sh` / `.ps1`.
-- **Cost** — at the end of every stage (after its exit event, before dispatching the next), call `skills/cost-budget/scripts/sum-costs.sh --run-id "$COPILOT_RUN_ID" --threshold per-phase` (`.ps1` on Windows). Warn at ≥ 80% of an envelope; on a hard breach of `per_phase_max_usd` or `per_run_max_usd` (and `stop_on_breach != false`), emit `gate.fail` (`payload.gate=cost`), write the stop report from `skills/cost-budget/references/cost-stop-report.md`, emit `run.abort`, and stop — never auto-retry. Thresholds and tiering rules live in `skills/cost-budget/SKILL.md`.
+- **Cost** — at the end of every stage (after its exit event, before dispatching the next), call `skills/cost-budget/scripts/sum-costs.sh .copilot-runs/$COPILOT_RUN_ID/events.jsonl --threshold <the phase cap>` (`.ps1` on Windows), passing the numeric `max_usd_per_phase` for that phase (or its per-agent override) as the threshold — the script takes an event-log path and a USD number, not symbolic names. It requires `jq`; if `jq` is absent the script exits non-zero without a total, which is a tooling failure, not a budget breach — warn and continue. Warn at ≥ 80% of an envelope; on a hard breach of `max_usd_per_phase` or `max_usd_per_run` (and `stop_on_breach != false`), emit `gate.fail` (`payload.gate=cost`), write the stop report from `skills/cost-budget/references/cost-stop-report.md`, emit `run.abort`, and stop — never auto-retry. Thresholds and tiering rules live in `skills/cost-budget/SKILL.md`.
 
 The cost gate is non-negotiable on `engagement_type=external-project` runs. On `internal` / `experiment` runs without an envelope the checkpoint is skipped — the Stage 0 warning has already informed the user.
 
