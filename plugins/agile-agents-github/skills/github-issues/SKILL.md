@@ -101,6 +101,28 @@ GitHub models parent-child with **sub-issues**, not a parent field:
 - **Dependencies** between issues are expressed in the body (`Blocked by #12`),
   not by a link type — GitHub has no predecessor/successor relation.
 
+## States (neutral → GitHub)
+
+GitHub has **two** issue states — `open` and `closed`. There is no in-progress state, so
+most of the neutral vocabulary has no direct equivalent and must degrade honestly:
+
+| Neutral | GitHub |
+|---|---|
+| `in_progress` | no state. Set the repo''s existing in-progress label **only if one already exists**, or the Projects v2 Status field when the issue is on a board; otherwise post a status comment. |
+| `blocked` | no state. Existing blocked label if the repo has one, plus the `Blocked` comment template naming the blocker. |
+| `done` | `closed` with `state_reason: completed`. |
+
+Rules:
+
+- **Never create a label to represent a state.** Read the labels already on sibling issues
+  (as with every other label); inventing `in-progress` seeds a taxonomy the team never
+  agreed to and that nothing else in the repo uses.
+- **Projects v2 Status is a project field, not an issue field** — it exists only when the
+  issue is on a board, and its column names are per-project. Discover them via the
+  project''s fields; don''t assume `Todo` / `In Progress` / `Done`.
+- **Closing always takes a `state_reason`** (`completed` here). A bare close loses the why.
+- Do **not** reopen a closed issue to reflect a `blocked` transition — comment instead.
+  Reopening rewrites history that the closing PR already recorded.
 ## Comments
 
 **Voice:** professional, concise, factual. No emoji. Every comment either conveys

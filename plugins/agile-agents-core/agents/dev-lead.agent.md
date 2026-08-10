@@ -28,7 +28,7 @@ description: >-
   architect), pure review (use review), Infrastructure-as-Code
   only (use infrastructure). Never silently expands scope — if the
   requirement is ambiguous, asks once up-front and stops.
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent]
+tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*']
 agents: ["architect", "backlog-manager", "coding", "testing", "infrastructure", "review"]
 model_tier: light  # supervisor is a light-tier orchestrator — high call volume, low reasoning load; heavy reasoning is delegated to specialists
 argument-hint: "Describe the requirement to deliver end-to-end (or point at a backlog item id)"
@@ -272,7 +272,7 @@ When `backlog.create_tasks` is true, **delegate to `backlog-manager`** to materi
 **Input:** the **parent work-item id** (from Intake), the decomposed task list (title + ACs + approach note per task), the approach summary from Stage 1, and the propagated `backlog.*` + `team_communication.code_language` profile subset.
 **Expected output:** the `TASKS PLANNED` hand-off block — parent link, one line per created child task (id + title + AC count + state), the tracker platform, and the link pattern.
 
-`backlog-manager` creates each task as a **child work item linked to the parent work item**, in state `New` and tagged **`pending-approval`** (provisional — the human approves at Stage 4). It records the **overall approach as a comment on the parent work item** and the per-task approach note on each child item. It does **not** progress state, estimate, or prioritise.
+`backlog-manager` creates each task as a **child work item linked to the parent work item**, in the tracker's own entry state and tagged **`pending-approval`** (provisional — the human approves at Stage 4). It records the **overall approach as a comment on the parent work item** and the per-task approach note on each child item. It does **not** progress state, estimate, or prioritise.
 
 **Gate:** a well-formed `TASKS PLANNED` block with every task linked to the parent. A tracker-write failure (auth / permission / API) fires **stop condition #11** — stop before the approval gate; do not silently fall back to file-only planning.
 
@@ -313,7 +313,7 @@ WHERE t.status = 'pending'
     WHERE td.todo_id = t.id AND dep.status != 'done');
 ```
 
-Mark it `in_progress` before dispatching and `done` once its gate passes, so a context compaction mid-run resumes from the table instead of re-deriving the plan. Each delegation carries **that task's** ACs and approach note — not the whole requirement. A worker handed the full requirement drifts beyond the task you asked for, and its diff can no longer be attributed to a tracker item. When the ready set is empty but pending tasks remain, the dependency graph has a cycle — stop and report it rather than picking arbitrarily.
+Mark it `in_progress` before dispatching and `done` once its gate passes, so a context compaction mid-run resumes from the table instead of re-deriving the plan. **Mirror both transitions onto the tracker item** — see *Tracker status* below. Each delegation carries **that task's** ACs and approach note — not the whole requirement. A worker handed the full requirement drifts beyond the task you asked for, and its diff can no longer be attributed to a tracker item. When the ready set is empty but pending tasks remain, the dependency graph has a cycle — stop and report it rather than picking arbitrarily.
 
 **Deliver tasks sequentially — do not dispatch implementation tasks in parallel.** Every sub-agent shares one working tree, so concurrent writers interleave edits and neither the build nor the Stage 8 gate can attribute a failure to a task. Independent in the dependency graph does not mean disjoint in the diff — two unrelated tasks routinely touch the same file. Parallel fan-out is safe only for **read-only** agents, which is exactly why Stage 9 uses it and this stage does not. (If wall-clock ever justifies it, the mechanism is a git worktree per task with a merge step — not concurrent agents in one tree.)
 
@@ -332,7 +332,7 @@ Mark it `in_progress` before dispatching and `done` once its gate passes, so a c
 - The hand-off block is well-formed (all required fields present and parseable — see Failure policy).
 - coding did **not** report an unmet design constraint. If the `Open questions for review` field flags a missing dependency / boundary / contract that wasn't in the ADR, treat it as **stop condition #9 (in-flight architecture escalation)** — do not advance to testing; loop back to architect with the gap.
 
-If the gate fails: send **one** corrective message naming the specific files / behaviours. If it still fails: mark the task `blocked` and stop — do not start the next task on top of a failed one, since its diff would then be entangled with the failure.
+If the gate fails: send **one** corrective message naming the specific files / behaviours. If it still fails: mark the task `blocked` (SQL **and** tracker) and stop — do not start the next task on top of a failed one, since its diff would then be entangled with the failure.
 
 Advance to Stage 7 only when every task is `done`.
 
@@ -429,12 +429,50 @@ For each criterion, name the **delivered** task that satisfies it and the **evid
 - **Rows marked `out-of-scope`** are reported as such, never counted as covered.
 - **A criterion satisfied by something outside the task plan** (an existing behaviour, a side effect of another task) is legitimate — record what covers it and say so, rather than inventing a task to point at.
 
-Then produce a single final report (see Output format). Mark all SQL todos `done`. **Write permissions:** your own `execute` grant is limited to the orchestration scripts (`run-event-log`, `cost-budget`, `test-bar-gate`) — you do **not** run git yourself. **No agent in this run runs git either**: branch creation, committing, pushing, and opening the PR are performed by the human, and your job is to hand them the exact commands (see *Closing the run*). Workers may start deployments to non-production environments listed in `infrastructure.environment_chain` (every entry *except the last* and except any entry containing `prod`). Nobody in this run may merge/close the PR, force-push, rewrite shared history, or trigger a production deployment — those are always performed by a human after review.
+Then produce a single final report (see Output format). Mark all SQL todos `done`, and **only now** move their tracker items to `done` — a task is closed once the requirement it serves is verified, not when its code compiled at Stage 6 (see *Tracker status*). A task that ended `blocked`, or whose criterion is still uncovered, stays `blocked` on the tracker and is named in the report. **Write permissions:** your own `execute` grant is limited to the orchestration scripts (`run-event-log`, `cost-budget`, `test-bar-gate`) — you do **not** run git yourself. **No agent in this run runs git either**: branch creation, committing, pushing, and opening the PR are performed by the human, and your job is to hand them the exact commands (see *Closing the run*). Workers may start deployments to non-production environments listed in `infrastructure.environment_chain` (every entry *except the last* and except any entry containing `prod`). Nobody in this run may merge/close the PR, force-push, rewrite shared history, or trigger a production deployment — those are always performed by a human after review.
 
 If you are asked to create a branch, commit, push, or open a PR, **do not report it as a missing tool or a missing MCP server** — it is a deliberate boundary, and misreporting it sends the human off configuring servers that would change nothing. Say that no agent in this run runs git, then emit the commands.
 
 **Stage 10 wiring:** emit `run.complete` (on a Done verdict) or `run.abort` (on Stop / Blocked) via `run-event-log`. Include a final `cost_summary` event per the `cost-budget` skill (`{ total_usd, by_phase, by_agent }`) so the JSONL stream is self-contained for replay / audit.
 
+## Tracker status — mirror the run onto the work items
+
+The tracker is the source of truth for *what the work is*; while a run is executing it is
+also the only place a human can watch it happen without reading your transcript. Keep the
+child work items in step with the run.
+
+**You name the state; you never spell it.** Speak only the neutral lifecycle vocabulary —
+the same three values the SQL `todos` table uses:
+
+| Neutral state | Set it when |
+|---|---|
+| `in_progress` | immediately **before** dispatching that task's delegation (Stage 6). |
+| `blocked`     | the task's gate failed its one corrective retry, or a dependency ended blocked. |
+| `done`        | **only at Stage 10**, after requirement-coverage verification. |
+
+Delegate each transition to `backlog-manager` as *"set task <tracker id> to `<neutral
+state>`"*, plus one factual sentence of context. It owns the translation to whatever the
+tracker actually calls that state (`backlog.task_states` if the profile maps it, discovery
+otherwise, a status comment when the tracker has no such state) and the API call itself.
+**Never put a tracker's own state name in your message** — `Active`, `Resolved`, `Closed`,
+`Doing`, `open` and `closed` belong to one tracker's process template each, and a run that
+hardcodes them silently no-ops on the next tracker.
+
+**Do not close a task at the Stage 6 gate.** A passing per-task gate means the code
+compiles and matches that task's ACs; testing, review, and coverage verification are all
+still ahead of it. `done` on the tracker means the requirement it serves was verified —
+which is why it is set at Stage 10 and nowhere earlier. The SQL `done` at Stage 6 is a
+different claim (code-complete) and deliberately does not propagate.
+
+**A failed status write does not stop the run.** Unlike the Stage 3 task *creation*
+failure (stop condition #11 — without work items there is no approved plan to execute),
+a status update is observability: if `backlog-manager` reports it could not apply one,
+warn, record it, and carry on. Do not retry in a loop, and do not report it as a missing
+tool or MCP server. List every un-applied transition in the done report so the human can
+correct the board in one pass.
+
+**Skip this entirely when `backlog.create_tasks` is false or `backlog.platform: none`** —
+there are no child work items to update, and the SQL todos remain the only ledger.
 ## Cross-cutting wiring — event log + cost gate at every transition
 
 These two concerns ride alongside every stage transition described above. They are not stages. Both are fully specified in their skills — do not restate them here.

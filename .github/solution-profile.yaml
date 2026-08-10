@@ -66,6 +66,14 @@ backlog:
                                 #   per planned task under the parent story (provisional, tagged `pending-approval`),
                                 #   then the human approves the plan. Requires a parent story id at intake.
   task_granularity: ""          # Optional hint: how finely to split (e.g. "one task per component/behaviour", "thin vertical slices").
+  task_states: {}               # Optional map: neutral lifecycle state -> this tracker's own state name.
+                                #   dev-lead speaks only the neutral names (in_progress / done / blocked);
+                                #   backlog-manager translates. Leave empty to have it discover the tracker's
+                                #   states, and fall back to a status comment when the tracker has no
+                                #   matching state (GitHub Issues, for one, has only open/closed).
+                                #   in_progress: ""   # e.g. Active | Doing | In Progress
+                                #   done:        ""   # e.g. Closed | Done | closed
+                                #   blocked:     ""   # omit when the tracker has no such state
 
 # ─── rpi ─── Research → Plan → Implement → Review handover ─────────────────────
 rpi:
