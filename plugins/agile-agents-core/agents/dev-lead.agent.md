@@ -123,7 +123,7 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 
 | Stage | RPI phase | Name | Purpose | Delegate |
 |---|---|---|---|---|
-| 0 | — | Intake & ambiguity check | **Profile interview (blocking — six required fields)**; capture DoD + out-of-scope; capture **parent story id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
+| 0 | — | Intake & ambiguity check | **Profile interview (blocking — six required fields)**; capture DoD + **story acceptance criteria verbatim** + out-of-scope; capture **parent story id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
 | 1 | Research | Verification | Read-only verification against the prepared concept + binding decisions; deeper design only when scope warrants | `architect` (conditional) |
 | 2 | Plan | Decompose into tasks | Break the story into meaningful, independently-implementable tasks — each with ACs + approach note | — |
 | 3 | Plan | Create tasks in tracker | Create one child work item per task, linked to the parent story (provisional, `pending-approval`); record approach as a story comment | `backlog-manager` |
@@ -133,7 +133,7 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 | 7 | Implement | Testing | Cover the change to the declared discipline + threshold | `testing` |
 | 8 | Implement | Automated gates | Deterministic lint → typecheck → unit-test → smoke gate, then opt-in deploy-verify to dev; loop to the author on fail (max 2 retries) | — (skills: `test-bar-gate`, `deploy-verify`) |
 | 9 | Review | Review | Reviewer fan-out (security / architecture / infra / test) merged by `review` | `review` |
-| 10 | — | Done | Consolidate trade-offs, summarise outcome vs DoD; **emit `run.complete` (or `run.abort`)** | — |
+| 10 | — | Done | **Verify every story acceptance criterion is covered by a delivered task + evidence**; consolidate trade-offs, summarise outcome vs DoD; **emit `run.complete` (or `run.abort`)** | — |
 
 Each stage has an entry condition, a delegated agent, and an exit gate. You never advance past a failed gate without either (a) one corrective retry with explicit feedback, or (b) stopping and asking the human.
 
@@ -174,6 +174,16 @@ repo already tells you, and never invent a value to get past the check — a fab
 **Step 2 — Read the requirement** and answer:
 
 - **What is the observable outcome?** (one sentence — the Definition of Done.)
+- **What are the story's acceptance criteria?** Capture them **verbatim, as a numbered list** — this is the checklist the run is measured against at Stage 10, and the only record of what the story asked for that survives decomposition. Persist it before delegating anything:
+
+```sql
+CREATE TABLE IF NOT EXISTS story_acs (
+  ac_id TEXT PRIMARY KEY, text TEXT, covered_by TEXT, evidence TEXT,
+  status TEXT DEFAULT 'uncovered');   -- uncovered | covered | out-of-scope
+INSERT INTO story_acs (ac_id, text) VALUES ('ac-1', '<verbatim>'), ('ac-2', '<verbatim>');
+```
+
+  If the story states no acceptance criteria, that is an ambiguity — ask. Never write criteria the story does not contain: invented ones make the Stage 10 check measure your own summary rather than the requirement.
 - **What is explicitly out of scope?** (call it out — protects against drift.)
 - **What is ambiguous?** (acceptance criteria, target framework, deployment target, data shape, error semantics, performance budget, security posture.)
 - **What is the parent story?** When `backlog.create_tasks` is true, capture the **parent work-item id** (the already-prepared story the planned tasks will be linked under). If it's missing or you can't identify it, fire **stop condition #10** — never create unparented tasks.
@@ -229,6 +239,8 @@ Break the story into the **minimum** set of meaningful, **independently-implemen
 - **Riskiest task first.** Order by uncertainty, not by convenience or dependency-graph aesthetics. Where a dependency forces a low-risk task first, keep it minimal.
 - **Fewest tasks that still slice cleanly.** If two tasks always ship together and touch the same files, they are one task. Task count is not a progress metric.
 - **Question every task once:** does the DoD fail if this task is dropped? If not, it belongs in Follow-ups, not the plan.
+
+**Map every acceptance criterion to a task.** Set `covered_by` on each `story_acs` row to the task id(s) delivering it. An AC no task covers is either a task you missed or genuinely out of scope — resolve it here: add the task, or mark the row `out-of-scope` with a reason the human will see at Stage 4. Decomposition is the only point where the story becomes tasks; every gate after it compares tasks to tasks, so a criterion dropped here surfaces nowhere until Stage 10.
 
 **Reconcile against architect's task list.** When Stage 1 delegated to `architect`, its hand-off already carried a list of follow-on implementation tasks — a second opinion from the agent that read the contracts. Before presenting the plan, account for every task it named: present in your plan, merged into another task (say which), or dropped with a one-line reason. A task architect named that you cannot account for is a signal you missed something in the design, not noise to discard. On the lightweight research path there is no such list; skip this.
 
@@ -405,7 +417,19 @@ Insert on the first review, `UPDATE` from each fixer's `Findings addressed` line
 
 ### Stage 10 — Done report
 
-Produce a single final report (see Output format). Mark all SQL todos `done`. **Write permissions:** your own `execute` grant is limited to the orchestration scripts (`run-event-log`, `cost-budget`, `test-bar-gate`) — you do **not** run git yourself. **No agent in this run runs git either**: branch creation, committing, pushing, and opening the PR are performed by the human, and your job is to hand them the exact commands (see *Closing the run*). Workers may start deployments to non-production environments listed in `infrastructure.environment_chain` (every entry *except the last* and except any entry containing `prod`). Nobody in this run may merge/close the PR, force-push, rewrite shared history, or trigger a production deployment — those are always performed by a human after review.
+**Verify story coverage first — before writing anything.** Every gate up to here compared a link to its predecessor: coding against its own task, tests against the coding hand-off, review against the diff. None of them looked back at the story, so a criterion lost at decomposition, dropped from a shrunk task, or stranded in a `blocked` task passes all of them silently. Close the loop:
+
+```sql
+SELECT ac_id, text, covered_by, evidence, status FROM story_acs WHERE status = 'uncovered';
+```
+
+For each criterion, name the **delivered** task that satisfies it and the **evidence** that proves it (a test name, or the review finding that confirms it). Set `status = 'covered'` only when you have both — a task marked `done` is not evidence that a criterion holds, it is evidence that a worker said so. Then:
+
+- **Anything still `uncovered`**, or covered only by a task that ended `blocked`: the run did not deliver the story, whatever the per-stage gates said. Report **🟡 Blocked**, name the unmet criteria, and recommend the missing task — do not report ✅ Done.
+- **Rows marked `out-of-scope`** are reported as such, never counted as covered.
+- **A criterion satisfied by something outside the task plan** (an existing behaviour, a side effect of another task) is legitimate — record what covers it and say so, rather than inventing a task to point at.
+
+Then produce a single final report (see Output format). Mark all SQL todos `done`. **Write permissions:** your own `execute` grant is limited to the orchestration scripts (`run-event-log`, `cost-budget`, `test-bar-gate`) — you do **not** run git yourself. **No agent in this run runs git either**: branch creation, committing, pushing, and opening the PR are performed by the human, and your job is to hand them the exact commands (see *Closing the run*). Workers may start deployments to non-production environments listed in `infrastructure.environment_chain` (every entry *except the last* and except any entry containing `prod`). Nobody in this run may merge/close the PR, force-push, rewrite shared history, or trigger a production deployment — those are always performed by a human after review.
 
 If you are asked to create a branch, commit, push, or open a PR, **do not report it as a missing tool or a missing MCP server** — it is a deliberate boundary, and misreporting it sends the human off configuring servers that would change nothing. Say that no agent in this run runs git, then emit the commands.
 
@@ -452,7 +476,7 @@ Use the SQL `todos` table to persist this — store key handoff facts in the tod
 
 A run is Done when **all** are true:
 
-1. The Intake-stated outcome is observably implemented.
+1. The Intake-stated outcome is observably implemented, and **every row in `story_acs` is either `covered` — mapped to a delivered task *and* to evidence — or explicitly `out-of-scope`**. No row is left `uncovered`. Out-of-scope rows are listed as such in the report, never counted as delivered.
 2. Build is green.
 3. Tests cover every behaviour in the coding hand-off, and all pass.
 4. `review` final verdict is ✅ Approve with no open 🔴 Critical and no unaccepted 🟠 Major.

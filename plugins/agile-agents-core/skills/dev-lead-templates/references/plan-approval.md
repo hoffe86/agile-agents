@@ -21,6 +21,8 @@ an abstract outline.
 
 **Architect tasks not carried into the plan:** <task — reason, one line each, or `none` / `n/a (lightweight research)`>
 
+**Acceptance criteria not covered by any task:** <criterion — reason it is out of scope, one line each, or `none — every criterion maps to a task`>
+
 **Stages I will run per task (autonomously after your approval):**
 - Coding — <skip / run + 1-line reason>
 - Testing — <skip / run + 1-line reason>
