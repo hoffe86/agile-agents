@@ -130,4 +130,4 @@ ADR(S) WRITTEN
 - Don't bury two decisions in one ADR.
 - Don't backdate ADRs to look like the choice was made earlier than it was.
 - Don't make value judgments outside the structured sections — keep prose tight.
-- Don't commit.
+- Don't commit — `architect` produces no code; the human decides when the document lands.

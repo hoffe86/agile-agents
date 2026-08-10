@@ -55,7 +55,7 @@ Before authoring code, IaC, tests, or design changes, check for accepted Archite
 - **Accepted ADRs are binding constraints** (chosen pattern, library, lifetime, layering rule). If your planned work would contradict one, **stop and surface the conflict** to the orchestrator (or user, if standalone) instead of silently diverging.
 - Reference the ADR id in your hand-off when one applies.
 
-**No agent authors ADRs.** ADRs are written up-front by humans. Every agent reads existing ADRs, honours them, and cites them, but never creates one. `architect` may *draft a suggested body in chat* for a human to review and commit — it does not write the file.
+**No agent authors an ADR on its own initiative.** ADRs are written up-front by humans. Every agent reads existing ADRs, honours them, and cites them, but never decides to create one mid-run — an undecided question is a **decision gap** to surface, not an ADR to write. `architect` may *draft a suggested body in chat* for a human to review. The one exception is an **explicit human request** to write an ADR, which the `architecture-decision-records` skill handles; it is never triggered by an autonomous run.
 
 ## 5. Decision capture (applies whether or not ADRs are used)
 

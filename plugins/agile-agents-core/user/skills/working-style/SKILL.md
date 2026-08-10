@@ -42,8 +42,8 @@ iterative delivery, small increments, working software over documentation).
   suitable standard exists.
 - **Act first, explain briefly** — don't ask permission for obvious fixes.
   Apply the change, explain what you did in 1–2 sentences.
-- **Code changes require user approval for commits** — prepare and verify
-  changes, but let the user decide when to commit and push.
+- **Commit and push freely; opening a PR needs approval** — work on a feature
+  branch, never the default one. Ask before raising the PR; never merge one.
 
 ## Proactive Behaviour
 
@@ -181,7 +181,7 @@ above. This catches issues before CI and reviewers see the code:
 - Don't hardcode values resolvable via data sources.
 - Don't implement wrapper layers when the framework has built-in support.
 - Don't leave dead code or TODO comments without action.
-- Don't commit and push without explicit user approval.
+- Don't commit to the default branch, and don't open a PR without approval.
 - Don't create separate endpoints or tools when existing ones can be extended
   with parameters.
 

@@ -78,7 +78,7 @@ Route by the repo's actual stack (`solution-profile.yaml: tech_stack.primary_lan
 Those language skills tell you which deeper specialist skills to compose with (`csharp-async`, `ef-core`, `aspire`, `ruff-recursive-fix`, `refactor`, etc.) — some ship in companion plugins, some are external and may not be installed; treat each as a bonus, never a precondition.
 
 For unfamiliar codebases, invoke **`acquire-codebase-knowledge`** first.
-For commit messages — whether you are committing yourself or preparing the command for a human — use **`conventional-commit`** + **`git-commit`**, honouring `backlog.commit_convention` and `required_commit_trailers`.
+For commit messages use **`conventional-commit`** + **`git-commit`**, honouring `backlog.commit_convention` and `required_commit_trailers`.
 
 **For AI-integrated surfaces** (LLM prompts, agent definitions, RAG retrieval, tool-calling, MCP servers, prompt templates in code), invoke the **`ai-prompt-engineering-safety-review`** skill before hand-off if the project installs it — it covers prompt-injection defences, output-handling rules, and tool-use safety. It is **not bundled with this plugin**; without it, self-check against the OWASP LLM Top 10 (untrusted input reaching a prompt, unvalidated model output reaching a sink, over-broad tool grants). Surface any unaddressed item as a trade-off so `security-review` can pick it up.
 

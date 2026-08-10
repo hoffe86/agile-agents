@@ -83,4 +83,4 @@ BICEP IMPLEMENTATION COMPLETE
 - Don't `az deployment ... create` from this skill — that's `azure-deploy`'s job (and the orchestrator decides timing).
 - Don't add a CI/CD pipeline — that's `cicd-pipeline-implementation`.
 - Don't change `azd` environment values without surfacing it.
-- Don't commit.
+- Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

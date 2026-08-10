@@ -75,4 +75,4 @@ When tests pass:
 ## 6. What you do NOT do
 
 - Don't change production code to make a test pass — push back to `coding` instead. Exception: trivial visibility tweaks that don't change behavior, only when no alternative exists.
-- Don't commit.
+- Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

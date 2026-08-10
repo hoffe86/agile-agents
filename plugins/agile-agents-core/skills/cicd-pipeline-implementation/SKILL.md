@@ -108,4 +108,4 @@ PIPELINE IMPLEMENTATION COMPLETE
 - Don't add long-lived service principal secrets — surface a request to set up OIDC federated credentials instead.
 - Don't deploy infra changes from CD without a Plan/what-if step the human can review.
 - Don't disable required status checks to "unblock" a release.
-- Don't commit (the orchestrator decides timing).
+- Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

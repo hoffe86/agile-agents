@@ -89,4 +89,4 @@ TERRAFORM IMPLEMENTATION COMPLETE
 - Don't `terraform apply` from this skill — `azure-deploy` owns that.
 - Don't change provider versions or backend config without surfacing the impact.
 - Don't add CI/CD — that's `cicd-pipeline-implementation`.
-- Don't commit.
+- Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.
