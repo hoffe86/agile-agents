@@ -10,15 +10,14 @@
 #   ./emit-event.sh --run-id <uuid> --agent <name> --phase <name> --event-type <type> \
 #       [--outcome success|fail|partial] [--tool-name <s>] [--args-summary <s>] \
 #       [--error-kind <s>] [--correlation-id <s>] [--parent-event-id <s>] \
-#       [--tokens-in <int>] [--tokens-out <int>] [--cost-usd <float>] [--duration-ms <int>] \
-#       [--payload-json <json-object>]
+#       [--duration-ms <int>] [--payload-json <json-object>]
 
 set -euo pipefail
 
 run_id=""; agent=""; phase=""; event_type=""
 outcome=""; tool_name=""; args_summary=""; error_kind=""
 correlation_id=""; parent_event_id=""
-tokens_in=""; tokens_out=""; cost_usd=""; duration_ms=""; payload_json=""
+duration_ms=""; payload_json=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,9 +31,6 @@ while [[ $# -gt 0 ]]; do
         --error-kind)      error_kind="$2"; shift 2 ;;
         --correlation-id)  correlation_id="$2"; shift 2 ;;
         --parent-event-id) parent_event_id="$2"; shift 2 ;;
-        --tokens-in)       tokens_in="$2"; shift 2 ;;
-        --tokens-out)      tokens_out="$2"; shift 2 ;;
-        --cost-usd)        cost_usd="$2"; shift 2 ;;
         --duration-ms)     duration_ms="$2"; shift 2 ;;
         --payload-json)    payload_json="$2"; shift 2 ;;
         *) echo "emit-event: unknown arg: $1" >&2; exit 1 ;;
@@ -105,9 +101,6 @@ parts+=("\"event_type\":\"$(json_escape "$event_type")\"")
 [[ -n "$correlation_id"  ]] && parts+=("\"correlation_id\":\"$(json_escape "$correlation_id")\"")
 [[ -n "$parent_event_id" ]] && parts+=("\"parent_event_id\":\"$(json_escape "$parent_event_id")\"")
 [[ -n "$outcome"         ]] && parts+=("\"outcome\":\"$(json_escape "$outcome")\"")
-[[ -n "$tokens_in"       ]] && parts+=("\"tokens_in\":$tokens_in")
-[[ -n "$tokens_out"      ]] && parts+=("\"tokens_out\":$tokens_out")
-[[ -n "$cost_usd"        ]] && parts+=("\"cost_usd\":$cost_usd")
 [[ -n "$duration_ms"     ]] && parts+=("\"duration_ms\":$duration_ms")
 [[ -n "$tool_name"       ]] && parts+=("\"tool_name\":\"$(json_escape "$tool_name")\"")
 [[ -n "$args_summary"    ]] && parts+=("\"args_summary\":\"$(json_escape "$args_summary")\"")

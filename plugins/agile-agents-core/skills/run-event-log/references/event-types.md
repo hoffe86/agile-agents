@@ -37,7 +37,7 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
 **Who:** `dev-lead` only.
 **When:** Last event in `events.jsonl`, after every sub-agent has completed and the user-facing summary has been written.
 **Required additional:** `outcome`.
-**Recommended:** `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms` (totals for the whole run).
+**Recommended:** `duration_ms` (wall clock for the whole run). Token and cost totals are **not** carried here — they are measured by `cost-budget`'s `collect-usage.py`, not self-reported.
 
 ```json
 {
@@ -47,9 +47,6 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
   "phase": "wrap-up",
   "event_type": "run_complete",
   "outcome": "success",
-  "tokens_in": 84210,
-  "tokens_out": 19880,
-  "cost_usd": 0.612,
   "duration_ms": 524000
 }
 ```
@@ -64,7 +61,7 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
 **When:** First action after picking up work — before the first tool call of the phase.
 **Required additional:** none.
 **Recommended:** `parent_event_id` (the `handoff_received` or `phase_complete` that triggered this phase).
-**Forbidden:** `outcome`, `tokens_in`, `tokens_out`, `cost_usd`.
+**Forbidden:** `outcome` (a phase that has only started has no outcome).
 
 ```json
 {
@@ -85,7 +82,7 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
 **Who:** any agent.
 **When:** Immediately before printing the sentinel block for hand-off.
 **Required additional:** `outcome`.
-**Recommended:** `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms` (totals for this phase only), `parent_event_id` referencing the matching `phase_start`.
+**Recommended:** `duration_ms` (totals for this phase only), `parent_event_id` referencing the matching `phase_start`.
 
 ```json
 {
@@ -95,9 +92,6 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
   "phase": "coding",
   "event_type": "phase_complete",
   "outcome": "success",
-  "tokens_in": 12450,
-  "tokens_out": 3120,
-  "cost_usd": 0.087,
   "duration_ms": 184000
 }
 ```
@@ -111,7 +105,7 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
 **Who:** any agent.
 **When:** On any non-trivial tool invocation. "Non-trivial" = the call costs tokens, takes >1s, or mutates state. Skip cheap re-reads of files you already have in context.
 **Required additional:** `tool_name`.
-**Recommended:** `args_summary` (≤200 char redacted), `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms`.
+**Recommended:** `args_summary` (≤200 char redacted), `duration_ms`.
 
 ```json
 {
@@ -122,9 +116,6 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
   "event_type": "tool_call",
   "tool_name": "edit",
   "args_summary": "infra/modules/storage.bicep — add privateEndpoint resource (lines 42-78)",
-  "tokens_in": 4210,
-  "tokens_out": 612,
-  "cost_usd": 0.018,
   "duration_ms": 2300
 }
 ```

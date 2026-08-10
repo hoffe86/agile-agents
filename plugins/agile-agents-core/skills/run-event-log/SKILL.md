@@ -13,7 +13,7 @@ Structured, append-only telemetry that runs **alongside** (never replaces) the s
 Sentinel blocks are great for sync hand-off between agents, but they're prose — you can't query them. The event log gives us four things prose blocks can't:
 
 1. **Audit trail** — replay any past run, attribute every action to an agent and phase
-2. **Cost telemetry** — sum `tokens_in`, `tokens_out`, `cost_usd` per phase / agent / run; prerequisite to H4 cost discipline
+2. **Cost telemetry** — the `phase_start` / `phase_complete` timestamps are the windows `cost-budget`'s `collect-usage.py` uses to attribute real, runtime-measured token usage per phase; prerequisite to H4 cost discipline
 3. **Reviewer-overlap analysis** — quantify how often `security-review` re-flags `code-review` findings; prerequisite to E3 spike on file-restriction enforcement
 4. **Debugging** — when a run fails, the JSONL is the smallest reproducible record of what each agent decided to do
 
@@ -46,21 +46,27 @@ Every event has these required fields:
 | `phase`      | string  | free-form phase name (e.g. `architecture`, `coding`, `review`) |
 | `event_type` | enum    | `run_start` / `run_complete` / `phase_start` / `phase_complete` / `tool_call` / `gate_check` / `handoff_received` / `error` |
 
-Common optional fields: `correlation_id`, `parent_event_id`, `outcome`, `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms`, `tool_name`, `args_summary`, `error_kind`, `payload`.
+Common optional fields: `correlation_id`, `parent_event_id`, `outcome`, `duration_ms`, `tool_name`, `args_summary`, `error_kind`, `payload`. There are deliberately **no** token or cost fields — see below.
 
-## What every coding-suite agent must emit
+## Who emits what
 
-Three mandatory events per phase, plus N tool-call events:
+**`dev-lead` emits everything.** It is the only agent that loads this skill, because it is
+the only one that knows the phase structure — and because usage is attributed to a phase
+by timestamp (see `cost-budget`), a worker emitting its own events would add nothing the
+orchestrator's phase window does not already capture. An earlier version of this file told
+every agent to emit; none did, and nothing depended on it.
 
-1. **On phase entry** — `event_type=phase_start`. Mark the agent + phase you're starting. Useful for measuring time-in-phase.
-2. **On any non-trivial tool call** — `event_type=tool_call` with `tool_name`, `args_summary` (≤200 char redacted summary), `tokens_in`, `tokens_out`, `cost_usd`, `duration_ms`. "Non-trivial" = anything that costs tokens, takes >1s, or mutates state. Skip cheap reads like `view` on a file you've already loaded.
-3. **Just before the completion sentinel block** — `event_type=phase_complete` with `outcome=success|fail|partial`. The sentinel block stays exactly as it is — the JSON event is **additive**.
+1. **`run_start`** — first event in the file. **`run_complete`** — last.
+2. **On phase entry / exit** — `phase_start`, then `phase_complete` with
+   `outcome=success|fail|partial`. These two are load-bearing: they are the windows that
+   attribute measured token usage to a phase, so a missing `phase_start` silently drops
+   that phase's usage into `unattributed`.
+3. **On a gate result** — `gate_check` with `outcome`, including the cost gate.
+4. **On any caught failure** — `error` with `error_kind` and a short `payload.message`.
 
-`dev-lead` additionally emits `run_start` (first event in the file) and `run_complete` (last event).
-
-Reviewers also emit `gate_check` events when they pass / fail / waive a checklist gate. Receiving agents emit `handoff_received` when they pick up work from another agent.
-
-On any caught failure, emit an `error` event with `error_kind` and a short `payload.message` before retrying or returning.
+**Never write token or cost fields.** No agent can observe its own token consumption —
+there is no tool, env var, or transcript field that exposes it — so any figure an agent
+writes is invented. `collect-usage.py` reads the runtime's own metering instead.
 
 ## How to emit
 
@@ -80,7 +86,7 @@ Example (PowerShell, from a `coding` agent finishing a phase):
   -Phase  coding `
   -EventType phase_complete `
   -Outcome success `
-  -TokensIn 12450 -TokensOut 3120 -CostUsd 0.087 -DurationMs 184000
+  -DurationMs 184000
 ```
 
 Example (bash, same event):
@@ -92,7 +98,7 @@ Example (bash, same event):
   --phase coding \
   --event-type phase_complete \
   --outcome success \
-  --tokens-in 12450 --tokens-out 3120 --cost-usd 0.087 --duration-ms 184000
+  --duration-ms 184000
 ```
 
 ## Privacy & redaction rules

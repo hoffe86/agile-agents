@@ -106,6 +106,34 @@ Take the values from `solution-profile.yaml` — never hardcode a customer's pat
   the ADO UI — put the repro there, not only in the description.
 - PR-to-work-item linking uses `backlog.pr_link_pattern` (conventionally `AB#<n>`).
 
+## States (neutral → ADO)
+
+ADO state names come from the project's **process template**, so there is no single
+correct mapping — discover it, don't assume it. Read `backlog.task_states` first; when it
+is unset, inspect a sibling item of the same type (or the project's work-item type
+definition) to learn the states in use, and only then map:
+
+| Neutral | Agile | Scrum | Basic | CMMI |
+|---|---|---|---|---|
+| `in_progress` | Active | Committed | Doing | Active |
+| `implemented` | Resolved | *(no state)* | *(no state)* | Resolved |
+| `done` | Closed | Done | Done | Closed |
+| `blocked` | *(no state — use a tag + comment)* | *(no state)* | *(no state)* | *(no state)* |
+
+Notes that bite:
+
+- **Processes are customisable.** A team can rename or add states, so a sibling item beats
+  this table every time. Treat the table as the fallback, not the truth.
+- **`blocked` is not a state** in the out-of-the-box processes. Apply the project's
+  blocked tag if it has one and post the `Blocked` comment template; never repurpose
+  `Removed`, which means cancelled.
+- **Resolved is `implemented`, not `done`.** Agile and CMMI put it between Active and
+  Closed, which is exactly code-complete-but-unverified. Scrum and Basic have no
+  equivalent — leave those items where they are and comment, rather than jumping to
+  Done/Closed and claiming a verification the run has not performed.
+- Illegal transitions are rejected by the state machine (e.g. New → Closed in some
+  processes). If a jump is refused, report it rather than walking intermediate states to
+  force it through.
 ## Work-item comments
 
 **Voice:** professional, concise, factual. No emoji. Every comment either conveys

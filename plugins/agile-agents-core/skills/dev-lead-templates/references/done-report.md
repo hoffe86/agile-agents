@@ -11,12 +11,18 @@ why" — answer that first.
 **Definition of Done:** <one sentence from Intake>
 
 ## Stages run
-| Stage | Agent | Outcome |
-|---|---|---|
-| Architect | architect | ✅ <chose X, honours ADR-NNN> | ⏭ skipped (<reason>) |
-| Coding | coding | ✅ <N files, build green> |
-| Testing | testing | ✅ <M tests added, all pass> |
-| Review | review | ✅ Approve | 🔁 Request changes (looped once) |
+| Stage | Agent | Outcome | Tokens (in/out) | AIU |
+|---|---|---|---|---|
+| Architect | architect | ✅ <chose X, honours ADR-NNN> | ⏭ skipped (<reason>) | <in>/<out> | <aiu> |
+| Coding | coding | ✅ <N files, build green> | <in>/<out> | <aiu> |
+| Testing | testing | ✅ <M tests added, all pass> | <in>/<out> | <aiu> |
+| Review | review | ✅ Approve | 🔁 Request changes (looped once) | <in>/<out> | <aiu> |
+| **Run total** | | | **<in>/<out>** | **<aiu>** |
+
+Usage columns come from `collect-usage.py` (`by_phase`). Report `<n/a — telemetry
+unavailable>` across the row if it exited 3; never write `0` or a guess, and never write a
+USD figure unless `cost_envelope.usd_per_aiu` is set — an invented number here is worse
+than a blank, because it looks like a measurement.
 
 ## What was delivered
 - <observable behaviours, mapped to the Definition of Done>

@@ -1,7 +1,7 @@
 {
   "name": "agile-agents-dotnet",
   "description": ".NET / C# implementation and testing skills for the Agentic Agile Harness — modern C#, xUnit/NUnit/MSTest/TUnit, EF Core, Aspire, and design-pattern review.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "author": {
     "name": "hoffe86",

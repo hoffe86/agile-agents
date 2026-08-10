@@ -1,7 +1,7 @@
 {
   "name": "agile-agents-terraform",
   "description": "Terraform Infrastructure-as-Code skills for the Agentic Agile Harness — azurerm/AzAPI providers, Azure Verified Modules, plan-diff analysis, and resource import.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "author": {
     "name": "hoffe86",

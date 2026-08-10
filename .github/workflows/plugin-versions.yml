@@ -1,0 +1,34 @@
+name: Plugin versions
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# The version is the delivery mechanism -- an installed plugin picks up nothing until it
+# moves, so an unbumped fix ships to nobody. This was missed twice before anything
+# enforced it: PR #3 left seven plugins at 0.1.0 (two of them instructing agents to load
+# skills that no longer existed), and PR #7 nearly shipped three more.
+#
+# Bumping is per PR, not per commit, so the bump check only runs on pull_request and
+# compares against the merge base. On push only the cheap consistency check runs.
+
+jobs:
+  plugin-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the bump check diffs against the merge base. Not conditional --
+          # `<cond> && 0 || 1` always yields 1, because 0 is falsy in Actions expressions.
+          fetch-depth: 0
+
+      - name: Check plugin versions
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            git fetch --no-tags --quiet origin "$env:GITHUB_BASE_REF"
+            ./scripts/check-plugin-versions.ps1 -BaseRef "origin/$env:GITHUB_BASE_REF"
+          } else {
+            ./scripts/check-plugin-versions.ps1
+          }

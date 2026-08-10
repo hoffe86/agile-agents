@@ -133,11 +133,26 @@ def run_checks(events):
     add("review-after-implement", True, review_after,
         "" if review_after else "review did not occur after implementation")
 
-    # --- Cost telemetry (cost-budget machinery ran) -------------------------
-    rc = last if ends else next((e for e in reversed(events) if e.get("event_type") == "run_complete"), {})
-    has_cost = bool(rc) and (rc.get("cost_usd", 0) or rc.get("tokens_in") or rc.get("tokens_out"))
-    add("cost-telemetry", True, has_cost,
-        "" if has_cost else "run_complete carries no cost_usd / token telemetry")
+    # --- Cost telemetry (cost-budget machinery can attribute usage) ---------
+    # Usage is measured by collect-usage.py from the runtime's own store and
+    # attributed to phases by timestamp window. So what the log must carry is
+    # not token counts (no agent can observe its own) but a closed window per
+    # phase: every phase_start needs a matching phase_complete, or that phase's
+    # usage silently falls into "unattributed".
+    starts = [e for e in events if e.get("event_type") == "phase_start"]
+    completes = {e.get("phase") for e in events if e.get("event_type") == "phase_complete"}
+    unclosed = sorted({e.get("phase") for e in starts} - completes)
+    attributable = bool(starts) and not unclosed
+    add("cost-telemetry", True, attributable,
+        "" if attributable
+        else ("no phase_start events - usage cannot be attributed to any phase"
+              if not starts else
+              "phase(s) never closed, usage would be unattributed: " + ", ".join(map(str, unclosed))))
+
+    # No agent can observe its own token spend, so any such field is invented.
+    invented = sorted({f for e in events for f in ("tokens_in", "tokens_out", "cost_usd") if f in e})
+    add("no-self-reported-cost", True, not invented,
+        "" if not invented else "self-reported cost fields present: " + ", ".join(invented))
 
     return results
 
@@ -209,7 +224,7 @@ def build_golden():
         ev("coding", "coding", "handoff_received"),
         ev("coding", "coding", "phase_start"),
         ev("coding", "coding", "tool_call", tool_name="edit",
-           args_summary="modules/storage.bicep - add hardened account", tokens_in=4200, tokens_out=610, cost_usd=0.018),
+           args_summary="modules/storage.bicep - add hardened account"),
         ev("coding", "coding", "phase_complete", outcome="success"),
         ev("testing", "testing", "phase_start"),
         ev("testing", "testing", "tool_call", tool_name="powershell", args_summary="bicep build modules/storage.bicep"),
@@ -225,7 +240,7 @@ def build_golden():
         ev("review", "review", "phase_complete", outcome="success"),
         ev("dev-lead", "review", "phase_complete", outcome="success"),
         ev("dev-lead", "wrap-up", "run_complete", outcome="success",
-           tokens_in=84210, tokens_out=19880, cost_usd=0.612, duration_ms=524000),
+           duration_ms=524000),
     ]
 
 
@@ -264,11 +279,16 @@ def self_test():
     cases.append(("no reviewer gate trips reviewer-gate-check",
                   "reviewer-gate-check" in required_fail_ids(mutate(drop_reviewer_gates)), True))
 
-    def strip_cost(e):
-        for k in ("cost_usd", "tokens_in", "tokens_out"):
-            e[-1].pop(k, None)
-    cases.append(("no cost on run_complete trips cost-telemetry",
-                  "cost-telemetry" in required_fail_ids(mutate(strip_cost)), True))
+    def orphan_phase(e):
+        # a phase that opens and never closes: its usage would be unattributed
+        e.insert(1, dict(e[1], event_type="phase_start", agent="coding", phase="orphan"))
+    cases.append(("unclosed phase trips cost-telemetry",
+                  "cost-telemetry" in required_fail_ids(mutate(orphan_phase)), True))
+
+    def self_report_cost(e):
+        e[-1]["cost_usd"] = 0.612
+    cases.append(("self-reported cost trips no-self-reported-cost",
+                  "no-self-reported-cost" in required_fail_ids(mutate(self_report_cost)), True))
 
     def unbalance(e):
         e.insert(2, dict(e[1], event_type="phase_start", agent="dev-lead", phase="research"))

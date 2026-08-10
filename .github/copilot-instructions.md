@@ -8,8 +8,9 @@ agentic CLI take a prepared requirement and drive it to a reviewed change withou
 human in the loop between stages. The harness is what this repo builds; the code it
 writes lives in *other* repos.
 
-It ships as `agile-agents-core`, a portable GitHub Copilot CLI **plugin**. This repo is both
-the source you edit and the installable plugin/marketplace that others consume.
+It ships as a GitHub Copilot CLI **marketplace of eight plugins** - `agile-agents-core`
+(agents + technology-neutral skills) plus seven `agile-agents-<technology>` companions. This
+repo is both the source you edit and the marketplace others install from.
 
 Harness, concretely: `dev-lead` (supervisor) runs the RPI pipeline over a roster of
 specialist agents, each constrained by a declared tool grant and a sentinel hand-off
@@ -60,30 +61,37 @@ hoffe86/agile-agents` then `copilot plugin install agile-agents-core@agile-agent
 agent/                               Marketplace root
 ├── .github/
 │   ├── copilot-instructions.md      This file
-│   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace, pluginRoot ./plugins)
-│   └── workflows/agents-md-sync.yml AGENTS.md drift check
+│   ├── solution-profile.yaml        This repo's own profile - byte-identical to the
+│   │                                template it ships (see below)
+│   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace,
+│   │                                pluginRoot ./plugins)
+│   └── workflows/                   4 workflows -> CI checks audit-references,
+│                                    check-agents-md-in-sync, trajectory,
+│                                    plugin-versions
 ├── plugins/                         One folder per plugin
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
-│   ├── agile-agents-core/             The autonomous-coding agent harness
-│   │   ├── .github/plugin/plugin.json   Copilot CLI plugin manifest (name: agile-agents-core)
-│   │   ├── agents/                  11 *.agent.md (1 supervisor + 4 authors + 5 reviewers + backlog-manager)
-│   │   ├── skills/                  30 technology-neutral repo-scope skills
+│   ├── agile-agents-core/           The autonomous-coding agent harness
+│   │   ├── .github/plugin/plugin.json   Plugin manifest (name: agile-agents-core)
+│   │   ├── agents/                  11 *.agent.md (1 supervisor + 4 authors
+│   │   │                            + 5 reviewers + backlog-manager)
+│   │   ├── skills/                  30 technology-neutral repo-scope skills, incl.
+│   │   │                            solution-profile-interview/references/
+│   │   │                            solution-profile.template.yaml
 │   │   └── user/skills/             4 user-scope skills (bundled into the plugin)
-│   ├── agile-agents-dotnet/           5 skills — C# / .NET
-│   ├── agile-agents-python/           4 skills — Python
-│   ├── agile-agents-bicep/            2 skills — Bicep IaC
-│   ├── agile-agents-terraform/        3 skills — Terraform IaC
-│   ├── agile-agents-azure/            1 skill  — Azure platform grounding (CAF / AVM / WAF / MCSB)
-│   ├── agile-agents-ado/              1 skill  — Azure DevOps Boards tracker mechanics
-│   └── agile-agents-github/           1 skill  — GitHub Issues tracker mechanics
-├── scripts/                         generate-agents-md.{ps1,sh} + references/
-├── eval/                            Eval harness (SWE-bench subset + custom tasks) + baselines.md
+│   ├── agile-agents-dotnet/         5 skills — C# / .NET
+│   ├── agile-agents-python/         4 skills — Python
+│   ├── agile-agents-bicep/          2 skills — Bicep IaC
+│   ├── agile-agents-terraform/      3 skills — Terraform IaC
+│   ├── agile-agents-azure/          1 skill  — Azure platform grounding (CAF / AVM / WAF)
+│   ├── agile-agents-ado/            1 skill  — Azure DevOps Boards tracker mechanics
+│   └── agile-agents-github/         1 skill  — GitHub Issues tracker mechanics
+├── scripts/                         generate-agents-md.{ps1,sh}, audit-references.ps1,
+│                                    check-plugin-versions.ps1
+├── eval/                            swe-bench-subset + custom-eval + trajectory + baselines.md
 ├── docs/
-│   ├── adr/                         Architecture decision records (0001–0007)
+│   ├── adr/                         Architecture decision records (0001–0008)
 │   ├── research/                    Whitepaper + spikes
 │   └── AGENTS-MD-MAPPING.md         Folder→agent mapping for the generator
-├── solution-profile.yaml            Per-project operational profile — template ships in
-│                                    plugins/agile-agents-core/skills/solution-profile-interview/references/
 ├── AGENTS.md                        Generated — do not hand-edit
 └── README.md
 ```
@@ -119,6 +127,39 @@ flat tree can't silently drop an artifact by forgetting a manifest line. Every `
 and every `skills/<name>/` subfolder sits directly under its parent; there are no `coding/`
 or `backlog/` category folders.
 
+### Tool grants (four rules, each learned the hard way)
+An agent's `tools:` frontmatter is a **filter, not a hint** — a server that is running and
+configured is still unreachable if it is not granted. Getting this wrong is silent in both
+directions, which is why it has produced a bug in three separate PRs.
+
+1. **A grant must name the server exactly as it is registered** — copied verbatim from
+   `mcp-config.json`, not guessed. A registered name may itself contain a slash
+   (`microsoft/azure-devops-mcp`, `microsoftdocs/mcp`), so `audit-references.ps1` matches
+   the **whole grant** first and only then falls back to the first segment. An earlier probe
+   concluded that a grant may carry at most one slash and an arity check was added on that
+   basis; it was wrong and had to be reverted — the probe registered the server as
+   `probesrv` and then tested the grant `vendor/probesrv/*`, which cannot separate "the
+   second slash is invalid" from "that is not this server's name".
+2. **Grants live in agent frontmatter. A skill cannot grant anything.** Skill-level
+   `allowed-tools:` is inert — measured on CLI 1.0.79, same skill and prompt, only the
+   agent's `tools:` changed the outcome. It is inert for confirmation prompts too.
+3. **An unmatched grant is free.** It neither errors nor warns, so covering every alias a
+   server is registered under (`ado/*`, `azure-devops/*`, `azure-devops-mcp/*`) is the right
+   move in a harness whose users each keep their own `mcp-config.json`.
+4. **Rule 3 is also why the failure is invisible.** From inside a session, "not granted" and
+   "not installed" look identical. Any agent that depends on an external server must
+   preflight and report **both** causes with the fix for each — never just "unavailable".
+
+### No agent runs git
+No agent in a run commits, pushes, branches, or opens a PR — `dev-lead` prepares the
+commands for a human instead. This is a deliberate boundary, not a missing capability, and
+it must be stated as such: when it was merely absent, agents diagnosed it as a broken MCP
+server and reported a tooling failure.
+
+The PR command derives from **`identity.repo_url`**, never from `backlog.platform` — code
+host and board host are independent, and a project may keep code on GitHub with work items
+in Azure Boards.
+
 ### Hand-off block-name canon (do not change)
 Worker agents emit a recognisable terminator block on completion — `dev-lead` parses these.
 Renaming any silently breaks the pipeline:
@@ -134,26 +175,82 @@ Renaming any silently breaks the pipeline:
 - **Research** — read-only verification against the *already-prepared* concept (arc42 / C4)
   and accepted ADRs; delegates to `architect` when scope warrants. The pipeline conforms to
   those up-front decisions and never authors them; a missing decision is escalated to humans.
-- **Plan** — decompose the story into independently-implementable tasks (acceptance criteria
+- **Plan** — decompose the requirement into independently-implementable tasks (acceptance criteria
   + approach note). When `backlog.create_tasks` is true, `backlog-manager` creates them as
-  **child work items linked to the parent story** (provisional, tagged `pending-approval`)
+  **child work items linked to the parent work item** (provisional, tagged `pending-approval`)
   and emits `TASKS PLANNED`. The **mandatory human plan-approval gate fires after task
   creation**. Tasks live in the tracker, not as files — local handover files
   (`rpi.handover_dir`) are an ephemeral, gitignored cache.
-- **Implement / Review** — coding + infrastructure + testing, then multi-lens review.
+- **Implement / Review** — coding + infrastructure + testing, then multi-lens review. Stage 10
+  verifies the delivered change covers the *requirement*, not merely that every task passed.
+
+Tasks are dispatched **one at a time**, even when the dependency graph says they are
+independent. Sub-agents share one working tree, so concurrent writers interleave edits and
+no gate can attribute a failure to a task — independent in the graph is not disjoint in the
+diff. (`review` fans out in parallel only because all four specialists are read-only.) The
+upgrade path is a git worktree per task plus a merge step; do not "fix" this by spawning
+concurrent writers.
+
+Acceptance criteria are captured **verbatim at intake** and verified at Stage 10 against
+**evidence** — a test name or a review finding. Every gate used to compare against its
+predecessor and none against the source, which looks closed-loop but lets a criterion lost
+at decomposition pass silently.
+
+Say **requirement**, not *story* or *user story*. A requirement can arrive as a tracker item
+or as a markdown file, and the pipeline must not assume a tracker exists.
+
+### Tracker status lifecycle (neutral names only)
+`dev-lead` mirrors each task onto its tracker item using exactly four neutral names —
+`in_progress`, `implemented`, `blocked`, `done` — and is **forbidden from naming a
+tracker's own state**. `backlog-manager` resolves them: `backlog.task_states` from the
+profile, else the states the item actually accepts, else post a comment and say so.
+
+`implemented` (code-complete, unverified) is deliberately not `done` (delivered, verified
+at Stage 10). Where a tracker cannot express `implemented`, the item **stays where it is
+and gets a comment** — it must never fall back to the terminal state, because closing on
+code-completeness claims a verification that has not happened and no later transition
+undoes it once the team has watched the item leave the board.
+
+A failed status write **warns and continues** (observability), unlike a failed task
+*creation*, which halts the run (without work items there is no approved plan).
+
+### Cost and usage telemetry (do not re-introduce self-reporting)
+**No agent can observe its own token consumption** — there is no tool, env var, or
+transcript field that exposes it. Any token or USD figure an agent writes is invented.
+This was a real bug: `emit-event` once accepted `-TokensIn`/`-CostUsd`, the docs marked
+them *Recommended*, nothing ever filled them, and the cost gate reported `$0.00` and
+**exited 0** from the day it was written until a real run surfaced it.
+
+So: the event schema carries **no** token or cost fields, and
+`skills/cost-budget/scripts/collect-usage.py` reads the CLI's own usage store instead,
+attributing usage to phases by timestamp window.
+
+Consequences worth preserving:
+- **Only `dev-lead` emits events.** Because attribution is by time window, workers need no
+  instrumentation — only the orchestrator knows the phase structure.
+- **Every `phase_start` needs a matching `phase_complete`**, or that phase's usage falls
+  into `unattributed`. The `trajectory` CI check enforces both this and the absence of
+  self-reported cost fields.
+- **Gate on AIU or tokens, never USD.** Cache reads bill at a tenth of fresh input, so a
+  flat per-token rate overstates a real run by ~10x. USD stays `null` unless
+  `cost_envelope.usd_per_aiu` gives a rate, and an unrated run reports *unmetered*, never
+  `0.00`.
+- **Telemetry unavailable (exit 3) is a tooling failure, not a budget breach** — warn and
+  continue. Halting delivery over a metering table is the wrong trade.
 
 ### Vendored skills
-A large share of the skills across all plugins are unmodified copies from
+19 of the 51 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
-them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The 25
-hand-written skills are the ones to edit (csharp/python-implementation,
+them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
+32 are hand-written and are the ones to edit — 28 repo-scope (csharp/python-implementation,
 csharp/python-testing, code-review-checklist,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
 architecture-design, architecture-decision-records, read-repo-context,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
 test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standards,
-ado-work-items, github-issues).
+ado-work-items, github-issues, azure-platform-grounding, deploy-verify,
+solution-profile-interview) plus the four user-scope skills below.
 
 ### User-scope skills
 The skills under `user/skills/` (`working-style`, `trade-off-reporting`, `code-review`,
@@ -165,8 +262,12 @@ also keep a runtime copy at `~/.copilot/skills/`, sync changes both ways.
 ### Model-tier convention
 Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),
 `mid` (mechanical authoring: `coding`, `infrastructure`, `testing`, `backlog-manager`), or
-`heavy` (deep reasoning: `architect` and all review agents). Preserve the tier when editing;
-downgrading a heavy agent silently degrades review quality.
+`heavy` (deep reasoning: `architect` and all review agents).
+
+**Nothing reads it.** It is declared by all 11 agents and consumed by no script, no
+manifest, and not by the CLI — whose own frontmatter field is `model`. Treat it as recorded
+intent (the rationale lives in ADR 0007 and `cost-budget/references/tier-defaults.md`), keep
+it accurate when editing, and do not expect changing it to change which model runs.
 
 ### Skill format
 Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`,
@@ -187,15 +288,64 @@ into an unrelated task. Declaring the scope is what makes the on-demand model sa
 (Same reasoning as `microsoft/hve-core`'s `coding-standards` skills and
 `obra/superpowers-skills`' `languages:` field.)
 
-### Plugin manifests
+### Plugin manifests and versioning
 When you add/remove an agent or skill, the owning plugin auto-discovers it (its manifest
-points at `agents/` / `skills/` / `user/skills/`, relative to that plugin root). On a release,
-bump `version` in **every** changed `plugins/*/.github/plugin/plugin.json`, in the matching
-`plugins[]` entry of `.github/plugin/marketplace.json`, and in `metadata.version`.
+points at `agents/` / `skills/` / `user/skills/`, relative to that plugin root).
+
+**Bump the version of every plugin whose files changed, in the same PR.** The version is
+the delivery mechanism — an installed plugin picks up nothing until it moves, so an
+unbumped fix ships to nobody. Bump in three places, kept consistent: that plugin's
+`plugins/<name>/.github/plugin/plugin.json`, its `plugins[]` entry in
+`.github/plugin/marketplace.json`, and `metadata.version` (which tracks `agile-agents-core`).
+
+Leave untouched plugins alone — a bump with no content change publishes a release
+identical to the last one and makes the number stop meaning anything.
+
+`scripts/check-plugin-versions.ps1` enforces all of it, as the `plugin-versions` CI check.
+Run it locally with `-BaseRef origin/main`; without a base ref it checks only that the
+manifests and the marketplace agree. It was written after the rule had been missed twice,
+and replaying it over the offending PR reproduces the miss — seven plugins changed, all
+still on `0.1.0`.
+
+It compares against the **merge base**, because bumping is per PR, not per commit. That
+also sidesteps the trap that hid both misses from manual audit: anchoring on *"the last
+commit that touched `plugin.json`"* and diffing **forward** cannot see a change made **in**
+that same commit.
+
+### solution-profile.yaml is the contract
+The template in `plugins/agile-agents-core/skills/solution-profile-interview/references/`
+defines the key names. When the harness and the template disagree, **move the harness onto
+the template** — profiles already bootstrapped in consumer repos cannot be migrated.
+
+This has forked twice, and both forks were invisible because a missing key reads empty and
+does nothing: the cost gate read `per_run_max_usd` against a template defining
+`max_usd_per_run` (words reversed, no per-phase key at all), and `code-localisation` read
+four keys the template never had. A gate documented as non-negotiable could not fire.
+
+So: adding a profile read means adding the key to the template in the same change, and any
+key nothing reads is dead weight — `cicd.release_strategy` sat unread until `deploy-verify`
+became its first consumer.
+
+Watch the YAML 1.1 booleans: `deploy_verify: "off"` **must stay quoted**, or it parses as
+`false` and compares unequal to every string branch.
 
 ### AGENTS.md generation
 `AGENTS.md` is generated from `solution-profile.yaml` + agent/skill frontmatter by
 `scripts/generate-agents-md.ps1` / `.sh`. The generator discovers **every**
 `plugins/agile-agents*/skills` directory and tags each skill with its plugin. **Do not hand-edit
 it** — the `agents-md-sync` workflow fails the build if it drifts. Re-run the generator and
-commit the result after changing agents, skills, or the profile.
+commit the result after changing agents, skills, or the profile. The `.ps1` writes a stray
+root `agents/` as a side effect; delete it before committing.
+
+**The two generators must agree, and both ways they diverged were CI-only** — red on a
+runner, unreproducible locally:
+- **Locale.** `${#s}` and `${s:0:n}` count bytes under `C` and characters under UTF-8,
+  while the `.ps1` always counts characters — so long skill descriptions truncated at
+  different points depending on whether the runner set `LANG`.
+- **`yq` on `PATH`.** A jq-only expression that mikefarah yq rejects made every list-valued
+  field come back empty, with stderr suppressed. True on GitHub's runners, false on a
+  typical dev box.
+
+Both were invisible until this repo had a profile with populated lists. When touching
+either generator, check parity with and without `yq`, and under `LC_ALL=C` as well as
+UTF-8.

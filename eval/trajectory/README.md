@@ -23,7 +23,7 @@ silent process failure, for free.
 |---|---|
 | Structural | required fields present; valid `agent` / `event_type` enums; single `run_id`; first event is `dev-lead run_start`; last is `dev-lead run_complete` with an outcome; `phase_start`/`phase_complete` balanced |
 | RPI trajectory | a research phase ran; an implement phase ran; testing ran; a **test-bar `gate_check` (dev-lead) fired before review**; ≥1 reviewer emitted a `gate_check`; review came after implement |
-| Telemetry | `run_complete` carries `cost_usd` / token counts (the cost-budget machinery ran) |
+| Telemetry | every `phase_start` has a matching `phase_complete`, so measured usage can be attributed to a phase; and no event carries a self-reported `cost_usd` / token field, because no agent can observe its own spend |
 
 All are required: the checker exits `0` only when every check passes, `1` otherwise.
 
