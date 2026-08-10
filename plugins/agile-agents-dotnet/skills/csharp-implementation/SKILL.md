@@ -60,4 +60,4 @@ After writing code:
 
 - Don't write or modify tests — that's `testing`'s job. Tell it what behavior needs covering.
 - Don't run a security or design review on yourself — `review` does that after tests pass.
-- Don't commit. The orchestrator decides commit timing.
+- Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

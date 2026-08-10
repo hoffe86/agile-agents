@@ -41,9 +41,12 @@ Detailed catalogue, pseudo-code, and decision matrix: see `references/localisati
 
 ## How to invoke
 
-1. Read `solution-profile.yaml: code_localisation.backend` and `code_localisation.max_results` (default cap **20**, floor **5**).
+1. Read `solution-profile.yaml: code_localisation.backend`, `code_localisation.max_results` (default cap **20**, floor **5**) and `code_localisation.repo_map_max_files` (default **5000**).
+
+   `max_results` caps what you get **back**; `repo_map_max_files` caps what gets **scanned**. They are different knobs — the second is what stops a monorepo walk from parsing every file in the tree.
 2. Dispatch:
-   - **`tree-sitter`** → run `scripts/repo_map.py --root <repo> --query "<task description>" --max-files <cap>`.
+   - **`tree-sitter`** → run `scripts/repo_map.py --root <repo> --query "<task description>" --max-files <max_results> --max-scan-files <repo_map_max_files>`.
+     If the script warns that the scan ceiling was reached, the ranking is over a **partial** map — say so in your hand-off rather than presenting it as an exhaustive result.
    - **`embedding-rerank`** → call the configured embedding endpoint (`code_localisation.embedding_endpoint`, `code_localisation.embedding_model`); top-K cosine similarity then a single LLM rerank pass with full file content of the top candidates.
    - **`mcp`** → call the MCP server named in `code_localisation.mcp_server` with the task description as the query.
 3. Validate the response shape (see Output contract).

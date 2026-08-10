@@ -60,12 +60,16 @@ def tokenize(text: str) -> set[str]:
     return out
 
 
-def iter_source_files(root: Path) -> Iterable[Path]:
+def iter_source_files(root: Path, max_scan: int | None = None) -> Iterable[Path]:
+    seen = 0
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
         for f in filenames:
             p = Path(dirpath) / f
             if p.suffix.lower() in SOURCE_EXTS:
+                if max_scan is not None and seen >= max_scan:
+                    return
+                seen += 1
                 yield p
 
 
@@ -162,6 +166,13 @@ def main() -> int:
     ap.add_argument("--root", required=True, help="Repository root path")
     ap.add_argument("--query", required=True, help="Natural-language task description")
     ap.add_argument("--max-files", type=int, default=10, help="Cap on returned files (default 10)")
+    ap.add_argument(
+        "--max-scan-files",
+        type=int,
+        default=5000,
+        help="Ceiling on files parsed before ranking (default 5000). Bounds cost on monorepos; "
+             "0 means no ceiling.",
+    )
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
@@ -178,7 +189,10 @@ def main() -> int:
     now = time.time()
 
     scored: list[tuple[float, str, str]] = []
-    for path in iter_source_files(root):
+    max_scan = args.max_scan_files if args.max_scan_files > 0 else None
+    scanned = 0
+    for path in iter_source_files(root, max_scan):
+        scanned += 1
         try:
             mtime = path.stat().st_mtime
         except OSError:
@@ -187,6 +201,13 @@ def main() -> int:
         score, why = score_file(path, root, query_terms, symbols, mtime, now)
         if score > 0:
             scored.append((score, path.relative_to(root).as_posix(), why))
+
+    if max_scan is not None and scanned >= max_scan:
+        print(
+            f"[repo_map] scan ceiling reached ({max_scan} files); ranking is over a partial map. "
+            "Raise code_localisation.repo_map_max_files or narrow --root.",
+            file=sys.stderr,
+        )
 
     scored.sort(key=lambda t: t[0], reverse=True)
     top = scored[: max(1, args.max_files)]

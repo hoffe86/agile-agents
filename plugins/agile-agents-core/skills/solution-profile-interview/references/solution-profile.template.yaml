@@ -80,9 +80,9 @@ backlog:
 
 # ─── rpi ─── Research → Plan → Implement → Review handover ─────────────────────
 rpi:
-  handover_dir: ".copilot-tracking/"  # Ephemeral, gitignored cache for in-run handover artifacts.
-                                      #   The tracker (backlog.platform) is the source of truth; these files are
-                                      #   rebuildable and the tracker wins on any conflict. Add to .gitignore.
+  {}                            # No tunable keys today. In-run hand-off state lives in the
+                                # orchestrator's own task list; the tracker (backlog.platform)
+                                # is the durable source of truth.
 
 # ─── tech_stack ─── REQUIRED: primary_languages, test_discipline ──────────────
 tech_stack:
@@ -215,17 +215,18 @@ code_localisation:
 # `dev-lead` pipeline so reviewer agents are never spent on a patch that doesn't build.
 # Per-stack default commands live in `plugins/agile-agents-core/skills/test-bar-gate/references/commands.yaml`;
 # the sub-blocks below let a project override any single command without redefining the
-# whole palette.
+# whole palette. Checks run in the order listed. A check runs when it is `enabled` AND has
+# a command — either its own `command` here, or a per-stack default from the palette.
+# Only lint / typecheck / unit_test have palette defaults; the rest need an explicit command.
 quality_gates:
   test_bar:
     enabled: true
     stacks: []                  # Empty → auto-detect from tech_stack.primary_languages
                                 # and tool hints. Override with e.g. ["python", "typescript"].
     fail_fast: true             # Stop at the first non-zero check; set false to aggregate.
-    coverage_threshold_percent: 0      # 0 → coverage gate disabled. Otherwise hard floor (e.g. 80).
-    mutation_score_threshold_percent: 0  # 0 → mutation gate disabled (Stryker / mutmut etc.).
     # Per-check overrides. Leave `command: ""` to use the per-stack default from
     # commands.yaml. Set `enabled: false` to skip a check explicitly (with a note in PR).
+    # `command` takes a list (["ruff", "check", "."]) or a plain string ("ruff check .").
     lint:
       command: ""
       enabled: true
@@ -239,11 +240,11 @@ quality_gates:
       command: ""
       enabled: false            # Off by default — slow, often needs containers / secrets.
     coverage:
-      command: ""
-      enabled: false            # On only when coverage_threshold_percent > 0.
+      command: ""               # No palette default — the command must carry its own
+      enabled: false            # threshold, e.g. ["pytest", "--cov", "--cov-fail-under=80"].
     mutation:
-      command: ""
-      enabled: false            # On only when mutation_score_threshold_percent > 0.
+      command: ""               # No palette default, e.g. ["mutmut", "run"] or a Stryker
+      enabled: false            # invocation that exits non-zero below your score floor.
 
 # ─── testing ──────────────────────────────────────────────────────────────────
 # Test-layer toggles that go beyond the unit-test discipline declared in `tech_stack`.
@@ -269,15 +270,11 @@ testing:
 # transition, hard-halts on breach. Tier defaults align with cost-budget/references/tier-defaults.md.
 cost_envelope:
   enabled: true
-  tier: "medium"                # small | medium | large (default medium). Drives default caps.
+  tier: "medium"                # small | medium | large. Informational: records the budget owner's
+                                # sizing call. Caps are NOT derived from it -- set them explicitly below.
   max_usd_per_run: 25.00        # Inert unless usd_per_aiu is set: the runtime meters AIU,
                                 # not currency, so USD is derived or reported as unmetered.
                                 # Tier defaults: small ≈ 5, medium ≈ 25, large ≈ 100.
-  max_usd_per_phase: 8.00       # Cap on any single phase. Checked by dev-lead at every
-                                # stage transition, so a runaway phase is caught mid-run
-                                # rather than only at the end.
-  max_usd_per_phase_overrides: {}   # Optional per-agent override, e.g.
-                                    # { architect: 4.00, review: 3.00 }
   max_aiu_per_run: 30000        # AI units - the runtime's own metered cost unit, and the only
                                 # figure it actually reports. Gate here, not on USD.
   max_aiu_per_phase: 8000       # Cap on any single phase, checked at every stage transition.
@@ -288,7 +285,9 @@ cost_envelope:
   max_tokens_per_run: 2000000   # Aggregate token cap (input + output across all agents).
   max_minutes_per_run: 60       # Wall-clock cap. Catches stuck loops even when token spend is fine.
   stop_on_breach: true          # true → emit cost-stop-report and halt; false → warn-only (rare).
-  currency: "USD"               # Reporting currency. Conversion not done — set to the rate-card unit.
+  model_tiers: {}               # Optional. Pin a concrete model per portable tier, e.g.
+                                #   { heavy: "gpt-5.4", mid: "gpt-5-mini", light: "gpt-4.1" }
+                                # Overrides each agent's `model_tier` frontmatter default.
 
 # ─── legal ────────────────────────────────────────────────────────────────────
 legal:

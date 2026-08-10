@@ -26,6 +26,7 @@ For NuGet trusted publishing (OIDC keyless publish to nuget.org), use **`nuget-t
 - **Matrix builds** when targeting multiple OS / runtime versions; use `fail-fast: false` so one failure doesn't kill the others.
 - **Caching:** `actions/cache@v4` (or `Cache@2` task) for package managers (`npm`, `nuget`, `pip`, `gradle`); cache restore failures must not fail the build.
 - **Reusable workflows** (GH `workflow_call` / ADO `template:`) for shared steps; don't copy-paste 50 lines across files.
+- **Container images** push to `solution-profile.yaml: cicd.artifact_registry` when set (`acr` / `ghcr` / `docker-hub` / `jfrog` / `nuget-org`). Don't introduce a second registry because a sample used one — if the profile is empty, ask rather than pick.
 - **Secrets** go in GitHub Environments / ADO Variable Groups linked to Key Vault. Never `echo $SECRET` — pipelines mask but file artifacts and external services don't.
 - **Status checks required** on `main` / `release/*` branches; deploys gated on `environment:` with required reviewers.
 
@@ -107,4 +108,4 @@ PIPELINE IMPLEMENTATION COMPLETE
 - Don't add long-lived service principal secrets — surface a request to set up OIDC federated credentials instead.
 - Don't deploy infra changes from CD without a Plan/what-if step the human can review.
 - Don't disable required status checks to "unblock" a release.
-- Don't commit (the orchestrator decides timing).
+- Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

@@ -74,10 +74,10 @@ agent/                               Marketplace root
 │   │   ├── .github/plugin/plugin.json   Plugin manifest (name: agile-agents-core)
 │   │   ├── agents/                  11 *.agent.md (1 supervisor + 4 authors
 │   │   │                            + 5 reviewers + backlog-manager)
-│   │   ├── skills/                  30 technology-neutral repo-scope skills, incl.
+│   │   ├── skills/                  31 technology-neutral repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
-│   │   └── user/skills/             4 user-scope skills (bundled into the plugin)
+│   │   └── user/skills/             3 user-scope skills (bundled into the plugin)
 │   ├── agile-agents-dotnet/         5 skills — C# / .NET
 │   ├── agile-agents-python/         4 skills — Python
 │   ├── agile-agents-bicep/          2 skills — Bicep IaC
@@ -150,11 +150,21 @@ directions, which is why it has produced a bug in three separate PRs.
    "not installed" look identical. Any agent that depends on an external server must
    preflight and report **both** causes with the fix for each — never just "unavailable".
 
-### No agent runs git
-No agent in a run commits, pushes, branches, or opens a PR — `dev-lead` prepares the
-commands for a human instead. This is a deliberate boundary, not a missing capability, and
-it must be stated as such: when it was merely absent, agents diagnosed it as a broken MCP
-server and reported a tooling failure.
+### Write-permission policy (keep every agent consistent with this)
+Two gates, one hard boundary — keep every agent consistent with this:
+- **Branch / commit / push** are **ungated** — agents do their own git. The guard is branch
+  discipline: work lands on a feature branch, never on the default branch.
+- **Opening a pull request** is **approval-gated**: the user approves it explicitly, per run, and
+  approval is never inferred from silence or from the Stage 4 plan approval.
+- **Deployments to non-production** go through the project's own pipeline and are **profile-gated**
+  on `infrastructure.deploy_verify: dev`. Non-production means any `environment_chain` entry except
+  the last and except any entry containing `prod`.
+- **Completing / merging / closing a PR is human-only, always** — as are force-pushing, rewriting
+  shared history, deleting shared branches, and production deploys. No profile key unlocks these.
+
+Reviewers remain read-only regardless (`reviewer-read-only-rules`). State a refusal as a
+**boundary or a pending approval**, never as a missing tool: when the ban was merely absent,
+agents diagnosed it as a broken MCP server and reported a tooling failure.
 
 The PR command derives from **`identity.repo_url`**, never from `backlog.platform` — code
 host and board host are independent, and a project may keep code on GitHub with work items
@@ -179,8 +189,8 @@ Renaming any silently breaks the pipeline:
   + approach note). When `backlog.create_tasks` is true, `backlog-manager` creates them as
   **child work items linked to the parent work item** (provisional, tagged `pending-approval`)
   and emits `TASKS PLANNED`. The **mandatory human plan-approval gate fires after task
-  creation**. Tasks live in the tracker, not as files — local handover files
-  (`rpi.handover_dir`) are an ephemeral, gitignored cache.
+  creation**. Tasks live in the tracker, not as files; in-run hand-off state is the
+  orchestrator's own task list, and the tracker wins on any conflict.
 - **Implement / Review** — coding + infrastructure + testing, then multi-lens review. Stage 10
   verifies the delivered change covers the *requirement*, not merely that every task passed.
 
@@ -243,21 +253,28 @@ Consequences worth preserving:
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-32 are hand-written and are the ones to edit — 28 repo-scope (csharp/python-implementation,
+32 are hand-written and are the ones to edit — 29 repo-scope (csharp/python-implementation,
 csharp/python-testing, code-review-checklist,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
-architecture-design, architecture-decision-records, read-repo-context,
+architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
 test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standards,
 ado-work-items, github-issues, azure-platform-grounding, deploy-verify,
-solution-profile-interview) plus the four user-scope skills below.
+solution-profile-interview) plus the three user-scope skills below.
 
 ### User-scope skills
-The skills under `user/skills/` (`working-style`, `trade-off-reporting`, `code-review`,
-`cloud-native-patterns`) are bundled into the plugin (the
-`skills` array includes `user/skills/`) and reachable by every agent via description match.
-Only `working-style` and `trade-off-reporting` are named explicitly in the agent bodies. If you
-also keep a runtime copy at `~/.copilot/skills/`, sync changes both ways.
+The skills under `user/skills/` (`trade-off-reporting`, `code-review`, `cloud-native-patterns`)
+are bundled into the plugin (the `skills` array includes `user/skills/`) and reachable by every
+agent via description match. Only `trade-off-reporting` is named explicitly in the agent bodies.
+
+**Personal preferences are deliberately not shipped.** The suite ships
+`engineering-standards` (the technology-neutral quality bar: Clean Code / SOLID / DDD /
+Clean Architecture, security-by-default, operational practices, the pre-PR checklist) and
+nothing about how any individual likes to be talked to. Tone, verbosity, proactivity and
+how someone phrases a directive belong in that person's own `~/.copilot/skills/working-style/`,
+outside the plugin — `read-repo-context` §3 honours one if present and falls back to the
+repository's own instructions if not. **Never add a person's preferences to a plugin skill**:
+this harness is installed by many people, and one person's tone is another's noise.
 
 ### Model-tier convention
 Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),

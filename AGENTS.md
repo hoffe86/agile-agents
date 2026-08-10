@@ -40,8 +40,11 @@ completion — those block names are canonical and parsed by
 - `REVIEW COMPLETE` (review — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
 
-Agents **never commit or merge** — they propose changes for human review.
-Reviewers are **read-only**. See `.github/AGENTS-MD-MAPPING.md` for the
+Agents branch, commit and push on their own — on a feature branch, never the default one.
+**Opening a pull request needs the user's explicit approval**, and **completing, merging or
+closing a PR is human-only, always**, as are force-pushing, rewriting shared history and
+production deploys. Deployments to non-production run through the project's own pipeline and are gated
+on `infrastructure.deploy_verify`. Reviewers are **read-only**. See `.github/AGENTS-MD-MAPPING.md` for the
 full convention map.
 
 ## Agents
@@ -76,7 +79,7 @@ Implements features, fixes bugs, and refactors application code in any language 
 
 ### `dev-lead`
 
-Autonomous development lead. Takes a single, already-prepared requirement or user story and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the requirement into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent parent work item in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this requirement autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + testing + review, autonomous / unattended runs against a requirements file or backlog item, when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving one retry, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / testing / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
+Autonomous development lead. Takes a single, already-prepared requirement and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the requirement into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent work item in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this requirement autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + testing + review, autonomous / unattended runs against a requirements file or backlog item, when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving one retry, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / testing / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
 
 - **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
 - **Sub-agents**: architect, backlog-manager, coding, infrastructure, review, testing
@@ -153,6 +156,7 @@ natural-language workflow.
 - **e2e-testing** (`agile-agents-core`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
 - **editorconfig** (`agile-agents-core`) — Generates a comprehensive and best-practice-oriented .editorconfig file based on project analysis and user preferences.
 - **ef-core** (`agile-agents-dotnet`) — Get best practices for Entity Framework Core
+- **engineering-standards** (`agile-agents-core`) — The engineering quality bar every agent in the suite works to — Clean Code, SOLID, DDD, Clean Architecture, security-by-default, error handling, immutability, configuration over hardcoding, Infrast...
 - **git-commit** (`agile-agents-core`) — Execute git commit with conventional commit message analysis, intelligent staging, and message generation.
 - **github-issues** (`agile-agents-github`) — GitHub Issues mechanics for reading and writing work items — tool entry points, the single-body field layout with section headings, cross-reference and closing-keyword syntax, labels / milestones /...
 - **helm-kustomize-implementation** (`agile-agents-core`) — Implement Kubernetes deployments via raw manifests, Helm charts, or Kustomize overlays — with AKS in mind.

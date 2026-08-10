@@ -34,12 +34,24 @@ The gate **never** runs before `TESTS COMPLETE` — we want the unit-test layer 
 
 ## What runs
 
-Up to four checks, **in order**, **fail-fast on the first non-zero exit code**:
+Checks run **in this order**, **fail-fast on the first non-zero exit code**:
 
-1. **lint** — formatting / style / lint rules
-2. **typecheck** — static type or compile check
-3. **test** — unit tests only (no integration, no e2e — those belong to a later gate)
-4. **smoke** — *opt-in.* Start the app and confirm it comes up. Skipped entirely unless `testing.smoke.command` is set.
+1. **lint** {E} formatting / style / lint rules
+2. **typecheck** {E} static type or compile check
+3. **unit_test** {E} unit tests only (no integration, no e2e {E} those belong to a later gate)
+4. **integration_test** {E} *opt-in*, off by default (slow, usually needs containers / secrets)
+5. **coverage** {E} *opt-in*; the command must carry its own threshold and exit non-zero below it
+6. **mutation** {E} *opt-in*; same contract as coverage
+7. **smoke** {E} *opt-in.* Start the app and confirm it comes up. Skipped entirely unless `testing.smoke.command` is set.
+
+A check runs when it is **enabled** *and* **resolves to a command**. The first three are
+enabled by default and fall back to the per-stack palette; the rest run only when the
+profile gives them an explicit command. Set `quality_gates.test_bar.enabled: false` to
+skip the whole gate.
+
+A missing toolchain is reported through the normal contract {E} exit code `127`, reason
+`command_not_found` {E} not as a crash. On a fresh machine that is the most likely
+failure, and `dev-lead` needs it parseable.
 
 Fail-fast is the default because a lint/format failure usually means a typecheck or test run will produce noisy, derivative errors that drown the real signal. Adopters may set `quality_gates.test_bar.fail_fast: false` in `solution-profile.yaml` to run all three regardless and aggregate failures (useful in CI dashboards, rarely useful for the agent loop).
 
@@ -73,14 +85,16 @@ For a web UI, a passing smoke check is a weak claim: an HTTP 200 says the server
 
 ## Stack detection
 
-Resolved in this order — first hit wins:
+The stack only decides which **default** commands apply. A check with an explicit
+`command` in the profile needs no stack at all.
 
-1. **Explicit override:** `solution-profile.yaml: quality_gates.test_bar.commands` (a map shaped like `references/commands.yaml`). When present, the defaults are ignored entirely — the project owns the contract.
-2. **Primary language match:** `tech_stack.primary_languages[0]` is matched (case-insensitive) against the keys in `references/commands.yaml` (`csharp`, `python`, `typescript`, `go`, `bicep`, `terraform`).
-3. **Tool hints:** if no language match, look at `tech_stack.lint_format_tools` and `build_tools` to pick the closest stack (e.g. `eslint` → `typescript`, `ruff` → `python`).
-4. **No match:** emit a `gate_check` event with `outcome=skipped, reason=no_stack_match` and pass through. The dev-lead should warn the user that the gate is silent for this repo.
+1. **Explicit stacks:** `quality_gates.test_bar.stacks` — a list. Every entry runs the full check sequence, so a polyglot repo can gate more than one stack in a single pass.
+2. **Primary language:** when `stacks` is empty, `tech_stack.primary_languages[0]` is matched (case-insensitive) against the keys in `references/commands.yaml` (`csharp`, `python`, `typescript`, `go`, `bicep`, `terraform`). The entry may be a plain string or a `{ name: ... }` map.
+3. **Tool hints:** if the language is not a palette key, `tech_stack.lint_format_tools` and `build_tools` are searched for a recognisable tool (`eslint`/`tsc` → `typescript`, `ruff`/`mypy`/`pyright` → `python`, `gofmt` → `go`, `dotnet` → `csharp`).
+4. **No match and no explicit commands:** emit `outcome=skipped, reason=no_stack_match` and pass through. The dev-lead should warn the user that the gate is silent for this repo.
 
-For Python, the default `typecheck` command is `pyright`; if `pyright` is not present in `tech_stack.lint_format_tools` but `mypy` is, swap to `["mypy", "."]`.
+The palette's Python `typecheck` default is `pyright`. A project that uses `mypy` sets
+`typecheck.command` explicitly — the gate does not guess between type checkers.
 
 ## Default command palette
 
@@ -92,19 +106,33 @@ See `references/commands.yaml`. The defaults assume:
 
 ## Override mechanism
 
-Adopters override per-stack defaults by placing a `commands:` block under `quality_gates.test_bar` in `solution-profile.yaml`:
+Each check has its own block under `quality_gates.test_bar`, matching the shape in the
+solution-profile template:
 
 ```yaml
 quality_gates:
   test_bar:
+    enabled: true
     fail_fast: true
-    commands:
-      lint: ["pnpm", "lint"]
-      typecheck: ["pnpm", "typecheck"]
-      test: ["pnpm", "test", "--", "--run"]
+    lint:
+      command: ["pnpm", "lint"]     # list, or the string "pnpm lint"
+    typecheck:
+      command: ["pnpm", "typecheck"]
+    unit_test:
+      command: ["pnpm", "test", "--", "--run"]
+    integration_test:
+      command: ["pnpm", "test:integration"]
+      enabled: true                 # opt-in checks need this
 ```
 
-When `commands:` is present, **every** key it contains overrides the default. A missing key falls back to the default for the detected stack. To explicitly skip a check, set its command to `["true"]` (POSIX) or `["cmd", "/c", "exit", "0"]` (Windows) — but document why.
+Rules:
+
+- An empty or absent `command` falls back to the per-stack palette — but only for
+  `lint`, `typecheck`, and `unit_test`. The other three have no defaults and stay silent
+  until given a command.
+- `enabled: false` skips a check outright. Prefer it over a no-op command, and note the
+  reason in the PR.
+- `enabled` and `command` are independent: a check needs both to run.
 
 ## Output contract
 
@@ -115,7 +143,7 @@ Emit one event per passing check and a final summary event:
 ```json
 { "event_type": "gate_check", "check": "lint",      "outcome": "success", "command": "ruff check .",   "duration_ms": 812 }
 { "event_type": "gate_check", "check": "typecheck", "outcome": "success", "command": "pyright .",       "duration_ms": 4310 }
-{ "event_type": "gate_check", "check": "test",      "outcome": "success", "command": "pytest -q ...",   "duration_ms": 12044 }
+{ "event_type": "gate_check", "check": "unit_test", "outcome": "success", "command": "pytest -q ...",   "duration_ms": 12044 }
 { "event_type": "gate_check", "check": "summary",   "outcome": "success", "stack": "python" }
 ```
 
@@ -155,7 +183,9 @@ Choose between `coding` and `testing` like this:
 |--------------|---------------------|
 | lint         | the author whose patch introduced the violation (usually `coding`; `testing` if only test files changed) |
 | typecheck    | `coding` |
-| test         | `coding` if a test exposed a real defect; `testing` if the test itself is wrong |
+| unit_test    | `coding` if a test exposed a real defect; `testing` if the test itself is wrong |
+| integration_test | `coding` first — an integration failure is usually a wiring defect, not a test defect |
+| coverage / mutation | `testing` — both measure the test layer |
 | smoke        | `coding` — a host that will not boot is a source defect. `infrastructure` only when the failure is a missing local setting / connection string it owns. |
 
 When in doubt, pick `coding` — a failing test on `main` blocks the reviewer fan-out either way.

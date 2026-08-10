@@ -108,4 +108,4 @@ HELM/KUSTOMIZE IMPLEMENTATION COMPLETE
 
 - Don't `kubectl apply` to a real cluster — handoff to `azure-deploy` or the user.
 - Don't provision the cluster itself — that's `bicep-implementation` / `terraform-azure-implementation` + `azure-kubernetes`.
-- Don't commit.
+- Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

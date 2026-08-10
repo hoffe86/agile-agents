@@ -40,8 +40,11 @@ completion — those block names are canonical and parsed by
 - `REVIEW COMPLETE` (review — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
 
-Agents **never commit or merge** — they propose changes for human review.
-Reviewers are **read-only**. See `.github/AGENTS-MD-MAPPING.md` for the
+Agents branch, commit and push on their own — on a feature branch, never the default one.
+**Opening a pull request needs the user's explicit approval**, and **completing, merging or
+closing a PR is human-only, always**, as are force-pushing, rewriting shared history and
+production deploys. Deployments to non-production run through the project's own pipeline and are gated
+on `infrastructure.deploy_verify`. Reviewers are **read-only**. See `.github/AGENTS-MD-MAPPING.md` for the
 full convention map.
 
 ## Agents

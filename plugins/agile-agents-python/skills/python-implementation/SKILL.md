@@ -55,4 +55,4 @@ After writing code:
 
 - Don't write or modify tests — that's `testing`'s job.
 - Don't run a security/design review — `review` does that after tests pass.
-- Don't commit.
+- Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

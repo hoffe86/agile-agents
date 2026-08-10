@@ -1,35 +1,36 @@
 # Default command palette for the test-bar gate.
-# Loaded when `solution-profile.yaml: quality_gates.test_bar.commands` is empty.
-# Each stack lists three checks (lint, typecheck, test). Each command is run from repo root.
-# Adopters override by setting `quality_gates.test_bar.commands` in solution-profile.yaml;
-# any key omitted there falls back to the default below for the detected stack.
+# Supplies the default command for a check when the project has not set
+# `solution-profile.yaml: quality_gates.test_bar.<check>.command`.
+# Each stack lists the three checks that can be defaulted safely (lint, typecheck, unit_test);
+# integration_test / coverage / mutation have no defaults and run only with an explicit command.
+# Each command is run from repo root.
 
 csharp:
   lint:      ["dotnet", "format", "--verify-no-changes"]
   typecheck: ["dotnet", "build", "--no-restore", "/p:TreatWarningsAsErrors=true"]
-  test:      ["dotnet", "test", "--no-build", "--logger", "trx"]
+  unit_test: ["dotnet", "test", "--no-build", "--logger", "trx"]
 
 python:
   lint:      ["ruff", "check", "."]
   typecheck: ["pyright", "."]            # fall back to ["mypy", "."] if pyright not in tech_stack.lint_format_tools
-  test:      ["pytest", "-q", "--maxfail=3"]
+  unit_test: ["pytest", "-q", "--maxfail=3"]
 
 typescript:
   lint:      ["npx", "eslint", ".", "--max-warnings=0"]
   typecheck: ["npx", "tsc", "--noEmit"]
-  test:      ["npx", "vitest", "run"]
+  unit_test: ["npx", "vitest", "run"]
 
 go:
   lint:      ["golangci-lint", "run"]
   typecheck: ["go", "vet", "./..."]
-  test:      ["go", "test", "./..."]
+  unit_test: ["go", "test", "./..."]
 
 bicep:
   lint:      ["az", "bicep", "lint"]
   typecheck: ["az", "bicep", "build", "--stdout"]
-  test:      ["echo", "no-unit-tests"]   # IaC has no unit-test layer at this gate
+  unit_test: ["echo", "no-unit-tests"]   # IaC has no unit-test layer at this gate
 
 terraform:
   lint:      ["terraform", "fmt", "-check", "-recursive"]
   typecheck: ["terraform", "validate"]
-  test:      ["echo", "no-unit-tests"]
+  unit_test: ["echo", "no-unit-tests"]

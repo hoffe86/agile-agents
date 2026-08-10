@@ -1,6 +1,6 @@
 ---
 name: read-repo-context
-description: Canonical preamble every coding-suite agent loads at the start of a turn. Reads `.github/copilot-instructions.md` and equivalents, loads `.github/solution-profile.yaml`, applies `working-style` + `trade-off-reporting`, and enforces the decision-record + decision-capture rules. Use as the first action in every coding, testing, infrastructure, architect, review, and reviewer agent. After loading, the agent applies its own role-tailored profile-field-honour list and conditional skills.
+description: Canonical preamble every coding-suite agent loads at the start of a turn. Reads `.github/copilot-instructions.md` and equivalents, loads `.github/solution-profile.yaml`, applies `engineering-standards` + `trade-off-reporting`, and enforces the decision-record + decision-capture rules. Use as the first action in every coding, testing, infrastructure, architect, review, and reviewer agent. After loading, the agent applies its own role-tailored profile-field-honour list and conditional skills.
 applies_to: all
 ---
 
@@ -32,14 +32,16 @@ The agent that loaded this skill knows which fields matter for its role — it f
 - If a specific field you need is empty, ask the user once for that field — do not guess.
 - Cite the profile field path (e.g. `solution-profile.yaml: tech_stack.test_discipline`) in your hand-off when it shaped a non-trivial choice.
 
-## 3. Load shared user-scope skills
+## 3. Load the shared standards skills
 
 These four are loaded silently on every turn:
 
-- **`working-style`** — enterprise standards (Clean Code, SOLID, DDD, Clean Architecture), security-by-default, collaboration patterns. Apply silently; do not echo it back.
+- **`engineering-standards`** — the engineering quality bar (Clean Code, SOLID, DDD, Clean Architecture), security-by-default, operational practices, and the pre-PR self-review checklist. Apply silently; do not echo it back.
 - **`trade-off-reporting`** — at the end of your response, list non-obvious decisions with the rejected alternative, cost, and revisit trigger. Skip obvious / single-option choices.
 - **`code-review`** — load when reviewing or auditing. Skip when implementing.
 - **`cloud-native-patterns`** — load when the change involves an external boundary (HTTP / gRPC / message bus), shared resource (DB / cache / blob / queue), background work, startup / shutdown, or a new deployable. Canonical source for cloud design patterns, 12-Factor readiness, resilience defaults (Polly / `Microsoft.Extensions.Http.Resilience` / tenacity), observability (OpenTelemetry + W3C `traceparent`), HTTP API hygiene (RFC 9457 Problem Details, idempotency, pagination, ETag).
+
+**Personal working preferences are not shipped with the suite.** A person may keep their own `working-style` skill in the CLI's user scope (`~/.copilot/skills/working-style/`) covering tone, how much to explain, how proactive to be, and how they phrase directives. If one is present it loads by description match like any other skill — honour it. If none exists, that is the normal case: fall back to the repository's own instructions and these standards. **Never author one on someone's behalf, and never assume a preference that isn't written down.**
 
 ## 4. Decision-record check (advisory)
 
@@ -55,7 +57,7 @@ Before authoring code, IaC, tests, or design changes, check for accepted Archite
 - **Accepted ADRs are binding constraints** (chosen pattern, library, lifetime, layering rule). If your planned work would contradict one, **stop and surface the conflict** to the orchestrator (or user, if standalone) instead of silently diverging.
 - Reference the ADR id in your hand-off when one applies.
 
-**No agent authors ADRs.** ADRs are written up-front by humans. Every agent reads existing ADRs, honours them, and cites them, but never creates one. `architect` may *draft a suggested body in chat* for a human to review and commit — it does not write the file.
+**No agent authors an ADR on its own initiative.** ADRs are written up-front by humans. Every agent reads existing ADRs, honours them, and cites them, but never decides to create one mid-run — an undecided question is a **decision gap** to surface, not an ADR to write. `architect` may *draft a suggested body in chat* for a human to review. The one exception is an **explicit human request** to write an ADR, which the `architecture-decision-records` skill handles; it is never triggered by an autonomous run.
 
 ## 5. Decision capture (applies whether or not ADRs are used)
 
@@ -71,11 +73,41 @@ Skip for: IaC-only changes, doc-only changes, single-file edits with an explicit
 
 Pass the localisation result forward in your hand-off so downstream agents (reviewers in particular) don't re-run localisation.
 
+## 7. Receiving a hand-off from another agent
+
+When another agent hands you a structured block (`IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`,
+`REVIEW COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `INFRASTRUCTURE COMPLETE`, `TASKS PLANNED`,
+or a Stage-1 brief from a supervisor):
+
+- **Treat it as a contract.** If a required field is missing, ambiguous, or internally
+  contradictory, **stop and surface** — name the missing field and what you would have done
+  with it.
+- **Do not infer or guess.** No "I'll assume the target was X." No filling in a default for a
+  missing scope, target SHA, NFR, or constraint.
+- **One corrective request, then stop.** Ask the upstream agent (or the supervisor) once for
+  the missing field. If it comes back still malformed, stop with a clear note rather than
+  retrying further.
+- **Under a supervisor (`dev-lead`)**: a malformed hand-off fires the supervisor's
+  stop-condition for malformed hand-offs — surface the gap, don't escalate further yourself.
+
+This applies to **every agent**, authoring and read-only alike.
+
+## 8. Improvements you notice along the way
+
+A better approach, a conflict, or a missed dependency spotted mid-task is worth raising — but
+**where** you raise it depends on how you were invoked:
+
+- **Invoked directly by a person** — say so immediately, and act only on what was asked.
+- **Under a supervisor (`dev-lead`)** — surface it to the supervisor for its Follow-ups list.
+  **Never act on it in-run.** The supervisor's "never silently expand scope" rule wins.
+- **Read-only review agents** put it in the review report's Follow-ups section. This includes
+  suggested edits to skill files, which reviewers must never make themselves.
+
 ## After loading this skill
 
 The calling agent then:
 
 1. States its role-tailored profile-field-honour list (which fields it depends on).
 2. Loads any role-specific skills (e.g. `csharp-implementation`, `bicep-implementation`, `code-review-checklist`).
-3. Applies its role-specific standards anchor (the "Apply working-style to <role>" bullet list).
+3. Applies its role-specific standards anchor (the "Apply engineering-standards to <role>" bullet list).
 4. Begins the workflow.

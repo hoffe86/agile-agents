@@ -52,22 +52,34 @@ In those cases, do not load this skill — the `testing` agent should not branch
 
 ## Workflow
 
-1. **Read `solution-profile.yaml`** → resolve `testing.e2e.framework`.
-2. If `none` → emit trade-off note (see *Stop conditions*) and exit.
-3. Load the matching playbook reference (`playwright-playbook.md` or `selenium-playbook.md`).
-4. Identify the **critical user journeys** for the change — aim for 10–20 total per app, not "click everything". One spec file per journey.
-5. Apply the **Page Object Model (POM)**: one POM class per major flow (`LoginPage`, `DashboardPage`, …). Tests describe intent, POMs encapsulate selectors and actions. This is the single biggest lever against flakiness and rewrite cost.
-6. **Test data:** prefer ephemeral fixtures (per-test seeded data, factory functions). When backend integration is required, use **TestContainers** to spin up a disposable DB / Kafka / Redis. Never share mutable state across tests, never point E2E at a shared dev DB.
-7. **Headless by default in CI**, headed locally for debugging.
-8. **Always enable trace + screenshot on failure** — see anti-patterns reference.
-9. Emit **JUnit XML** (`--reporter=junit` for Playwright, `--junitxml=` for pytest) so CI surfaces failures in the standard PR UI.
-10. Run the suite locally once before handing off. Confirm it goes green twice in a row (flake check).
+1. **Read `solution-profile.yaml` — the whole `testing.e2e` block, not just the framework.** Every key below is a contract the suite you generate must honour; ignoring one silently discards a decision the project already made.
+
+   | Key | Meaning | Apply it to |
+   |---|---|---|
+   | `framework` | `playwright` / `selenium` / `cypress` / `none` | which playbook to load |
+   | `base_url` | the target the suite hits | the runner's base-URL setting — never hard-code a URL in a spec |
+   | `headless` | headless vs headed | the launch options / runner default |
+   | `parallelism` | workers or shards | the runner's worker count |
+   | `flake_retries` | per-test retry budget | the runner's retry setting |
+
+   Where the profile leaves a key empty, keep the framework's own default and say so in the hand-off — do not invent a value.
+2. If `framework` is `none` → emit trade-off note (see *Stop conditions*) and exit.
+3. If `base_url` is empty while `framework` is set, **stop and ask**. A suite with no target either hard-codes a URL (which breaks on every other environment) or fails at run time; neither is worth generating.
+4. Load the matching playbook reference (`playwright-playbook.md` or `selenium-playbook.md`).
+5. Identify the **critical user journeys** for the change — aim for 10–20 total per app, not "click everything". One spec file per journey.
+6. Apply the **Page Object Model (POM)**: one POM class per major flow (`LoginPage`, `DashboardPage`, …). Tests describe intent, POMs encapsulate selectors and actions. This is the single biggest lever against flakiness and rewrite cost.
+7. **Test data:** prefer ephemeral fixtures (per-test seeded data, factory functions). When backend integration is required, use **TestContainers** to spin up a disposable DB / Kafka / Redis. Never share mutable state across tests, never point E2E at a shared dev DB.
+8. **Honour `testing.e2e.headless`** for the committed configuration; a headed run stays a local override, never a checked-in default.
+9. **Always enable trace + screenshot on failure** — see anti-patterns reference.
+10. Emit **JUnit XML** (`--reporter=junit` for Playwright, `--junitxml=` for pytest) so CI surfaces failures in the standard PR UI.
+11. Run the suite locally once before handing off. Confirm it goes green twice in a row (flake check).
 
 ## CI integration
 
 The framework's CI pipeline expects:
 
 - A dedicated job (e.g., `e2e`) that runs **after** unit tests pass.
+- Worker count from `testing.e2e.parallelism` and retry budget from `testing.e2e.flake_retries`, set in the committed runner config rather than passed ad hoc on the command line — the profile is the single place a team changes them.
 - JUnit XML uploaded as a test report.
 - Trace files + failure screenshots uploaded as build artifacts (retention ≥ 7 days).
 - Browser binaries cached between runs (`~/.cache/ms-playwright` for Playwright).
