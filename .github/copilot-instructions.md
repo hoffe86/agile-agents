@@ -169,20 +169,29 @@ downgrading a heavy agent silently degrades review quality.
 
 ### Skill format
 Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`,
-`applies_to`) used for skill-invocation matching, followed by the workflow in natural
-language. Reference files live in `<skill-name>/references/`, scripts in
-`<skill-name>/scripts/`.
+`applies_to`). **`description` is what drives skill-invocation matching** — `applies_to` does
+not (see below). The frontmatter is followed by the workflow in natural language; reference
+files live in `<skill-name>/references/`, scripts in `<skill-name>/scripts/`.
 
 `applies_to` declares the technology scope — `all` for a technique that holds in any
 ecosystem, otherwise a comma-separated list of the ecosystems it actually assumes
 (`dotnet`, `python`, `azure, terraform`, `kubernetes, helm, kustomize`, `docker`,
 `github-actions`, …). It is **required on every skill**; a missing value is a defect, not
-a default. The split today is 29 `all` / 22 scoped.
+a default. The split today is 29 `all` / 26 scoped.
 
-Why declare it rather than exclude tech-specific skills: skills load on demand, so a
-scoped skill costs nothing when the task doesn't touch that ecosystem — but an
-*undeclared* one sits in the same matching pool as the agnostic ones and can be pulled
-into an unrelated task. Declaring the scope is what makes the on-demand model safe.
+**Nothing reads it.** Like `model_tier`, it is declared on every skill and consumed by no
+script, no manifest, and not by the CLI — it is a local field that upstream has no equivalent
+for (which is why `plugins/VENDORED.md` lists it as the one sanctioned modification to a
+vendored copy). It does **not** filter the matching pool: every installed skill is a candidate
+on every task regardless of what it declares. Treat it as recorded intent — it tells a *human*
+whether a skill belongs in core or a companion, and it is how `skill-scout` places an adopted
+skill — but do not reason as though it constrains loading at run time.
+
+The mechanism that genuinely limits what a project carries is therefore **the plugin split, not
+this field**: a Python project installs no `agile-agents-dotnet`, so those skills are not in its
+pool at all. That is why anything tied to one ecosystem belongs in a companion. Within a plugin,
+a scoped skill is still a live candidate for every task — so keep descriptions specific enough
+that a wrong match is unlikely, rather than relying on `applies_to` to prevent it.
 (Same reasoning as `microsoft/hve-core`'s `coding-standards` skills and
 `obra/superpowers-skills`' `languages:` field.)
 

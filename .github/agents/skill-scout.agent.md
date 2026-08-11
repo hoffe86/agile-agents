@@ -85,6 +85,9 @@ does not imply Bicep, so a Terraform-on-Azure user would be. Count the ecosystem
 before you place it.
 
 Set `applies_to` to what the skill genuinely assumes — `all` only when it holds in any ecosystem.
+**It is recorded intent, not a filter**: nothing reads it, so it does not keep a scoped skill out
+of the matching pool. The plugin choice is the real control — that is what decides whether a
+project carries the skill at all, which is why placement matters more than the field.
 
 ## Triaging drift
 
