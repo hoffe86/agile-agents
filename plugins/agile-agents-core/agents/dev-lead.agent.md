@@ -329,7 +329,7 @@ When triggered, render via `ask_user` using `skills/dev-lead-templates/reference
 
 ### Stage 6 — Coding
 
-**Delegate to:** `coding` (or `infrastructure` if the work is IaC / pipelines / Bicep / Terraform / Helm / Dockerfile).
+**Delegate to:** `coding`, or `infrastructure` when the task's deliverable is infrastructure, deployment or pipeline definition rather than application code — whatever technology the repo expresses that in (`solution-profile.yaml: infrastructure.iac_tool` and `cicd.platform` name it). Route on what the task produces, not on a list of tool names.
 
 **Execution order — one delegation per task, dependency-ordered.** The approved child tasks are the unit of delegation, not the requirement. Take the next task whose dependencies are all `done`:
 
@@ -368,7 +368,7 @@ Advance to Stage 7 only when every task is `done`.
 
 **Routing:**
 - **Application code changed** (any non-IaC file in the diff) → delegate to `testing`.
-- **IaC-only change** (diff touches only `*.bicep`, `*.bicepparam`, `*.tf`, `*.tfvars`, `Chart.yaml`, `kustomization.yaml`, k8s manifests, `.github/workflows/*.yml`, `azure-pipelines.yml`, `Dockerfile`) → **skip this stage**; `infrastructure` already authored and ran IaC tests (Terratest / Pester / Bicep test framework) at Stage 6 and reported them in its hand-off. Record "Stage 7 skipped — IaC-only, tests owned by infrastructure" in the final report.
+- **IaC-only change** — the diff touches **only** infrastructure, deployment or pipeline definitions, in whatever technology this repo uses. The common ones are `*.bicep` / `*.bicepparam`, `*.tf` / `*.tfvars`, `Chart.yaml` / `kustomization.yaml` / k8s manifests, `Dockerfile`, and CI definitions (`.github/workflows/*.yml`, `azure-pipelines.yml`, `.gitlab-ci.yml`, `Jenkinsfile`) — but this is **not a closed list**, and a format missing from it is not application code. Pulumi programs, CloudFormation and ARM templates and any other IaC format count the same; cross-check `solution-profile.yaml: infrastructure.iac_tool` and `cicd.platform` when a file's role is unclear, and judge by what the file *does* rather than by its extension. → **skip this stage**; `infrastructure` already authored and ran IaC tests (Terratest / Pester / the tool's own test framework) at Stage 6 and reported them in its hand-off. Record "Stage 7 skipped — IaC-only, tests owned by infrastructure" in the final report.
 - **Mixed change** (app code + IaC) → run testing for the app code; rely on infrastructure's IaC tests from its Stage 6 hand-off.
 
 **Input (when running):** **every** `IMPLEMENTATION COMPLETE` block from Stage 6 (verbatim, one per task), plus the original Definition of Done from intake.
