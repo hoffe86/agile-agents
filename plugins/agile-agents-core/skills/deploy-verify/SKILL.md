@@ -26,6 +26,8 @@ The justification for spending the time and the cloud money:
 | Module outputs resolve to something the next module can consume | ❌ |
 | Application actually starts on the deployed infrastructure | ❌ |
 
+**Run the cheap check first.** Everything above is what plan / what-if *cannot* see — but the things they *can* see should be caught before spending a deployment on them. On Bicep, **`azure-deployment-preflight`** (shipped by `agile-agents-bicep`) covers template syntax, what-if and the permission check in one pass; on Terraform, `plan` plus `terraform validate` is the equivalent. A run that fails preflight has no business reaching this gate, and the failure is free instead of costing a pipeline run and real cloud time.
+
 ## When this skill fires
 
 At **Stage 8**, immediately after the test bar returns green, and only when **all** preconditions hold. Any precondition unmet → emit a `skipped` event with the specific reason and pass through. Never block a run because deployed verification was unavailable — it is an enhancement to the gate, not a new mandatory gate.

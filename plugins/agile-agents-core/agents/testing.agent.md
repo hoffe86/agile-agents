@@ -71,6 +71,7 @@ Route by the repo's actual stack (`solution-profile.yaml: tech_stack.primary_lan
 For web-UI / end-to-end testing, **`e2e-testing`** and **`webapp-testing`** (vendored). These answer two different questions and both are available:
 
 - **`e2e-testing`** — author and run a durable Playwright / Selenium **suite** that ships with the repo and runs in CI. Use it when the deliverable is a test file.
+- **`playwright-generate-test`** (vendored) — turn a described scenario into a Playwright test by driving the `playwright/*` MCP server through the flow first, so the generated selectors and assertions come from the real page rather than from a guess. Use it inside `e2e-testing`'s workflow when you have a scenario but not yet a test; `e2e-testing` still owns suite structure, fixtures and CI wiring.
 - **`webapp-testing`** — drive a browser **interactively** through the `playwright/*` MCP tools (shipped by `agile-agents-core`): open the page, read the accessibility tree, inspect console errors and failed network requests, screenshot. Use it to *find out what is actually wrong* — a 200 response with a white screen, a broken hydration, a CSP violation — none of which an HTTP status check can see. Findings become assertions in the suite; the interactive session itself is not the deliverable.
 
 Reach for interactive driving when a test fails for a reason the failure output does not explain, or when the smoke slot reports the app up but the UI does not work. Always close the browser when you are done.
