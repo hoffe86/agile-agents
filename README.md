@@ -62,8 +62,7 @@ Agents route on **skill availability**, not on a hardcoded stack — an uninstal
 degrades to repo conventions rather than failing. To see what your installed set covers and what
 it doesn't, ask **`capability-scout`** (`copilot --agent agile-agents-core:capability-scout`).
 
-The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skills/` (repo-scope +
-user-scope).
+The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skills/`.
 
 ## What you get
 
@@ -132,10 +131,10 @@ Without either plugin, the Azure lens degrades to the neutral cloud lens plus wh
 `microsoft-docs` returns — correct, but with no conventions to enforce and no live subscription
 context.
 
-**4 user-scope skills** (`plugins/agile-agents-core/user/skills/`) — bundled into the plugin and
-available to every agent by description match. `working-style` and `trade-off-reporting` are named
-explicitly by the agents; `code-review` and `cloud-native-patterns` are invoked on demand when
-the task matches.
+Three of those core skills — `trade-off-reporting`, `code-review` and `cloud-native-patterns` —
+apply to every task rather than a phase: `trade-off-reporting` is named explicitly by the agents,
+the other two load on demand when the task matches. They previously sat in a separate
+`user/skills/` folder; they are now in `skills/` with everything else.
 
 ### MCP servers
 

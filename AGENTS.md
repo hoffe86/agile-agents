@@ -160,7 +160,9 @@ natural-language workflow.
 - **backlog-item-standards** (`agile-agents-core`) — Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definitio...
 - **bicep-implementation** (`agile-agents-bicep`) — Implement Azure infrastructure using Bicep with Azure Verified Modules (AVM) wherever possible, following Microsoft's published Bicep best practices and Well-Architected Framework.
 - **cicd-pipeline-implementation** (`agile-agents-core`) — Implement CI/CD pipelines for infrastructure and application code using GitHub Actions or Azure Pipelines (YAML).
+- **cloud-native-patterns** (`agile-agents-core`) — Canonical reference for cloud design patterns, resilience defaults, 12-Factor cloud-native readiness, observability, and HTTP/gRPC API hygiene used by the authoring and review agents.
 - **code-localisation** (`agile-agents-core`) — Locate the small set of code files relevant to a task in a large repository.
+- **code-review** (`agile-agents-core`) — Perform comprehensive code reviews across architecture, clean code, security, and test quality dimensions.
 - **code-review-checklist** (`agile-agents-core`) — Perform a high-signal code review of a diff or set of changed files focused on correctness, design, readability, test quality, and documentation.
 - **codeql** (`agile-agents-core`) — Comprehensive guide for setting up and configuring CodeQL code scanning via GitHub Actions workflows and the CodeQL CLI.
 - **conventional-commit** (`agile-agents-core`) — Prompt and workflow for generating conventional commit messages using a structured XML format.
@@ -200,6 +202,7 @@ natural-language workflow.
 - **terraform-azurerm-set-diff-analyzer** (`agile-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
 - **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after `coding`/`testing` finish and before the reviewer fan-out.
 - **threat-model-analyst** (`agile-agents-core`) — Full STRIDE-A threat model analysis and incremental update skill for repositories and systems.
+- **trade-off-reporting** (`agile-agents-core`) — Standard format and rules for surfacing trade-offs an agent made while designing, coding, provisioning infrastructure, or writing tests.
 - **update-avm-modules-in-bicep** (`agile-agents-bicep`) — Update Azure Verified Modules (AVM) to latest versions in Bicep files.
 - **webapp-testing** (`agile-agents-core`) — Toolkit for interacting with and testing local web applications using Playwright.
 

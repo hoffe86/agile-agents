@@ -11,7 +11,7 @@
     Two checks:
 
       skills  Every skill named in an agent's "Skills you compose with" section
-              must either ship under plugins/*/skills|user/skills, or be hedged
+              must either ship under plugins/*/skills, or be hedged
               on the same line as optional ("not bundled", "when installed",
               "if installed", "when available", "when present", "separately
               installed"). Hedged is fine — that is the documented contract for

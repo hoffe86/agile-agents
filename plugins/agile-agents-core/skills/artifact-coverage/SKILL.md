@@ -62,7 +62,7 @@ In order, stopping at the first that disqualifies:
    artifact that dwarfs the agent it would serve is a methodology, not a skill.
 5. **Does it drag in a dependency?** A CLI, a container, a hosted service — a new prerequisite for
    everyone who installs that plugin.
-6. **Can it be loaded at all?** Plugins carry `agents/`, `skills/` and `user/skills/` only.
+6. **Can it be loaded at all?** Plugins carry `agents/` and `skills/` only.
    Instructions and prompts have no manifest key, so they would ship inert; their content can only
    be re-authored, which makes it hand-written rather than vendored.
 

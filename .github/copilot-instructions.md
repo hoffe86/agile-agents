@@ -51,7 +51,7 @@ the tooling into an agent.
 The suite is consumed **as a Copilot CLI plugin** — `copilot plugin marketplace add
 hoffe86/agile-agents` then `copilot plugin install agile-agents-core@agile-agents-marketplace`, plus whichever
 `agile-agents-<technology>` companion plugins the project needs. The CLI loads `agents/`,
-`skills/`, and `user/skills/` directly from each plugin (see
+and `skills/` directly from each plugin (see
 `plugins/<name>/.github/plugin/plugin.json`). Per-project config
 (`solution-profile.yaml`) is copied into the target repo's `.github/`.
 
@@ -75,10 +75,9 @@ agent/                               Marketplace root
 │   │   ├── agents/                  13 *.agent.md (1 supervisor + 4 authors
 │   │   │                            + 5 reviewers + backlog-manager + bootstrapper
 │   │   │                            + capability-scout)
-│   │   ├── skills/                  33 technology-neutral repo-scope skills, incl.
+│   │   ├── skills/                  36 repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
-│   │   └── user/skills/             3 user-scope skills (bundled into the plugin)
 │   ├── agile-agents-dotnet/         5 skills — C# / .NET
 │   ├── agile-agents-python/         4 skills — Python
 │   ├── agile-agents-bicep/          2 skills — Bicep IaC
@@ -275,12 +274,16 @@ deployment preflight and Playwright test generation.
 ignoring only the `applies_to` line. Run it before a re-sync; hand the result to
 `capability-scout` to decide what is worth taking.
 
-### User-scope skills
-The skills under `user/skills/` (`trade-off-reporting`, `code-review`, `cloud-native-patterns`)
-are bundled into the plugin (the `skills` array includes `user/skills/`) and reachable by every
-agent via description match. Only `trade-off-reporting` is named explicitly in the agent bodies.
+### Personal preferences are not shipped
+`trade-off-reporting`, `code-review` and `cloud-native-patterns` once lived under a separate
+`user/skills/` folder, because that is where they were first written — a person's own
+`~/.copilot/skills/`. They now sit in `skills/` with everything else: all three are `applies_to:
+all` engineering skills that the agents rely on, none is a personal preference, and both paths were
+bundled identically anyway. **Do not re-split them** — a second skills folder needs its own
+manifest entry, which is exactly the silent-drop failure the flat-layout rule above exists to
+prevent, and it left contributors with no rule for which folder a new skill belongs in.
 
-**Personal preferences are deliberately not shipped.** The suite ships
+**Genuine personal preference stays out of the plugin entirely.** The suite ships
 `engineering-standards` (the technology-neutral quality bar: Clean Code / SOLID / DDD /
 Clean Architecture, security-by-default, operational practices, the pre-PR checklist) and
 nothing about how any individual likes to be talked to. Tone, verbosity, proactivity and
@@ -329,7 +332,7 @@ that a wrong match is unlikely, rather than relying on `applies_to` to prevent i
 
 ### Plugin manifests and versioning
 When you add/remove an agent or skill, the owning plugin auto-discovers it (its manifest
-points at `agents/` / `skills/` / `user/skills/`, relative to that plugin root).
+points at `agents/` / `skills/`, relative to that plugin root).
 
 **Bump the version of every plugin whose files changed, in the same PR.** The version is
 the delivery mechanism — an installed plugin picks up nothing until it moves, so an
