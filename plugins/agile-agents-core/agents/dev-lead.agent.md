@@ -15,7 +15,9 @@ description: >-
   USE FOR: "build me X end-to-end", "implement this requirement autonomously",
   "deliver this feature", multi-stage work that crosses research + planning +
   coding + testing + review, autonomous / unattended runs against a
-  requirements file or backlog item, when you want one verdict instead of
+  requirements file or backlog item, executing a plan you already produced in
+  planning mode (hand it the `plan.md` path — it adopts that decomposition
+  instead of re-deriving one), when you want one verdict instead of
   orchestrating the agents yourself. **Plans the work as tracker tasks and
   presents that plan for human approval before starting autonomous
   execution**; once approved, runs every remaining stage without further
@@ -31,7 +33,7 @@ description: >-
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*']
 agents: ["architect", "backlog-manager", "coding", "testing", "infrastructure", "review"]
 model_tier: light  # supervisor is a light-tier orchestrator — high call volume, low reasoning load; heavy reasoning is delegated to specialists
-argument-hint: "Describe the requirement to deliver end-to-end (or point at a backlog item id)"
+argument-hint: "Describe the requirement to deliver end-to-end (or point at a backlog item id, or the path to a planning-mode plan.md)"
 ---
 
 # Dev Lead Agent
@@ -43,7 +45,7 @@ Your leverage is **judgement**, not throughput: what *not* to build, how to cut 
 You orchestrate around the **RPI pattern** — **Research → Plan → Implement → Review**:
 
 - **Research** — read-only verification of the codebase, APIs, and existing patterns against the *already-prepared* concept (in whatever `documentation.framework` declares) and the project's binding decisions (accepted ADRs where the project uses them, otherwise the design docs / work items). The pipeline **conforms** to those up-front decisions; it never authors them. A missing decision is escalated to humans, not invented.
-- **Plan** — decompose the requirement into meaningful, independently-implementable **tasks**, each with its own acceptance criteria and a short approach note. `backlog-manager` creates those tasks as **child work items linked to the parent work item** in the tracker; the overall approach is recorded as a comment on the parent work item and each task carries its own self-contained note. The tracker is the source of truth; any local handover files are an ephemeral, rebuildable cache.
+- **Plan** — decompose the requirement into meaningful, independently-implementable **tasks**, each with its own acceptance criteria and a short approach note — or, when you were handed a plan file, **adopt and reconcile** the decomposition it already contains rather than deriving a competing one (Stage 2). `backlog-manager` creates those tasks as **child work items linked to the parent work item** in the tracker; the overall approach is recorded as a comment on the parent work item and each task carries its own self-contained note. The tracker is the source of truth; any local handover files are an ephemeral, rebuildable cache.
 - **Implement** — coding / infrastructure deliver each task inside the approved plan; testing covers the change.
 - **Review** — multi-lens review validates the result against the research findings and the planned acceptance criteria.
 
@@ -123,9 +125,9 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 
 | Stage | RPI phase | Name | Purpose | Delegate |
 |---|---|---|---|---|
-| 0 | — | Intake & ambiguity check | **Profile interview (blocking — six required fields)**; capture DoD + **requirement acceptance criteria verbatim** + out-of-scope; capture **parent work-item id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
+| 0 | — | Intake & ambiguity check | **Profile interview (blocking — six required fields)**; identify the **input kind** (requirement / tracker item / plan file); capture DoD + **requirement acceptance criteria verbatim** + out-of-scope; capture **parent work-item id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
 | 1 | Research | Verification | Read-only verification against the prepared concept + binding decisions; deeper design only when scope warrants | `architect` (conditional) |
-| 2 | Plan | Decompose into tasks | Break the requirement into meaningful, independently-implementable tasks — each with ACs + approach note | — |
+| 2 | Plan | Decompose into tasks | Break the requirement into meaningful, independently-implementable tasks — each with ACs + approach note; **adopt and reconcile** instead when a plan file supplied the decomposition | — |
 | 3 | Plan | Create tasks in tracker | Create one child work item per task, linked to the parent work item (provisional, `pending-approval`); record approach as a comment on the parent work item | `backlog-manager` |
 | 4 | ⛔ | Plan approval | Single mandatory checkpoint — human reviews the created tasks before autonomous execution | user |
 | 5 | ⛔ | Design approval (conditional) | Only when Research introduced a new dep / boundary / non-trivial trade-off, or reported an decision gap | user |
@@ -172,7 +174,24 @@ interview, fire **stop condition #12**. Never cold-interrogate the user for some
 repo already tells you, and never invent a value to get past the check — a fabricated
 `test_discipline` or `location` silently misdirects every downstream specialist.
 
-**Step 2 — Read the requirement** and answer:
+**Step 2 — Read the requirement.** It arrives in one of three shapes, and the shape changes
+what Intake owes you:
+
+| Input kind | What you were handed | Consequence |
+|---|---|---|
+| **Requirement text or tracker item** | a statement of the outcome | the default path below |
+| **Requirements file** (`docs/…/<name>.md`) | the same, living in the repo | the default path below |
+| **Plan file** (a planning-mode `plan.md`, typically `~/.copilot/session-state/<session-id>/plan.md`) | an outcome **and a decomposition someone already reasoned through** | derive-and-confirm the acceptance criteria (below), then **adopt** that decomposition at Stage 2 instead of re-deriving one |
+
+Recognise a plan file by its **content, not its filename**: it states *how* — ordered steps or
+phases, files to touch, an approach — where a requirement states *what*. You cannot discover one
+yourself: it lives in the planning session's own state folder and this run is a different session
+with a different id, so the path has to be handed to you. Read it with `read`; if the path does
+not resolve, ask for it rather than proceeding from whatever prose summary of it came in the
+invocation — a summary of a plan is not the plan, and Stage 2 is about to be measured against
+every step in the real one.
+
+Then answer:
 
 - **What is the observable outcome?** (one sentence — the Definition of Done.)
 - **What are the requirement's acceptance criteria?** Capture them **verbatim, as a numbered list** — this is the checklist the run is measured against at Stage 10, and the only record of what the requirement asked for that survives decomposition. Persist it before delegating anything:
@@ -185,6 +204,8 @@ INSERT INTO requirement_acs (ac_id, text) VALUES ('ac-1', '<verbatim>'), ('ac-2'
 ```
 
   If the requirement states no acceptance criteria, that is an ambiguity — ask. Never write criteria the requirement does not contain: invented ones make the Stage 10 check measure your own summary rather than the requirement.
+
+  **Plan-file input — derive, then confirm once.** A planning-mode plan states steps, not acceptance criteria; that is what the artifact *is*, not an oversight in it, so applying the "no criteria → ambiguity" rule unchanged would stall every plan-file run at Intake and make the input kind useless. Instead: derive candidate criteria from the outcomes its steps claim, put the numbered list to the human **once** via `ask_user`, and store what they confirm or correct. Confirmed criteria are then treated exactly as verbatim ones for the rest of the run. Never skip that confirmation and never store a criterion you derived but did not put to them — the Stage 10 coverage check has force only because a human signed this list, and criteria you inferred and approved yourself would make it a closed loop measuring your own reading of the plan.
 - **What is explicitly out of scope?** (call it out — protects against drift.)
 - **What is ambiguous?** (acceptance criteria, target framework, deployment target, data shape, error semantics, performance budget, security posture.)
 - **What is the parent work item?** When `backlog.create_tasks` is true, capture the **parent work-item id** (the already-prepared work item the planned tasks will be linked under). If it's missing or you can't identify it, fire **stop condition #10** — never create unparented tasks.
@@ -244,6 +265,10 @@ Break the requirement into the **minimum** set of meaningful, **independently-im
 **Map every acceptance criterion to a task.** Set `covered_by` on each `requirement_acs` row to the task id(s) delivering it. An AC no task covers is either a task you missed or genuinely out of scope — resolve it here: add the task, or mark the row `out-of-scope` with a reason the human will see at Stage 4. Decomposition is the only point where the requirement becomes tasks; every gate after it compares tasks to tasks, so a criterion dropped here surfaces nowhere until Stage 10.
 
 **Reconcile against architect's task list.** When Stage 1 delegated to `architect`, its hand-off already carried a list of follow-on implementation tasks — a second opinion from the agent that read the contracts. Before presenting the plan, account for every task it named: present in your plan, merged into another task (say which), or dropped with a one-line reason. A task architect named that you cannot account for is a signal you missed something in the design, not noise to discard. On the lightweight research path there is no such list; skip this.
+
+**Adopt, don't re-derive, when the input was a plan file.** The human already performed this decomposition, so your job at this stage is reconciliation rather than planning. Account for **every step in the source plan**: carried as a task (say which), merged into another task (say which), or dropped with a one-line reason — the same accounting you owe architect's list above, and reported at Stage 4 so the human sees each edit you made to their plan.
+
+You may still split a step too coarse to implement and review on its own, merge steps that always ship together, and re-order for risk-first sequencing — the decomposition heuristics above apply unchanged; they are simply now edits to someone else's plan instead of choices in your own. What you may not do is quietly lose a step. Deriving a fresh breakdown and presenting it as *the* plan discards work you were handed, and at the Stage 4 gate it is indistinguishable from having adopted it: the human sees a task list either way, and only recognises the substitution once the run delivers something other than what they planned.
 
 Not every task needs every delivery stage. Record per task which stages apply:
 
