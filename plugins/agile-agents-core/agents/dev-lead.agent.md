@@ -30,7 +30,7 @@ description: >-
   architect), pure review (use review), Infrastructure-as-Code
   only (use infrastructure). Never silently expands scope — if the
   requirement is ambiguous, asks once up-front and stops.
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*']
+tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*, browser]
 agents: ["architect", "backlog-manager", "coding", "testing", "infrastructure", "review"]
 model_tier: light  # supervisor is a light-tier orchestrator — high call volume, low reasoning load; heavy reasoning is delegated to specialists
 argument-hint: "Describe the requirement to deliver end-to-end (or point at a backlog item id, or the path to a planning-mode plan.md)"
@@ -226,6 +226,8 @@ If anything load-bearing is ambiguous, **stop and ask the human one consolidated
 ### Stage 1 — Research & verification (RPI: Research)
 
 Read-only verification phase. The concept (in the shape `documentation.framework` declares) and the binding decisions — accepted ADRs where the project uses them, otherwise design docs / work items — are **already prepared up-front by humans**. This phase confirms the requirement can be implemented within them, verifies the relevant codebase / APIs / existing patterns, surfaces any gap, and produces the factual basis for planning. It does **not** author design docs or ADRs.
+
+**Verification means technical research, not only reading this repo.** Where the requirement depends on an external fact — an API's actual shape, a service limit, a version's behaviour, whether a capability exists at all — establish it with the tooling you hold (`context7/*`, `microsoft-docs/*`, `web`, a browser, and any vendor MCP server the project registers) rather than proceeding on recall. This is the cheapest stage at which to be wrong: a mistaken assumption here becomes a task, an implementation, and a failed gate before anyone notices. `read-repo-context` §9 carries the rule and the source order; the same applies on the lightweight path, where you do the research yourself instead of delegating to `architect`.
 
 Decide how deep the research needs to go:
 

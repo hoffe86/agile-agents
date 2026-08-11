@@ -22,7 +22,7 @@ description: >-
   humans before the agent fleet runs — architect honours them and reports
   decision gaps, but never creates ADR files).
 model_tier: heavy  # deep reasoning required for design trade-offs, NFR analysis, and multi-option evaluation
-tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, edit, agent]
+tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, edit, agent, playwright/*, browser]
 argument-hint: "Describe the design need: new system, service decomposition, technology selection, or NFR analysis"
 ---
 

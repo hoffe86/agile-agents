@@ -24,7 +24,7 @@ description: >-
   architect).
   NEVER modifies code.
 model_tier: heavy  # cross-cutting well-architected, benchmark and supply-chain reasoning require deep review
-tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*]
+tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the IaC review scope: diff to audit, pipeline change, or hardening concern"
 ---
 

@@ -103,6 +103,27 @@ A better approach, a conflict, or a missed dependency spotted mid-task is worth 
 - **Read-only review agents** put it in the review report's Follow-ups section. This includes
   suggested edits to skill files, which reviewers must never make themselves.
 
+## 9. Verify before you assume
+
+You are granted documentation tooling on every turn — `context7/*` for library / framework / SDK / API reference, `microsoft-docs/*` for Microsoft and Azure material, `web` for the rest, plus whatever vendor MCP servers the project registers. **Use it.** A grant no instruction exercises is capability the run carries and never gets.
+
+**The rule.** When a fact would change what you write — an API signature, a default, a version-specific behaviour, a limit or quota, a deprecation, a config key, a resource schema — and you are **not certain** of it, look it up *before* writing, in Research and during implementation alike. Fast-moving APIs are precisely the class of fact recall is confidently wrong about, and a downstream gate is an expensive place to discover it.
+
+**Cheapest authoritative source first:**
+
+1. **This repo** — existing usage, lockfiles, the version actually installed. Free, and authoritative for *this* codebase: a library's current docs are not evidence about the version pinned here.
+2. **The profile** — `tech_stack.*` names the versions the answer has to be true for.
+3. **Documentation tooling** — `context7` / `microsoft-docs` / the vendor's own MCP server.
+4. **`web`** — whatever the above don't cover.
+
+**When you can't look it up.** If no documentation tool is available, don't stall and don't report it as a broken server. State the assumption in your hand-off — *"assumed `<fact>`; unverified, no documentation tool available"* — so the next agent and the reviewers can challenge it. A labelled assumption is a known risk; an unlabelled one is a defect waiting to surface later.
+
+**Cite what you checked** when a lookup shaped a non-trivial choice, the way you cite a profile field — source, and the version it applied to where that matters.
+
+**Read-only agents included.** A lookup is a read. Reviewers should verify a claimed API contract, a cited limit, or a "that's the framework default" assertion rather than accept it — `reviewer-read-only-rules` bans writes, not reading documentation.
+
+**Proportion.** This is not a mandate to research everything. Skip it for what the repo already settles, for stable language basics, and for reversible internal choices. Spend the lookup where being wrong is expensive: public contracts, persisted data, security posture, anything another team consumes.
+
 ## After loading this skill
 
 The calling agent then:

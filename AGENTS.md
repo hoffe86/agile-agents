@@ -53,70 +53,70 @@ full convention map.
 
 Read-only / advisory architect for application and cloud solution architecture on whatever platform the project targets — the cloud, hosting model and stack come from `solution-profile.yaml`, and vendor-specific depth comes from whichever skill plugins are installed. Produces design artifacts (C4 sketches L1–L3, arc42-style one-pagers, technology recommendations, integration patterns, NFR analysis) that coding and infrastructure then implement. Decisions are captured inline in the design doc (arc42 §9 as a short table) and surfaced as trade-off bullets. USE FOR: design new system or component, evaluate architecture options, choose cloud services or topology, draft C4 / arc42 documentation, analyze NFRs / quality attributes, design integration / eventing patterns, plan API contracts before implementation, assess well-architected impact of a design choice. DO NOT USE FOR: writing application code (use coding), writing IaC (use infrastructure), reviewing existing code (use review or architecture-review), running or fixing tests (use testing), end-to-end autonomous feature delivery (use dev-lead if present), authoring Architecture Decision Records (ADRs are written up-front by humans before the agent fleet runs — architect honours them and reports decision gaps, but never creates ADR files).
 
-- **Tools**: agent, azure-mcp-server/*, azure-mcp/*, azure/*, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, azure-mcp-server/*, azure-mcp/*, azure/*, browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `architecture-review`
 
 Performs a focused, READ-ONLY architectural review of a diff. Reviews boundary integrity (bounded contexts, layering, cross-service writes, contract changes), design patterns, ADR alignment, NFR impact, dependency direction (Clean Architecture inward-only), and well-architected pillar implications when cloud is involved. Distinguishes reversible vs irreversible decisions. Cites arc42, C4, the target platform's well-architected framework, MADR, microservices.io, DDD canon, ISO 25010. USE FOR: architecture-only review of a diff, check bounded-context / layering integrity, audit public-contract / API / event-schema change, assess well-architected impact of a code change, validate ADR alignment, review introduction of a new integration / dependency, review microservice boundary changes. Auto-invoked by review when the diff crosses boundaries, changes contracts, or touches >10 files. DO NOT USE FOR: full multi-lens review (use review), designing new architecture before code exists (use architect), security review (use security-review), IaC topology review (use infrastructure-review), making changes (this agent is read-only). NEVER modifies code.
 
-- **Tools**: context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `backlog-manager`
 
 Create, improve, review, and maintain backlog work items (Epics, Features, Product Backlog Items, Issues, Tasks) in the team's tracker. USE FOR: creating work items from conversations, improving work item formulations, checking consistency across related items, drafting acceptance criteria, updating tracker fields, linking parent/child relationships, reviewing backlog quality, or materialising a dev-lead Plan as child tasks under a parent work item (the Plan workflow). DO NOT USE FOR: writing code, tests, or IaC (use coding / testing / infrastructure), design or ADR decisions (use architect), reviewing a diff (use review), estimating / prioritising / progressing item state on your own authority (the team decides — you capture what was agreed), end-to-end autonomous delivery (use dev-lead). # `tools` is a filter, not a hint: a tracker server that is not listed here is unreachable even when # it is running. `github` and the ADO server names are granted below because those trackers ship a # mechanics skill. On any other tracker, add `'<your-server>/*'` here. # A grant must match the server's registered name exactly, and that name may itself contain a slash # (`microsoft/azure-devops-mcp`) — copy it verbatim from your mcp-config.json.
 
-- **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, edit, execute, github/*, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, edit, execute, github/*, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `coding`
 
 Implements features, fixes bugs, and refactors application code in any language the repo uses, following that ecosystem's current best practices. Deep skill support for C#/.NET (default .NET 10) and Python; other languages are handled from the repo's own conventions and the declared `tech_stack` profile. USE FOR: implement a feature, fix a bug, refactor code, add a class / module / function, integrate a library, migrate code between framework versions, apply a design pattern. DO NOT USE FOR: architecture / ADR / design decisions before code exists (use architect), Infrastructure-as-Code — Bicep / Terraform / Helm / Dockerfile / pipelines (use infrastructure), writing or fixing tests (use testing), reviewing or auditing code (use review), end-to-end autonomous delivery (use dev-lead if present). Hands off to testing when implementation is complete.
 
-- **Tools**: agent, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `dev-lead`
 
 Autonomous development lead. Takes a single, already-prepared requirement and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the requirement into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent work item in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this requirement autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + testing + review, autonomous / unattended runs against a requirements file or backlog item, executing a plan you already produced in planning mode (hand it the `plan.md` path — it adopts that decomposition instead of re-deriving one), when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving one retry, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / testing / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
 
-- **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: architect, backlog-manager, coding, infrastructure, review, testing
 
 ### `infrastructure-review`
 
 Performs a focused, READ-ONLY review of Infrastructure-as-Code changes in whatever technology the repo uses — Terraform, Bicep, CloudFormation, Pulumi, ARM, Helm / Kustomize, Dockerfiles, and CI/CD pipeline definitions. Cloud- and tool-agnostic by contract: `solution-profile.yaml` declares the cloud, IaC tool, module source, naming / tagging conventions and security benchmarks, and findings are cited against that provider's own well-architected framework and benchmark. The cloud-neutral lens always applies — secrets handling, least-privilege identity, private networking, encryption, backup on stateful resources, logging / retention, version pinning, and pipeline supply-chain hardening (OIDC over static credentials, pinned actions, build-once-promote-artifacts, SLSA). USE FOR: IaC-only review of a diff, audit an IaC or Kubernetes manifest change, review pipeline hardening, check naming + tagging, check verified-module usage, audit a Dockerfile, check secrets handling and OIDC adoption, well-architected review of cloud infrastructure. Auto-invoked by review when the diff touches IaC, Kubernetes manifests, pipeline definitions, or Dockerfiles. DO NOT USE FOR: full multi-lens review (use review), writing or modifying IaC (use infrastructure), application code review (use review), architectural / topology decisions before IaC exists (use architect). NEVER modifies code.
 
-- **Tools**: azure-mcp-server/*, azure-mcp/*, azure/*, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: azure-mcp-server/*, azure-mcp/*, azure/*, browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `infrastructure`
 
 Implements Infrastructure as Code (IaC) in whatever technology the project declares — Terraform, Bicep, CloudFormation, Pulumi, ARM, Helm / Kustomize, Dockerfiles, and CI/CD pipeline definitions. Cloud- and tool-agnostic by contract: `solution-profile.yaml` declares the cloud, IaC tool, module source, hosting model, secrets store and naming / tagging conventions, and the agent routes to whichever implementation skill the project installed — falling back to the repo's own conventions and the provider's documentation when none is. Always applies the cross-cutting IaC lens (workload identity over secrets, least-privilege, OIDC, pinned versions, build-once-promote). USE FOR: write or modify IaC, a Kubernetes chart or overlay, or a Dockerfile; create or update a CI/CD workflow; provision cloud resources; set up network topology and private connectivity; add workload identity + role assignments; configure a secrets store; define naming + tagging; harden a pipeline (OIDC, pinned actions, build-once-promote). DO NOT USE FOR: architecture / topology decisions before IaC exists (use architect), application code (use coding), reviewing existing IaC (use infrastructure-review), end-to-end autonomous delivery (use dev-lead if present). Owns its own IaC tests end-to-end — does NOT hand those off to testing (which is scoped to application unit / integration tests only). Hands off to infrastructure-review and review.
 
-- **Tools**: agent, azure-mcp-server/*, azure-mcp/*, azure/*, context7/*, edit, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, azure-mcp-server/*, azure-mcp/*, azure/*, browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `review`
 
 Orchestrates a multi-lens, READ-ONLY code review of a diff or set of changed files. Performs the general code-quality review itself (Clean Code / SOLID / standards / regressions / docs) and delegates specialised lenses to security-review (always), test-review (when tests or testable code change), architecture-review (when boundaries / contracts / >10 files change), and infrastructure-review (when IaC / pipelines change). Merges all findings into a single severity-ranked report with one final verdict (worst-of all specialists). USE FOR: review a PR or branch, audit a diff, "check this change", request full multi-lens review, code health check on uncommitted work. DO NOT USE FOR: only one specialised lens — call the specialist directly (security-review / test-review / architecture-review / infrastructure-review), making code changes (this agent is read-only), fixing the findings (delegate back to coding / infrastructure / testing), end-to-end delivery (use dev-lead if present). NEVER modifies code.
 
-- **Tools**: agent, context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: agent, browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: architecture-review, infrastructure-review, security-review, test-review
 
 ### `security-review`
 
 Performs a focused, READ-ONLY security review of a diff or set of changed files. Applies OWASP Top 10 / OWASP ASVS / CWE Top 25 / OWASP LLM Top 10 / NIST SSDF / Microsoft SDL, plus the security benchmarks the profile declares, lenses. Catches injection, broken auth / authz, secrets, insecure deserialisation, SSRF, prompt injection, supply-chain, missing input validation, weak crypto, over-privilege. Produces severity-rated findings with canonical references (OWASP A0X / CWE-XXX / LLM0X) and concrete fixes. USE FOR: security-only review of a diff, threat-model-style code audit, check for secrets / hardcoded credentials, OWASP / CWE-aligned audit, AI / LLM safety review (prompt injection, jailbreak surface), supply-chain audit. Auto-invoked by review on every review. DO NOT USE FOR: full multi-lens review (use review — it invokes this agent automatically), fixing the findings (delegate back to coding / infrastructure), test-quality review (use test-review), architecture-level threat modelling before code exists (use architect + threat-model-analyst skill). NEVER modifies code.
 
-- **Tools**: context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `test-review`
 
 Performs a focused, READ-ONLY review of test code and test coverage in a diff. Reviews test quality (AAA structure, single responsibility per test, deterministic, isolated, fast), coverage of new / changed behaviour (happy path + edge cases + negative paths), test-double usage (mocking abuse, over-stubbing, fragile test patterns), and test infrastructure (fixtures, factories, no real secrets, no real network). Cites xUnit Test Patterns, Google Testing guidance, Fowler test pyramid, and language-specific best practices. USE FOR: test-only review of a diff, audit test quality, check coverage of new behaviour, find brittle / flaky / over-mocked tests, check AAA / naming conventions, review test infrastructure. Auto-invoked by review when the diff touches tests or adds testable production code. DO NOT USE FOR: full multi-lens review (use review), writing or fixing tests (use testing), security or architecture aspects of tests (use security-review / architecture-review). NEVER modifies code.
 
-- **Tools**: context7/*, execute, microsoft-docs/*, read, search, todo, vscode, web
+- **Tools**: browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `testing`

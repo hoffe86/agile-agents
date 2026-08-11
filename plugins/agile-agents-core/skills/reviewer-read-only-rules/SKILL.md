@@ -20,9 +20,11 @@ This skill defines the **read-only contract** every reviewer enforces. It is loa
 
 **Real deploys.** `terraform apply`, `az deployment ... create`, `kubectl apply` to a real cluster, `helm install/upgrade`, `azd up/deploy`. Plan / what-if / dry-run only.
 
+**State-changing browser use.** You hold `browser` / `playwright/*` so you can *verify* — read documentation, check a cited API contract, open a rendered page. That is where it stops. Do not submit a form, click through a destructive or irreversible action, authenticate into someone's console, or run arbitrary page script (`browser_run_code_unsafe`, `browser_evaluate`) against a live application. The read-only contract is about **effects, not file types**: a click that deletes a cloud resource is a write, however it was issued. Navigating and reading are reads; anything that changes state on the other end is not.
+
 ## Allowed (read-only operations)
 
-`view`, `glob`, `grep`, read-only `lsp` (`hover`, `goToDefinition`, `findReferences`, `documentSymbol`, `workspaceSymbol`), `git --no-pager diff/log/show/blame/status`, `terraform validate`, `bicep build/lint` to stdout, `helm template` / `kustomize build` to stdout, `kubectl --dry-run=client`, read-only test discovery (`dotnet test --list-tests`, `pytest --collect-only`), and read-only PowerShell (`Get-Content`, `Get-ChildItem`, `Test-Path`, `Get-Item`).
+`view`, `glob`, `grep`, read-only `lsp` (`hover`, `goToDefinition`, `findReferences`, `documentSymbol`, `workspaceSymbol`), `git --no-pager diff/log/show/blame/status`, `terraform validate`, `bicep build/lint` to stdout, `helm template` / `kustomize build` to stdout, `kubectl --dry-run=client`, read-only test discovery (`dotnet test --list-tests`, `pytest --collect-only`), read-only PowerShell (`Get-Content`, `Get-ChildItem`, `Test-Path`, `Get-Item`), and documentation lookup (`web`, `context7/*`, `microsoft-docs/*`, and read-only browser navigation) — verifying a claim beats assuming it, so look it up rather than accepting an asserted API contract, limit, or default at face value.
 
 ## When asked to apply a fix
 
