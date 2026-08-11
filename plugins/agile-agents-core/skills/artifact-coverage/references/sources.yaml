@@ -31,6 +31,37 @@ sources:
       adding Docker as a prerequisite, and its suggestions apply upstream's scope rules rather
       than ours.
 
+  - id: anthropics-skills
+    name: Anthropic Agent Skills
+    repo: anthropics/skills
+    url: https://github.com/anthropics/skills
+    trust: >-
+      Anthropic-maintained, actively updated, and the home of the Agent Skills spec itself.
+      High provenance — but see the licence caveat below, which is per-skill rather than
+      repo-wide and is the reason this source needs more care than the others.
+    artifacts:
+      skills: skills/
+      spec: spec/                     # the Agent Skills specification — a source of *capability*
+                                      #   facts, like the plugin schema. Check it when a question
+                                      #   is "can a skill even do X".
+      template: template/
+    raw_pattern: https://raw.githubusercontent.com/anthropics/skills/main/skills/{name}/SKILL.md
+    licence_caveat: >-
+      NOT uniformly open source. The README states only that "many skills in this repo are open
+      source (Apache 2.0)", and explicitly carves out `docx`, `pdf`, `pptx` and `xlsx` as
+      "source-available, not open source". Those four must NOT be vendored into this
+      MIT-licensed marketplace. Check the licence of any individual skill before copying it —
+      repo-level assumptions do not hold here.
+    notes: >-
+      Expect a low hit rate for this suite's scope: the catalogue leans toward document
+      generation, design and content skills (canvas-design, brand-guidelines, slack-gif-creator,
+      theme-factory) rather than Azure / .NET / Python / IaC delivery. The plausible finds are
+      the meta-skills — `skill-creator`, `mcp-builder` — which help maintainers author artifacts
+      rather than help agents deliver software.
+      `webapp-testing` exists here *and* in awesome-copilot, and we vendor the awesome-copilot
+      copy; treat them as potentially divergent forks of a common origin rather than the same
+      file, and do not re-vendor from the other source without diffing first.
+
   - id: hve-core
     name: Microsoft HVE Core
     repo: microsoft/hve-core
@@ -70,6 +101,21 @@ sources:
 
 # Sources considered and rejected — recorded so they are not re-proposed.
 rejected:
+  - id: skillshub-space
+    name: Copilot Skills Hub
+    url: https://skillshub.space/
+    reason: >-
+      A browsable index, not an independent source. Its listings are awesome-copilot's skill
+      descriptions verbatim, in the same alphabetical order, served from GitHub Pages
+      (`Server: GitHub.com`), with no /about page and no identifiable maintainer or provenance
+      statement. Adding it would supply no artifact we cannot already reach at the origin, while
+      inserting a trust hop: we would be reading a mirror instead of the upstream we already
+      index. Useful as a human browsing UI; not a source to vendor from.
+    revisit_if: >-
+      It names a maintainer and states its provenance, AND it aggregates sources we do not
+      already index — a mirror of awesome-copilot stays redundant however trustworthy it becomes.
+      Verify by sampling entries against the upstream files rather than by reputation.
+
   - id: arbitrary-gists
     reason: >-
       No review, no provenance, no re-sync path. Prompts are runtime behaviour here; an
