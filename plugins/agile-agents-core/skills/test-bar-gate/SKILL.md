@@ -1,7 +1,7 @@
 ---
 name: test-bar-gate
 description: >-
-  Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after `coding`/`testing` finish and before the reviewer fan-out. The smoke slot runs by default for runnable .NET and Python projects, deriving the start command when the profile doesn't declare one. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 7 (Testing) and Stage 9 (Review).
+  Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after `coding`/`testing` finish and before the reviewer fan-out. The smoke slot runs by default for any runnable application, deriving the start command via whichever ecosystem startup-discovery skill is installed when the profile doesn't declare one. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 7 (Testing) and Stage 9 (Review).
 applies_to: all
 ---
 
@@ -42,7 +42,7 @@ Checks run **in this order**, **fail-fast on the first non-zero exit code**:
 4. **integration_test** {E} *opt-in*, off by default (slow, usually needs containers / secrets)
 5. **coverage** {E} *opt-in*; the command must carry its own threshold and exit non-zero below it
 6. **mutation** {E} *opt-in*; same contract as coverage
-7. **smoke** {E} — start the app and confirm it comes up. **Runs by default for .NET and Python**: uses `testing.smoke.command` when set, otherwise derives the entry point (see [`startup-discovery.md`](references/startup-discovery.md)). Skips only as `not_applicable` (nothing to start) or `undetermined` (couldn't work out how), both stated in the result.
+7. **smoke** {E} — start the app and confirm it comes up. **Runs by default for any runnable application**: uses `testing.smoke.command` when set, otherwise derives the entry point (see [`startup-discovery.md`](references/startup-discovery.md), which routes to the ecosystem skill the project has installed). Skips only as `not_applicable` (nothing to start) or `undetermined` (couldn't work out how), both stated in the result.
 
 A check runs when it is **enabled** *and* **resolves to a command**. The first three are
 enabled by default and fall back to the per-stack palette; the rest run only when the
@@ -59,7 +59,7 @@ Fail-fast is the default because a lint/format failure usually means a typecheck
 
 Unit tests prove the units. They do not prove the host boots — a bad DI registration, a missing connection string, a broken `host.json`, or an unresolvable startup dependency all pass the first three checks and fail the moment anyone runs the thing. The smoke slot closes that gap for the cost of one process start.
 
-**For a runnable .NET or Python project this slot runs — it is not opt-in.** Building is not evidence that the thing starts, and "compiles, ships, doesn't boot" is precisely the failure the earlier checks cannot see. Configure it explicitly when you can, because explicit is cheaper and deterministic:
+**For a runnable application this slot runs — it is not opt-in.** Building is not evidence that the thing starts, and "compiles, ships, doesn't boot" is precisely the failure the earlier checks cannot see. Configure it explicitly when you can, because explicit is cheaper and deterministic:
 
 ```yaml
 testing:
@@ -71,7 +71,7 @@ testing:
 
 Procedure:
 
-1. **Resolve the command.** `testing.smoke.command` when set. Otherwise the runner emits `outcome=skipped, reason=needs_discovery` and stops there — a script cannot inspect a repo to work out how it starts, so resolving the entry point is the *agent's* job: **derive** it, and where derivation is inconclusive **research** it, per [`startup-discovery.md`](references/startup-discovery.md). Then re-invoke the runner with what you found:
+1. **Resolve the command.** `testing.smoke.command` when set. Otherwise the runner emits `outcome=skipped, reason=needs_discovery` and stops there — a script cannot inspect a repo to work out how it starts, so resolving the entry point is the *agent's* job: **derive** it, and where derivation is inconclusive **research** it, per [`startup-discovery.md`](references/startup-discovery.md). That reference is technology-neutral and routes to whichever ecosystem skill is installed (`dotnet-startup-discovery`, `python-startup-discovery`, …), falling back to the repo's own declared run command when none is. Then re-invoke the runner with what you found:
 
    ```bash
    ./run-gate.sh --smoke-command "dotnet run --project src/Api" --smoke-url "http://localhost:5000/health"

@@ -153,6 +153,7 @@ natural-language workflow.
 - **deploy-verify** (`agile-agents-core`) — Opt-in deployed verification — push the feature branch, let the project's own CI/CD pipeline deploy pipeline + IaC + application to the first non-production environment, and report whether it actua...
 - **dev-lead-templates** (`agile-agents-core`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 4), the conditional design-approval gate prompt (Stage 5), and the final Done/Stop report (Stage 10).
 - **dotnet-design-pattern-review** (`agile-agents-dotnet`) — Review the C#/.NET code for design pattern implementation and suggest improvements.
+- **dotnet-startup-discovery** (`agile-agents-dotnet`) — Work out how to start a .NET application and which URL proves it came up — Aspire AppHost, Azure Functions, ASP.NET Core web projects, console/worker services — by reading what the project already ...
 - **e2e-testing** (`agile-agents-core`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
 - **editorconfig** (`agile-agents-core`) — Generates a comprehensive and best-practice-oriented .editorconfig file based on project analysis and user preferences.
 - **ef-core** (`agile-agents-dotnet`) — Get best practices for Entity Framework Core
@@ -167,6 +168,7 @@ natural-language workflow.
 - **pr-description** (`agile-agents-core`) — Generate a high-signal pull-request description from a diff and the run's hand-off context.
 - **pytest-coverage** (`agile-agents-python`) — Run pytest tests with coverage, discover lines missing coverage, and increase coverage to 100%.
 - **python-implementation** (`agile-agents-python`) — Implement Python features end-to-end using current best practices (type hints, src layout, ruff-clean, modern stdlib, async where appropriate).
+- **python-startup-discovery** (`agile-agents-python`) — Work out how to start a Python application and which URL proves it came up — console scripts, FastAPI/Starlette, Flask, Django, `python -m <package>` — by reading what the project already declares ...
 - **python-testing** (`agile-agents-python`) — Add or extend tests for Python code using pytest (the de-facto standard), then run them and chase coverage.
 - **read-repo-context** (`agile-agents-core`) — Canonical preamble every coding-suite agent loads at the start of a turn.
 - **refactor** (`agile-agents-core`) — Surgical code refactoring to improve maintainability without changing behavior.
