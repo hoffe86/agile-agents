@@ -56,8 +56,7 @@ If the user supplies a focus area (for example: "architecture only" or "testing 
    ```bash
    python3 "$SKILL_ROOT/scripts/scan.py" --output docs/codebase/.codebase-scan.txt
    ```
-   Where `$SKILL_ROOT` is the directory of this `SKILL.md` — you know that absolute path,
-   it is how you read this file. Works on Windows, macOS, and Linux.
+   Where `$SKILL_ROOT` is the absolute path to the skill folder. Works on Windows, macOS, and Linux.
 
    **Quick start:** If you have the path inline:
    ```bash

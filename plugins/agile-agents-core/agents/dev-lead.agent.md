@@ -31,7 +31,7 @@ description: >-
   only (use infrastructure). Never silently expands scope — if the
   requirement is ambiguous, asks once up-front and stops.
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*, browser]
-agents: ["architect", "backlog-manager", "coding", "testing", "infrastructure", "review", "solution-setup"]
+agents: ["architect", "backlog-manager", "coding", "testing", "infrastructure", "review", "bootstrapper"]
 model_tier: light  # supervisor is a light-tier orchestrator — high call volume, low reasoning load; heavy reasoning is delegated to specialists
 argument-hint: "Describe the requirement to deliver end-to-end (or point at a backlog item id, or the path to a planning-mode plan.md)"
 ---
@@ -166,10 +166,10 @@ Each stage has an entry condition, a delegated agent, and an exit gate. You neve
 **Step 1 — Validate the operational profile (blocking).** Do this *first*, before the intake
 questions below and before any delegation — those questions themselves read profile fields.
 
-**When the profile is missing, or any required field is empty, delegate to `solution-setup`.**
+**When the profile is missing, or any required field is empty, delegate to `bootstrapper`.**
 It owns the bootstrap and repair path: it runs the interview, writes
 `.github/solution-profile.yaml`, derives the companion plugins the declared stack needs, and
-installs them with the user's approval. Expect its `SETUP COMPLETE` block, and read
+installs them with the user's approval. Expect its `BOOTSTRAP COMPLETE` block, and read
 `Ready for delivery` — `no` means you do not enter Stage 1. Setup is a one-off per solution and
 carries tools you deliberately lack (`edit`, installs), which is why it is a delegation rather
 than something you do here.
@@ -180,7 +180,7 @@ confirm the six required fields (`identity.project_name`, `identity.lifecycle_st
 `tech_stack.test_discipline`) and carry on — a valid profile needs no interview.
 
 **You may not enter Stage 1 until all six are populated.** If any is still empty after
-`solution-setup` has run, fire **stop condition #12**. Never cold-interrogate the user for
+`bootstrapper` has run, fire **stop condition #12**. Never cold-interrogate the user for
 something the repo already tells you, and never invent a value to get past the check — a
 fabricated `test_discipline` or `location` silently misdirects every downstream specialist.
 
@@ -569,7 +569,7 @@ Use the SQL `todos` table to persist this — store key handoff facts in the tod
 - **Then stop and ask the human.** Use `ask_user` with a consolidated question. Stopping mid-autonomous-run is correct behaviour, not failure — see the autonomy contract's stop conditions.
 - **Never escalate by silently changing the plan.** If you need to add a stage you skipped or change the approved plan, stop and re-seek approval — never "just do it" because the run is autonomous.
 - **Resume after the human answers:** continue from the blocked stage; do not restart the pipeline.
-- **Malformed or missing hand-off block** — if a delegated specialist returns no recognised hand-off block (`IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `REVIEW COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `INFRASTRUCTURE COMPLETE`, `TASKS PLANNED`, `SETUP COMPLETE`), or one missing required fields, or fields that cannot be parsed: treat it as a gate failure. Send **one** corrective message asking specifically for the missing / malformed fields. If the second response is also malformed, fire **stop condition #8** and ask the human — never infer the missing fields yourself.
+- **Malformed or missing hand-off block** — if a delegated specialist returns no recognised hand-off block (`IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `REVIEW COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `INFRASTRUCTURE COMPLETE`, `TASKS PLANNED`, `BOOTSTRAP COMPLETE`), or one missing required fields, or fields that cannot be parsed: treat it as a gate failure. Send **one** corrective message asking specifically for the missing / malformed fields. If the second response is also malformed, fire **stop condition #8** and ask the human — never infer the missing fields yourself.
 
 ## Scope control (hard rule — never silently expand)
 

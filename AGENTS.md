@@ -39,7 +39,7 @@ completion — those block names are canonical and parsed by
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
 - `REVIEW COMPLETE` (review — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
-- `SETUP COMPLETE` (solution-setup)
+- `BOOTSTRAP COMPLETE` (bootstrapper)
 
 Agents branch, commit and push on their own — on a feature branch, never the default one.
 **Opening a pull request needs the user's explicit approval**, and **completing, merging or
@@ -71,6 +71,13 @@ Create, improve, review, and maintain backlog work items (Epics, Features, Produ
 - **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, edit, execute, github/*, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
+### `bootstrapper`
+
+Sets up and configures the harness for a solution: runs the profile interview, writes `.github/solution-profile.yaml`, works out which companion plugins the declared stack actually needs, and installs them with the user's approval — then verifies the result and names what is still missing. Owns the one-off bootstrap and the repair path, so the delivery pipeline doesn't carry bootstrap logic it uses once per solution. USE FOR: "set up the harness here", "configure the agents for this repo", "bootstrap the solution profile", "which plugins do I need", "repair / update the profile", a first run in a repo that has no `solution-profile.yaml`, or a profile that is missing required fields. DO NOT USE FOR: delivering a requirement end-to-end (use dev-lead), writing code, tests or IaC (use coding / testing / infrastructure), designing a system (use architect), reviewing a change (use review), maintaining *this* harness repo's own vendored skills (that is the repo-local `skill-scout`). Never installs anything — plugin or otherwise — without explicit approval, and never invents a profile value to get past a question.
+
+- **Tools**: browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
+- **Sub-agents**: _none_
+
 ### `coding`
 
 Implements features, fixes bugs, and refactors application code in any language the repo uses, following that ecosystem's current best practices. Deep skill support for C#/.NET (default .NET 10) and Python; other languages are handled from the repo's own conventions and the declared `tech_stack` profile. USE FOR: implement a feature, fix a bug, refactor code, add a class / module / function, integrate a library, migrate code between framework versions, apply a design pattern. DO NOT USE FOR: architecture / ADR / design decisions before code exists (use architect), Infrastructure-as-Code — Bicep / Terraform / Helm / Dockerfile / pipelines (use infrastructure), writing or fixing tests (use testing), reviewing or auditing code (use review), end-to-end autonomous delivery (use dev-lead if present). Hands off to testing when implementation is complete.
@@ -83,7 +90,7 @@ Implements features, fixes bugs, and refactors application code in any language 
 Autonomous development lead. Takes a single, already-prepared requirement and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the requirement into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent work item in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this requirement autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + testing + review, autonomous / unattended runs against a requirements file or backlog item, executing a plan you already produced in planning mode (hand it the `plan.md` path — it adopts that decomposition instead of re-deriving one), when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving one retry, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / testing / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
 
 - **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
-- **Sub-agents**: architect, backlog-manager, coding, infrastructure, review, solution-setup, testing
+- **Sub-agents**: architect, backlog-manager, bootstrapper, coding, infrastructure, review, testing
 
 ### `infrastructure-review`
 
@@ -111,13 +118,6 @@ Orchestrates a multi-lens, READ-ONLY code review of a diff or set of changed fil
 Performs a focused, READ-ONLY security review of a diff or set of changed files. Applies OWASP Top 10 / OWASP ASVS / CWE Top 25 / OWASP LLM Top 10 / NIST SSDF / Microsoft SDL, plus the security benchmarks the profile declares, lenses. Catches injection, broken auth / authz, secrets, insecure deserialisation, SSRF, prompt injection, supply-chain, missing input validation, weak crypto, over-privilege. Produces severity-rated findings with canonical references (OWASP A0X / CWE-XXX / LLM0X) and concrete fixes. USE FOR: security-only review of a diff, threat-model-style code audit, check for secrets / hardcoded credentials, OWASP / CWE-aligned audit, AI / LLM safety review (prompt injection, jailbreak surface), supply-chain audit. Auto-invoked by review on every review. DO NOT USE FOR: full multi-lens review (use review — it invokes this agent automatically), fixing the findings (delegate back to coding / infrastructure), test-quality review (use test-review), architecture-level threat modelling before code exists (use architect + threat-model-analyst skill). NEVER modifies code.
 
 - **Tools**: browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
-- **Sub-agents**: _none_
-
-### `solution-setup`
-
-Sets up and configures the harness for a solution: runs the profile interview, writes `.github/solution-profile.yaml`, works out which companion plugins the declared stack actually needs, and installs them with the user's approval — then verifies the result and names what is still missing. Owns the one-off bootstrap and the repair path, so the delivery pipeline doesn't carry setup logic it uses once per solution. USE FOR: "set up the harness here", "configure the agents for this repo", "bootstrap the solution profile", "which plugins do I need", "repair / update the profile", a first run in a repo that has no `solution-profile.yaml`, or a profile that is missing required fields. DO NOT USE FOR: delivering a requirement end-to-end (use dev-lead), writing code, tests or IaC (use coding / testing / infrastructure), designing a system (use architect), reviewing a change (use review), maintaining *this* harness repo's own vendored skills (that is the repo-local `skill-scout`). Never installs anything — plugin or otherwise — without explicit approval, and never invents a profile value to get past a question.
-
-- **Tools**: browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
 ### `test-review`

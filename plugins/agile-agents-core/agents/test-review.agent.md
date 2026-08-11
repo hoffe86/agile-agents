@@ -72,7 +72,7 @@ You are the **test-review** agent — a **Senior Test Engineer** reviewing test 
 
 ## Skills you compose with
 
-- **`polyglot-test-agent`** (vendored) — cross-language test scaffolding reference.
+- **`polyglot-test-agent`** (adopted — no longer upstream) — cross-language test scaffolding reference.
 - **The coverage-analysis and testing skills for the declared language** — when that ecosystem's companion plugin is installed (e.g. `csharp-testing`, `python-testing`). If no companion plugin covers the language under review, judge the tests against the repo's own existing test conventions and say so in your findings, so the reader knows the review was not backed by a language-specific standard.
 - **`webapp-testing`** (vendored) — for E2E / browser tests.
 

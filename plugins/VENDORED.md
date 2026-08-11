@@ -13,6 +13,12 @@ skill in this harness (see `.github/copilot-instructions.md` § Skill format) an
 has no equivalent field, so it is added locally and must be re-applied after any re-sync.
 It is a one-line addition to frontmatter — nothing in the skill body is touched.
 
+**That is the only exception, and it stays that way on purpose.** `scripts/check-vendored-drift.ps1`
+compares each local copy with upstream and ignores exactly that line, so the check is meaningful
+only while the list of exceptions stays at one — a growing set of "documented local edits" turns a
+red result into noise people learn to skip. If a vendored skill needs improving, raise it upstream
+and record it below; do not edit it here.
+
 ## Skill → Upstream
 
 | Skill | Plugin | Upstream |
@@ -28,7 +34,6 @@ It is a one-line addition to frontmatter — nothing in the skill body is touche
 | git-commit | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/git-commit |
 | import-infrastructure-as-code | `agile-agents-terraform` | https://github.com/github/awesome-copilot/tree/main/skills/import-infrastructure-as-code |
 | multi-stage-dockerfile | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/multi-stage-dockerfile |
-| polyglot-test-agent | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/polyglot-test-agent |
 | playwright-generate-test | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/playwright-generate-test |
 | pytest-coverage | `agile-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/pytest-coverage |
 | refactor | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/refactor |
@@ -38,6 +43,28 @@ It is a one-line addition to frontmatter — nothing in the skill body is touche
 | threat-model-analyst | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/threat-model-analyst |
 | update-avm-modules-in-bicep | `agile-agents-bicep` | https://github.com/github/awesome-copilot/tree/main/skills/update-avm-modules-in-bicep |
 | webapp-testing | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/webapp-testing |
+
+## Adopted — vendored once, no longer upstream
+
+Skills that came from upstream but have since been **deleted there**. They are ours to maintain
+now: `scripts/check-vendored-drift.ps1` deliberately does not track them (the URL 404s), and the
+re-sync prompts below will not work.
+
+| Skill | Plugin | Was | Status |
+|---|---|---|---|
+| polyglot-test-agent | `agile-agents-core` | `github/awesome-copilot/skills/polyglot-test-agent` | Removed upstream (confirmed 404, 2026-08). **Kept** — `testing` routes to it as the cross-language fallback when no language skill is installed, and `test-review` cites it for cross-language test scaffolding. Editing it in place is now allowed; it has no upstream to diverge from. |
+
+Before removing an adopted skill, check what routes to it — a skill with no upstream is still a
+dependency if an agent names it.
+
+## Suggested upstream contributions
+
+Improvements made locally to a vendored skill, then reverted to keep the copy byte-identical.
+Recorded so the work is not lost and someone can raise it upstream instead.
+
+| Skill | Improvement | Raised? |
+|---|---|---|
+| acquire-codebase-knowledge | `$SKILL_ROOT` was described as "the absolute path to the skill folder", which does not tell an agent how to obtain it. Clearer: "the directory of this `SKILL.md` — you know that absolute path, it is how you read this file." Added locally in `f992146`, reverted once the drift check surfaced it as an in-place edit. | not yet |
 
 ## Updating via Copilot CLI
 
