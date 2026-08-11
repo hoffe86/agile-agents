@@ -22,7 +22,7 @@ Don't invent NFRs. "There are no NFRs" is itself an answer worth confirming.
 
 ## 2. Acquire context
 
-If there's a repo, invoke **`acquire-codebase-knowledge`** first. Read any existing `docs/architecture/`, `ARCHITECTURE.md`, ADRs in `docs/adr/`, and the relevant Connect projects context.
+If there's a repo, invoke **`acquire-codebase-knowledge`** first. Read the existing architecture docs wherever `documentation.location` points (falling back to `docs/architecture/` and `ARCHITECTURE.md` when it is empty), any ADRs under `documentation.adr.location` (default `docs/adr/`), and the relevant project context.
 
 For Azure-targeted designs, lean on:
 
@@ -40,7 +40,9 @@ For Azure-targeted designs, lean on:
 
 ## 3. Deliverable structure
 
-Produce a markdown file at `<dir>/<topic>/<topic>-design.md` (create folders as needed), where `<dir>` is `solution-profile.yaml: documentation.ai_documentation_dir` when set, otherwise `docs/architecture/`. A project that keeps AI-generated design notes apart from hand-written docs has already said so in the profile — don't override it. Use this skeleton — every section is required unless explicitly N/A:
+Produce a markdown file at `<dir>/<topic>/<topic>-design.md` (create folders as needed). Resolve `<dir>` from the profile in this order: `solution-profile.yaml: documentation.ai_documentation_dir` when set (a project that keeps AI-generated notes apart from hand-written docs has already said so — don't override it), otherwise `documentation.location`, and only when both are empty does `docs/architecture/` apply as the fallback. **Check `documentation.platform` first:** when it is anything other than `in-repo`, the docs do not live in this workspace — emit the content in your hand-off with the publish target rather than writing a file into the repo.
+
+The skeleton below is the **arc42-shaped default**; it applies when `documentation.framework` is `arc42` or empty. Where the profile declares another framework, map this content onto that framework's sections — the content requirements survive a change of table of contents. Use this skeleton — every section is required unless explicitly N/A:
 
 ```markdown
 # <Topic> — Architecture Design

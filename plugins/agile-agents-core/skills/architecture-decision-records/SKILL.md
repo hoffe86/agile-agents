@@ -22,7 +22,7 @@ If the decision is reversible, cheap, and obvious — skip the ADR; a code comme
 
 ## File location and naming
 
-- Folder: `docs/adr/` (create if absent).
+- Folder: `solution-profile.yaml: documentation.adr.location` when set; otherwise `docs/adr/` (create if absent). A project that keeps its decision records somewhere else has already said so — don't scatter a second set into the default path.
 - Filename: `<NNNN>-<short-kebab-case-title>.md` — e.g., `0007-use-cosmos-db-for-event-store.md`.
 - Number: zero-padded 4-digit sequential. Find the next number by listing the directory.
 - One decision per ADR. If you find yourself writing two — split.
@@ -95,7 +95,7 @@ Chosen option: **"<Option N>"**, because <one or two sentences justifying the ch
 ## Authoring workflow
 
 1. **Confirm a decision is actually needed.** If the user is just exploring, don't write an ADR yet — write a design note.
-2. **Get the next number** by listing `docs/adr/` (or start at `0001`).
+2. **Get the next number** by listing the ADR folder resolved above (or start at `0001`).
 3. **Title is the question framed as a statement** of the answer — "Use Cosmos DB for the event store" not "Cosmos DB or PostgreSQL?". The question goes in *Context*.
 4. **Status starts as `proposed`** unless the user has already decided. Move to `accepted` when the human signs off. **Never silently flip a `proposed` ADR to `accepted`.**
 5. **At least 2 considered options.** "We chose X" without alternatives is not a decision, it's a memo. If there were no alternatives, say so explicitly in *Context*.
