@@ -183,19 +183,17 @@ By default, capture decisions **inline** in arc42 §9 as a short table (decision
 
 ## 7. Hand off
 
-```
-ARCHITECTURE DESIGN COMPLETE
-- Files: <list>
-- Status: Draft (awaiting review)
-- Recommendation: <chosen approach>
-- WAF assessment: <one-line per pillar or ✅ aligned>
-- Cost band: €<low> – €<high> / mo  (if Azure)
-- ADRs created: <count + IDs, or "none — not requested">
-- Suggested ADRs (not written): <list of decisions you'd recommend capturing as ADRs, or "none">
+**The calling agent's hand-off contract is the single definition of this block — this skill deliberately does not restate the field list.** `architect` declares the required fields of `ARCHITECTURE DESIGN COMPLETE` in its own definition and `dev-lead` gates on exactly those, so a second list here is how the two drift apart: a block that satisfies this file but not the agent reaches the orchestrator as a malformed hand-off with no visible cause.
 
-- Open questions: <count, with owners>
-- Recommended next step: review | infrastructure | coding
-```
+Emit the block **your agent** specifies, and make sure this skill's output feeds it:
+
+- the design artifacts you wrote → the deliverables field;
+- the chosen approach and what it costs → the recommendation and trade-off fields;
+- the NFRs from §4 → the NFR field, concrete and measurable;
+- the decision section → the decisions-honoured field, and anything materially-shaping that is captured nowhere → the decision-gaps field (**you do not author ADRs** — a gap is surfaced for a human, never written up as one);
+- **what you verified versus what you assumed** → the facts-verified and assumptions fields. The well-architected pass and the cost band above rest on service limits, tiers, regional availability and prices — exactly the facts that go stale between releases — so record each with its source and the date or version it applied to, and list anything you could not confirm as an assumption with its impact.
+
+When a human invoked this skill directly and no agent contract is in play, report the same substance as a short summary: what you designed, what you recommend, what you verified, what you assumed, and what still needs a human decision. No orchestrator is parsing it, so the shape is free — the content is not.
 
 ## 8. What you do NOT do
 
