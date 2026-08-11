@@ -1,6 +1,8 @@
 # Plan-approval prompt (dev-lead Stage 4)
 
-The **only mandatory human checkpoint**. Rendered via `ask_user` *after* the child
+The **only mandatory *approval* gate** — "only" counts approvals, not questions;
+intake may already have asked about an ambiguity, an undiscoverable profile field,
+or the criteria derived from a plan file. Rendered via `ask_user` *after* the child
 tasks exist in the tracker, so the human reviews concrete, linked work items — not
 an abstract outline.
 

@@ -109,10 +109,12 @@ Intake → Research → Plan (decompose into tasks) → Create tasks in tracker 
            │                                              │                       │                                                            └── deterministic lint/typecheck/unit-test gate
            │                                              │                       │                                                                (Stage 8). On fail → loop back to coding
            │                                              │                       │                                                                (max 2 retries) before reviewer fan-out.
-           │                                              │                       └── the only mandatory human checkpoint, AFTER child
+           │                                              │                       └── the only mandatory *approval* gate, AFTER child
            │                                              │                           tasks exist in the tracker (provisional, tagged
-           │                                              │                           `pending-approval`). Everything after runs
-           │                                              │                           autonomously unless a stop condition triggers.
+           │                                              │                           `pending-approval`). Intake before it is interactive
+           │                                              │                           (ambiguities; criteria confirmation on a plan file);
+           │                                              │                           everything after runs autonomously unless a stop
+           │                                              │                           condition triggers.
            │                                              └── `backlog-manager` creates one child work item per task,
            │                                                  linked to the parent work item; emits TASKS PLANNED.
            └── read-only verification against the prepared concept + binding decisions;
@@ -125,11 +127,11 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 
 | Stage | RPI phase | Name | Purpose | Delegate |
 |---|---|---|---|---|
-| 0 | — | Intake & ambiguity check | **Profile interview (blocking — six required fields)**; identify the **input kind** (requirement / tracker item / plan file); capture DoD + **requirement acceptance criteria verbatim** + out-of-scope; capture **parent work-item id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
+| 0 | — | Intake & ambiguity check | **Profile interview (blocking — six required fields)**; identify the **input kind** (requirement / tracker item / plan file); capture DoD + **requirement acceptance criteria verbatim** — **derived-and-confirmed once with the human on a plan file** — + out-of-scope; capture **parent work-item id** when `backlog.create_tasks`; flag ambiguities; **mint `run_id`, emit `run.start`, load `cost_envelope`** | — |
 | 1 | Research | Verification | Read-only verification against the prepared concept + binding decisions; deeper design only when scope warrants | `architect` (conditional) |
 | 2 | Plan | Decompose into tasks | Break the requirement into meaningful, independently-implementable tasks — each with ACs + approach note; **adopt and reconcile** instead when a plan file supplied the decomposition | — |
 | 3 | Plan | Create tasks in tracker | Create one child work item per task, linked to the parent work item (provisional, `pending-approval`); record approach as a comment on the parent work item | `backlog-manager` |
-| 4 | ⛔ | Plan approval | Single mandatory checkpoint — human reviews the created tasks before autonomous execution | user |
+| 4 | ⛔ | Plan approval | The single mandatory **approval** gate — human reviews the created tasks before autonomous execution | user |
 | 5 | ⛔ | Design approval (conditional) | Only when Research introduced a new dep / boundary / non-trivial trade-off, or reported an decision gap | user |
 | 6 | Implement | Coding & infrastructure | Deliver the approved tracker tasks **one at a time in dependency order**; IaC where needed | `coding`, `infrastructure` |
 | 7 | Implement | Testing | Cover the change to the declared discipline + threshold | `testing` |
@@ -141,7 +143,7 @@ Each stage has an entry condition, a delegated agent, and an exit gate. You neve
 
 ### Autonomy contract
 
-- **Before plan approval:** interactive. You run intake, the read-only Research/verification, decompose the requirement into tasks, have `backlog-manager` create the child work items in the tracker (provisional, tagged `pending-approval`), and present the resulting plan.
+- **Before plan approval:** interactive. You run intake (including the one-time criteria confirmation when the input was a plan file), the read-only Research/verification, decompose the requirement into tasks — or reconcile the decomposition a plan file already supplied — have `backlog-manager` create the child work items in the tracker (provisional, tagged `pending-approval`), and present the resulting plan.
 - **After plan approval:** autonomous. You run all remaining stages without further confirmation, **except** when one of the **stop conditions** below triggers.
 - **Stop conditions (mandatory human input):**
   1. **Ambiguity surfaced mid-run** that wasn't caught in Intake (e.g., research uncovers a missing acceptance criterion, coding hits an undefined error semantic).
@@ -306,7 +308,9 @@ When `backlog.create_tasks` is false (or `backlog.platform: none`), skip this st
 
 ### Stage 4 — Plan approval (mandatory human gate)
 
-**This is the only mandatory human checkpoint**, and it happens **after** the child tasks exist in the tracker so the human reviews concrete, linked work items — not an abstract outline.
+**This is the only mandatory *approval* gate** — the one point where the run needs a human decision before it can continue — and it happens **after** the child tasks exist in the tracker so the human reviews concrete, linked work items, not an abstract outline.
+
+"Only" counts approvals, not questions. Intake is interactive by contract and may already have asked: an ambiguity, a profile field it could not discover, or — on a plan-file run — the one-time confirmation of the criteria derived from that plan. Those establish *what* is being built; this gate authorises *building it*. Neither substitutes for the other, and a run that skipped an intake question because "Stage 4 is the only checkpoint" has misread this rule.
 
 Render via `ask_user` using `skills/dev-lead-templates/references/plan-approval.md` — that reference carries the prompt shape, the three choices, and how to handle each answer (including the `pending-approval` tag removal on Approve and the provisional-task cleanup on Cancel).
 
@@ -586,7 +590,7 @@ When the Done gate is satisfied and the human is ready to ship:
 - **Write permissions.** Your `execute` grant covers the orchestration scripts only (`run-event-log`, `cost-budget`, `test-bar-gate`) — no build, no deploy. Workers branch, commit and push freely; **opening a PR needs the user's approval**, and **completing/merging/closing a PR, force-pushing, rewriting shared history and production deploys are human-only, always**. Non-production deploys follow the policy table at the end of Stage 10.
 - **One stage at a time.** No fan-out across architect/coding/testing/review — they have ordering dependencies.
 - **No fabricated trade-offs** — only consolidate what stages actually surfaced.
-- **Stop early on ambiguity.** Asking once up-front (Intake) is cheaper than rolling back four stages. Asking once at the Plan gate is the only mandatory checkpoint.
+- **Stop early on ambiguity.** Asking once up-front (Intake) is cheaper than rolling back four stages. The Plan gate is the only mandatory *approval*; intake questions — ambiguities, an undiscoverable profile field, confirming the criteria derived from a plan file — are not optional just because they precede it.
 - **Stop early on repeated failure.** One corrective retry per gate, then ask.
 - **Autonomous after approval, but interruptible.** Once the plan is approved, run without further confirmation — but immediately stop and ask when any stop condition fires (ambiguity, retry exhausted, scope change, destructive action, missing secret, ❌ Block verdict).
 - **Never silently expand scope.** Out-of-scope work goes to "Follow-ups", not into this run.
