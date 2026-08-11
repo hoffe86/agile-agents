@@ -3,7 +3,7 @@
 The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plugins.
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
-over 11 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-manager) plus
+over 12 specialist agents (1 supervisor + 4 authors + 5 reviewers + a backlog-manager and a solution-setup) plus
 50 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 ## Install
@@ -34,7 +34,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 
 ## What you get
 
-**11 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 4 authors + 5 reviewers + backlog-manager:
+**12 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 4 authors + 5 reviewers + backlog-manager + solution-setup:
 
 | Role | Agent | Purpose |
 |------|-------|---------|
@@ -44,6 +44,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | Author | `testing` | Writes & runs tests (xUnit/NUnit/MSTest/TUnit, pytest) |
 | Author | `infrastructure` | Bicep, Terraform, Helm/Kustomize, CI/CD pipelines |
 | Backlog | `backlog-manager` | Creates / improves / reviews tracker work items (ADO, GitHub, Jira, Linear); in the Plan phase materialises `dev-lead`'s task breakdown as child work items linked to the parent story |
+| Setup | `solution-setup` | One-off bootstrap and repair: runs the profile interview, writes `solution-profile.yaml`, derives the companion plugins the declared stack needs and installs them with the user's approval, then reports what is still missing |
 | Reviewer | `review` | Read-only orchestrator; merges all review lenses |
 | Reviewer | `security-review` | OWASP, CWE, NIST SSDF, MS SDL, MCSB, OWASP LLM Top 10 |
 | Reviewer | `architecture-review` | arc42, C4, WAF, AAC, microservices.io, DDD, ISO 25010 |
@@ -264,7 +265,7 @@ non-negotiable. Copy [`solution-profile.yaml`](solution-profile.yaml) into a tar
 ### Hand-off block-name canon (do not change)
 `dev-lead` parses these terminator blocks from worker output. Renaming any silently breaks the
 pipeline: `IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `INFRASTRUCTURE COMPLETE`,
-`ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`, `TASKS PLANNED`.
+`ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`, `TASKS PLANNED`, `SETUP COMPLETE`.
 
 ### Vendored skills are read-only
 The 21 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in

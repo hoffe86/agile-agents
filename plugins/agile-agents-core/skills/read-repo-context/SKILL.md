@@ -28,7 +28,7 @@ The machine-readable operational profile. **Profile fields override agent defaul
 
 The agent that loaded this skill knows which fields matter for its role — it follows up with its role-tailored field-honour list. Generic rule for every agent:
 
-- If the file is missing, surface that to the orchestrator (or user, if standalone) and ask once whether to bootstrap from `solution-profile.yaml` or proceed without it.
+- If the file is missing, surface that to the orchestrator (or user, if standalone). Bootstrapping it is the `solution-setup` agent's job — it owns the interview, the write, and the companion-plugin install; do not improvise a profile inline.
 - If a specific field you need is empty, ask the user once for that field — do not guess.
 - Cite the profile field path (e.g. `solution-profile.yaml: tech_stack.test_discipline`) in your hand-off when it shaped a non-trivial choice.
 

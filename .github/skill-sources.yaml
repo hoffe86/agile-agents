@@ -1,0 +1,73 @@
+# Curated sources for harness artifacts
+#
+# The trusted upstreams the `skill-scout` agent searches and `scripts/check-vendored-drift.ps1`
+# re-syncs against. Curation IS the supply-chain control: prompts in this repo are runtime
+# behaviour, so an artifact from an unlisted source is not "probably fine" — it is unreviewed
+# code. Adding a source is a deliberate act; record why it earns trust.
+#
+# This file is read by tooling, not by the shipped plugins. Nothing here is fetched at run time
+# by a delivery agent — see `docs/adr/` if that ever changes.
+
+sources:
+  - id: awesome-copilot
+    name: GitHub Awesome Copilot
+    repo: github/awesome-copilot
+    url: https://github.com/github/awesome-copilot
+    trust: >-
+      Maintained by GitHub under the github/ org, MIT-licensed, high review volume.
+      The origin of every skill currently listed in plugins/VENDORED.md.
+    artifacts:
+      skills: skills/                 # <name>/SKILL.md — the only type we can vendor directly
+      agents: agents/                 # *.md — usable, but ours are hand-written
+      instructions: instructions/     # NOT vendorable: the plugin schema has no `instructions`
+      prompts: prompts/               #   key, so these would ship as inert files
+    raw_pattern: https://raw.githubusercontent.com/github/awesome-copilot/main/skills/{name}/SKILL.md
+    notes: >-
+      Ships its own `awesome-copilot` discovery plugin (3 suggest-* skills + a Docker MCP
+      server). We deliberately do not use it: our `github/*` MCP covers the same search without
+      adding Docker as a prerequisite, and its suggestions apply upstream's scope rules rather
+      than ours.
+
+  - id: hve-core
+    name: Microsoft HVE Core
+    repo: microsoft/hve-core
+    url: https://github.com/microsoft/hve-core
+    trust: >-
+      Microsoft-maintained. Already cited in .github/copilot-instructions.md as the precedent
+      for nested agent folders and for scoping coding-standards skills.
+    artifacts:
+      skills: skills/
+      agents: agents/
+    notes: >-
+      Structurally closest comparator to this suite — check it for topology and manifest
+      patterns, not only for individual skills.
+
+  - id: superpowers-skills
+    name: Obra Superpowers Skills
+    repo: obra/superpowers-skills
+    url: https://github.com/obra/superpowers-skills
+    trust: >-
+      Community, not vendor-backed — review content more carefully before vendoring.
+      Cited in .github/copilot-instructions.md as the precedent for the `languages:` field
+      that our `applies_to` mirrors.
+    artifacts:
+      skills: skills/
+    notes: Strongest for skill-format conventions; weigh licence before copying anything.
+
+  - id: agent-plugins-schema
+    name: Agent Plugins schema
+    url: https://agent-plugins.org/schemas/1.0.0/plugin.schema.json
+    trust: The published plugin manifest contract both this marketplace and upstream target.
+    artifacts:
+      schema: plugin.schema.json
+    notes: >-
+      Not a source of skills — a source of *capability* facts. Checking it is how we
+      established that plugins cannot ship instructions, which decided a vendoring question.
+      Re-check on any schema version bump.
+
+# Sources considered and rejected — recorded so they are not re-proposed.
+rejected:
+  - id: arbitrary-gists
+    reason: >-
+      No review, no provenance, no re-sync path. Prompts are runtime behaviour here; an
+      unreviewable source is an unreviewable behaviour change.

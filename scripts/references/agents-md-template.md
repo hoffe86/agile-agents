@@ -39,6 +39,7 @@ completion — those block names are canonical and parsed by
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
 - `REVIEW COMPLETE` (review — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
+- `SETUP COMPLETE` (solution-setup)
 
 Agents branch, commit and push on their own — on a feature branch, never the default one.
 **Opening a pull request needs the user's explicit approval**, and **completing, merging or

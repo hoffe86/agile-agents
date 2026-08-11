@@ -72,9 +72,9 @@ agent/                               Marketplace root
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
 │   ├── agile-agents-core/           The autonomous-coding agent harness
 │   │   ├── .github/plugin/plugin.json   Plugin manifest (name: agile-agents-core)
-│   │   ├── agents/                  11 *.agent.md (1 supervisor + 4 authors
-│   │   │                            + 5 reviewers + backlog-manager)
-│   │   ├── skills/                  31 technology-neutral repo-scope skills, incl.
+│   │   ├── agents/                  12 *.agent.md (1 supervisor + 4 authors
+│   │   │                            + 5 reviewers + backlog-manager + solution-setup)
+│   │   ├── skills/                  33 technology-neutral repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
 │   │   └── user/skills/             3 user-scope skills (bundled into the plugin)
@@ -179,6 +179,7 @@ Renaming any silently breaks the pipeline:
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
 - `REVIEW COMPLETE` (review — the specialist reviewers report into it, they do not emit it)
 - `TASKS PLANNED` (backlog-manager — the Plan-phase task-creation hand-off)
+- `SETUP COMPLETE` (solution-setup — the one-off profile + plugin bootstrap)
 
 ### RPI pipeline + tasks-in-tracker
 `dev-lead` orchestrates the **RPI pattern** — **Research → Plan → Implement → Review**:
@@ -286,7 +287,7 @@ Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestrati
 `mid` (mechanical authoring: `coding`, `infrastructure`, `testing`, `backlog-manager`), or
 `heavy` (deep reasoning: `architect` and all review agents).
 
-**Nothing reads it.** It is declared by all 11 agents and consumed by no script, no
+**Nothing reads it.** It is declared by all 12 agents and consumed by no script, no
 manifest, and not by the CLI — whose own frontmatter field is `model`. Treat it as recorded
 intent (the rationale lives in ADR 0007 and `cost-budget/references/tier-defaults.md`), keep
 it accurate when editing, and do not expect changing it to change which model runs.
