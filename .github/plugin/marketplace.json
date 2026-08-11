@@ -59,7 +59,7 @@
       "name": "agile-agents-bicep",
       "source": "agile-agents-bicep",
       "description": "Bicep Infrastructure-as-Code skills for the Agentic Agile Harness — Azure Verified Modules, AVM version updates, and Well-Architected alignment.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "category": "development",
       "keywords": [
         "bicep",

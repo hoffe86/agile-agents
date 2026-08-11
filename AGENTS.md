@@ -139,6 +139,7 @@ natural-language workflow.
 - **architecture-decision-records** (`agile-agents-core`) — Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format.
 - **architecture-design** (`agile-agents-core`) — Author or update a software/solution architecture design document.
 - **aspire** (`agile-agents-dotnet`) — Aspire skill covering the Aspire CLI, AppHost orchestration, service discovery, integrations, MCP server, VS Code extension, Dev Containers, GitHub Codespaces, templates, dashboard, and deployment.
+- **azure-deployment-preflight** (`agile-agents-bicep`) — Performs comprehensive preflight validation of Bicep deployments to Azure, including template syntax validation, what-if analysis, and permission checks.
 - **azure-platform-grounding** (`agile-agents-azure`) — Azure grounding for authoring and reviewing — Cloud Adoption Framework (CAF) resource naming abbreviations and required tags, Azure Verified Module (AVM) selection and pinning, secure-by-default re...
 - **backlog-item-standards** (`agile-agents-core`) — Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definitio...
 - **bicep-implementation** (`agile-agents-bicep`) — Implement Azure infrastructure using Bicep with Azure Verified Modules (AVM) wherever possible, following Microsoft's published Bicep best practices and Well-Architected Framework.
@@ -164,6 +165,7 @@ natural-language workflow.
 - **iac-best-practices** (`agile-agents-core`) — Cross-cutting Infrastructure-as-Code best practices that apply regardless of tool (Bicep, Terraform, Helm, Kustomize, ARM, Pulumi) or cloud.
 - **import-infrastructure-as-code** (`agile-agents-terraform`) — Import existing Azure resources into Terraform using Azure CLI discovery and Azure Verified Modules (AVM).
 - **multi-stage-dockerfile** (`agile-agents-core`) — Create optimized multi-stage Dockerfiles for any language or framework
+- **playwright-generate-test** (`agile-agents-core`) — Generate a Playwright test based on a scenario using Playwright MCP
 - **polyglot-test-agent** (`agile-agents-core`) — Generates comprehensive, workable unit tests for any programming language using a multi-agent pipeline.
 - **pr-description** (`agile-agents-core`) — Generate a high-signal pull-request description from a diff and the run's hand-off context.
 - **pytest-coverage** (`agile-agents-python`) — Run pytest tests with coverage, discover lines missing coverage, and increase coverage to 100%.

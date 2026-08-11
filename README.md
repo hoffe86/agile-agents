@@ -267,7 +267,7 @@ pipeline: `IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `INFRASTRUCTURE COMPLETE`
 `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`, `TASKS PLANNED`.
 
 ### Vendored skills are read-only
-The 19 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
+The 21 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
 place — extend via a wrapper skill or contribute upstream and re-sync. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md).
 

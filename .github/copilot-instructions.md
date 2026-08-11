@@ -249,18 +249,23 @@ Consequences worth preserving:
   continue. Halting delivery over a metering table is the wrong trade.
 
 ### Vendored skills
-19 of the 51 skills are unmodified copies from
+21 of the 55 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-32 are hand-written and are the ones to edit — 29 repo-scope (csharp/python-implementation,
-csharp/python-testing, code-review-checklist,
+34 are hand-written and are the ones to edit — 31 repo-scope (csharp/python-implementation,
+csharp/python-testing, dotnet/python-startup-discovery, code-review-checklist,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
 architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
 test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standards,
 ado-work-items, github-issues, azure-platform-grounding, deploy-verify,
 solution-profile-interview) plus the three user-scope skills below.
+
+**Upstream has no integration- or application-smoke-testing skill.** That gap is why
+`test-bar-gate`'s smoke slot and the two `*-startup-discovery` skills are hand-written; a
+re-sync will not supply them. What upstream does cover — and what is vendored — is Bicep
+deployment preflight and Playwright test generation.
 
 ### User-scope skills
 The skills under `user/skills/` (`trade-off-reporting`, `code-review`, `cloud-native-patterns`)

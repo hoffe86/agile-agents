@@ -19,6 +19,7 @@ It is a one-line addition to frontmatter — nothing in the skill body is touche
 |---|---|---|
 | acquire-codebase-knowledge | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/acquire-codebase-knowledge |
 | aspire | `agile-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/aspire |
+| azure-deployment-preflight | `agile-agents-bicep` | https://github.com/github/awesome-copilot/tree/main/skills/azure-deployment-preflight |
 | codeql | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/codeql |
 | conventional-commit | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/conventional-commit |
 | dotnet-design-pattern-review | `agile-agents-dotnet` | https://github.com/github/awesome-copilot/tree/main/skills/dotnet-design-pattern-review |
@@ -28,6 +29,7 @@ It is a one-line addition to frontmatter — nothing in the skill body is touche
 | import-infrastructure-as-code | `agile-agents-terraform` | https://github.com/github/awesome-copilot/tree/main/skills/import-infrastructure-as-code |
 | multi-stage-dockerfile | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/multi-stage-dockerfile |
 | polyglot-test-agent | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/polyglot-test-agent |
+| playwright-generate-test | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/playwright-generate-test |
 | pytest-coverage | `agile-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/pytest-coverage |
 | refactor | `agile-agents-core` | https://github.com/github/awesome-copilot/tree/main/skills/refactor |
 | ruff-recursive-fix | `agile-agents-python` | https://github.com/github/awesome-copilot/tree/main/skills/ruff-recursive-fix |
