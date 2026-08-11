@@ -178,7 +178,7 @@ natural-language workflow.
 - **solution-profile-interview** (`agile-agents-core`) — Bootstrap or repair `.github/solution-profile.yaml` by discovering what the repo already tells you and interviewing the human only for what it can't.
 - **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides.
 - **terraform-azurerm-set-diff-analyzer** (`agile-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
-- **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and an opt-in local smoke check (does the app come up?) after `coding`/`testing` finish and before the reviewer fan-out.
+- **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after `coding`/`testing` finish and before the reviewer fan-out.
 - **threat-model-analyst** (`agile-agents-core`) — Full STRIDE-A threat model analysis and incremental update skill for repositories and systems.
 - **update-avm-modules-in-bicep** (`agile-agents-bicep`) — Update Azure Verified Modules (AVM) to latest versions in Bicep files.
 - **webapp-testing** (`agile-agents-core`) — Toolkit for interacting with and testing local web applications using Playwright.

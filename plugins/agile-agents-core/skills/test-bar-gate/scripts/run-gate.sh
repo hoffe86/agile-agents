@@ -33,11 +33,15 @@ set -uo pipefail
 PROFILE_PATH="./solution-profile.yaml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SMOKE_COMMAND=""
+SMOKE_URL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --profile)    PROFILE_PATH="$2"; shift 2 ;;
-    --skill-root) SKILL_ROOT="$2";   shift 2 ;;
+    --profile)       PROFILE_PATH="$2"; shift 2 ;;
+    --skill-root)    SKILL_ROOT="$2";   shift 2 ;;
+    --smoke-command) SMOKE_COMMAND="$2"; shift 2 ;;
+    --smoke-url)     SMOKE_URL="$2";     shift 2 ;;
     -h|--help)    sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -204,10 +208,23 @@ run_check() {
 run_smoke() {
   local stack="$1"
   local -a argv=()
-  while IFS= read -r line; do [[ -n "$line" ]] && argv+=("$line"); done < <(argv_lines "$PROFILE_PATH" '.testing.smoke.command')
-  local url; url="$(prof '.testing.smoke.url')"
-  if [[ ${#argv[@]} -eq 0 || -z "$url" ]]; then
-    emit_event '{"event_type":"gate_check","check":"smoke","outcome":"skipped","reason":"not_configured"}'
+  local url=""
+  # CLI overrides win: they carry the entry point the agent discovered when the
+  # profile does not declare one (see references/startup-discovery.md).
+  if [[ -n "$SMOKE_COMMAND" ]]; then
+    read -r -a argv <<< "$SMOKE_COMMAND"
+    url="$SMOKE_URL"
+  else
+    while IFS= read -r line; do [[ -n "$line" ]] && argv+=("$line"); done < <(argv_lines "$PROFILE_PATH" '.testing.smoke.command')
+    url="$(prof '.testing.smoke.url')"
+    [[ -z "$url" || "$url" == "null" ]] && url="$SMOKE_URL"
+  fi
+  if [[ ${#argv[@]} -eq 0 || -z "$url" || "$url" == "null" ]]; then
+    # Not silently fine: a runnable project still has to be started. The script
+    # cannot inspect a repo to work out how, so it reports that the caller must
+    # resolve the entry point and re-invoke with --smoke-command / --smoke-url.
+    emit_event '{"event_type":"gate_check","check":"smoke","outcome":"skipped","reason":"needs_discovery"}'
+    echo "-> smoke : not configured — resolve the entry point (references/startup-discovery.md) and re-run with --smoke-command/--smoke-url, or record not_applicable/undetermined" >&2
     return 0
   fi
   local timeout; timeout="$(prof '.testing.smoke.timeout_s')"

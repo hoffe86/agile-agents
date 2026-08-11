@@ -29,6 +29,14 @@
     Path to the test-bar-gate skill folder (used to locate references/commands.yaml).
     Defaults to the parent of this script's directory.
 
+.PARAMETER SmokeCommand
+    Start command for the smoke slot, overriding testing.smoke.command. Carries the
+    entry point the caller discovered when the profile does not declare one — see
+    references/startup-discovery.md.
+
+.PARAMETER SmokeUrl
+    Health URL for the smoke slot, overriding testing.smoke.url.
+
 .NOTES
     Requires `ConvertFrom-Yaml` (powershell-yaml module) to read the profile.
     Install with: Install-Module powershell-yaml
@@ -37,6 +45,8 @@
 param(
     [string]$ProfilePath = (Join-Path (Get-Location) 'solution-profile.yaml'),
     [string]$SkillRoot   = (Split-Path -Parent $PSScriptRoot)
+    , [string]$SmokeCommand = ''
+    , [string]$SmokeUrl     = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -207,10 +217,23 @@ function Invoke-Check([string]$name, [string[]]$argv, [string]$stack) {
 
 # Opt-in "does the app come up?" slot. Always stops the process it started.
 function Invoke-Smoke($profile, [string]$stack) {
-    $argv = ConvertTo-Argv (Get-Node $profile @('testing', 'smoke', 'command'))
-    $url  = Get-Node $profile @('testing', 'smoke', 'url')
+    # CLI overrides win: they carry the entry point the agent discovered when the
+    # profile does not declare one (see references/startup-discovery.md).
+    if ($SmokeCommand) {
+        $argv = ConvertTo-Argv $SmokeCommand
+        $url  = $SmokeUrl
+    }
+    else {
+        $argv = ConvertTo-Argv (Get-Node $profile @('testing', 'smoke', 'command'))
+        $url  = Get-Node $profile @('testing', 'smoke', 'url')
+        if (-not $url) { $url = $SmokeUrl }
+    }
     if ($argv.Count -eq 0 -or -not $url) {
-        Emit-Event @{ event_type='gate_check'; check='smoke'; outcome='skipped'; reason='not_configured' }
+        # Not silently fine: a runnable project still has to be started. The script
+        # cannot inspect a repo to work out how, so it reports that the caller must
+        # resolve the entry point and re-invoke with -SmokeCommand / -SmokeUrl.
+        Emit-Event @{ event_type='gate_check'; check='smoke'; outcome='skipped'; reason='needs_discovery' }
+        Write-Warning "smoke: not configured - resolve the entry point (references/startup-discovery.md) and re-run with -SmokeCommand/-SmokeUrl, or record not_applicable/undetermined"
         return $true
     }
     $timeout = Get-Node $profile @('testing', 'smoke', 'timeout_s')

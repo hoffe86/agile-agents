@@ -1,13 +1,13 @@
 ---
 name: test-bar-gate
 description: >-
-  Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and an opt-in local smoke check (does the app come up?) after `coding`/`testing` finish and before the reviewer fan-out. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 7 (Testing) and Stage 9 (Review).
+  Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after `coding`/`testing` finish and before the reviewer fan-out. The smoke slot runs by default for runnable .NET and Python projects, deriving the start command when the profile doesn't declare one. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 7 (Testing) and Stage 9 (Review).
 applies_to: all
 ---
 
 # Test-Bar Gate
 
-A deterministic, pre-reviewer quality gate. Runs cheap, fast checks (lint → type-check → unit-tests → optional local smoke) so that expensive reviewer agents are never spent on a patch that does not even build, pass its own tests, or start.
+A deterministic, pre-reviewer quality gate. Runs cheap, fast checks (lint → type-check → unit-tests → local smoke) so that expensive reviewer agents are never spent on a patch that does not even build, pass its own tests, or start.
 
 ## When this skill fires
 
@@ -42,7 +42,7 @@ Checks run **in this order**, **fail-fast on the first non-zero exit code**:
 4. **integration_test** {E} *opt-in*, off by default (slow, usually needs containers / secrets)
 5. **coverage** {E} *opt-in*; the command must carry its own threshold and exit non-zero below it
 6. **mutation** {E} *opt-in*; same contract as coverage
-7. **smoke** {E} *opt-in.* Start the app and confirm it comes up. Skipped entirely unless `testing.smoke.command` is set.
+7. **smoke** {E} — start the app and confirm it comes up. **Runs by default for .NET and Python**: uses `testing.smoke.command` when set, otherwise derives the entry point (see [`startup-discovery.md`](references/startup-discovery.md)). Skips only as `not_applicable` (nothing to start) or `undetermined` (couldn't work out how), both stated in the result.
 
 A check runs when it is **enabled** *and* **resolves to a command**. The first three are
 enabled by default and fall back to the per-stack palette; the rest run only when the
@@ -59,7 +59,7 @@ Fail-fast is the default because a lint/format failure usually means a typecheck
 
 Unit tests prove the units. They do not prove the host boots — a bad DI registration, a missing connection string, a broken `host.json`, or an unresolvable startup dependency all pass the first three checks and fail the moment anyone runs the thing. The smoke slot closes that gap for the cost of one process start.
 
-It is **opt-in and has no defaults** — startup commands vary too much per project to guess, and a wrong guess costs a wasted timeout on every run. Configure it explicitly:
+**For a runnable .NET or Python project this slot runs — it is not opt-in.** Building is not evidence that the thing starts, and "compiles, ships, doesn't boot" is precisely the failure the earlier checks cannot see. Configure it explicitly when you can, because explicit is cheaper and deterministic:
 
 ```yaml
 testing:
@@ -71,13 +71,32 @@ testing:
 
 Procedure:
 
-1. `testing.smoke.command` empty → emit `outcome=skipped, reason=not_configured` and pass through. No warning; this is a normal configuration.
-2. Start the command as a **background** process from repo root.
-3. Poll `testing.smoke.url` every 2s until it returns any HTTP status < 500, or `timeout_s` elapses.
+1. **Resolve the command.** `testing.smoke.command` when set. Otherwise the runner emits `outcome=skipped, reason=needs_discovery` and stops there — a script cannot inspect a repo to work out how it starts, so resolving the entry point is the *agent's* job: **derive** it, and where derivation is inconclusive **research** it, per [`startup-discovery.md`](references/startup-discovery.md). Then re-invoke the runner with what you found:
+
+   ```bash
+   ./run-gate.sh --smoke-command "dotnet run --project src/Api" --smoke-url "http://localhost:5000/health"
+   ```
+   ```powershell
+   ./run-gate.ps1 -SmokeCommand 'uvicorn app.main:app' -SmokeUrl 'http://localhost:8000/'
+   ```
+
+   The CLI overrides exist so the start/poll/stop logic has exactly one implementation — never hand-roll the process handling around the gate.
+2. The runner starts the command as a **background** process from repo root.
+3. It polls the URL every 2s until it returns any HTTP status < 500, or `timeout_s` elapses. For an entry point with no HTTP surface, instead confirm the process is still alive after a few seconds and did not exit non-zero.
 4. **Always** stop the process — on success, on timeout, and on any error. A leaked listener breaks the next run by holding the port. Stop it by PID; never by process name.
-5. Outcome: `success` if the URL answered in time; `failure` otherwise, with the last ~20 lines of the process's combined stdout/stderr as `stderr_tail` (a startup crash prints its stack there, and it is the only diagnostic the slot produces).
+5. Outcome: `success` if it answered (or stayed up) in time; `failure` otherwise, with the last ~20 lines of the process's combined stdout/stderr as `stderr_tail` (a startup crash prints its stack there, and it is the only diagnostic the slot produces). Report the command and URL you used and where they came from — profile, derived, or researched.
 
 A timeout is a **failure**, not a skip. "It did not come up within 60s" is exactly the signal the slot exists to give.
+
+**Three distinct skip reasons, never collapsed into one.** The old behaviour — empty command means silently skip — made a run that never started the app read exactly like a run that started it fine, which is the reporting failure this gate exists to prevent:
+
+| `reason` | Means | Is it a pass? |
+|---|---|---|
+| `needs_discovery` | The runner had no command. **Not a result** — resolve the entry point and re-invoke with `--smoke-command` / `--smoke-url`, then record one of the two below or a real success/failure. | No — the gate is not finished |
+| `not_applicable` | There is genuinely nothing to start (class library, no entry point, docs/IaC-only diff). Detected, not assumed. | Yes — a stated pass |
+| `undetermined` | There *is* something to start and neither the profile, the repo, nor research revealed how. | Yes, but reported as a gap, with what was inspected and a recommendation to set `testing.smoke.command` |
+
+The original objection to defaults still holds and is why this is *discovery*, not guessing: a wrong command burns the full timeout and reports a startup failure that is really a configuration failure. Everything in `startup-discovery.md` reads something the project already declares, and stops at `undetermined` rather than inventing a plausible command.
 
 Scope boundary: this slot answers *"does it come up?"* — one process, one health probe. It is not integration testing. If the app cannot start without a database, a queue, and three collaborators, that is `e2e-testing` with a compose file, not this gate.
 
