@@ -120,6 +120,13 @@ Performs a focused, READ-ONLY security review of a diff or set of changed files.
 - **Tools**: browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
+### `skill-scout`
+
+Dependency manager for the harness's own artifacts. Works **demand-first**: derives what each phase of the pipeline needs for the declared stack, compares that against the skills actually installed and the routes agents actually declare, and reports the **gaps** — then looks for something to fill a *named* gap. In a consumer project it answers "which plugins does this stack need, and what will still be uncovered"; in the marketplace repo it also searches the curated sources, triages `scripts/check-vendored-drift.ps1` output, and proposes where an adopted artifact belongs. Presents findings and stops — a human approves every adoption. USE FOR: "what capability are we missing", "scout for .NET / Bicep / testing", "do we already have a skill for X", "which plugins should this project install", "audit our vendored skills", "triage the drift report", periodic coverage review. DO NOT USE FOR: running the profile interview or installing plugins (that is `bootstrapper` — it owns the write and the approval gate), delivering a requirement (use `dev-lead`), or writing the skill a gap calls for (a human decides; then a maintainer or `coding` writes it). Never adopts, installs, or edits an artifact itself.
+
+- **Tools**: browser, context7/*, execute, github/*, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
+- **Sub-agents**: _none_
+
 ### `test-review`
 
 Performs a focused, READ-ONLY review of test code and test coverage in a diff. Reviews test quality (AAA structure, single responsibility per test, deterministic, isolated, fast), coverage of new / changed behaviour (happy path + edge cases + negative paths), test-double usage (mocking abuse, over-stubbing, fragile test patterns), and test infrastructure (fixtures, factories, no real secrets, no real network). Cites xUnit Test Patterns, Google Testing guidance, Fowler test pyramid, and language-specific best practices. USE FOR: test-only review of a diff, audit test quality, check coverage of new behaviour, find brittle / flaky / over-mocked tests, check AAA / naming conventions, review test infrastructure. Auto-invoked by review when the diff touches tests or adds testable production code. DO NOT USE FOR: full multi-lens review (use review), writing or fixing tests (use testing), security or architecture aspects of tests (use security-review / architecture-review). NEVER modifies code.
@@ -146,6 +153,7 @@ natural-language workflow.
 - **ado-work-items** (`agile-agents-ado`) — Azure DevOps Boards mechanics for reading and writing work items — MCP tool entry points, field mapping per work-item type (Epic / Feature / PBI / Issue / Task), markdown-vs-HTML formatting rules, ...
 - **architecture-decision-records** (`agile-agents-core`) — Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format.
 - **architecture-design** (`agile-agents-core`) — Author or update a software/solution architecture design document.
+- **artifact-coverage** (`agile-agents-core`) — Work out which capabilities the agent harness needs for a given stack, which installed skills cover them, and where the gaps are — then judge whether a candidate artifact is worth adopting and whic...
 - **aspire** (`agile-agents-dotnet`) — Aspire skill covering the Aspire CLI, AppHost orchestration, service discovery, integrations, MCP server, VS Code extension, Dev Containers, GitHub Codespaces, templates, dashboard, and deployment.
 - **azure-deployment-preflight** (`agile-agents-bicep`) — Performs comprehensive preflight validation of Bicep deployments to Azure, including template syntax validation, what-if analysis, and permission checks.
 - **azure-platform-grounding** (`agile-agents-azure`) — Azure grounding for authoring and reviewing — Cloud Adoption Framework (CAF) resource naming abbreviations and required tags, Azure Verified Module (AVM) selection and pinning, secure-by-default re...

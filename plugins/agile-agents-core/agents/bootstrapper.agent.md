@@ -119,6 +119,10 @@ Handle the answer: **Install** → run them, then verify. **Skip install** → e
 the user can run them later, and say plainly that agents will lack those skills until they do.
 **Adjust** → take the correction, re-derive, ask again.
 
+For a deeper answer than the plugin list — which capabilities the declared stack needs, which the
+installed set actually covers, and what stays uncovered — point the user at **`skill-scout`**. It
+reports coverage; you own the interview, the write, and the install.
+
 **Never install without an explicit yes**, and never infer approval from an earlier answer about
 the profile — writing a config file and changing an environment are different permissions.
 

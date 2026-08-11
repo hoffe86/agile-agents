@@ -1,12 +1,15 @@
 # Curated sources for harness artifacts
 #
-# The trusted upstreams the `skill-scout` agent searches and `scripts/check-vendored-drift.ps1`
-# re-syncs against. Curation IS the supply-chain control: prompts in this repo are runtime
-# behaviour, so an artifact from an unlisted source is not "probably fine" — it is unreviewed
-# code. Adding a source is a deliberate act; record why it earns trust.
+# The trusted upstreams a coverage run searches once it has a *named* gap, and the ones
+# `scripts/check-vendored-drift.ps1` re-syncs against in the marketplace repo. Curation IS the
+# supply-chain control: prompts in this suite are runtime behaviour, so an artifact from an
+# unlisted source is not "probably fine" — it is unreviewed code. Adding a source is a deliberate
+# act; record why it earns trust.
 #
-# This file is read by tooling, not by the shipped plugins. Nothing here is fetched at run time
-# by a delivery agent — see `docs/adr/` if that ever changes.
+# Ships with `agile-agents-core` so it is available wherever the plugin is installed. Nothing here
+# is fetched at run time by a delivery agent: a coverage run reads it, proposes, and stops — a
+# human adopts. Changing that would make the same profile produce different behaviour over time,
+# which is an architecture decision for an ADR, not a quiet feature.
 
 sources:
   - id: awesome-copilot
