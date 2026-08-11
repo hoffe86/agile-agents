@@ -1,0 +1,29 @@
+# Line endings — enforce LF everywhere.
+#
+# Every tracked file in this repo is LF today (226/226 at the time of writing) and the CI
+# checks compare generated output byte-for-byte, so a stray CRLF shows up as a whole-file
+# diff or a failed sync check rather than as anything obviously line-ending-related.
+#
+# Without this file the outcome depends on each contributor's `core.autocrlf`, which is a
+# per-machine setting nobody sets deliberately: a tool that rewrites a file on Windows can
+# hand back CRLF and the next commit silently renormalises. Declaring it here makes the
+# convention a property of the repo instead of a property of whoever cloned it.
+#
+# `text=auto` still auto-detects binary content and leaves it untouched, so this stays safe
+# if images or archives are added later.
+* text=auto eol=lf
+
+# Scripts where CRLF is not a cosmetic problem.
+# A shell script with CRLF fails on a Linux runner with the notoriously unhelpful
+# "bad interpreter: /bin/sh^M" — the .sh files here run in GitHub Actions.
+*.sh  text eol=lf
+
+# Kept explicit because these are executed rather than merely read, and both generators
+# must agree byte-for-byte between the .ps1 and .sh implementations.
+*.ps1 text eol=lf
+*.py  text eol=lf
+
+# Generated — regenerate with scripts/generate-agents-md.ps1 (or .sh), never hand-edit.
+# Marking it collapses the diff by default on GitHub and keeps review attention on the
+# agent/skill frontmatter that actually drives it.
+AGENTS.md linguist-generated=true

@@ -22,7 +22,7 @@ description: >-
   hand those off to testing (which is scoped to application unit /
   integration tests only). Hands off to infrastructure-review and review.
 model_tier: mid  # mechanical IaC authoring against declared conventions and existing repo patterns
-tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, edit, agent]
+tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, edit, agent, playwright/*, browser]
 argument-hint: "Describe the IaC work: Bicep / Terraform / Helm / Kustomize / pipeline change"
 ---
 

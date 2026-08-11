@@ -39,6 +39,9 @@ than a blank, because it looks like a measurement.
 - **Coding:** <…>
 - **Infrastructure:** <…>
 
+## Assumptions carried into the delivery
+- <unverified fact the work rests on — whether the run ended up confirming it — what to check if it's wrong. `none — every load-bearing fact was verified` is a valid answer, and a claim.>
+
 ## Follow-ups (NOT done in this run, by design)
 - <out-of-scope items raised by any stage>
 

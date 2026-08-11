@@ -111,7 +111,7 @@ just means the tool isn't there.
 |---|---|---|
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
-| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots. Declared only by `testing`. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs). |
+| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 11 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
 | `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
 | `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
 
@@ -124,10 +124,17 @@ MCP servers above. On top of that:
 |---|---|
 | `edit` | `architect`, `coding`, `testing`, `infrastructure`, `backlog-manager` |
 | `agent` (delegation) | the above + `dev-lead`, `review` |
-| `browser` | `testing` (E2E), `backlog-manager` (tracker web UI) |
+| `browser` + `playwright/*` | all 11 — `testing` for E2E, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
 
 **Reviewers never get `edit`.** That's the defence-in-depth half of
 `reviewer-read-only-rules` — the contract is enforced in the prompt *and* by tool grant.
+
+Reviewers **do** get the browser, because verifying a claimed API contract beats assuming it,
+and a grant can't be split into "navigate but don't click". That half of the boundary is
+therefore prompt-enforced: `reviewer-read-only-rules` treats navigating and reading as reads,
+and refuses form submits, destructive clicks, console authentication, and
+`browser_run_code_unsafe` / `browser_evaluate` outright — the contract is about **effects, not
+file types**, so a click that deletes a cloud resource is a write however it was issued.
 
 ## How it works — the RPI pipeline
 
@@ -144,11 +151,11 @@ Intake → Research → Plan → Create tasks → ⛔ HUMAN PLAN APPROVAL ⛔ �
 
 | Phase | What happens | Agents | Hand-off block |
 |---|---|---|---|
-| **Intake** | `dev-lead` captures the Definition of Done, out-of-scope, the **parent story id** (when creating tasks), confirms the `solution-profile.yaml`, and mints the run id. | `dev-lead` | — |
+| **Intake** | `dev-lead` captures the Definition of Done, out-of-scope, the **parent story id** (when creating tasks), confirms the `solution-profile.yaml`, and mints the run id. The requirement can arrive as text, a tracker item, a requirements file, or a **planning-mode `plan.md`** — for the last, criteria are derived from the plan and confirmed with you once. | `dev-lead` | — |
 | **Research** | Read-only verification against the prepared concept + any accepted decision records: confirm the story is implementable, verify codebase / APIs / patterns, surface any decision gap. Lightweight (`dev-lead` reads) or delegated to `architect` when scope warrants a new boundary / dependency / trade-off. | `dev-lead`, `architect` | `ARCHITECTURE DESIGN COMPLETE` |
-| **Plan** | Decompose the story into meaningful, independently-implementable **tasks**, each with its own acceptance criteria + a short approach note. | `dev-lead` | — |
+| **Plan** | Decompose the story into meaningful, independently-implementable **tasks**, each with its own acceptance criteria + a short approach note. When a `plan.md` supplied the decomposition, it is **adopted and reconciled** — every step carried, merged, or dropped with a reason — never silently re-derived. | `dev-lead` | — |
 | **Create tasks** | `backlog-manager` creates one child work item per task, **linked to the parent story** (provisional, tagged `pending-approval`), records the overall approach as a comment on the parent, and returns the task list. The tracker is the source of truth; local handover files are an ephemeral, gitignored cache. Gated by `backlog.create_tasks`. | `backlog-manager` | `TASKS PLANNED` |
-| **⛔ Plan approval** | The **only mandatory human checkpoint** — it fires **after** the tasks exist so the human reviews concrete, linked work items. Approve → tags removed, autonomous run begins; Adjust → tasks revised; Cancel → provisional tasks cleaned up. | human | — |
+| **⛔ Plan approval** | The **only mandatory approval gate** — it fires **after** the tasks exist so the human reviews concrete, linked work items. ("Only" counts approvals: intake may still ask about an ambiguity, or to confirm criteria derived from a `plan.md`.) Approve → tags removed, autonomous run begins; Adjust → tasks revised; Cancel → provisional tasks cleaned up. | human | — |
 | **Implement** | Coding / IaC delivers each task inside the approved plan; testing covers the change to the declared discipline. A conditional design-approval gate fires first if Research introduced a new dependency / boundary / ADR gap. | `coding`, `infrastructure`, `testing` | `IMPLEMENTATION COMPLETE`, `INFRASTRUCTURE COMPLETE`, `TESTS COMPLETE` |
 | **Test-Bar Gate** | Deterministic lint → typecheck → unit-test gate before reviewers spend tokens; loops back to `coding` on fail (max 2 retries). | `dev-lead` (skill: `test-bar-gate`) | — |
 | **Review** | Multi-lens review (security / architecture / infra / test) merged into one verdict, validated against the research findings and the planned acceptance criteria. | `review` (+ `security-review`, `architecture-review`, `infrastructure-review`, `test-review`) | `REVIEW COMPLETE` |

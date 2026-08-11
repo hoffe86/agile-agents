@@ -22,7 +22,7 @@ Don't invent NFRs. "There are no NFRs" is itself an answer worth confirming.
 
 ## 2. Acquire context
 
-If there's a repo, invoke **`acquire-codebase-knowledge`** first. Read any existing `docs/architecture/`, `ARCHITECTURE.md`, ADRs in `docs/adr/`, and the relevant Connect projects context.
+If there's a repo, invoke **`acquire-codebase-knowledge`** first. Read the existing architecture docs wherever `documentation.location` points (falling back to `docs/architecture/` and `ARCHITECTURE.md` when it is empty), any ADRs under `documentation.adr.location` (default `docs/adr/`), and the relevant project context.
 
 For Azure-targeted designs, lean on:
 
@@ -40,7 +40,9 @@ For Azure-targeted designs, lean on:
 
 ## 3. Deliverable structure
 
-Produce a markdown file at `<dir>/<topic>/<topic>-design.md` (create folders as needed), where `<dir>` is `solution-profile.yaml: documentation.ai_documentation_dir` when set, otherwise `docs/architecture/`. A project that keeps AI-generated design notes apart from hand-written docs has already said so in the profile — don't override it. Use this skeleton — every section is required unless explicitly N/A:
+Produce a markdown file at `<dir>/<topic>/<topic>-design.md` (create folders as needed). Resolve `<dir>` from the profile in this order: `solution-profile.yaml: documentation.ai_documentation_dir` when set (a project that keeps AI-generated notes apart from hand-written docs has already said so — don't override it, and it is already a leaf directory), otherwise the **`architecture/` subtree under `documentation.location`** — that field is the docs *root*, not the architecture folder, so `location: "docs/"` resolves to `docs/architecture/` — and only when both are empty does `docs/architecture/` apply as the fallback. **Check `documentation.platform` first:** when it is anything other than `in-repo`, the docs do not live in this workspace — emit the content in your hand-off with the publish target rather than writing a file into the repo.
+
+The skeleton below is the **arc42-shaped default**; it applies when `documentation.framework` is `arc42` or empty. Where the profile declares another framework, map this content onto that framework's sections — the content requirements survive a change of table of contents. Use this skeleton — every section is required unless explicitly N/A:
 
 ```markdown
 # <Topic> — Architecture Design
@@ -169,33 +171,31 @@ If a pillar has an accepted trade-off (e.g., "we accept lower availability for l
 
 ## 5. Decision capture (ADRs are opt-in)
 
-By default, capture decisions **inline** in arc42 §9 as a short table (decision · chosen option · rationale · reversible?) and surface trade-offs via the `trade-off-reporting` skill.
+By default, capture decisions **inline** in the declared framework's decision section — arc42 §9 by default — as a short table (decision · chosen option · rationale · reversible?) and surface trade-offs via the `trade-off-reporting` skill.
 
 **Only delegate to the `architecture-decision-records` skill when the user explicitly asks** for an ADR / decision record / MADR. If you believe a decision is ADR-worthy (typically: choice of language/framework, data store, integration pattern sync vs. async vs. event-sourced, multi-tenancy model, identity provider, region/DR strategy, or anything irreversible / expensive to undo), **list it under "Suggested ADRs" in the hand-off** and let the user decide.
 
 ## 6. Diagram quality bar
 
-- Use **C4 model** (Context → Container → Component) for structural diagrams.
-- Use **Mermaid sequence diagrams** for flows.
+- Use **C4 model** (Context → Container → Component) for structural diagrams — the levels are a way of thinking about a system, independent of the tool you draw them in.
+- Author diagrams in the notation `documentation.diagram_convention` declares (`mermaid-c4` | `drawio` | `plantuml` | `lucidchart`); **Mermaid — `C4*` for structure, `sequenceDiagram` for flows — is the default when that field is empty.**
 - Every box has a name and a one-line responsibility.
 - Every arrow has a label (`HTTPS/JSON`, `gRPC`, `AMQP`, `webhook`, etc.).
 - Don't show implementation detail in a Context diagram or business actors in a Component diagram.
 
 ## 7. Hand off
 
-```
-ARCHITECTURE DESIGN COMPLETE
-- Files: <list>
-- Status: Draft (awaiting review)
-- Recommendation: <chosen approach>
-- WAF assessment: <one-line per pillar or ✅ aligned>
-- Cost band: €<low> – €<high> / mo  (if Azure)
-- ADRs created: <count + IDs, or "none — not requested">
-- Suggested ADRs (not written): <list of decisions you'd recommend capturing as ADRs, or "none">
+**The calling agent's hand-off contract is the single definition of this block — this skill deliberately does not restate the field list.** `architect` declares the required fields of `ARCHITECTURE DESIGN COMPLETE` in its own definition and `dev-lead` gates on exactly those, so a second list here is how the two drift apart: a block that satisfies this file but not the agent reaches the orchestrator as a malformed hand-off with no visible cause.
 
-- Open questions: <count, with owners>
-- Recommended next step: review | infrastructure | coding
-```
+Emit the block **your agent** specifies, and make sure this skill's output feeds it:
+
+- the design artifacts you wrote → the deliverables field;
+- the chosen approach and what it costs → the recommendation and trade-off fields;
+- the NFRs from §4 → the NFR field, concrete and measurable;
+- the decision section → the decisions-honoured field, and anything materially-shaping that is captured nowhere → the decision-gaps field (**you do not author ADRs** — a gap is surfaced for a human, never written up as one);
+- **what you verified versus what you assumed** → the facts-verified and assumptions fields. The well-architected pass and the cost band above rest on service limits, tiers, regional availability and prices — exactly the facts that go stale between releases — so record each with its source and the date or version it applied to, and list anything you could not confirm as an assumption with its impact.
+
+When a human invoked this skill directly and no agent contract is in play, report the same substance as a short summary: what you designed, what you recommend, what you verified, what you assumed, and what still needs a human decision. No orchestrator is parsing it, so the shape is free — the content is not.
 
 ## 8. What you do NOT do
 
