@@ -236,14 +236,19 @@ Decide how deep the research needs to go:
 | Lightweight (dev-lead reads code / APIs itself) | Change is local, < ~3 files, no new boundary / contract / dependency, no new cloud resource, fully covered by existing ADRs. |
 | Delegate to `architect` | New boundary / contract / dependency / cloud resource, a non-trivial trade-off, or a suspected decision gap. |
 
+**Either way you owe the same accounting.** The lightweight path is a smaller *scope* of research, not a licence to skip it: you still name the load-bearing facts you verified and the ones you assumed, and carry them to Stage 2 and Stage 4. "Small change" describes the diff, not the certainty — a three-line fix against an API you half-remember is exactly where an unchecked assumption survives to production, because no reviewer sees the fact, only the code that already embodies it.
+
 **When delegating — Delegate to:** `architect`.
 **Input:** the requirement, in-scope / out-of-scope, any constraints from intake, the binding decision ids / references.
-**Expected output:** the `ARCHITECTURE DESIGN COMPLETE` block — a verification sketch in the declared framework + a list of follow-on implementation tasks + a list of **decision gaps** (materially-shaping decisions captured nowhere: no ADR, no design-doc decision section, no work item). **No agent authors ADR files**; route any reported gap to the user (Stage 5) before continuing.
+**Expected output:** the `ARCHITECTURE DESIGN COMPLETE` block — a verification sketch in the declared framework + a list of follow-on implementation tasks + the **facts verified** and **assumptions** the design rests on + a list of **decision gaps** (materially-shaping decisions captured nowhere: no ADR, no design-doc decision section, no work item). **No agent authors ADR files**; route any reported gap to the user (Stage 5) before continuing.
 **Gate (must pass before planning):**
 - Each decision is captured *somewhere* — an accepted ADR cited in the hand-off, a design-doc / work-item decision, or inline in the verification sketch's decision section (arc42 §9 by default). **"No ADR exists" is not a gate failure in a project that doesn't use ADRs.**
 - Any **decision gap** reported by architect is either resolved by a human-authored ADR, or the user has explicitly waived it at Stage 5.
 - A concrete component / data / interface contract exists for the tasks to reference.
 - NFRs and security posture are named, not "TBD".
+- **Every load-bearing external fact is either verified with a source, or listed as an assumption with its impact.** A design that names a service, tier, limit, quota, price or API shape with neither a source nor an assumption entry has not finished Research — send it back. Assumptions are legitimate and expected; *silent* ones are the failure, because Stage 6 hands the design to `coding` as a locked constraint, and nothing downstream re-opens a fact nobody flagged.
+
+Assumptions that survive the gate are not resolved — they are **carried**: record them so they reach the Plan (Stage 2), the approval gate (Stage 4) and the final report. An assumption whose failure would invalidate the approach is a risk to sequence first, not a footnote.
 
 If the gate fails: send architect **one** corrective message with the specific gap. If it still fails: stop and ask the human.
 
@@ -256,6 +261,10 @@ Break the requirement into the **minimum** set of meaningful, **independently-im
 - **A clear title** (imperative, scoped).
 - **Acceptance criteria** — testable bullets (or Gherkin if `tech_stack.test_discipline == bdd`) defining when *that task* is done. These are how completion is measured.
 - **An approach note** — a short, self-contained spec: which files / components, the chosen pattern (citing the binding decision — ADR id where one exists), and what is out of scope for that task.
+
+**Plan on verified ground.** A task's approach note is an instruction `coding` will follow literally, so it must not quietly rest on a guess. Before writing one, check that the facts it depends on came from Stage 1's verified list — and where the note relies on something still assumed, **say so in the note itself** ("assumes `<fact>`; unverified") rather than phrasing it as settled. If the fact is cheap to check and you haven't, check it now: Plan is the last stage where being wrong costs a paragraph instead of an implementation, a test run, and a corrective round.
+
+**Sequence around the unknowns.** An assumption whose failure would change the approach is the highest-uncertainty item in the plan — the risk-first heuristic already says it lands first. Where a single check would settle it, make that the first task and say what it resolves. Where it can only be settled by building, keep that task small and explicitly provisional, and flag at Stage 4 that later tasks depend on its outcome. Never plan four tasks on top of an unverified assumption and discover it at Stage 9.
 
 **Decomposition heuristics (apply the judgement section here):**
 
