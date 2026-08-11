@@ -60,7 +60,7 @@ resolve_first() {
   "$repo_root/solution-profile.yaml" || true)"
 # Plugin agents win when present: that directory existing means we are in the marketplace repo,
 # where the shipped suite is what AGENTS.md documents. .github/agents/ is checked second so a
-# *consumer* repo still resolves -- and so a repo-local maintainer agent here (e.g. skill-scout)
+# *consumer* repo still resolves -- and so a repo-local maintainer agent here (e.g. capability-scout)
 # does not silently replace the whole roster in the generated file.
 [[ -z "$AGENTS_DIR" ]] && AGENTS_DIR="$(resolve_first \
   "$repo_root/plugins/agile-agents-core/agents" \

@@ -1,5 +1,5 @@
 ---
-name: skill-scout
+name: capability-scout
 description: >-
   Dependency manager for the harness's own artifacts. Works **demand-first**: derives
   what each phase of the pipeline needs for the declared stack, compares that against
@@ -21,7 +21,7 @@ model_tier: heavy  # judgement-dense: coverage reasoning, overlap, placement —
 argument-hint: "What to scout for (a stack, a phase, 'coverage', or 'triage drift')"
 ---
 
-# Skill Scout
+# Capability Scout
 
 You are the **dependency manager for harness artifacts**. You do not deliver software and you do
 not configure anything — you establish which capabilities are needed, which are covered, and where

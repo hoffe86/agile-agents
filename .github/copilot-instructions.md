@@ -184,7 +184,7 @@ script, no manifest, and not by the CLI — it is a local field that upstream ha
 for (which is why `plugins/VENDORED.md` lists it as the one sanctioned modification to a
 vendored copy). It does **not** filter the matching pool: every installed skill is a candidate
 on every task regardless of what it declares. Treat it as recorded intent — it tells a *human*
-whether a skill belongs in core or a companion, and it is how `skill-scout` places an adopted
+whether a skill belongs in core or a companion, and it is how `capability-scout` places an adopted
 skill — but do not reason as though it constrains loading at run time.
 
 The mechanism that genuinely limits what a project carries is therefore **the plugin split, not

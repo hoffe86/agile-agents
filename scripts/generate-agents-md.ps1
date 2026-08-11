@@ -216,7 +216,7 @@ if (-not $AgentsDir) {
     # Plugin agents win when present: that directory existing means we are in the marketplace
     # repo, where the shipped suite is what AGENTS.md documents. `.github/agents/` is checked
     # second so a *consumer* repo still resolves — and so a repo-local maintainer agent here
-    # (e.g. skill-scout) does not silently replace the whole roster in the generated file.
+    # (e.g. capability-scout) does not silently replace the whole roster in the generated file.
     $AgentsDir = Resolve-First @(
         (Join-Path $repoRoot 'plugins/agile-agents-core/agents'),
         (Join-Path $repoRoot '.github/agents'),

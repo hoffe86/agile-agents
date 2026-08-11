@@ -8,7 +8,7 @@
 
     Deliberately deterministic: a plain fetch-and-diff, no model, no MCP server, no Docker. The
     question "did upstream change?" has one right answer, so it should not cost tokens or vary
-    between runs. Judging whether a change is worth taking is the `skill-scout` agent's job.
+    between runs. Judging whether a change is worth taking is the `capability-scout` agent's job.
 
     The one sanctioned local modification -- the `applies_to:` frontmatter line, which upstream
     has no equivalent for (see plugins/VENDORED.md) -- is ignored when comparing. Any other
@@ -121,7 +121,7 @@ foreach ($f in $failed)  { Write-Host "  ? $($f.Skill) — fetch failed: $($f.Er
 if ($drifted -or $missing) {
     ""
     "Drift is not automatically a defect: upstream may have changed in ways this suite does not want."
-    "Hand the list to the ``skill-scout`` agent to decide per skill, then re-sync the ones worth taking."
+    "Hand the list to the ``capability-scout`` agent to decide per skill, then re-sync the ones worth taking."
     "Re-run with -ShowDiff to see what moved."
     if ($WarnOnly) { exit 0 }
     exit 1

@@ -3,7 +3,7 @@
 The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plugins.
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
-over 13 specialist agents (1 supervisor + 4 authors + 5 reviewers, plus a backlog-manager, a bootstrapper and a skill-scout) plus
+over 13 specialist agents (1 supervisor + 4 authors + 5 reviewers, plus a backlog-manager, a bootstrapper and a capability-scout) plus
 50 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 ## Install
@@ -34,7 +34,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 
 ## What you get
 
-**13 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 4 authors + 5 reviewers + backlog-manager + bootstrapper + skill-scout:
+**13 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 4 authors + 5 reviewers + backlog-manager + bootstrapper + capability-scout:
 
 | Role | Agent | Purpose |
 |------|-------|---------|
@@ -45,7 +45,7 @@ one-file copy into your target repo's `.github/` (see [Solution profile](#soluti
 | Author | `infrastructure` | Bicep, Terraform, Helm/Kustomize, CI/CD pipelines |
 | Backlog | `backlog-manager` | Creates / improves / reviews tracker work items (ADO, GitHub, Jira, Linear); in the Plan phase materialises `dev-lead`'s task breakdown as child work items linked to the parent story |
 | Bootstrap | `bootstrapper` | One-off bootstrap and repair: runs the profile interview, writes `solution-profile.yaml`, derives the companion plugins the declared stack needs and installs them with the user's approval, then reports what is still missing |
-| Coverage | `skill-scout` | Dependency manager for harness artifacts: derives what each phase needs for the declared stack, reports the gaps, and proposes what would fill them and where it belongs. Read-only — proposes, never adopts |
+| Coverage | `capability-scout` | Dependency manager for harness artifacts: derives what each phase needs for the declared stack, reports the gaps, and proposes what would fill them and where it belongs. Read-only — proposes, never adopts |
 | Reviewer | `review` | Read-only orchestrator; merges all review lenses |
 | Reviewer | `security-review` | OWASP, CWE, NIST SSDF, MS SDL, MCSB, OWASP LLM Top 10 |
 | Reviewer | `architecture-review` | arc42, C4, WAF, AAC, microservices.io, DDD, ISO 25010 |

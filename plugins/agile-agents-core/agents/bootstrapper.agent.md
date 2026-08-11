@@ -14,7 +14,7 @@ description: >-
   DO NOT USE FOR: delivering a requirement end-to-end (use dev-lead), writing code,
   tests or IaC (use coding / testing / infrastructure), designing a system (use
   architect), reviewing a change (use review), maintaining *this* harness repo's own
-  vendored skills (that is the repo-local `skill-scout`). Never installs anything —
+  vendored skills (that is the repo-local `capability-scout`). Never installs anything —
   plugin or otherwise — without explicit approval, and never invents a profile value
   to get past a question.
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, browser, playwright/*]
@@ -120,7 +120,7 @@ the user can run them later, and say plainly that agents will lack those skills 
 **Adjust** → take the correction, re-derive, ask again.
 
 For a deeper answer than the plugin list — which capabilities the declared stack needs, which the
-installed set actually covers, and what stays uncovered — point the user at **`skill-scout`**. It
+installed set actually covers, and what stays uncovered — point the user at **`capability-scout`**. It
 reports coverage; you own the interview, the write, and the install.
 
 **Never install without an explicit yes**, and never infer approval from an earlier answer about

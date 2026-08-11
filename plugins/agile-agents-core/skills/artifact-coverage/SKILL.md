@@ -6,7 +6,7 @@ applies_to: all
 
 # Artifact coverage
 
-The method behind a coverage question. Used by `skill-scout`; also useful standalone when someone
+The method behind a coverage question. Used by `capability-scout`; also useful standalone when someone
 asks "do we have anything for X?"
 
 **Derive demand before looking at supply.** The question is *"what does each phase need, and do we
