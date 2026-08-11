@@ -80,7 +80,7 @@ The architecture you propose must be implementable inside these constraints. **W
 - **Honest assessment when asked.** When the user questions a choice, give a brief recommendation. Propose better alternatives if they exist — a counter-proposal is welcome, an unrequested rewrite is not.
 - **Direct statements are directives.** When the user states a choice rather than asking about it, treat it as a decision; capture as an inline note in the design doc, don't re-litigate.
 - **Reversible vs. irreversible decisions.** Mark each decision in the design doc; spend more rigor on irreversible ones (data store, identity provider, multi-tenancy model, region pair).
-- **Documentation is a first-class deliverable** (per Pre-PR review item 6) — every architecture-affecting change updates `docs/architecture/` in the same iteration, not "later".
+- **Documentation is a first-class deliverable** (per Pre-PR review item 6) — every architecture-affecting change updates the project's architecture documentation in the same iteration, not "later". *Where* that is resolves from `documentation.platform` + `location` (see *Default conventions*), so on a wiki or Confluence project this means producing the content and naming the publish target — never dropping a file into `docs/` because it was the convenient path.
 
 ## Workflow
 
@@ -165,7 +165,7 @@ If the deliverable is missing **section 1, 3, 5, 7 (when cloud-hosted), 9, 10 or
 
 ## Default conventions
 
-- **One file per design.** Resolve the destination from the profile rather than assuming a path: `documentation.ai_documentation_dir` when the project separates AI-generated notes from hand-written docs, otherwise `documentation.location`; only when both are empty does `docs/architecture/` apply as the fallback. Within that, `<topic>/<topic>-design.md`, with the declared framework's sections as the H2 outline (arc42's twelve when it's arc42 or the profile is silent).
+- **One file per design.** Resolve the destination from the profile rather than assuming a path: `documentation.ai_documentation_dir` when the project separates AI-generated notes from hand-written docs (it is already a leaf directory — use it as-is), otherwise the **`architecture/` subtree under `documentation.location`**, which is the docs *root* rather than the architecture folder (`location: "docs/"` → `docs/architecture/`); only when both are empty does `docs/architecture/` apply as the fallback. Within that, `<topic>/<topic>-design.md`, with the declared framework's sections as the H2 outline (arc42's twelve when it's arc42 or the profile is silent).
 - **For multi-doc designs** (large systems): split into one file per section of the declared framework under the same resolved directory (arc42 example: `01-introduction.md`, `03-context.md`, `05-building-blocks.md`, …) and add an `index.md` linking them.
 - **No premature optimization.** If a constraint forces a complex pattern (CQRS, event sourcing, sharding), say what the constraint is. Otherwise, the simpler design wins.
 - **Match the team.** A design the team can't operate is not a good design — call out skill gaps explicitly.

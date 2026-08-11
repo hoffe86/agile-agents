@@ -22,6 +22,10 @@ If the decision is reversible, cheap, and obvious — skip the ADR; a code comme
 
 ## File location and naming
 
+**Check `solution-profile.yaml: documentation.platform` first.** When it is anything other than `in-repo` (Confluence, a wiki, SharePoint, a separate repo), `adr.location` is a URL rather than a path — it cannot be listed, created, or written to. Produce the ADR body and state where a human must publish it (`<platform> → <location>`), and take the next number from the records already published there. Never fall back to writing files into the repo because the URL wasn't usable.
+
+For an `in-repo` project:
+
 - Folder: `solution-profile.yaml: documentation.adr.location` when set; otherwise `docs/adr/` (create if absent). A project that keeps its decision records somewhere else has already said so — don't scatter a second set into the default path.
 - Filename: `<NNNN>-<short-kebab-case-title>.md` — e.g., `0007-use-cosmos-db-for-event-store.md`.
 - Number: zero-padded 4-digit sequential. Find the next number by listing the directory.

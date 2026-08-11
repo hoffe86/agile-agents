@@ -40,7 +40,7 @@ For Azure-targeted designs, lean on:
 
 ## 3. Deliverable structure
 
-Produce a markdown file at `<dir>/<topic>/<topic>-design.md` (create folders as needed). Resolve `<dir>` from the profile in this order: `solution-profile.yaml: documentation.ai_documentation_dir` when set (a project that keeps AI-generated notes apart from hand-written docs has already said so — don't override it), otherwise `documentation.location`, and only when both are empty does `docs/architecture/` apply as the fallback. **Check `documentation.platform` first:** when it is anything other than `in-repo`, the docs do not live in this workspace — emit the content in your hand-off with the publish target rather than writing a file into the repo.
+Produce a markdown file at `<dir>/<topic>/<topic>-design.md` (create folders as needed). Resolve `<dir>` from the profile in this order: `solution-profile.yaml: documentation.ai_documentation_dir` when set (a project that keeps AI-generated notes apart from hand-written docs has already said so — don't override it, and it is already a leaf directory), otherwise the **`architecture/` subtree under `documentation.location`** — that field is the docs *root*, not the architecture folder, so `location: "docs/"` resolves to `docs/architecture/` — and only when both are empty does `docs/architecture/` apply as the fallback. **Check `documentation.platform` first:** when it is anything other than `in-repo`, the docs do not live in this workspace — emit the content in your hand-off with the publish target rather than writing a file into the repo.
 
 The skeleton below is the **arc42-shaped default**; it applies when `documentation.framework` is `arc42` or empty. Where the profile declares another framework, map this content onto that framework's sections — the content requirements survive a change of table of contents. Use this skeleton — every section is required unless explicitly N/A:
 
@@ -171,14 +171,14 @@ If a pillar has an accepted trade-off (e.g., "we accept lower availability for l
 
 ## 5. Decision capture (ADRs are opt-in)
 
-By default, capture decisions **inline** in arc42 §9 as a short table (decision · chosen option · rationale · reversible?) and surface trade-offs via the `trade-off-reporting` skill.
+By default, capture decisions **inline** in the declared framework's decision section — arc42 §9 by default — as a short table (decision · chosen option · rationale · reversible?) and surface trade-offs via the `trade-off-reporting` skill.
 
 **Only delegate to the `architecture-decision-records` skill when the user explicitly asks** for an ADR / decision record / MADR. If you believe a decision is ADR-worthy (typically: choice of language/framework, data store, integration pattern sync vs. async vs. event-sourced, multi-tenancy model, identity provider, region/DR strategy, or anything irreversible / expensive to undo), **list it under "Suggested ADRs" in the hand-off** and let the user decide.
 
 ## 6. Diagram quality bar
 
-- Use **C4 model** (Context → Container → Component) for structural diagrams.
-- Use **Mermaid sequence diagrams** for flows.
+- Use **C4 model** (Context → Container → Component) for structural diagrams — the levels are a way of thinking about a system, independent of the tool you draw them in.
+- Author diagrams in the notation `documentation.diagram_convention` declares (`mermaid-c4` | `drawio` | `plantuml` | `lucidchart`); **Mermaid — `C4*` for structure, `sequenceDiagram` for flows — is the default when that field is empty.**
 - Every box has a name and a one-line responsibility.
 - Every arrow has a label (`HTTPS/JSON`, `gRPC`, `AMQP`, `webhook`, etc.).
 - Don't show implementation detail in a Context diagram or business actors in a Component diagram.
