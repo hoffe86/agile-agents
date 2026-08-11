@@ -116,7 +116,7 @@ You are granted documentation tooling on every turn — `context7/*` for library
 3. **Documentation tooling** — `context7` / `microsoft-docs` / the vendor's own MCP server.
 4. **`web`** — whatever the above don't cover.
 
-**When you can't look it up.** If no documentation tool is available, don't stall and don't report it as a broken server. State the assumption in your hand-off — *"assumed `<fact>`; unverified, no documentation tool available"* — so the next agent and the reviewers can challenge it. A labelled assumption is a known risk; an unlabelled one is a defect waiting to surface later.
+**When you can't look it up.** Don't stall, and don't report a bare "documentation tooling unavailable" — from inside a session, *not installed* and *not granted* look identical, and the fix differs. Name both causes and their fixes: the server may be absent from the user's `mcp-config.json` (install / register it), or absent from this agent's `tools:` frontmatter grant (add it there). Then carry on and state the assumption in your hand-off — *"assumed `<fact>`; unverified — `context7` is either not registered in `mcp-config.json` or not granted in my `tools:`"* — so the next agent and the reviewers can challenge the fact *and* someone can repair the tooling. A labelled assumption is a known risk; an unlabelled one is a defect waiting to surface later.
 
 **Cite what you checked** when a lookup shaped a non-trivial choice, the way you cite a profile field — source, and the version it applied to where that matters.
 

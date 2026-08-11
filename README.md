@@ -111,7 +111,7 @@ just means the tool isn't there.
 |---|---|---|
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
-| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots. Declared only by `testing`. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs). |
+| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 11 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
 | `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
 | `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
 
@@ -124,10 +124,17 @@ MCP servers above. On top of that:
 |---|---|
 | `edit` | `architect`, `coding`, `testing`, `infrastructure`, `backlog-manager` |
 | `agent` (delegation) | the above + `dev-lead`, `review` |
-| `browser` | `testing` (E2E), `backlog-manager` (tracker web UI) |
+| `browser` + `playwright/*` | all 11 — `testing` for E2E, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
 
 **Reviewers never get `edit`.** That's the defence-in-depth half of
 `reviewer-read-only-rules` — the contract is enforced in the prompt *and* by tool grant.
+
+Reviewers **do** get the browser, because verifying a claimed API contract beats assuming it,
+and a grant can't be split into "navigate but don't click". That half of the boundary is
+therefore prompt-enforced: `reviewer-read-only-rules` treats navigating and reading as reads,
+and refuses form submits, destructive clicks, console authentication, and
+`browser_run_code_unsafe` / `browser_evaluate` outright — the contract is about **effects, not
+file types**, so a click that deletes a cloud resource is a write however it was issued.
 
 ## How it works — the RPI pipeline
 
