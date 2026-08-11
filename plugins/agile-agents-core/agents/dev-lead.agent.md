@@ -404,7 +404,7 @@ If the gate fails: one corrective message; then stop.
 | 2nd fail | Same — second and final corrective retry. |
 | 3rd fail | **Halt the run.** Emit `run.abort` with reason `test_bar_unrecoverable`. Do not call reviewers. Use `ask_user` to surface the persistent failure and let the human decide. |
 
-A gate that fails twice earns two retries rather than the standard one, because the failure is deterministic (lint/type/test/deploy, not LLM judgement) — but never more. **Exception:** a deploy-verify failure attributed to quota, policy denial, or a missing role assignment halts immediately with no retry — no agent can resolve those, and retrying burns the envelope on a deterministic failure.
+This gate allows two corrective retries instead of the standard one, because the failure is deterministic (lint/type/test/deploy, not LLM judgement) — but never more. **Exception:** a deploy-verify failure attributed to quota, policy denial, or a missing role assignment halts immediately with no retry — no agent can resolve those, and retrying burns the envelope on a deterministic failure.
 
 ### Stage 9 — Review
 
