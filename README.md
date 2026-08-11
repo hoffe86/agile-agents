@@ -4,7 +4,11 @@ The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plu
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
 over 13 specialist agents (1 supervisor + 4 authors + 5 reviewers, plus a backlog-manager, a bootstrapper and a capability-scout) plus
-50 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
+56 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
+
+**Start here:** install `agile-agents-core`, then run **`bootstrapper`** — it profiles your repo,
+writes the operational contract every agent reads, and installs the companion plugins your stack
+needs. [Install →](#install)
 
 ## Install
 
@@ -13,24 +17,53 @@ copilot plugin marketplace add hoffe86/agile-agents
 copilot plugin install agile-agents-core@agile-agents-marketplace
 ```
 
-The harness is technology-neutral. Add the companion plugins your project actually uses:
+### Then run the bootstrapper — this is the first step
+
+```shell
+copilot --agent agile-agents-core:bootstrapper
+```
+
+…then tell it to set up the harness for the repo. (In an interactive session, selecting the
+`bootstrapper` agent and asking it to "set up the harness for this repo" does the same thing.)
+
+`bootstrapper` is the agent that configures the harness for your solution, and running it is how
+you start. It:
+
+1. **Reads your repo first**, then interviews you only for what no scan can tell it — lifecycle
+   stage, test discipline, compliance scope, where documentation actually lives.
+2. **Writes `.github/solution-profile.yaml`**, the operational contract every other agent reads.
+3. **Works out which companion plugins your declared stack needs** and installs them — after
+   showing you the list and asking. It never installs without an explicit yes.
+4. **Tells you what is still missing** — empty required fields, and any technology you declared
+   that no companion covers, so repo-convention fallback is something you expect rather than
+   discover mid-run.
+
+Everything downstream depends on that profile: which skills load, which gates fire, which tracker
+gets written to, what the cost envelope allows. `dev-lead` blocks at Stage 0 until its six
+required fields are populated, so bootstrapping first saves a stopped run later.
+
+Re-run it any time to repair or update the profile — it handles both.
+
+### Installing companions yourself
+
+`bootstrapper` derives these from your profile, so you rarely need to. To do it by hand:
 
 ```shell
 copilot plugin install agile-agents-dotnet@agile-agents-marketplace     # C# / .NET
 copilot plugin install agile-agents-python@agile-agents-marketplace     # Python
 copilot plugin install agile-agents-bicep@agile-agents-marketplace      # Bicep IaC
 copilot plugin install agile-agents-terraform@agile-agents-marketplace  # Terraform IaC
-copilot plugin install agile-agents-azure@agile-agents-marketplace     # Azure platform grounding
+copilot plugin install agile-agents-azure@agile-agents-marketplace      # Azure platform grounding
 copilot plugin install agile-agents-ado@agile-agents-marketplace        # Azure DevOps Boards
 copilot plugin install agile-agents-github@agile-agents-marketplace     # GitHub Issues
 ```
 
 Agents route on **skill availability**, not on a hardcoded stack — an uninstalled companion
-degrades to repo conventions rather than failing.
+degrades to repo conventions rather than failing. To see what your installed set covers and what
+it doesn't, ask **`capability-scout`** (`copilot --agent agile-agents-core:capability-scout`).
 
 The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skills/` (repo-scope +
-user-scope). Per-project config (`solution-profile.yaml`) is a
-one-file copy into your target repo's `.github/` (see [Solution profile](#solution-profile)).
+user-scope).
 
 ## What you get
 
@@ -113,7 +146,7 @@ just means the tool isn't there.
 |---|---|---|
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
-| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 11 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
+| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 13 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
 | `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
 | `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
 
@@ -124,12 +157,13 @@ MCP servers above. On top of that:
 
 | Extra | Agents |
 |---|---|
-| `edit` | `architect`, `coding`, `testing`, `infrastructure`, `backlog-manager` |
-| `agent` (delegation) | the above + `dev-lead`, `review` |
-| `browser` + `playwright/*` | all 11 — `testing` for E2E, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
+| `edit` | `architect`, `coding`, `testing`, `infrastructure`, `backlog-manager`, `bootstrapper` |
+| `agent` (delegation) | `architect`, `coding`, `testing`, `infrastructure`, `backlog-manager` + `dev-lead`, `review` |
+| `browser` + `playwright/*` | all 13 — `testing` for E2E, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
 
 **Reviewers never get `edit`.** That's the defence-in-depth half of
 `reviewer-read-only-rules` — the contract is enforced in the prompt *and* by tool grant.
+`capability-scout` doesn't get it either: it proposes adoptions, and a human makes them.
 
 Reviewers **do** get the browser, because verifying a claimed API contract beats assuming it,
 and a grant can't be split into "navigate but don't click". That half of the boundary is
@@ -148,11 +182,12 @@ records are authored **up-front by humans**; the pipeline conforms to them and n
 them — a missing decision is escalated, not invented. Projects without ADRs are supported.
 
 ```
-Intake → Research → Plan → Create tasks → ⛔ HUMAN PLAN APPROVAL ⛔ → Implement → Test-Bar Gate → Review → Done
+(bootstrap, once per solution) → Intake → Research → Plan → Create tasks → ⛔ HUMAN PLAN APPROVAL ⛔ → Implement → Test-Bar Gate → Review → Done
 ```
 
 | Phase | What happens | Agents | Hand-off block |
 |---|---|---|---|
+| **Bootstrap** *(once, before the first run)* | `bootstrapper` profiles the repo, writes `solution-profile.yaml`, and installs the companion plugins the stack needs — with your approval. Re-run to repair. `dev-lead` delegates to it if the profile is missing or incomplete. | `bootstrapper` | `BOOTSTRAP COMPLETE` |
 | **Intake** | `dev-lead` captures the Definition of Done, out-of-scope, the **parent story id** (when creating tasks), confirms the `solution-profile.yaml`, and mints the run id. The requirement can arrive as text, a tracker item, a requirements file, or a **planning-mode `plan.md`** — for the last, criteria are derived from the plan and confirmed with you once. | `dev-lead` | — |
 | **Research** | Read-only verification against the prepared concept + any accepted decision records: confirm the story is implementable, verify codebase / APIs / patterns, surface any decision gap. Lightweight (`dev-lead` reads) or delegated to `architect` when scope warrants a new boundary / dependency / trade-off. | `dev-lead`, `architect` | `ARCHITECTURE DESIGN COMPLETE` |
 | **Plan** | Decompose the story into meaningful, independently-implementable **tasks**, each with its own acceptance criteria + a short approach note. When a `plan.md` supplied the decomposition, it is **adopted and reconciled** — every step carried, merged, or dropped with a reason — never silently re-derived. | `dev-lead` | — |
@@ -258,8 +293,17 @@ the single machine-readable source for the repo's operational facts: identity, d
 platform + location + framework, backlog platform + URL, tech stack, infrastructure, CI/CD,
 compliance, SLOs, and AI/Copilot
 policy. Profile fields **override** an agent's defaults; safety / security defaults remain
-non-negotiable. Copy [`solution-profile.yaml`](solution-profile.yaml) into a target repo's
-`.github/` and fill in what applies.
+non-negotiable.
+
+**`bootstrapper` writes it for you** — that is the point of running it first. It discovers what
+the repo already states, asks only for the rest, and leaves a field empty rather than guessing,
+because a fabricated `test_discipline` or `location` misdirects every downstream agent silently.
+
+To fill it in by hand instead, copy the template from
+[`plugins/agile-agents-core/skills/solution-profile-interview/references/solution-profile.template.yaml`](plugins/agile-agents-core/skills/solution-profile-interview/references/solution-profile.template.yaml)
+into your repo's `.github/`. Six fields are required before `dev-lead` will start:
+`identity.project_name`, `identity.lifecycle_stage`, `documentation.location`,
+`backlog.platform`, `tech_stack.primary_languages`, `tech_stack.test_discipline`.
 
 ## Conventions
 
