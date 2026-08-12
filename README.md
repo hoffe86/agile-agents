@@ -180,9 +180,35 @@ concept (arc42, C4, or whatever `documentation.framework` declares) and any acce
 records are authored **up-front by humans**; the pipeline conforms to them and never writes
 them — a missing decision is escalated, not invented. Projects without ADRs are supported.
 
+```mermaid
+flowchart TD
+    B["bootstrapper<br/>profile + companion plugins"]
+    I["Intake<br/>DoD · acceptance criteria captured verbatim"]
+    R["Research<br/>verify against the prepared concept + decisions<br/>architect when scope warrants"]
+    P["Plan<br/>decompose into independently-implementable tasks"]
+    C["Create tasks<br/>backlog-manager → tracker"]
+    G{{"⛔ HUMAN PLAN APPROVAL"}}
+    STOP(["Stop — provisional tasks cleaned up"])
+    IMP["Implement<br/>coding · infrastructure<br/>one task at a time"]
+    T["Testing"]
+    TB{"Test-bar gate<br/>lint → typecheck → unit → smoke"}
+    RV{"Review<br/>5 lenses, in parallel"}
+    D(["Done<br/>every criterion mapped to a task + evidence"])
+
+    B -.->|once per solution| I
+    I --> R --> P --> C --> G
+    G -->|approve| IMP
+    G -->|cancel| STOP
+    IMP --> T --> TB
+    TB -->|"fail · max 2 retries"| IMP
+    TB -->|pass| RV
+    RV -->|"🔁 findings · one corrective round"| IMP
+    RV -->|"✅ approve"| D
 ```
-(bootstrap, once per solution) → Intake → Research → Plan → Create tasks → ⛔ HUMAN PLAN APPROVAL ⛔ → Implement → Test-Bar Gate → Review → Done
-```
+
+The two loops are the parts a straight line hides: the test bar returns to the author on failure
+(twice at most, then the run halts), and review gets exactly **one** corrective round before it
+stops and asks a human.
 
 | Phase | What happens | Agents | Hand-off block |
 |---|---|---|---|
