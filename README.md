@@ -180,31 +180,11 @@ concept (arc42, C4, or whatever `documentation.framework` declares) and any acce
 records are authored **up-front by humans**; the pipeline conforms to them and never writes
 them — a missing decision is escalated, not invented. Projects without ADRs are supported.
 
-```mermaid
-flowchart TD
-    B["bootstrapper<br/>profile + companion plugins"]
-    I["Intake<br/>DoD · acceptance criteria captured verbatim"]
-    R["Research<br/>verify against the prepared concept + decisions<br/>architect when scope warrants"]
-    P["Plan<br/>decompose into independently-implementable tasks"]
-    C["Create tasks<br/>backlog-manager → tracker"]
-    G{{"⛔ HUMAN PLAN APPROVAL"}}
-    STOP(["Stop — provisional tasks cleaned up"])
-    IMP["Implement<br/>coding · infrastructure<br/>one task at a time"]
-    T["Testing"]
-    TB{"Test-bar gate<br/>lint → typecheck → unit → smoke"}
-    RV{"Review<br/>5 lenses, in parallel"}
-    D(["Done<br/>every criterion mapped to a task + evidence"])
+<p align="center">
+  <img src="docs/assets/rpi-pipeline.png" alt="The RPI pipeline: bootstrap once per solution, then Intake → Research → Plan → Create tasks → human plan approval → Implement → Testing → test-bar gate → Review → Done. The test-bar gate returns failures to the author (max 2 retries), and Review returns findings for one corrective round." width="820">
+</p>
 
-    B -.->|once per solution| I
-    I --> R --> P --> C --> G
-    G -->|approve| IMP
-    G -->|cancel| STOP
-    IMP --> T --> TB
-    TB -->|"fail · max 2 retries"| IMP
-    TB -->|pass| RV
-    RV -->|"🔁 findings · one corrective round"| IMP
-    RV -->|"✅ approve"| D
-```
+<sub>Editable source: [`docs/assets/rpi-pipeline.drawio`](docs/assets/rpi-pipeline.drawio) — open with draw.io / diagrams.net and re-export after changing it.</sub>
 
 The two loops are the parts a straight line hides: the test bar returns to the author on failure
 (twice at most, then the run halts), and review gets exactly **one** corrective round before it

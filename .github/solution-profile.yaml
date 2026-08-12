@@ -47,7 +47,7 @@ documentation:
   adr:
     location: "docs/adr/"                # In-repo path (e.g. "docs/adr/") or external URL.
     format: "nygard"                  # madr | nygard | custom | none
-  diagram_convention: "mermaid-c4"  # mermaid-c4 | drawio | lucidchart | plantuml
+  diagram_convention: "drawio"      # mermaid-c4 | drawio | lucidchart | plantuml
   ai_documentation_dir: ""      # Optional. Where AI-generated design notes/diagrams land.
 
 # ─── backlog ─── REQUIRED: platform ───────────────────────────────────────────

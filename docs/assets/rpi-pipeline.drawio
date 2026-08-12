@@ -1,0 +1,162 @@
+<mxfile host="agile-agents" type="device">
+  <diagram name="RPI pipeline" id="rpi-pipeline">
+    <mxGraphModel dx="1040" dy="1520" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1040" pageHeight="1540" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="The RPI pipeline — Research → Plan → Implement → Review" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="40" y="24" width="960" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="dev-lead orchestrates; specialists deliver. One mandatory approval gate, two feedback loops." style="text;html=1;align=center;verticalAlign=middle;fontSize=13;fontColor=#57606a;" vertex="1" parent="1">
+          <mxGeometry x="40" y="62" width="960" height="24" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="band-research" value="RESEARCH" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#1f4e79;verticalAlign=middle;horizontal=0;" vertex="1" parent="1">
+          <mxGeometry x="50" y="356" width="120" height="104" as="geometry"/>
+        </mxCell>
+        <mxCell id="band-plan" value="PLAN" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#2d5016;verticalAlign=middle;horizontal=0;" vertex="1" parent="1">
+          <mxGeometry x="50" y="476" width="120" height="344" as="geometry"/>
+        </mxCell>
+        <mxCell id="band-implement" value="IMPLEMENT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#7f6000;verticalAlign=middle;horizontal=0;" vertex="1" parent="1">
+          <mxGeometry x="50" y="856" width="120" height="344" as="geometry"/>
+        </mxCell>
+        <mxCell id="band-review" value="REVIEW" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#4b2d5e;verticalAlign=middle;horizontal=0;" vertex="1" parent="1">
+          <mxGeometry x="50" y="1216" width="120" height="104" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-bootstrap" value="Bootstrap&#10;profile + companion plugins" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;dashed=1;dashPattern=8 8;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="110" width="300" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-intake" value="Intake&#10;Definition of Done · acceptance criteria verbatim" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#57606a;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="246" width="300" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-research" value="Research&#10;verify against the prepared concept + decisions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="366" width="300" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-plan" value="Plan&#10;decompose into independently-implementable tasks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="486" width="300" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-tasks" value="Create tasks&#10;one child work item per task, linked to the parent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="606" width="300" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-approval" value="HUMAN PLAN APPROVAL&#10;the only mandatory approval gate" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="210" y="722" width="340" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-stop" value="Stop&#10;provisional tasks cleaned up" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#ffebe9;strokeColor=#cf222e;strokeWidth=2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="620" y="726" width="180" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-implement" value="Implement&#10;one task at a time, in dependency order" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="866" width="300" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-testing" value="Testing&#10;cover every behaviour the change added" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="986" width="300" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-testbar" value="Test-bar gate&#10;lint → typecheck → unit → smoke (does it start?)" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="210" y="1102" width="340" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-review" value="Review&#10;five lenses in parallel, merged into one verdict" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="210" y="1222" width="340" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-done" value="Done&#10;every criterion mapped to a delivered task + evidence" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="1360" width="300" height="64" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="a-bootstrapper" value="bootstrapper" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaeef2;strokeColor=#8c959f;fontSize=12;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="120" width="180" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="a-architect" value="architect&#10;when scope warrants" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaeef2;strokeColor=#8c959f;fontSize=12;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="376" width="180" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="a-backlog" value="backlog-manager&#10;writes to the tracker" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaeef2;strokeColor=#8c959f;fontSize=12;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="616" width="180" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="a-coding" value="coding · infrastructure" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaeef2;strokeColor=#8c959f;fontSize=12;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="876" width="180" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="a-testing" value="testing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaeef2;strokeColor=#8c959f;fontSize=12;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="996" width="180" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="a-reviewers" value="review + security&#10;architecture · infrastructure · test" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaeef2;strokeColor=#8c959f;fontSize=12;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="1226" width="180" height="64" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e-boot-intake" value="once per solution" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#8c959f;dashed=1;dashPattern=8 8;fontSize=11;fontColor=#57606a;" edge="1" parent="1" source="n-bootstrap" target="n-intake">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-intake-research" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#24292f;" edge="1" parent="1" source="n-intake" target="n-research">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-research-plan" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#24292f;" edge="1" parent="1" source="n-research" target="n-plan">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-plan-tasks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#24292f;" edge="1" parent="1" source="n-plan" target="n-tasks">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-tasks-approval" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#24292f;" edge="1" parent="1" source="n-tasks" target="n-approval">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-approval-stop" value="cancel" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#cf222e;dashed=1;fontSize=11;fontColor=#cf222e;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="n-approval" target="n-stop">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-approval-implement" value="approve" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=3;strokeColor=#2da44e;fontSize=12;fontStyle=1;fontColor=#1a7f37;" edge="1" parent="1" source="n-approval" target="n-implement">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-implement-testing" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#24292f;" edge="1" parent="1" source="n-implement" target="n-testing">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-testing-testbar" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#24292f;" edge="1" parent="1" source="n-testing" target="n-testbar">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-testbar-review" value="pass" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#2da44e;fontSize=12;fontColor=#1a7f37;" edge="1" parent="1" source="n-testbar" target="n-review">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-review-done" value="approve" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=3;strokeColor=#2da44e;fontSize=12;fontStyle=1;fontColor=#1a7f37;" edge="1" parent="1" source="n-review" target="n-done">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e-testbar-loop" value="fail — back to the author&#10;max 2 retries, then halt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#bc4c00;dashed=1;dashPattern=8 8;fontSize=11;fontColor=#bc4c00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="n-testbar" target="n-implement">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="1138"/>
+              <mxPoint x="880" y="840"/>
+              <mxPoint x="440" y="840"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-review-loop" value="findings — one corrective round" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#8250df;dashed=1;dashPattern=8 8;fontSize=11;fontColor=#8250df;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.88;entryY=0;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="n-review" target="n-implement">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="960" y="1258"/>
+              <mxPoint x="960" y="816"/>
+              <mxPoint x="494" y="816"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e-d-bootstrapper" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#8c959f;dashed=1;endArrow=none;" edge="1" parent="1" source="n-bootstrap" target="a-bootstrapper">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-d-architect" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#8c959f;dashed=1;endArrow=none;" edge="1" parent="1" source="n-research" target="a-architect">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-d-backlog" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#8c959f;dashed=1;endArrow=none;" edge="1" parent="1" source="n-tasks" target="a-backlog">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-d-coding" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#8c959f;dashed=1;endArrow=none;" edge="1" parent="1" source="n-implement" target="a-coding">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-d-testing" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#8c959f;dashed=1;endArrow=none;" edge="1" parent="1" source="n-testing" target="a-testing">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-d-reviewers" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=1;strokeColor=#8c959f;dashed=1;endArrow=none;" edge="1" parent="1" source="n-review" target="a-reviewers">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="legend" value="&lt;b&gt;Reading this diagram&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;solid&lt;/b&gt; — the main path&lt;br&gt;&lt;b&gt;dashed grey&lt;/b&gt; — which agent does the work&lt;br&gt;&lt;b&gt;dashed orange / purple&lt;/b&gt; — feedback loops&lt;br&gt;&lt;b&gt;hexagon&lt;/b&gt; — a gate that can send work back&lt;br&gt;&lt;br&gt;After the approval gate the run is &lt;b&gt;autonomous&lt;/b&gt;: it&lt;br&gt;stops only on a defined stop condition." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff9cc;strokeColor=#d4a72c;strokeWidth=2;align=left;verticalAlign=top;fontSize=12;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="620" y="1350" width="380" height="164" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
