@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-08-11.
+> Generated from `solution-profile.yaml` on 2026-08-12.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
 This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
@@ -39,6 +39,7 @@ completion — those block names are canonical and parsed by
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
 - `REVIEW COMPLETE` (review — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
+- `BOOTSTRAP COMPLETE` (bootstrapper)
 
 Agents branch, commit and push on their own — on a feature branch, never the default one.
 **Opening a pull request needs the user's explicit approval**, and **completing, merging or
@@ -70,6 +71,20 @@ Create, improve, review, and maintain backlog work items (Epics, Features, Produ
 - **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, edit, execute, github/*, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
+### `bootstrapper`
+
+Sets up and configures the harness for a solution: runs the profile interview, writes `.github/solution-profile.yaml`, works out which companion plugins the declared stack actually needs, and installs them with the user's approval — then verifies the result and names what is still missing. Owns the one-off bootstrap and the repair path, so the delivery pipeline doesn't carry bootstrap logic it uses once per solution. USE FOR: "set up the harness here", "configure the agents for this repo", "bootstrap the solution profile", "which plugins do I need", "repair / update the profile", a first run in a repo that has no `solution-profile.yaml`, or a profile that is missing required fields. DO NOT USE FOR: delivering a requirement end-to-end (use dev-lead), writing code, tests or IaC (use coding / testing / infrastructure), designing a system (use architect), reviewing a change (use review), maintaining *this* harness repo's own vendored skills (that is the repo-local `capability-scout`). Never installs anything — plugin or otherwise — without explicit approval, and never invents a profile value to get past a question.
+
+- **Tools**: browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
+- **Sub-agents**: _none_
+
+### `capability-scout`
+
+Dependency manager for the harness's own artifacts. Works **demand-first**: derives what each phase of the pipeline needs for the declared stack, compares that against the skills actually installed and the routes agents actually declare, and reports the **gaps** — then looks for something to fill a *named* gap. In a consumer project it answers "which plugins does this stack need, and what will still be uncovered"; in the marketplace repo it also searches the curated sources, triages `scripts/check-vendored-drift.ps1` output, and proposes where an adopted artifact belongs. Presents findings and stops — a human approves every adoption. USE FOR: "what capability are we missing", "scout for .NET / Bicep / testing", "do we already have a skill for X", "which plugins should this project install", "audit our vendored skills", "triage the drift report", periodic coverage review. DO NOT USE FOR: running the profile interview or installing plugins (that is `bootstrapper` — it owns the write and the approval gate), delivering a requirement (use `dev-lead`), or writing the skill a gap calls for (a human decides; then a maintainer or `coding` writes it). Never adopts, installs, or edits an artifact itself.
+
+- **Tools**: browser, context7/*, execute, github/*, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
+- **Sub-agents**: _none_
+
 ### `coding`
 
 Implements features, fixes bugs, and refactors application code in any language the repo uses, following that ecosystem's current best practices. Deep skill support for C#/.NET (default .NET 10) and Python; other languages are handled from the repo's own conventions and the declared `tech_stack` profile. USE FOR: implement a feature, fix a bug, refactor code, add a class / module / function, integrate a library, migrate code between framework versions, apply a design pattern. DO NOT USE FOR: architecture / ADR / design decisions before code exists (use architect), Infrastructure-as-Code — Bicep / Terraform / Helm / Dockerfile / pipelines (use infrastructure), writing or fixing tests (use testing), reviewing or auditing code (use review), end-to-end autonomous delivery (use dev-lead if present). Hands off to testing when implementation is complete.
@@ -82,7 +97,7 @@ Implements features, fixes bugs, and refactors application code in any language 
 Autonomous development lead. Takes a single, already-prepared requirement and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the requirement into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent work item in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this requirement autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + testing + review, autonomous / unattended runs against a requirements file or backlog item, executing a plan you already produced in planning mode (hand it the `plan.md` path — it adopts that decomposition instead of re-deriving one), when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving one retry, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / testing / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
 
 - **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
-- **Sub-agents**: architect, backlog-manager, coding, infrastructure, review, testing
+- **Sub-agents**: architect, backlog-manager, bootstrapper, coding, infrastructure, review, testing
 
 ### `infrastructure-review`
 
@@ -138,12 +153,16 @@ natural-language workflow.
 - **ado-work-items** (`agile-agents-ado`) — Azure DevOps Boards mechanics for reading and writing work items — MCP tool entry points, field mapping per work-item type (Epic / Feature / PBI / Issue / Task), markdown-vs-HTML formatting rules, ...
 - **architecture-decision-records** (`agile-agents-core`) — Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format.
 - **architecture-design** (`agile-agents-core`) — Author or update a software/solution architecture design document.
+- **artifact-coverage** (`agile-agents-core`) — Work out which capabilities the agent harness needs for a given stack, which installed skills cover them, and where the gaps are — then judge whether a candidate artifact is worth adopting and whic...
 - **aspire** (`agile-agents-dotnet`) — Aspire skill covering the Aspire CLI, AppHost orchestration, service discovery, integrations, MCP server, VS Code extension, Dev Containers, GitHub Codespaces, templates, dashboard, and deployment.
+- **azure-deployment-preflight** (`agile-agents-bicep`) — Performs comprehensive preflight validation of Bicep deployments to Azure, including template syntax validation, what-if analysis, and permission checks.
 - **azure-platform-grounding** (`agile-agents-azure`) — Azure grounding for authoring and reviewing — Cloud Adoption Framework (CAF) resource naming abbreviations and required tags, Azure Verified Module (AVM) selection and pinning, secure-by-default re...
 - **backlog-item-standards** (`agile-agents-core`) — Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definitio...
 - **bicep-implementation** (`agile-agents-bicep`) — Implement Azure infrastructure using Bicep with Azure Verified Modules (AVM) wherever possible, following Microsoft's published Bicep best practices and Well-Architected Framework.
 - **cicd-pipeline-implementation** (`agile-agents-core`) — Implement CI/CD pipelines for infrastructure and application code using GitHub Actions or Azure Pipelines (YAML).
+- **cloud-native-patterns** (`agile-agents-core`) — Canonical reference for cloud design patterns, resilience defaults, 12-Factor cloud-native readiness, observability, and HTTP/gRPC API hygiene used by the authoring and review agents.
 - **code-localisation** (`agile-agents-core`) — Locate the small set of code files relevant to a task in a large repository.
+- **code-review** (`agile-agents-core`) — Perform comprehensive code reviews across architecture, clean code, security, and test quality dimensions.
 - **code-review-checklist** (`agile-agents-core`) — Perform a high-signal code review of a diff or set of changed files focused on correctness, design, readability, test quality, and documentation.
 - **codeql** (`agile-agents-core`) — Comprehensive guide for setting up and configuring CodeQL code scanning via GitHub Actions workflows and the CodeQL CLI.
 - **conventional-commit** (`agile-agents-core`) — Prompt and workflow for generating conventional commit messages using a structured XML format.
@@ -153,6 +172,7 @@ natural-language workflow.
 - **deploy-verify** (`agile-agents-core`) — Opt-in deployed verification — push the feature branch, let the project's own CI/CD pipeline deploy pipeline + IaC + application to the first non-production environment, and report whether it actua...
 - **dev-lead-templates** (`agile-agents-core`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 4), the conditional design-approval gate prompt (Stage 5), and the final Done/Stop report (Stage 10).
 - **dotnet-design-pattern-review** (`agile-agents-dotnet`) — Review the C#/.NET code for design pattern implementation and suggest improvements.
+- **dotnet-startup-discovery** (`agile-agents-dotnet`) — Work out how to start a .NET application and which URL proves it came up — Aspire AppHost, Azure Functions, ASP.NET Core web projects, console/worker services — by reading what the project already ...
 - **e2e-testing** (`agile-agents-core`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
 - **editorconfig** (`agile-agents-core`) — Generates a comprehensive and best-practice-oriented .editorconfig file based on project analysis and user preferences.
 - **ef-core** (`agile-agents-dotnet`) — Get best practices for Entity Framework Core
@@ -163,10 +183,12 @@ natural-language workflow.
 - **iac-best-practices** (`agile-agents-core`) — Cross-cutting Infrastructure-as-Code best practices that apply regardless of tool (Bicep, Terraform, Helm, Kustomize, ARM, Pulumi) or cloud.
 - **import-infrastructure-as-code** (`agile-agents-terraform`) — Import existing Azure resources into Terraform using Azure CLI discovery and Azure Verified Modules (AVM).
 - **multi-stage-dockerfile** (`agile-agents-core`) — Create optimized multi-stage Dockerfiles for any language or framework
+- **playwright-generate-test** (`agile-agents-core`) — Generate a Playwright test based on a scenario using Playwright MCP
 - **polyglot-test-agent** (`agile-agents-core`) — Generates comprehensive, workable unit tests for any programming language using a multi-agent pipeline.
 - **pr-description** (`agile-agents-core`) — Generate a high-signal pull-request description from a diff and the run's hand-off context.
 - **pytest-coverage** (`agile-agents-python`) — Run pytest tests with coverage, discover lines missing coverage, and increase coverage to 100%.
 - **python-implementation** (`agile-agents-python`) — Implement Python features end-to-end using current best practices (type hints, src layout, ruff-clean, modern stdlib, async where appropriate).
+- **python-startup-discovery** (`agile-agents-python`) — Work out how to start a Python application and which URL proves it came up — console scripts, FastAPI/Starlette, Flask, Django, `python -m <package>` — by reading what the project already declares ...
 - **python-testing** (`agile-agents-python`) — Add or extend tests for Python code using pytest (the de-facto standard), then run them and chase coverage.
 - **read-repo-context** (`agile-agents-core`) — Canonical preamble every coding-suite agent loads at the start of a turn.
 - **refactor** (`agile-agents-core`) — Surgical code refactoring to improve maintainability without changing behavior.
@@ -178,8 +200,9 @@ natural-language workflow.
 - **solution-profile-interview** (`agile-agents-core`) — Bootstrap or repair `.github/solution-profile.yaml` by discovering what the repo already tells you and interviewing the human only for what it can't.
 - **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides.
 - **terraform-azurerm-set-diff-analyzer** (`agile-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
-- **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and an opt-in local smoke check (does the app come up?) after `coding`/`testing` finish and before the reviewer fan-out.
+- **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after `coding`/`testing` finish and before the reviewer fan-out.
 - **threat-model-analyst** (`agile-agents-core`) — Full STRIDE-A threat model analysis and incremental update skill for repositories and systems.
+- **trade-off-reporting** (`agile-agents-core`) — Standard format and rules for surfacing trade-offs an agent made while designing, coding, provisioning infrastructure, or writing tests.
 - **update-avm-modules-in-bicep** (`agile-agents-bicep`) — Update Azure Verified Modules (AVM) to latest versions in Bicep files.
 - **webapp-testing** (`agile-agents-core`) — Toolkit for interacting with and testing local web applications using Playwright.
 

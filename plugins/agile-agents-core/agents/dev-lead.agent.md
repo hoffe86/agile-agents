@@ -31,7 +31,7 @@ description: >-
   only (use infrastructure). Never silently expands scope — if the
   requirement is ambiguous, asks once up-front and stops.
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*, browser]
-agents: ["architect", "backlog-manager", "coding", "testing", "infrastructure", "review"]
+agents: ["architect", "backlog-manager", "coding", "testing", "infrastructure", "review", "bootstrapper"]
 model_tier: light  # supervisor is a light-tier orchestrator — high call volume, low reasoning load; heavy reasoning is delegated to specialists
 argument-hint: "Describe the requirement to deliver end-to-end (or point at a backlog item id, or the path to a planning-mode plan.md)"
 ---
@@ -165,16 +165,24 @@ Each stage has an entry condition, a delegated agent, and an exit gate. You neve
 
 **Step 1 — Validate the operational profile (blocking).** Do this *first*, before the intake
 questions below and before any delegation — those questions themselves read profile fields.
-Load the **`solution-profile-interview`** skill: it discovers what the repo already tells you,
-asks the human only for what it can't, writes `.github/solution-profile.yaml`, and verifies the
-six required fields (`identity.project_name`, `identity.lifecycle_stage`,
-`documentation.location`, `backlog.platform`, `tech_stack.primary_languages`,
-`tech_stack.test_discipline`).
 
-**You may not enter Stage 1 until all six are populated.** If any is still empty after the
-interview, fire **stop condition #12**. Never cold-interrogate the user for something the repo
-already tells you, and never invent a value to get past the check — a fabricated
-`test_discipline` or `location` silently misdirects every downstream specialist.
+**When the profile is missing, or any required field is empty, delegate to `bootstrapper`.**
+It owns the bootstrap and repair path: it runs the interview, writes
+`.github/solution-profile.yaml`, derives the companion plugins the declared stack needs, and
+installs them with the user's approval. Expect its `BOOTSTRAP COMPLETE` block, and read
+`Ready for delivery` — `no` means you do not enter Stage 1. Setup is a one-off per solution and
+carries tools you deliberately lack (`edit`, installs), which is why it is a delegation rather
+than something you do here.
+
+When the profile already validates, load the **`solution-profile-interview`** skill yourself to
+confirm the six required fields (`identity.project_name`, `identity.lifecycle_stage`,
+`documentation.location`, `backlog.platform`, `tech_stack.primary_languages`,
+`tech_stack.test_discipline`) and carry on — a valid profile needs no interview.
+
+**You may not enter Stage 1 until all six are populated.** If any is still empty after
+`bootstrapper` has run, fire **stop condition #12**. Never cold-interrogate the user for
+something the repo already tells you, and never invent a value to get past the check — a
+fabricated `test_discipline` or `location` silently misdirects every downstream specialist.
 
 **Step 2 — Read the requirement.** It arrives in one of three shapes, and the shape changes
 what Intake owes you:
@@ -397,7 +405,7 @@ If the gate fails: one corrective message; then stop.
 
 **Entry condition:** the `TESTS COMPLETE` block from Stage 7 has been received and parsed — or Stage 7 was skipped as IaC-only. **A Stage 7 skip does not by itself skip the test bar.** Skip 8a only when the diff holds nothing the bar can act on: declarative definitions (`*.bicep`, `*.tf`, k8s / CI YAML, `Dockerfile`) whose IaC tests `infrastructure` already ran. When the infrastructure is expressed in a general-purpose language — a Pulumi program in TypeScript, Python, Go or C#, or any CDK-style program — **run 8a**: lint and type-check are exactly the gates that source needs, and IaC tests do not provide them. Deploy-verify below applies to IaC-only changes either way.
 
-**8a — Test bar.** Invoke `skills/test-bar-gate/scripts/run-gate.sh` (or `.ps1` on Windows). The skill auto-detects the stack from `solution-profile.yaml: tech_stack.primary_languages` (with `quality_gates.test_bar.commands` as override) and runs **lint → typecheck → unit-test → smoke**, fail-fast on the first non-zero exit. The smoke slot (start the app, poll a health URL) is skipped unless `testing.smoke.command` is set. For unsupported stacks the gate emits `outcome=skipped` and passes through with a warning.
+**8a — Test bar.** Invoke `skills/test-bar-gate/scripts/run-gate.sh` (or `.ps1` on Windows). The skill auto-detects the stack from `solution-profile.yaml: tech_stack.primary_languages` (with `quality_gates.test_bar.commands` as override) and runs **lint → typecheck → unit-test → smoke**, fail-fast on the first non-zero exit. **The smoke slot starts the application and confirms it answers** — for a runnable application it runs whether or not `testing.smoke.command` is configured, deriving the entry point via whichever ecosystem startup-discovery skill the project installed. Building is not evidence that the thing boots: a bad DI registration, a missing connection string or an unresolvable startup dependency passes lint, typecheck and unit tests and fails the moment anyone runs it. A skip is reported with its reason — `not_applicable` (nothing to start) or `undetermined` (couldn't work out how) — never silently. For unsupported stacks the gate emits `outcome=skipped` and passes through with a warning.
 
 **8b — Deploy-verify (opt-in).** Only when 8a passed **and** `infrastructure.deploy_verify` is `dev`. Load `skills/deploy-verify/SKILL.md`: push the feature branch, let the project's own pipeline deploy to `environment_chain[0]`, then assert the pipeline succeeded and a re-plan comes back empty. Default is `off` → skip silently; any other unmet precondition → skip with a stated reason. **Never production.** This gate spends real cloud time and money, so it runs last and only when explicitly enabled.
 
@@ -420,7 +428,7 @@ This gate allows two corrective retries instead of the standard one, because the
 ### Stage 9 — Review
 
 **Delegate to:** `review` (which auto-fans-out to security / test / architecture / infrastructure specialists as warranted).
-**Input:** the diff (`git diff <base>...HEAD`) and the original requirement.
+**Input:** the diff (`git diff <base>...HEAD`) and the original requirement, plus the **Stage 8 gate result** — which checks ran, and whether the application actually started (or why that was `not_applicable` / `undetermined`). Reviewers judge a change differently when they know the host boots than when nobody established it, and a smoke slot that came back `undetermined` is a gap a reviewer should see rather than assume away.
 **Expected output:** the merged review report with a single verdict (✅ Approve / 🔁 Request changes / ❌ Block).
 
 **Docs-only carve-out:** if `git diff --name-only <base>...HEAD` returns **only** files matching `*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, or `.editorconfig` (i.e. no code, no config, no IaC, no workflow, no schema), `review` may skip the full `security-review` fan-out — but secret scanning still runs unconditionally on the diff. The skip and its justification must appear in the merged report. Any non-docs file in the diff disables the carve-out.
@@ -561,7 +569,7 @@ Use the SQL `todos` table to persist this — store key handoff facts in the tod
 - **Then stop and ask the human.** Use `ask_user` with a consolidated question. Stopping mid-autonomous-run is correct behaviour, not failure — see the autonomy contract's stop conditions.
 - **Never escalate by silently changing the plan.** If you need to add a stage you skipped or change the approved plan, stop and re-seek approval — never "just do it" because the run is autonomous.
 - **Resume after the human answers:** continue from the blocked stage; do not restart the pipeline.
-- **Malformed or missing hand-off block** — if a delegated specialist returns no recognised hand-off block (`IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `REVIEW COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `INFRASTRUCTURE COMPLETE`, `TASKS PLANNED`), or one missing required fields, or fields that cannot be parsed: treat it as a gate failure. Send **one** corrective message asking specifically for the missing / malformed fields. If the second response is also malformed, fire **stop condition #8** and ask the human — never infer the missing fields yourself.
+- **Malformed or missing hand-off block** — if a delegated specialist returns no recognised hand-off block (`IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `REVIEW COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `INFRASTRUCTURE COMPLETE`, `TASKS PLANNED`, `BOOTSTRAP COMPLETE`), or one missing required fields, or fields that cannot be parsed: treat it as a gate failure. Send **one** corrective message asking specifically for the missing / malformed fields. If the second response is also malformed, fire **stop condition #8** and ask the human — never infer the missing fields yourself.
 
 ## Scope control (hard rule — never silently expand)
 

@@ -27,3 +27,13 @@
 # Marking it collapses the diff by default on GitHub and keeps review attention on the
 # agent/skill frontmatter that actually drives it.
 AGENTS.md linguist-generated=true
+
+# Diagrams. The .drawio source is XML — keep it text so it stays diffable and reviewable.
+# The rendered PNG is binary; `text=auto` would detect that anyway, but saying so explicitly
+# means a future eol rule can never corrupt it.
+*.drawio text eol=lf
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary

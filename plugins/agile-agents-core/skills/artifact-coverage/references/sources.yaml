@@ -1,0 +1,122 @@
+# Curated sources for harness artifacts
+#
+# The trusted upstreams a coverage run searches once it has a *named* gap, and the ones
+# `scripts/check-vendored-drift.ps1` re-syncs against in the marketplace repo. Curation IS the
+# supply-chain control: prompts in this suite are runtime behaviour, so an artifact from an
+# unlisted source is not "probably fine" — it is unreviewed code. Adding a source is a deliberate
+# act; record why it earns trust.
+#
+# Ships with `agile-agents-core` so it is available wherever the plugin is installed. Nothing here
+# is fetched at run time by a delivery agent: a coverage run reads it, proposes, and stops — a
+# human adopts. Changing that would make the same profile produce different behaviour over time,
+# which is an architecture decision for an ADR, not a quiet feature.
+
+sources:
+  - id: awesome-copilot
+    name: GitHub Awesome Copilot
+    repo: github/awesome-copilot
+    url: https://github.com/github/awesome-copilot
+    trust: >-
+      Maintained by GitHub under the github/ org, MIT-licensed, high review volume.
+      The origin of every skill currently listed in plugins/VENDORED.md.
+    artifacts:
+      skills: skills/                 # <name>/SKILL.md — the only type we can vendor directly
+      agents: agents/                 # *.md — usable, but ours are hand-written
+      instructions: instructions/     # NOT vendorable: the plugin schema has no `instructions`
+      prompts: prompts/               #   key, so these would ship as inert files
+    raw_pattern: https://raw.githubusercontent.com/github/awesome-copilot/main/skills/{name}/SKILL.md
+    notes: >-
+      Ships its own `awesome-copilot` discovery plugin (3 suggest-* skills + a Docker MCP
+      server). We deliberately do not use it: our `github/*` MCP covers the same search without
+      adding Docker as a prerequisite, and its suggestions apply upstream's scope rules rather
+      than ours.
+
+  - id: anthropics-skills
+    name: Anthropic Agent Skills
+    repo: anthropics/skills
+    url: https://github.com/anthropics/skills
+    trust: >-
+      Anthropic-maintained, actively updated, and the home of the Agent Skills spec itself.
+      High provenance — but see the licence caveat below, which is per-skill rather than
+      repo-wide and is the reason this source needs more care than the others.
+    artifacts:
+      skills: skills/
+      spec: spec/                     # the Agent Skills specification — a source of *capability*
+                                      #   facts, like the plugin schema. Check it when a question
+                                      #   is "can a skill even do X".
+      template: template/
+    raw_pattern: https://raw.githubusercontent.com/anthropics/skills/main/skills/{name}/SKILL.md
+    licence_caveat: >-
+      NOT uniformly open source. The README states only that "many skills in this repo are open
+      source (Apache 2.0)", and explicitly carves out `docx`, `pdf`, `pptx` and `xlsx` as
+      "source-available, not open source". Those four must NOT be vendored into this
+      MIT-licensed marketplace. Check the licence of any individual skill before copying it —
+      repo-level assumptions do not hold here.
+    notes: >-
+      Expect a low hit rate for this suite's scope: the catalogue leans toward document
+      generation, design and content skills (canvas-design, brand-guidelines, slack-gif-creator,
+      theme-factory) rather than Azure / .NET / Python / IaC delivery. The plausible finds are
+      the meta-skills — `skill-creator`, `mcp-builder` — which help maintainers author artifacts
+      rather than help agents deliver software.
+      `webapp-testing` exists here *and* in awesome-copilot, and we vendor the awesome-copilot
+      copy; treat them as potentially divergent forks of a common origin rather than the same
+      file, and do not re-vendor from the other source without diffing first.
+
+  - id: hve-core
+    name: Microsoft HVE Core
+    repo: microsoft/hve-core
+    url: https://github.com/microsoft/hve-core
+    trust: >-
+      Microsoft-maintained. Already cited in .github/copilot-instructions.md as the precedent
+      for nested agent folders and for scoping coding-standards skills.
+    artifacts:
+      skills: skills/
+      agents: agents/
+    notes: >-
+      Structurally closest comparator to this suite — check it for topology and manifest
+      patterns, not only for individual skills.
+
+  - id: superpowers-skills
+    name: Obra Superpowers Skills
+    repo: obra/superpowers-skills
+    url: https://github.com/obra/superpowers-skills
+    trust: >-
+      Community, not vendor-backed — review content more carefully before vendoring.
+      Cited in .github/copilot-instructions.md as the precedent for the `languages:` field
+      that our `applies_to` mirrors.
+    artifacts:
+      skills: skills/
+    notes: Strongest for skill-format conventions; weigh licence before copying anything.
+
+  - id: agent-plugins-schema
+    name: Agent Plugins schema
+    url: https://agent-plugins.org/schemas/1.0.0/plugin.schema.json
+    trust: The published plugin manifest contract both this marketplace and upstream target.
+    artifacts:
+      schema: plugin.schema.json
+    notes: >-
+      Not a source of skills — a source of *capability* facts. Checking it is how we
+      established that plugins cannot ship instructions, which decided a vendoring question.
+      Re-check on any schema version bump.
+
+# Sources considered and rejected — recorded so they are not re-proposed.
+rejected:
+  - id: skillshub-space
+    name: Copilot Skills Hub
+    url: https://skillshub.space/
+    reason: >-
+      A browsable index, not an independent source. Its listings are awesome-copilot's skill
+      descriptions verbatim, in the same alphabetical order, served from GitHub Pages
+      (`Server: GitHub.com`), with no /about page and no identifiable maintainer or provenance
+      statement. Adding it would supply no artifact we cannot already reach at the origin, while
+      inserting a trust hop: we would be reading a mirror instead of the upstream we already
+      index. Useful as a human browsing UI; not a source to vendor from.
+    revisit_if: >-
+      It names a maintainer and states its provenance, AND it aggregates sources we do not
+      already index — a mirror of awesome-copilot stays redundant however trustworthy it becomes.
+      Verify by sampling entries against the upstream files rather than by reputation.
+
+  - id: arbitrary-gists
+    reason: >-
+      No review, no provenance, no re-sync path. Prompts are runtime behaviour here; an
+      unreviewable source is an unreviewable behaviour change.

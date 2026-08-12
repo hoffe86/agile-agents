@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Marketplace for Agile Agents — the Agentic Agile Harness.",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -14,7 +14,7 @@
       "name": "agile-agents-core",
       "source": "agile-agents-core",
       "description": "Agentic Agile Harness for GitHub Copilot CLI — an RPI (Research, Plan, Implement, Review) pipeline of 11 specialist agents and a shared skill library. Language, IaC, and tracker specifics ship as companion plugins.",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "category": "development",
       "keywords": [
         "agents",
@@ -30,7 +30,7 @@
       "name": "agile-agents-dotnet",
       "source": "agile-agents-dotnet",
       "description": ".NET / C# implementation and testing skills for the Agentic Agile Harness — modern C#, xUnit/NUnit/MSTest/TUnit, EF Core, Aspire, and design-pattern review.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "category": "development",
       "keywords": [
         "dotnet",
@@ -45,7 +45,7 @@
       "name": "agile-agents-python",
       "source": "agile-agents-python",
       "description": "Python implementation and testing skills for the Agentic Agile Harness — type-hinted src layout, pytest, coverage, and Ruff.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "category": "development",
       "keywords": [
         "python",
@@ -59,7 +59,7 @@
       "name": "agile-agents-bicep",
       "source": "agile-agents-bicep",
       "description": "Bicep Infrastructure-as-Code skills for the Agentic Agile Harness — Azure Verified Modules, AVM version updates, and Well-Architected alignment.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "category": "development",
       "keywords": [
         "bicep",

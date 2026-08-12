@@ -93,6 +93,7 @@ Promote topology / lock-in / backend-choice decisions as trade-offs and **decisi
 | `Chart.yaml`, `kustomization.yaml`, k8s manifests | **`helm-kustomize-implementation`** |
 | `.github/workflows/*.yml`, `azure-pipelines.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, "set up CI" | **`cicd-pipeline-implementation`** |
 | Migrating between IaC formats | **`import-infrastructure-as-code`** |
+| Validating a deployment before it runs — template syntax, what-if, permissions | **`azure-deployment-preflight`** (Bicep on Azure) |
 
 **If the matching skill isn't installed**, work from the repo's existing IaC conventions and the tool's own documentation, and say so in your hand-off — `iac-best-practices` and every hard rule above still apply.
 

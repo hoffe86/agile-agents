@@ -51,7 +51,7 @@ the tooling into an agent.
 The suite is consumed **as a Copilot CLI plugin** — `copilot plugin marketplace add
 hoffe86/agile-agents` then `copilot plugin install agile-agents-core@agile-agents-marketplace`, plus whichever
 `agile-agents-<technology>` companion plugins the project needs. The CLI loads `agents/`,
-`skills/`, and `user/skills/` directly from each plugin (see
+and `skills/` directly from each plugin (see
 `plugins/<name>/.github/plugin/plugin.json`). Per-project config
 (`solution-profile.yaml`) is copied into the target repo's `.github/`.
 
@@ -72,12 +72,12 @@ agent/                               Marketplace root
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
 │   ├── agile-agents-core/           The autonomous-coding agent harness
 │   │   ├── .github/plugin/plugin.json   Plugin manifest (name: agile-agents-core)
-│   │   ├── agents/                  11 *.agent.md (1 supervisor + 4 authors
-│   │   │                            + 5 reviewers + backlog-manager)
-│   │   ├── skills/                  31 technology-neutral repo-scope skills, incl.
+│   │   ├── agents/                  13 *.agent.md (1 supervisor + 4 authors
+│   │   │                            + 5 reviewers + backlog-manager + bootstrapper
+│   │   │                            + capability-scout)
+│   │   ├── skills/                  36 repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
-│   │   └── user/skills/             3 user-scope skills (bundled into the plugin)
 │   ├── agile-agents-dotnet/         5 skills — C# / .NET
 │   ├── agile-agents-python/         4 skills — Python
 │   ├── agile-agents-bicep/          2 skills — Bicep IaC
@@ -179,6 +179,7 @@ Renaming any silently breaks the pipeline:
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
 - `REVIEW COMPLETE` (review — the specialist reviewers report into it, they do not emit it)
 - `TASKS PLANNED` (backlog-manager — the Plan-phase task-creation hand-off)
+- `BOOTSTRAP COMPLETE` (bootstrapper — the one-off profile + plugin bootstrap)
 
 ### RPI pipeline + tasks-in-tracker
 `dev-lead` orchestrates the **RPI pattern** — **Research → Plan → Implement → Review**:
@@ -249,25 +250,40 @@ Consequences worth preserving:
   continue. Halting delivery over a metering table is the wrong trade.
 
 ### Vendored skills
-19 of the 51 skills are unmodified copies from
+20 of the 56 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-32 are hand-written and are the ones to edit — 29 repo-scope (csharp/python-implementation,
-csharp/python-testing, code-review-checklist,
+36 are hand-written or adopted and are the ones to edit — 33 repo-scope
+(csharp/python-implementation, csharp/python-testing, dotnet/python-startup-discovery,
+code-review-checklist, artifact-coverage,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
 architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
 test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standards,
 ado-work-items, github-issues, azure-platform-grounding, deploy-verify,
-solution-profile-interview) plus the three user-scope skills below.
+solution-profile-interview, plus `polyglot-test-agent`, adopted after upstream deleted it)
+plus the three user-scope skills below.
 
-### User-scope skills
-The skills under `user/skills/` (`trade-off-reporting`, `code-review`, `cloud-native-patterns`)
-are bundled into the plugin (the `skills` array includes `user/skills/`) and reachable by every
-agent via description match. Only `trade-off-reporting` is named explicitly in the agent bodies.
+**Upstream has no integration- or application-smoke-testing skill.** That gap is why
+`test-bar-gate`'s smoke slot and the two `*-startup-discovery` skills are hand-written; a
+re-sync will not supply them. What upstream does cover — and what is vendored — is Bicep
+deployment preflight and Playwright test generation.
 
-**Personal preferences are deliberately not shipped.** The suite ships
+`scripts/check-vendored-drift.ps1` fetches each entry and diffs it against the local copy,
+ignoring only the `applies_to` line. Run it before a re-sync; hand the result to
+`capability-scout` to decide what is worth taking.
+
+### Personal preferences are not shipped
+`trade-off-reporting`, `code-review` and `cloud-native-patterns` once lived under a separate
+`user/skills/` folder, because that is where they were first written — a person's own
+`~/.copilot/skills/`. They now sit in `skills/` with everything else: all three are `applies_to:
+all` engineering skills that the agents rely on, none is a personal preference, and both paths were
+bundled identically anyway. **Do not re-split them** — a second skills folder needs its own
+manifest entry, which is exactly the silent-drop failure the flat-layout rule above exists to
+prevent, and it left contributors with no rule for which folder a new skill belongs in.
+
+**Genuine personal preference stays out of the plugin entirely.** The suite ships
 `engineering-standards` (the technology-neutral quality bar: Clean Code / SOLID / DDD /
 Clean Architecture, security-by-default, operational practices, the pre-PR checklist) and
 nothing about how any individual likes to be talked to. Tone, verbosity, proactivity and
@@ -281,33 +297,42 @@ Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestrati
 `mid` (mechanical authoring: `coding`, `infrastructure`, `testing`, `backlog-manager`), or
 `heavy` (deep reasoning: `architect` and all review agents).
 
-**Nothing reads it.** It is declared by all 11 agents and consumed by no script, no
+**Nothing reads it.** It is declared by all 13 agents and consumed by no script, no
 manifest, and not by the CLI — whose own frontmatter field is `model`. Treat it as recorded
 intent (the rationale lives in ADR 0007 and `cost-budget/references/tier-defaults.md`), keep
 it accurate when editing, and do not expect changing it to change which model runs.
 
 ### Skill format
 Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`,
-`applies_to`) used for skill-invocation matching, followed by the workflow in natural
-language. Reference files live in `<skill-name>/references/`, scripts in
-`<skill-name>/scripts/`.
+`applies_to`). **`description` is what drives skill-invocation matching** — `applies_to` does
+not (see below). The frontmatter is followed by the workflow in natural language; reference
+files live in `<skill-name>/references/`, scripts in `<skill-name>/scripts/`.
 
 `applies_to` declares the technology scope — `all` for a technique that holds in any
 ecosystem, otherwise a comma-separated list of the ecosystems it actually assumes
 (`dotnet`, `python`, `azure, terraform`, `kubernetes, helm, kustomize`, `docker`,
 `github-actions`, …). It is **required on every skill**; a missing value is a defect, not
-a default. The split today is 29 `all` / 22 scoped.
+a default. The split today is 30 `all` / 26 scoped.
 
-Why declare it rather than exclude tech-specific skills: skills load on demand, so a
-scoped skill costs nothing when the task doesn't touch that ecosystem — but an
-*undeclared* one sits in the same matching pool as the agnostic ones and can be pulled
-into an unrelated task. Declaring the scope is what makes the on-demand model safe.
+**Nothing reads it.** Like `model_tier`, it is declared on every skill and consumed by no
+script, no manifest, and not by the CLI — it is a local field that upstream has no equivalent
+for (which is why `plugins/VENDORED.md` lists it as the one sanctioned modification to a
+vendored copy). It does **not** filter the matching pool: every installed skill is a candidate
+on every task regardless of what it declares. Treat it as recorded intent — it tells a *human*
+whether a skill belongs in core or a companion, and it is how `capability-scout` places an
+adopted skill — but do not reason as though it constrains loading at run time.
+
+The mechanism that genuinely limits what a project carries is therefore **the plugin split, not
+this field**: a Python project installs no `agile-agents-dotnet`, so those skills are not in its
+pool at all. That is why anything tied to one ecosystem belongs in a companion. Within a plugin,
+a scoped skill is still a live candidate for every task — so keep descriptions specific enough
+that a wrong match is unlikely, rather than relying on `applies_to` to prevent it.
 (Same reasoning as `microsoft/hve-core`'s `coding-standards` skills and
 `obra/superpowers-skills`' `languages:` field.)
 
 ### Plugin manifests and versioning
 When you add/remove an agent or skill, the owning plugin auto-discovers it (its manifest
-points at `agents/` / `skills/` / `user/skills/`, relative to that plugin root).
+points at `agents/` / `skills/`, relative to that plugin root).
 
 **Bump the version of every plugin whose files changed, in the same PR.** The version is
 the delivery mechanism — an installed plugin picks up nothing until it moves, so an

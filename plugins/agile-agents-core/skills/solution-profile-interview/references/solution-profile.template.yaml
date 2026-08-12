@@ -252,9 +252,17 @@ quality_gates:
 testing:
   smoke:
     # Local "does it even come up?" check. Runs at Stage 8 after the unit tests,
-    # before the reviewers. Leave `command` empty to skip the slot entirely.
+    # before the reviewers. For runnable .NET / Python projects this slot runs
+    # whether or not it is configured: leaving `command` empty makes the gate
+    # DERIVE the entry point from the repo (see test-bar-gate/references/
+    # startup-discovery.md) rather than skip. Setting it explicitly is still
+    # preferred — deterministic, and no discovery cost per run.
+    # The gate skips only when there is genuinely nothing to start
+    # (`not_applicable`) or when it could not work out how (`undetermined`);
+    # both are reported, never silent.
     command: []                 # E.g. ["func", "start"] or ["dotnet", "run", "--project", "src/Api"].
     url: ""                     # Health endpoint polled until it answers (e.g. "http://localhost:7071/api/health").
+                                # Empty → derived from launchSettings.json / framework default.
     timeout_s: 60               # Give up (and fail the gate) after this many seconds.
   e2e:
     framework: "none"           # playwright | selenium | cypress | none (default none)
