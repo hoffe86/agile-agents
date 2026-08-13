@@ -34,12 +34,13 @@ The agent that loaded this skill knows which fields matter for its role — it f
 
 ## 3. Load the shared standards skills
 
-These four are loaded silently on every turn:
+These three are loaded silently on every turn:
 
 - **`engineering-standards`** — the engineering quality bar (Clean Code, SOLID, DDD, Clean Architecture), security-by-default, operational practices, and the pre-PR self-review checklist. Apply silently; do not echo it back.
 - **`trade-off-reporting`** — at the end of your response, list non-obvious decisions with the rejected alternative, cost, and revisit trigger. Skip obvious / single-option choices.
-- **`code-review`** — load when reviewing or auditing. Skip when implementing.
 - **`cloud-native-patterns`** — load when the change involves an external boundary (HTTP / gRPC / message bus), shared resource (DB / cache / blob / queue), background work, startup / shutdown, or a new deployable. Canonical source for cloud design patterns, 12-Factor readiness, resilience defaults (Polly / `Microsoft.Extensions.Http.Resilience` / tenacity), observability (OpenTelemetry + W3C `traceparent`), HTTP API hygiene (RFC 9457 Problem Details, idempotency, pagination, ETag).
+
+**Reviewing a diff does not mean loading a review skill.** The `code-review` skill is the *standalone whole-repository audit* path and it launches its own parallel review agents under a different severity scale, id scheme and owner taxonomy. Inside the agent pipeline the lenses are agents — `review` orchestrates `code-review`, `security-review`, `test-review`, `architecture-review` and `infrastructure-review` over the diff — and each carries its own rubric. Load the skill only when a human asks for a whole-repo audit with no diff in play; loading it alongside the agents produces two conflicting reviews of the same code.
 
 **Personal working preferences are not shipped with the suite.** A person may keep their own `working-style` skill in the CLI's user scope (`~/.copilot/skills/working-style/`) covering tone, how much to explain, how proactive to be, and how they phrase directives. If one is present it loads by description match like any other skill — honour it. If none exists, that is the normal case: fall back to the repository's own instructions and these standards. **Never author one on someone's behalf, and never assume a preference that isn't written down.**
 

@@ -3,7 +3,7 @@
 The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plugins.
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
-over 12 specialist agents (1 supervisor + 3 authors + 5 reviewers, plus a backlog-manager, a bootstrapper and a capability-scout) plus
+over 13 specialist agents (1 supervisor + 3 authors + 6 reviewers, plus a backlog-manager, a bootstrapper and a capability-scout) plus
 58 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 **Start here:** install `agile-agents-core`, then run **`bootstrapper`** — it profiles your repo,
@@ -66,7 +66,7 @@ The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skill
 
 ## What you get
 
-**12 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 3 authors + 5 reviewers + backlog-manager + bootstrapper + capability-scout:
+**13 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 3 authors + 6 reviewers + backlog-manager + bootstrapper + capability-scout:
 
 | Role | Agent | Purpose |
 |------|-------|---------|
@@ -77,7 +77,8 @@ The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skill
 | Backlog | `backlog-manager` | Creates / improves / reviews tracker work items (ADO, GitHub, Jira, Linear); in the Plan phase materialises `dev-lead`'s task breakdown as child work items linked to the parent story |
 | Bootstrap | `bootstrapper` | One-off bootstrap and repair: runs the profile interview, writes `solution-profile.yaml`, derives the companion plugins the declared stack needs and installs them with the user's approval, then reports what is still missing |
 | Coverage | `capability-scout` | Dependency manager for harness artifacts: derives what each phase needs for the declared stack, reports the gaps, and proposes what would fill them and where it belongs. Read-only — proposes, never adopts |
-| Reviewer | `review` | Read-only orchestrator; merges all review lenses |
+| Reviewer | `review` | Read-only orchestrator: triages which lenses the diff warrants, dispatches them in parallel, merges into one ranked report with one verdict. Performs no lens itself |
+| Reviewer | `code-review` | General code quality — correctness, line-level design, readability, standards, regressions, cloud-native anti-patterns, docs currency |
 | Reviewer | `security-review` | OWASP, CWE, NIST SSDF, MS SDL, MCSB, OWASP LLM Top 10 |
 | Reviewer | `architecture-review` | arc42, C4, WAF, AAC, microservices.io, DDD, ISO 25010 |
 | Reviewer | `infrastructure-review` | WAF, AVM, CAF, CIS Azure, OIDC, SLSA |
@@ -144,7 +145,7 @@ just means the tool isn't there.
 |---|---|---|
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
-| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 12 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
+| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 13 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
 | `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-review`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
 | `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
 
@@ -157,7 +158,7 @@ MCP servers above. On top of that:
 |---|---|
 | `edit` | `architect`, `coding`, `infrastructure`, `backlog-manager`, `bootstrapper` |
 | `agent` (delegation) | `architect`, `coding`, `infrastructure`, `backlog-manager` + `dev-lead`, `review` |
-| `browser` + `playwright/*` | all 12 — `coding` for E2E and browser-driven diagnosis, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
+| `browser` + `playwright/*` | all 13 — `coding` for E2E and browser-driven diagnosis, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
 
 **Reviewers never get `edit`.** That's the defence-in-depth half of
 `reviewer-read-only-rules` — the contract is enforced in the prompt *and* by tool grant.
@@ -199,7 +200,7 @@ stops and asks a human.
 | **⛔ Plan approval** | The **only mandatory approval gate** — it fires **after** the tasks exist so the human reviews concrete, linked work items. ("Only" counts approvals: intake may still ask about an ambiguity, or to confirm criteria derived from a `plan.md`.) Approve → tags removed, autonomous run begins; Adjust → tasks revised; Cancel → provisional tasks cleaned up. | human | — |
 | **Implement** | `coding` delivers each task inside the approved plan — production code **and the tests that cover it** — and `infrastructure` does the same for IaC. A conditional design-approval gate fires first if Research introduced a new dependency / boundary / ADR gap. | `coding`, `infrastructure` | `IMPLEMENTATION COMPLETE`, `INFRASTRUCTURE COMPLETE` |
 | **Test-Bar Gate** | Deterministic lint → typecheck → unit-test → smoke gate over the combined diff, before reviewers spend tokens; loops back to the author on fail (max 2 retries). | `dev-lead` (skill: `test-bar-gate`) | — |
-| **Review** | Multi-lens review (security / architecture / infra / test) merged into one verdict, validated against the research findings and the planned acceptance criteria. | `review` (+ `security-review`, `architecture-review`, `infrastructure-review`, `test-review`) | `REVIEW COMPLETE` |
+| **Review** | Multi-lens review (quality / security / architecture / infra / test) merged into one verdict, validated against the research findings and the planned acceptance criteria. | `review` (+ `code-review`, `security-review`, `architecture-review`, `infrastructure-review`, `test-review`) | `REVIEW COMPLETE` |
 | **Done** | `dev-lead` consolidates trade-offs, reports outcome vs Definition of Done, and (when shipping) drives `pr-description` / `release-notes`. | `dev-lead` | — |
 
 After the plan is approved, the run is **autonomous** — it stops only on a defined stop
@@ -280,7 +281,7 @@ orchestration, mid = mechanical authoring, heavy = deep multi-file reasoning).
 |---|---|
 | `dev-lead` | light |
 | `coding`, `infrastructure`, `backlog-manager` | mid |
-| `architect`, `review`, `architecture-review`, `security-review`, `infrastructure-review`, `test-review` | heavy |
+| `architect`, `review`, `code-review`, `architecture-review`, `security-review`, `infrastructure-review`, `test-review` | heavy |
 
 ### AGENTS.md generation (`scripts/`)
 `scripts/generate-agents-md.ps1` / `.sh` produces a portable [`AGENTS.md`](AGENTS.md) (per the

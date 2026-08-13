@@ -31,7 +31,7 @@ from collections import Counter
 # Mirror plugins/agile-agents-core/skills/run-event-log/references/event-schema.json (keep in sync).
 AGENTS = {
     "dev-lead", "architect", "coding", "infrastructure",
-    "review", "security-review", "architecture-review",
+    "review", "code-review", "security-review", "architecture-review",
     "infrastructure-review", "test-review",
 }
 EVENT_TYPES = {
@@ -40,7 +40,7 @@ EVENT_TYPES = {
 }
 REQUIRED_FIELDS = ("timestamp", "run_id", "agent", "phase", "event_type")
 REVIEWERS = {
-    "review", "security-review", "architecture-review",
+    "review", "code-review", "security-review", "architecture-review",
     "infrastructure-review", "test-review",
 }
 IMPLEMENTERS = {"coding", "infrastructure"}
@@ -239,6 +239,7 @@ def build_golden():
            payload={"gate": "lint+typecheck+unit", "retries": 0}),
         ev("dev-lead", "review", "phase_start"),
         ev("review", "review", "phase_start"),
+        ev("code-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
         ev("security-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
         ev("architecture-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
         ev("test-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),

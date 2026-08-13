@@ -46,7 +46,7 @@ done
 
 # Enum validation
 case "$agent" in
-    dev-lead|architect|coding|infrastructure|review|security-review|architecture-review|infrastructure-review|test-review) ;;
+    dev-lead|architect|coding|infrastructure|review|code-review|security-review|architecture-review|infrastructure-review|test-review) ;;
     *) echo "emit-event: invalid --agent: $agent" >&2; exit 1 ;;
 esac
 case "$event_type" in

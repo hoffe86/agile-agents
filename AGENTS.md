@@ -84,6 +84,13 @@ Dependency manager for the harness's own artifacts. Works **demand-first**: deri
 - **Tools**: browser, context7/*, execute, github/*, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
+### `code-review`
+
+Performs a focused, READ-ONLY general code-quality review of a diff — the craft lens: correctness, line-level design, readability, standards compliance, error handling, regressions, cloud-native and resilience anti-patterns, and documentation currency. Judges the change against the repo's declared conventions (`solution-profile.yaml`, `copilot-instructions.md`) and accepted decision records. USE FOR: general-quality-only review of a diff, "is this code any good", Clean Code / SOLID / standards audit of a change, check for regressions or swallowed errors, check docs kept pace with behaviour. Auto-invoked by review on every review. DO NOT USE FOR: full multi-lens review (use review — it invokes this agent automatically), security findings (use security-review), test quality or coverage (use test-review), cross-module boundaries / contracts / ADR alignment (use architecture-review), IaC and pipelines (use infrastructure-review), fixing the findings (delegate back to coding / infrastructure), whole-repository audits with no diff (that is the `code-review` skill, run standalone). NEVER modifies code.
+
+- **Tools**: browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
+- **Sub-agents**: _none_
+
 ### `coding`
 
 Implements features, fixes bugs, and refactors application code **and covers the change with tests** — the two halves of one engineer's job, in any language the repo uses. Detects the existing test framework automatically and chases coverage of new / changed behaviour (not absolute %). Deep skill support for C#/.NET (default .NET 10) and Python; other languages are handled from the repo's own conventions and the declared `tech_stack` profile. USE FOR: implement a feature, fix a bug, refactor code, add a class / module / function, integrate a library, migrate code between framework versions, apply a design pattern, write tests for new code, improve coverage on a specific file / class / function, fix failing tests, add edge-case / negative-path tests, set up test fixtures / factories, add integration tests for a feature. DO NOT USE FOR: architecture / ADR / design decisions before code exists (use architect), Infrastructure-as-Code — Bicep / Terraform / Helm / Dockerfile / pipelines, and the IaC tests that go with them like Terratest / Pester (use infrastructure), reviewing or auditing code or test quality (use review / test-review), end-to-end autonomous delivery (use dev-lead if present). Hands off to review once the change builds and its tests are green.
@@ -114,10 +121,10 @@ Implements Infrastructure as Code (IaC) in whatever technology the project decla
 
 ### `review`
 
-Orchestrates a multi-lens, READ-ONLY code review of a diff or set of changed files. Performs the general code-quality review itself (Clean Code / SOLID / standards / regressions / docs) and delegates specialised lenses to security-review (always), test-review (when tests or testable code change), architecture-review (when boundaries / contracts / >10 files change), and infrastructure-review (when IaC / pipelines change). Merges all findings into a single severity-ranked report with one final verdict (worst-of all specialists). USE FOR: review a PR or branch, audit a diff, "check this change", request full multi-lens review, code health check on uncommitted work. DO NOT USE FOR: only one specialised lens — call the specialist directly (security-review / test-review / architecture-review / infrastructure-review), making code changes (this agent is read-only), fixing the findings (delegate back to coding / infrastructure), end-to-end delivery (use dev-lead if present). NEVER modifies code.
+Orchestrates a multi-lens, READ-ONLY code review of a diff or set of changed files. Delegates every lens to a specialist — code-review (general quality, always), security-review (always), test-review (when tests or testable code change), architecture-review (when boundaries / contracts / >10 files change), and infrastructure-review (when IaC / pipelines change) — then merges their findings into a single severity-ranked report with stable ids, an owner per finding, and one final verdict (worst-of all specialists). USE FOR: review a PR or branch, audit a diff, "check this change", request full multi-lens review, code health check on uncommitted work. DO NOT USE FOR: only one specialised lens — call the specialist directly (code-review / security-review / test-review / architecture-review / infrastructure-review), making code changes (this agent is read-only), fixing the findings (delegate back to coding / infrastructure), end-to-end delivery (use dev-lead if present). NEVER modifies code.
 
 - **Tools**: agent, browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
-- **Sub-agents**: architecture-review, infrastructure-review, security-review, test-review
+- **Sub-agents**: architecture-review, code-review, infrastructure-review, security-review, test-review
 
 ### `security-review`
 
@@ -154,7 +161,7 @@ natural-language workflow.
 - **cicd-pipeline-implementation** (`agile-agents-core`) — Implement CI/CD pipelines for infrastructure and application code using GitHub Actions or Azure Pipelines (YAML).
 - **cloud-native-patterns** (`agile-agents-core`) — Canonical reference for cloud design patterns, resilience defaults, 12-Factor cloud-native readiness, observability, and HTTP/gRPC API hygiene used by the authoring and review agents.
 - **code-localisation** (`agile-agents-core`) — Locate the small set of code files relevant to a task in a large repository.
-- **code-review** (`agile-agents-core`) — Perform comprehensive code reviews across architecture, clean code, security, and test quality dimensions.
+- **code-review** (`agile-agents-core`) — Standalone whole-repository code audit — no diff, no pipeline.
 - **code-review-checklist** (`agile-agents-core`) — Perform a high-signal code review of a diff or set of changed files focused on correctness, design, readability, test quality, and documentation.
 - **codeql** (`agile-agents-core`) — Comprehensive guide for setting up and configuring CodeQL code scanning via GitHub Actions workflows and the CodeQL CLI.
 - **conventional-commit** (`agile-agents-core`) — Prompt and workflow for generating conventional commit messages using a structured XML format.

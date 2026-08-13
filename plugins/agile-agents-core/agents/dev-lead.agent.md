@@ -135,7 +135,7 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 | 5 | ⛔ | Design approval (conditional) | Only when Research introduced a new dep / boundary / non-trivial trade-off, or reported an decision gap | user |
 | 6 | Implement | Coding & infrastructure | Deliver the approved tracker tasks **one at a time in dependency order** — each task's production code **and the tests that cover it**; IaC and its own tests where needed | `coding`, `infrastructure` |
 | 7 | Implement | Automated gates | Deterministic lint → typecheck → unit-test → smoke gate, then opt-in deploy-verify to dev; loop to the author on fail (max 2 retries) | — (skills: `test-bar-gate`, `deploy-verify`) |
-| 8 | Review | Review | Reviewer fan-out (security / architecture / infra / test) merged by `review` | `review` |
+| 8 | Review | Review | Reviewer fan-out (quality / security / architecture / infra / test) merged by `review` | `review` |
 | 9 | — | Done | **Verify every requirement acceptance criterion is covered by a delivered task + evidence**; consolidate trade-offs, summarise outcome vs DoD; **emit `run.complete` (or `run.abort`)** | — |
 
 Each stage has an entry condition, a delegated agent, and an exit gate. You never advance past a failed gate without either (a) one corrective retry with explicit feedback, or (b) stopping and asking the human.
@@ -418,7 +418,7 @@ This gate allows two corrective retries instead of the standard one, because the
 
 ### Stage 8 — Review
 
-**Delegate to:** `review` (which auto-fans-out to security / test / architecture / infrastructure specialists as warranted).
+**Delegate to:** `review` (which fans out to the general-quality, security, test, architecture and infrastructure specialists as warranted — quality and security unconditionally).
 **Input:** the diff (`git diff <base>...HEAD`) and the original requirement, plus the **Stage 7 gate result** — which checks ran, and whether the application actually started (or why that was `not_applicable` / `undetermined`). Reviewers judge a change differently when they know the host boots than when nobody established it, and a smoke slot that came back `undetermined` is a gap a reviewer should see rather than assume away. Carry the `Existing tests modified` lines from every Stage 6 hand-off into the payload as well: `test-review` is the independent judgement on whether an assertion change was legitimate, and it cannot make that call on evidence it never sees.
 **Expected output:** the merged review report with a single verdict (✅ Approve / 🔁 Request changes / ❌ Block).
 

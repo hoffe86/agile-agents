@@ -15,7 +15,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $RunId,
-    [Parameter(Mandatory)] [ValidateSet('dev-lead','architect','coding','infrastructure','review','security-review','architecture-review','infrastructure-review','test-review')] [string] $Agent,
+    [Parameter(Mandatory)] [ValidateSet('dev-lead','architect','coding','infrastructure','review','code-review','security-review','architecture-review','infrastructure-review','test-review')] [string] $Agent,
     [Parameter(Mandatory)] [string] $Phase,
     [Parameter(Mandatory)] [ValidateSet('run_start','run_complete','phase_start','phase_complete','tool_call','gate_check','handoff_received','error')] [string] $EventType,
     [ValidateSet('success','fail','partial')] [string] $Outcome,

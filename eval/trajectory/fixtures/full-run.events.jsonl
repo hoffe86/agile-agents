@@ -17,9 +17,10 @@
 {"timestamp": "2026-04-15T08:00:17.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "dev-lead", "phase": "test-bar", "event_type": "gate_check", "outcome": "success", "payload": {"gate": "lint+typecheck+unit", "retries": 0}}
 {"timestamp": "2026-04-15T08:00:18.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "dev-lead", "phase": "review", "event_type": "phase_start"}
 {"timestamp": "2026-04-15T08:00:19.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "review", "phase": "review", "event_type": "phase_start"}
-{"timestamp": "2026-04-15T08:00:20.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "security-review", "phase": "review", "event_type": "gate_check", "outcome": "success", "payload": {"finding_count": 0}}
-{"timestamp": "2026-04-15T08:00:21.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "architecture-review", "phase": "review", "event_type": "gate_check", "outcome": "success", "payload": {"finding_count": 0}}
-{"timestamp": "2026-04-15T08:00:22.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "test-review", "phase": "review", "event_type": "gate_check", "outcome": "success", "payload": {"finding_count": 0}}
-{"timestamp": "2026-04-15T08:00:23.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "review", "phase": "review", "event_type": "phase_complete", "outcome": "success"}
-{"timestamp": "2026-04-15T08:00:24.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "dev-lead", "phase": "review", "event_type": "phase_complete", "outcome": "success"}
-{"timestamp": "2026-04-15T08:00:25.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "dev-lead", "phase": "wrap-up", "event_type": "run_complete", "outcome": "success", "duration_ms": 524000}
+{"timestamp": "2026-04-15T08:00:20.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "code-review", "phase": "review", "event_type": "gate_check", "outcome": "success", "payload": {"finding_count": 0}}
+{"timestamp": "2026-04-15T08:00:21.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "security-review", "phase": "review", "event_type": "gate_check", "outcome": "success", "payload": {"finding_count": 0}}
+{"timestamp": "2026-04-15T08:00:22.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "architecture-review", "phase": "review", "event_type": "gate_check", "outcome": "success", "payload": {"finding_count": 0}}
+{"timestamp": "2026-04-15T08:00:23.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "test-review", "phase": "review", "event_type": "gate_check", "outcome": "success", "payload": {"finding_count": 0}}
+{"timestamp": "2026-04-15T08:00:24.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "review", "phase": "review", "event_type": "phase_complete", "outcome": "success"}
+{"timestamp": "2026-04-15T08:00:25.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "dev-lead", "phase": "review", "event_type": "phase_complete", "outcome": "success"}
+{"timestamp": "2026-04-15T08:00:26.000Z", "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f", "agent": "dev-lead", "phase": "wrap-up", "event_type": "run_complete", "outcome": "success", "duration_ms": 524000}

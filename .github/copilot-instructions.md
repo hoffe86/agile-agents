@@ -72,8 +72,8 @@ agent/                               Marketplace root
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
 │   ├── agile-agents-core/           The autonomous-coding agent harness
 │   │   ├── .github/plugin/plugin.json   Plugin manifest (name: agile-agents-core)
-│   │   ├── agents/                  12 *.agent.md (1 supervisor + 3 authors
-│   │   │                            + 5 reviewers + backlog-manager + bootstrapper
+│   │   ├── agents/                  13 *.agent.md (1 supervisor + 3 authors
+│   │   │                            + 6 reviewers + backlog-manager + bootstrapper
 │   │   │                            + capability-scout)
 │   │   ├── skills/                  38 repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
@@ -206,10 +206,19 @@ production code to pass a test, but never weaken a test to pass production code,
 modified existing test is justified in the `Existing tests modified` hand-off field, which
 `dev-lead` gates on and `test-review` adjudicates.
 
+**The reviewers went the other way, deliberately** (ADR 0010). `review` performs **no lens
+itself** — it triages, dispatches five read-only specialists in parallel (`code-review`,
+`security-review`, `test-review`, `architecture-review`, `infrastructure-review`), and merges.
+The merge logic that applied to `coding`+`testing` does not transfer here: reviewers never
+hand off to each other, so the split costs no round, and independence is the product rather
+than a side-effect. Do not "consolidate" a lens into the orchestrator to save a dispatch —
+that is exactly the arrangement ADR 0010 undid, where the merge always completed and the
+line-by-line reading silently degraded on large diffs.
+
 Tasks are dispatched **one at a time**, even when the dependency graph says they are
 independent. Sub-agents share one working tree, so concurrent writers interleave edits and
 no gate can attribute a failure to a task — independent in the graph is not disjoint in the
-diff. (`review` fans out in parallel only because all four specialists are read-only.) The
+diff. (`review` fans out in parallel only because all five lenses are read-only.) The
 upgrade path is a git worktree per task plus a merge step; do not "fix" this by spawning
 concurrent writers.
 
@@ -308,7 +317,7 @@ Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestrati
 `mid` (mechanical authoring: `coding`, `infrastructure`, `backlog-manager`), or
 `heavy` (deep reasoning: `architect` and all review agents).
 
-**Nothing reads it.** It is declared by all 12 agents and consumed by no script, no
+**Nothing reads it.** It is declared by all 13 agents and consumed by no script, no
 manifest, and not by the CLI — whose own frontmatter field is `model`. Treat it as recorded
 intent (the rationale lives in ADR 0007 and `cost-budget/references/tier-defaults.md`), keep
 it accurate when editing, and do not expect changing it to change which model runs.
