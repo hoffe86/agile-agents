@@ -1,7 +1,7 @@
 ---
 name: e2e-testing
 description: >-
-  End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip). Loaded by `testing` agent after unit tests pass when the change includes a UI surface or HTTP/API surface that warrants browser-level verification.
+  End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip). Loaded by the `coding` agent (via `testing-practices`) after unit tests pass when the change includes a UI surface or HTTP/API surface that warrants browser-level verification.
 applies_to: all
 ---
 
@@ -48,7 +48,7 @@ Skip E2E (unit + integration is enough) when the change is:
 - IaC-only (handled by `iac-best-practices` validation).
 - Documentation-only.
 
-In those cases, do not load this skill — the `testing` agent should not branch into E2E.
+In those cases, do not load this skill — the author should not branch into E2E.
 
 ## Workflow
 

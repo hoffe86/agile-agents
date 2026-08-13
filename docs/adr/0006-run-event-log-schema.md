@@ -4,6 +4,7 @@
 - **Date:** 2026-04
 - **Deciders:** Wave 1+2 implementation of the autonomous-coding-agents improvement plan (H6)
 - **Related research:** `docs/research/autonomous-coding-agents-2026.md` §6 (row H6); Stream E §6 (Anthropic Managed Agents), §25 (Sourcegraph transcripts)
+- **Note (2026-08):** ADR 0009 removed the `testing` agent, so the schema's `agent` enum and the `TESTS COMPLETE` block named below no longer exist. The schema decision — JSONL, OTel-inspired event types, dev-lead-emitted, no self-reported cost fields — is unchanged.
 
 ## Context
 

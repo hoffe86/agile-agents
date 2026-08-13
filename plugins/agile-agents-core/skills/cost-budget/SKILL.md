@@ -85,7 +85,7 @@ Every agent declares `model_tier: heavy | mid | light` in its frontmatter (intro
 | Tier  | Used by                                                                 | Why                                                              |
 |-------|-------------------------------------------------------------------------|------------------------------------------------------------------|
 | heavy | `architect`, all reviewers (`review`, `architecture-review`, `security-review`, `test-review`, `infrastructure-review`) | Explainability and judgement matter more than speed; a bad architecture or missed security finding is catastrophic. |
-| mid   | `coding`, `testing`, `infrastructure`, `backlog-manager`                | Day-to-day authoring on a clear spec — cost-quality sweet spot. |
+| mid   | `coding`, `infrastructure`, `backlog-manager`                          | Day-to-day authoring on a clear spec — cost-quality sweet spot. |
 | light | `dev-lead` orchestration loops, doc-only / release-notes tasks          | High call volume, low reasoning load — keep cheap.              |
 
 ### Override

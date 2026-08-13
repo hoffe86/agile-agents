@@ -16,7 +16,8 @@ description: >-
   choice.
   DO NOT USE FOR: writing application code (use coding), writing IaC
   (use infrastructure), reviewing existing code (use review or
-  architecture-review), running or fixing tests (use testing),
+  architecture-review), running or fixing tests (use coding — it owns the
+  tests for the code it writes),
   end-to-end autonomous feature delivery (use dev-lead if present),
   authoring Architecture Decision Records (ADRs are written up-front by
   humans before the agent fleet runs — architect honours them and reports

@@ -8,7 +8,7 @@ description: >-
   criteria, updating tracker fields, linking parent/child relationships,
   reviewing backlog quality, or materialising a dev-lead Plan as child tasks
   under a parent work item (the Plan workflow).
-  DO NOT USE FOR: writing code, tests, or IaC (use coding / testing /
+  DO NOT USE FOR: writing code, tests, or IaC (use coding /
   infrastructure), design or ADR decisions (use architect), reviewing a diff
   (use review), estimating / prioritising / progressing item state on your own
   authority (the team decides — you capture what was agreed), end-to-end

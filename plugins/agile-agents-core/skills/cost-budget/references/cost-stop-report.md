@@ -67,7 +67,7 @@ Do **not** auto-retry. The same prompt with the same agents is overwhelmingly li
 
 Choose one and reply:
 
-1. **Approve overrun** — accept 11,400 AIU for this phase and continue to `testing`.
+1. **Approve overrun** — accept 11,400 AIU for this phase and continue to review.
 2. **Raise envelope** — bump `cost_envelope.max_aiu_per_phase_overrides.coding` to `12000` and resume.
 3. **Split scope** — drop one of the three checkout flows from the brief and re-run.
 ```

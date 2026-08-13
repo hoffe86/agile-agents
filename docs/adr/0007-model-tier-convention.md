@@ -4,6 +4,7 @@
 - **Date:** 2026-04
 - **Deciders:** Wave 1+2 implementation of the autonomous-coding-agents improvement plan (companion to H4)
 - **Related research:** `docs/research/autonomous-coding-agents-2026.md` §6 (row H4); Stream E "Cost Economics", §21 (Shopify mid-tier fine-tune)
+- **Note (2026-08):** ADR 0009 merged `testing` into `coding`, so the `mid` row below is now `coding`, `infrastructure`, `backlog-manager`. The tiering convention itself is unchanged.
 
 ## Context
 

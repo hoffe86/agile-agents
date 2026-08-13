@@ -54,10 +54,9 @@ After writing code:
 
 1. Run `dotnet build` (or the project's `build.ps1` / `build.cmd` / `Directory.Build.targets` if present). Fix all compile errors and warnings you introduced.
 2. Use `git diff` (via PowerShell `git --no-pager diff`) to summarize what changed for the next agent.
-3. **Hand off to `testing`** for test creation/execution.
+3. **Continue to the tests** — the same agent covers this change with `csharp-testing`. Implementation is not finished until the behaviour you added is asserted.
 
 ## 5. What you do NOT do
 
-- Don't write or modify tests — that's `testing`'s job. Tell it what behavior needs covering.
 - Don't run a security or design review on yourself — `review` does that after tests pass.
 - Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

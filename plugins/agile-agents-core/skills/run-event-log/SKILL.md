@@ -6,7 +6,7 @@ applies_to: all
 
 # run-event-log
 
-Structured, append-only telemetry that runs **alongside** (never replaces) the sentinel-block hand-off (`IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `INFRASTRUCTURE COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`).
+Structured, append-only telemetry that runs **alongside** (never replaces) the sentinel-block hand-off (`IMPLEMENTATION COMPLETE`, `INFRASTRUCTURE COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`).
 
 ## Why this exists
 
@@ -42,7 +42,7 @@ Every event has these required fields:
 | ------------ | ------- | -------------------------------------------------------------- |
 | `timestamp`  | string  | ISO 8601 UTC, millisecond precision, `Z` suffix                |
 | `run_id`     | string  | UUID minted by `dev-lead` at run start                         |
-| `agent`      | enum    | `dev-lead` / `architect` / `coding` / `testing` / `infrastructure` / `review` / `security-review` / `architecture-review` / `infrastructure-review` / `test-review` |
+| `agent`      | enum    | `dev-lead` / `architect` / `coding` / `infrastructure` / `review` / `security-review` / `architecture-review` / `infrastructure-review` / `test-review` |
 | `phase`      | string  | free-form phase name (e.g. `architecture`, `coding`, `review`) |
 | `event_type` | enum    | `run_start` / `run_complete` / `phase_start` / `phase_complete` / `tool_call` / `gate_check` / `handoff_received` / `error` |
 

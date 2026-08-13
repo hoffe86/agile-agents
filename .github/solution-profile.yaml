@@ -246,7 +246,7 @@ quality_gates:
 # Today only `e2e` is wired up — drives the `e2e-testing` skill (plugins/agile-agents-core/skills/e2e-testing/).
 testing:
   smoke:
-    # Local "does it even come up?" check. Runs at Stage 8 after the unit tests,
+    # Local "does it even come up?" check. Runs at Stage 7 after the unit tests,
     # before the reviewers. Leave `command` empty to skip the slot entirely.
     command: []                 # E.g. ["func", "start"] or ["dotnet", "run", "--project", "src/Api"].
     url: ""                     # Health endpoint polled until it answers (e.g. "http://localhost:7071/api/health").

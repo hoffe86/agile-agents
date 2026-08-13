@@ -124,8 +124,8 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
 {
   "timestamp": "2026-04-15T08:43:42.500Z",
   "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
-  "agent": "testing",
-  "phase": "testing",
+  "agent": "coding",
+  "phase": "coding",
   "event_type": "tool_call",
   "tool_name": "powershell",
   "args_summary": "dotnet test src/Foo.Tests --logger trx",

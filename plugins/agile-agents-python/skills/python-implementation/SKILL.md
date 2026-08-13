@@ -26,7 +26,7 @@ If the codebase is unfamiliar, invoke the **`acquire-codebase-knowledge`** skill
 | Linting and autofix loop | `ruff-recursive-fix` (vendored) |
 | Refactoring methods | `refactor` (vendored) |
 | Building / publishing a PyPI package | `python-pypi-package-builder` (awesome-copilot, fetch on demand) |
-| Test coverage | `pytest-coverage` (vendored) — but tests are `testing`'s job |
+| Test coverage | `pytest-coverage` (vendored) — the same agent owns the tests, see `python-testing` |
 | `.editorconfig` | `editorconfig` (vendored) |
 
 ## 3. Default conventions (apply unless project says otherwise)
@@ -49,10 +49,9 @@ After writing code:
 1. Run `ruff check --fix .` and `ruff format .` if ruff is configured. Otherwise respect the configured formatter (black, autopep8).
 2. If `mypy` or `pyright` is configured, run it on the changed files and fix new errors you introduced.
 3. Use `git --no-pager diff` to summarize what changed for the next agent.
-4. **Hand off to `testing`** for test creation/execution.
+4. **Continue to the tests** — the same agent covers this change with `python-testing`. Implementation is not finished until the behaviour you added is asserted.
 
 ## 5. What you do NOT do
 
-- Don't write or modify tests — that's `testing`'s job.
 - Don't run a security/design review — `review` does that after tests pass.
 - Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

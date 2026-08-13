@@ -177,7 +177,7 @@ function Write-FailureReport([string]$name, [string]$stack, [string]$cmdline, $e
     Write-Host ""
     Write-Host "### stderr (last 30 lines)`n`n``````text`n$tail`n``````"
     Write-Host ""
-    Write-Host "### Suggested next action`n`nReturn to ``coding`` (or ``testing`` if the failure belongs to the test layer) with this report and one corrective retry."
+    Write-Host "### Suggested next action`n`nReturn to ``coding`` (or ``infrastructure`` when the diff is IaC-only) with this report and one corrective retry."
 }
 
 function Invoke-Check([string]$name, [string[]]$argv, [string]$stack) {

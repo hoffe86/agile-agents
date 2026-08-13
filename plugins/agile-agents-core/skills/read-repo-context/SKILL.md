@@ -75,7 +75,7 @@ Pass the localisation result forward in your hand-off so downstream agents (revi
 
 ## 7. Receiving a hand-off from another agent
 
-When another agent hands you a structured block (`IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`,
+When another agent hands you a structured block (`IMPLEMENTATION COMPLETE`,
 `REVIEW COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `INFRASTRUCTURE COMPLETE`, `TASKS PLANNED`,
 or a Stage-1 brief from a supervisor):
 

@@ -166,7 +166,7 @@ failure_report() {
   [[ -n "$reason" ]] && printf -- '- **Reason:** %s\n' "$reason"
   printf -- '- **Working directory:** %s\n\n' "$(pwd)"
   printf '### stderr (last 30 lines)\n\n```text\n%s\n```\n\n' "$tail"
-  printf '### Suggested next action\n\nReturn to `coding` (or `testing` if the failure belongs to the test layer) with this report and one corrective retry.\n'
+  printf '### Suggested next action\n\nReturn to `coding` (or `infrastructure` when the diff is IaC-only) with this report and one corrective retry.\n'
 }
 
 run_check() {
