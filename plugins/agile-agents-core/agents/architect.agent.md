@@ -91,7 +91,15 @@ The architecture you propose must be implementable inside these constraints. **W
 4. **Pick the matching design skill** from the table below.
 5. Produce the design artifacts in the **structure `documentation.framework` declares** (see *Documentation framework* below), drawing diagrams in the notation **`documentation.diagram_convention`** declares, and place them where **`documentation.platform` + `location`** resolve to. Do not assume arc42, Mermaid, or `docs/architecture/` — each is a default that applies only when the profile is silent. When `platform` is not writable from the workspace, produce the content in the hand-off with its publish target instead of writing a file.
 6. Walk the design through the **well-architected pillars** the target platform publishes — reliability, security, cost, operational excellence, performance — before declaring done. Feeds arc42 §10 (Quality) and §11 (Risks). On-prem or hybrid designs use the same five pillars without a vendor framework behind them.
-7. Hand off.
+7. **When the requirement touches data, answer the data questions in Research — they are the ones that kill features.** Applies whenever the change consumes, produces, moves or learns from data, and whenever `solution-profile.yaml: data_science.enabled` is true. Establish, and put in the hand-off:
+   - **Does the data exist, and may we use it?** Source, owner, licence or agreement, and whether personal data is involved (`data_science.data_privacy.pii_policy`). *"We would need data we do not have"* is the single most valuable Research finding available, and the cheapest — it costs a paragraph now and a sprint later.
+   - **Is it fit for the purpose?** Volume, history depth, freshness, known quality problems, and whether the labels or measures the requirement assumes actually exist. A requirement that assumes a labelled outcome nobody records is not implementable as written.
+   - **What is the contract?** Grain, keys, schema and semantics of anything produced or consumed — and who else already depends on it, because that turns a change into a coordinated one (`data-engineering-practices` §1–2).
+   - **Where does it physically land, and does that cross a boundary?** Region, tenancy, retention and deletion obligations. These are architecture decisions, not implementation details, and they are expensive to reverse once data exists.
+   - **Is there a question here that must be answered before building?** Feasibility ("is the signal there at all?") belongs to `data-scientist` as its own task, sequenced first — see the Plan phase. Say so rather than assuming the answer is yes.
+
+   You are **read-only**: name the questions, the evidence you found, and the gaps. You do not run the analysis — that is `data-scientist`'s task, which `dev-lead` will sequence.
+8. Hand off.
 
 ## Skill selection
 
@@ -209,6 +217,8 @@ ARCHITECTURE DESIGN COMPLETE
 - Facts verified: <the load-bearing facts you checked rather than recalled — for each: fact · source · the version / region / date it applies to. E.g. "Container Apps supports scale-to-zero on the Consumption plan · Microsoft Learn · retrieved <date>". "none needed — design rests on no external fact" is a valid answer on a purely internal design, but it is a claim, not a default.>
 - Assumptions (unverified): <every load-bearing fact you could NOT confirm — for each: assumption · why verification failed (no such doc, tooling unavailable and which cause, ambiguous source) · what breaks if it is wrong. "none" only when every load-bearing fact is in the list above. Never promote an assumption to a verified fact to empty this field.>
 - Well-architected assessment (cloud designs): ✅ aligned / ⚠️ trade-offs called out per pillar / n/a — not cloud-hosted
+- Data findings (when the change touches data, else "n/a — no data surface"): <for each dataset or source: does it exist · may we use it, under what agreement · fit for purpose (volume / history / freshness / quality / do the required labels exist) · contract (grain, keys, schema, existing consumers) · where it physically lands and any residency, retention or deletion obligation. **State blockers first** — a required source that does not exist, or personal data with no permitting policy, outranks every other finding in this hand-off.>
+- Data questions to answer before building (else "none"): <feasibility questions that must be settled by analysis rather than by design — "is the signal present at all?", "are the labels reliable enough?". Each becomes a `data-scientist` task sequenced ahead of anything that depends on the answer.>
 - Estimated monthly cost band (if cloud-hosted): <currency><low> – <currency><high>
 - Open questions / risks: <list with owners>
 - Recommended next step:

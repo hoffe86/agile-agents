@@ -36,7 +36,8 @@
         "security-reviewer",
         "architecture-reviewer",
         "infrastructure-reviewer",
-        "test-reviewer"
+        "test-reviewer",
+        "data-reviewer"
       ],
       "description": "Which coding-suite agent emitted the event."
     },

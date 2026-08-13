@@ -32,7 +32,7 @@ from collections import Counter
 AGENTS = {
     "dev-lead", "architect", "coding", "data-scientist", "infrastructure",
     "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
-    "infrastructure-reviewer", "test-reviewer",
+    "infrastructure-reviewer", "test-reviewer", "data-reviewer",
 }
 EVENT_TYPES = {
     "run_start", "run_complete", "phase_start", "phase_complete",
@@ -41,7 +41,7 @@ EVENT_TYPES = {
 REQUIRED_FIELDS = ("timestamp", "run_id", "agent", "phase", "event_type")
 REVIEWERS = {
     "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
-    "infrastructure-reviewer", "test-reviewer",
+    "infrastructure-reviewer", "test-reviewer", "data-reviewer",
 }
 IMPLEMENTERS = {"coding", "data-scientist", "infrastructure"}
 
