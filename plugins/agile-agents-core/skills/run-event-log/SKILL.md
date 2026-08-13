@@ -6,7 +6,7 @@ applies_to: all
 
 # run-event-log
 
-Structured, append-only telemetry that runs **alongside** (never replaces) the sentinel-block hand-off (`IMPLEMENTATION COMPLETE`, `TESTS COMPLETE`, `INFRASTRUCTURE COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`).
+Structured, append-only telemetry that runs **alongside** (never replaces) the sentinel-block hand-off (`IMPLEMENTATION COMPLETE`, `INFRASTRUCTURE COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`).
 
 ## Why this exists
 
@@ -14,7 +14,7 @@ Sentinel blocks are great for sync hand-off between agents, but they're prose �
 
 1. **Audit trail** — replay any past run, attribute every action to an agent and phase
 2. **Cost telemetry** — the `phase_start` / `phase_complete` timestamps are the windows `cost-budget`'s `collect-usage.py` uses to attribute real, runtime-measured token usage per phase; prerequisite to H4 cost discipline
-3. **Reviewer-overlap analysis** — quantify how often `security-review` re-flags `code-review` findings; prerequisite to E3 spike on file-restriction enforcement
+3. **Reviewer-overlap analysis** — quantify how often `security-reviewer` re-flags `code-reviewer` findings; prerequisite to E3 spike on file-restriction enforcement
 4. **Debugging** — when a run fails, the JSONL is the smallest reproducible record of what each agent decided to do
 
 Citations: `docs/research/stream-e-blogs.md` §6 (Anthropic Managed Agents — every action a structured event), §25 (Sourcegraph mandates full transcripts).
@@ -42,8 +42,8 @@ Every event has these required fields:
 | ------------ | ------- | -------------------------------------------------------------- |
 | `timestamp`  | string  | ISO 8601 UTC, millisecond precision, `Z` suffix                |
 | `run_id`     | string  | UUID minted by `dev-lead` at run start                         |
-| `agent`      | enum    | `dev-lead` / `architect` / `coding` / `testing` / `infrastructure` / `review` / `security-review` / `architecture-review` / `infrastructure-review` / `test-review` |
-| `phase`      | string  | free-form phase name (e.g. `architecture`, `coding`, `review`) |
+| `agent`      | enum    | `dev-lead` / `architect` / `coding` / `infrastructure` / `review-lead` / `code-reviewer` / `security-reviewer` / `architecture-reviewer` / `infrastructure-reviewer` / `test-reviewer` |
+| `phase`      | string  | free-form phase name (e.g. `architecture`, `coding`, `review-lead`) |
 | `event_type` | enum    | `run_start` / `run_complete` / `phase_start` / `phase_complete` / `tool_call` / `gate_check` / `handoff_received` / `error` |
 
 Common optional fields: `correlation_id`, `parent_event_id`, `outcome`, `duration_ms`, `tool_name`, `args_summary`, `error_kind`, `payload`. There are deliberately **no** token or cost fields — see below.

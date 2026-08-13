@@ -188,7 +188,7 @@ ai_copilot:
   responsible_ai_tier: ""       # low | medium | high — drives RAI review depth.
   pii_handling_rule: ""         # E.g. "no-pii-to-llm", "redact-then-send", "tenant-bound-only"
   active_agents: []             # Subset of the agent suite that applies in this repo.
-                                # E.g. ["dev-lead", "architect", "coding", "testing", "review"]
+                                # E.g. ["dev-lead", "architect", "coding", "review-lead"]
   mandatory_skills: []          # Skills that must always load (in addition to agent defaults).
 
 # ─── code_localisation ────────────────────────────────────────────────────────
@@ -251,7 +251,7 @@ quality_gates:
 # Today only `e2e` is wired up — drives the `e2e-testing` skill (plugins/agile-agents-core/skills/e2e-testing/).
 testing:
   smoke:
-    # Local "does it even come up?" check. Runs at Stage 8 after the unit tests,
+    # Local "does it even come up?" check. Runs at Stage 7 after the unit tests,
     # before the reviewers. For runnable .NET / Python projects this slot runs
     # whether or not it is configured: leaving `command` empty makes the gate
     # DERIVE the entry point from the repo (see test-bar-gate/references/

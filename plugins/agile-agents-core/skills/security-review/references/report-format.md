@@ -1,6 +1,6 @@
 # Security Report Format
 
-Use this template for all `/security-review` output. Generated during Step 7.
+Use this template for all `/security-reviewer` output. Generated during Step 7.
 
 ---
 

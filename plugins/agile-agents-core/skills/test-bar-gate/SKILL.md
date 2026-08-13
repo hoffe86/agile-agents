@@ -1,7 +1,7 @@
 ---
 name: test-bar-gate
 description: >-
-  Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after `coding`/`testing` finish and before the reviewer fan-out. The smoke slot runs by default for any runnable application, deriving the start command via whichever ecosystem startup-discovery skill is installed when the profile doesn't declare one. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 7 (Testing) and Stage 9 (Review).
+  Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after the implementation stage finishes and before the reviewer fan-out. The smoke slot runs by default for any runnable application, deriving the start command via whichever ecosystem startup-discovery skill is installed when the profile doesn't declare one. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 6 (Implement) and Stage 8 (Review).
 applies_to: all
 ---
 
@@ -14,23 +14,23 @@ A deterministic, pre-reviewer quality gate. Runs cheap, fast checks (lint → ty
 Loaded by the `dev-lead` supervisor in this exact slot:
 
 ```
-Stage 7 (Testing) emits  ──►  TESTS COMPLETE
-                              │
-                              ▼
-                    ┌─────────────────────┐
-                    │  test-bar-gate      │  ◄── this skill
-                    └─────────────────────┘
-                              │
-              pass            │            fail
-        ┌─────────────────────┴───────────────────────┐
-        ▼                                             ▼
-Stage 9 reviewer fan-out                Return to `coding` or `testing`
+Stage 6 (Implement) emits ──►  IMPLEMENTATION COMPLETE
+                               │  (code + tests, one block per task)
+                               ▼
+                     ┌─────────────────────┐
+                     │  test-bar-gate      │  ◄── this skill
+                     └─────────────────────┘
+                               │
+               pass            │            fail
+         ┌─────────────────────┴───────────────────────┐
+         ▼                                             ▼
+Stage 8 reviewer fan-out                Return to `coding` / `infrastructure`
 (architecture / security /              with structured failure report.
 clean-code / test-quality /             One corrective retry allowed;
 iac reviews)                            second failure → halt + ask user.
 ```
 
-The gate **never** runs before `TESTS COMPLETE` — we want the unit-test layer (when applicable) to exist before grading it.
+The gate **never** runs before every Stage 6 task is `done` — we want the unit-test layer (when applicable) to exist before grading it. It runs over the **combined** diff of all tasks, which is why it is not redundant with the per-task gates: a task can pass its own tests and still break another's, and the agent that ran the suite is the same one that wrote it.
 
 ## What runs
 
@@ -194,20 +194,20 @@ The script exits `1`.
 
 ## Retry policy
 
-The dev-lead may invoke `coding` (for failures attributable to source) or `testing` (for failures attributable to the test layer) **once** with the structured failure report attached. If the gate fails a second time on the same task, the dev-lead **halts** and asks the user how to proceed — do not loop indefinitely on a gate that cannot be cleared.
+The dev-lead may re-engage the author **once** with the structured failure report attached. If the gate fails a second time on the same task, the dev-lead **halts** and asks the user how to proceed — do not loop indefinitely on a gate that cannot be cleared.
 
-Choose between `coding` and `testing` like this:
+Routing is by **what the failure belongs to**, not by which layer the file is in — `coding` owns application code *and* its tests, so a lint failure in a test file and a wrong assertion are both its to fix:
 
 | Failed check | Author to re-engage |
 |--------------|---------------------|
-| lint         | the author whose patch introduced the violation (usually `coding`; `testing` if only test files changed) |
+| lint         | `coding` — including violations in test files |
 | typecheck    | `coding` |
-| unit_test    | `coding` if a test exposed a real defect; `testing` if the test itself is wrong |
-| integration_test | `coding` first — an integration failure is usually a wiring defect, not a test defect |
-| coverage / mutation | `testing` — both measure the test layer |
+| unit_test    | `coding` — whether the test exposed a real defect or the test itself is wrong. **Which one it is must be stated in the retry hand-off**, because the two fixes are opposite: change the code, or change the assertion. An assertion changed without that statement is exactly what `test-reviewer` will raise at Stage 8. |
+| integration_test | `coding` — an integration failure is usually a wiring defect, not a test defect |
+| coverage / mutation | `coding` — both measure the test layer it owns |
 | smoke        | `coding` — a host that will not boot is a source defect. `infrastructure` only when the failure is a missing local setting / connection string it owns. |
 
-When in doubt, pick `coding` — a failing test on `main` blocks the reviewer fan-out either way.
+When the diff is IaC-only, the author is `infrastructure` for every row above.
 
 ## Citations
 

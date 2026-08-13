@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoffe86/agile-agents/skills/run-event-log/event-schema.json",
   "title": "Coding-suite run event",
-  "description": "One structured JSON Lines event emitted by a coding-suite agent (dev-lead, architect, coding, testing, infrastructure, or any reviewer) at a phase boundary, on a non-trivial tool call, on a quality-gate decision, or on completion. Append-only \u2014 see SKILL.md. Sentinel blocks remain canonical hand-off; this event log is additive telemetry.",
+  "description": "One structured JSON Lines event emitted by a coding-suite agent (dev-lead, architect, coding, infrastructure, or any reviewer) at a phase boundary, on a non-trivial tool call, on a quality-gate decision, or on completion. Append-only \u2014 see SKILL.md. Sentinel blocks remain canonical hand-off; this event log is additive telemetry.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -29,13 +29,13 @@
         "dev-lead",
         "architect",
         "coding",
-        "testing",
         "infrastructure",
-        "review",
-        "security-review",
-        "architecture-review",
-        "infrastructure-review",
-        "test-review"
+        "review-lead",
+        "code-reviewer",
+        "security-reviewer",
+        "architecture-reviewer",
+        "infrastructure-reviewer",
+        "test-reviewer"
       ],
       "description": "Which coding-suite agent emitted the event."
     },
@@ -43,7 +43,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
-      "description": "Free-form phase name, e.g. 'architecture', 'coding', 'testing', 'infrastructure', 'review', 'wrap-up'."
+      "description": "Free-form phase name, e.g. 'architecture', 'coding', 'infrastructure', 'review-lead', 'wrap-up'."
     },
     "event_type": {
       "type": "string",
@@ -133,8 +133,8 @@
     {
       "timestamp": "2026-04-15T08:46:55.410Z",
       "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
-      "agent": "security-review",
-      "phase": "review",
+      "agent": "security-reviewer",
+      "phase": "review-lead",
       "event_type": "gate_check",
       "outcome": "fail",
       "payload": {

@@ -1,6 +1,16 @@
 ---
-name: code-review
-description: Perform comprehensive code reviews across architecture, clean code, security, and test quality dimensions. Produces a structured markdown report with severity-rated findings, each classified as agent-automatable or requiring human decision. USE FOR any request to review code, audit a codebase, check for security issues, analyze architecture, find code smells, assess test coverage, or produce a quality report. Also use when the user asks to "review", "audit", "assess", "analyze quality", "check security", "find issues", or "code health check" for any project or repository.
+name: code-reviewer
+description: >-
+  Standalone whole-repository code audit — no diff, no pipeline. Surveys an
+  entire codebase across architecture, clean code, security and test quality in
+  four parallel analysis streams, then produces a ranked report with an action
+  plan classified by who can fix each item (agent-automatable vs needs a human
+  decision). USE FOR an ad-hoc request to audit, assess or health-check a whole
+  project or repository — "review this codebase", "what tech debt do we have",
+  "produce a quality report before the release". DO NOT USE FOR reviewing a
+  diff, branch or PR inside the agent pipeline — that is the `review-lead` agent and
+  its five specialist lenses, which use different severity, id and owner
+  conventions; loading this skill there produces a second, conflicting review.
 applies_to: all
 ---
 
@@ -8,11 +18,27 @@ applies_to: all
 
 Perform deep, multi-dimensional code reviews that produce actionable, classified reports. The review runs 4 parallel analysis streams, synthesizes findings into a single ranked report, and classifies every item by who should fix it.
 
+## Scope boundary — read this first
+
+This skill is the **standalone audit path**: a human points at a repository and asks "how healthy is this?". There is no diff, no orchestrator, and no specialist agents already running.
+
+**Inside the agent pipeline, do not load this skill.** There, `review-lead` orchestrates five read-only specialist agents (`code-reviewer`, `security-reviewer`, `test-reviewer`, `architecture-reviewer`, `infrastructure-reviewer`) over a *diff*, and this skill would spawn a second, competing fan-out under conventions that do not match:
+
+| | This skill (standalone audit) | The pipeline (`review-lead` + lenses) |
+|---|---|---|
+| Input | a whole repository | a diff (`git diff <base>...HEAD`) |
+| Fan-out | 4 explore agents it launches itself | 5 specialist agents, dispatched by `review-lead` |
+| Severity | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low | 🔴 Critical / 🟠 Major / 🟡 Minor / 🔵 Nit |
+| Finding ids | `SEC-01`, `ARCH-03`, `CODE-07` | `C1`, `M1`, `m1`, `N1` |
+| Owner | 🤖 Agent vs 👤 User | `coding` / `infrastructure` / `architect` |
+
+Mixing the two yields duplicate findings at incompatible severities that `dev-lead` cannot route. Pick the path that matches the input: repository → this skill; diff → the `review-lead` agent.
+
 ## When to Use
 
-- User asks to review, audit, or assess a codebase or project
-- User asks about code quality, security posture, architecture health, or test coverage
-- User wants a quality gate report before a release or PR
+- User asks to review, audit, or assess a codebase or project **as a whole**
+- User asks about code quality, security posture, architecture health, or test coverage across the repo
+- User wants a quality gate report before a release
 - User says "find issues", "code smells", "tech debt", or "what should we fix"
 
 ## Review Process

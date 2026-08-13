@@ -6,7 +6,7 @@ applies_to: all
 
 # Code Review Checklist
 
-You are reviewing a set of changes (typically the output of `coding` + `testing`). You are **read-only**: never edit code. Produce a structured report.
+You are reviewing a set of changes (typically the output of `coding` — production code and the tests that cover it). You are **read-only**: never edit code. Produce a structured report.
 
 ## 0. Scope of the review
 

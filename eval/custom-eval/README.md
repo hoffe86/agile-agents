@@ -23,13 +23,13 @@ typical surface area of a real-world software delivery engagement. Each task is 
 | 05 | `pr-description`                    | Release-notes / PR-description authoring (engineering-standards) |
 | 06 | `gha-oidc-deploy`                   | GitHub Actions + OIDC to Azure (cicd-pipeline-implementation) |
 | 07 | `test-coverage-uplift`              | Unit + integration test backfill (csharp-testing, code-review-checklist) |
-| 08 | `threat-model-api`                  | Threat-modelling (security-review reviewer agent) |
+| 08 | `threat-model-api`                  | Threat-modelling (security-reviewer reviewer agent) |
 | 09 | `polly-resilience`                  | Resilience patterns on HTTP client (cloud-native-patterns, csharp-implementation) |
 | 10 | `helm-to-kustomize`                 | K8s migration (helm-kustomize-implementation, iac-best-practices) |
 
-The 10 tasks together touch every author agent (coding × 2 stacks, testing, infrastructure,
-architect) and every reviewer agent (code-review, architecture-review, security-review,
-testing-review, infra-review).
+The 10 tasks together touch every author agent (coding × 2 stacks — implementation *and* the
+tests that cover it, infrastructure, architect) and every reviewer agent (code-reviewer,
+architecture-reviewer, security-reviewer, test-reviewer, infra-review).
 
 ## How tasks are scored
 

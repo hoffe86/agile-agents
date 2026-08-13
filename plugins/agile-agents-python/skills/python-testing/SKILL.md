@@ -55,7 +55,7 @@ Aim for 100% coverage of the **lines added or modified** in this session. Don't 
 When tests pass:
 
 - Summarize: # of new tests, # of fixed tests, current coverage of touched files.
-- **Hand off to `review`** with the diff (production code + tests).
+- **Hand off to `review-lead`** with the diff (production code + tests).
 
 ## 6. What you do NOT do
 

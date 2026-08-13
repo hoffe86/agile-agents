@@ -72,10 +72,10 @@ agent/                               Marketplace root
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
 │   ├── agile-agents-core/           The autonomous-coding agent harness
 │   │   ├── .github/plugin/plugin.json   Plugin manifest (name: agile-agents-core)
-│   │   ├── agents/                  13 *.agent.md (1 supervisor + 4 authors
-│   │   │                            + 5 reviewers + backlog-manager + bootstrapper
+│   │   ├── agents/                  13 *.agent.md (1 supervisor + 3 authors
+│   │   │                            + 6 reviewers + backlog-manager + bootstrapper
 │   │   │                            + capability-scout)
-│   │   ├── skills/                  36 repo-scope skills, incl.
+│   │   ├── skills/                  38 repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
 │   ├── agile-agents-dotnet/         5 skills — C# / .NET
@@ -170,16 +170,32 @@ The PR command derives from **`identity.repo_url`**, never from `backlog.platfor
 host and board host are independent, and a project may keep code on GitHub with work items
 in Azure Boards.
 
+### Agent naming convention (`-reviewer` is an actor, `-review` is a process)
+Read-only review agents end in **`-reviewer`**; the skills that carry review *knowledge*
+keep **`-review`**. So `code-reviewer` (agent) loads nothing from `code-review` (skill), and
+`security-reviewer` (agent) may cite `security-review` (vendored skill) without either name
+being ambiguous. The orchestrator is **`review-lead`**, mirroring `dev-lead` — it supervises
+reviewers rather than being one, so it does not take the lens suffix.
+
+**Never give an agent and a skill the same name.** `audit-references.ps1` skips backticked
+agent names so that "delegate to `test-reviewer`" is not read as a skill reference — which
+means a shared name can never be validated, and deleting the same-named skill leaves the
+audit green. That was live for `code-review` and `security-review` until the rename; no
+purely name-based rule can distinguish "agent named in prose" from "skill that vanished".
+
 ### Hand-off block-name canon (do not change)
 Worker agents emit a recognisable terminator block on completion — `dev-lead` parses these.
 Renaming any silently breaks the pipeline:
-- `IMPLEMENTATION COMPLETE` (coding)
-- `TESTS COMPLETE` (testing)
+- `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
-- `REVIEW COMPLETE` (review — the specialist reviewers report into it, they do not emit it)
+- `REVIEW COMPLETE` (review-lead — the specialist reviewers report into it, they do not emit it)
 - `TASKS PLANNED` (backlog-manager — the Plan-phase task-creation hand-off)
 - `BOOTSTRAP COMPLETE` (bootstrapper — the one-off profile + plugin bootstrap)
+
+`TESTS COMPLETE` was retired when `coding` and `testing` merged (ADR 0009). Do not
+re-introduce it: `IMPLEMENTATION COMPLETE` now carries the test fields, and a second block
+from the same agent would give `dev-lead` two gates over one diff.
 
 ### RPI pipeline + tasks-in-tracker
 `dev-lead` orchestrates the **RPI pattern** — **Research → Plan → Implement → Review**:
@@ -192,17 +208,34 @@ Renaming any silently breaks the pipeline:
   and emits `TASKS PLANNED`. The **mandatory human plan-approval gate fires after task
   creation**. Tasks live in the tracker, not as files; in-run hand-off state is the
   orchestrator's own task list, and the tracker wins on any conflict.
-- **Implement / Review** — coding + infrastructure + testing, then multi-lens review. Stage 10
+- **Implement / Review** — `coding` (application code *and* its tests) + `infrastructure` (IaC
+  *and* its tests), then the deterministic test bar, then multi-lens review. Stage 9
   verifies the delivered change covers the *requirement*, not merely that every task passed.
+
+**One agent writes the code and its tests** (ADR 0009) — the split cost a hand-off round
+without buying independence, since the independent judgement is the reviewers' and they are
+different agents by design. The guard that replaces the split is explicit: an author may fix
+production code to pass a test, but never weaken a test to pass production code, and every
+modified existing test is justified in the `Existing tests modified` hand-off field, which
+`dev-lead` gates on and `test-reviewer` adjudicates.
+
+**The reviewers went the other way, deliberately** (ADR 0010). `review-lead` performs **no lens
+itself** — it triages, dispatches five read-only specialists in parallel (`code-reviewer`,
+`security-reviewer`, `test-reviewer`, `architecture-reviewer`, `infrastructure-reviewer`), and merges.
+The merge logic that applied to `coding`+`testing` does not transfer here: reviewers never
+hand off to each other, so the split costs no round, and independence is the product rather
+than a side-effect. Do not "consolidate" a lens into the orchestrator to save a dispatch —
+that is exactly the arrangement ADR 0010 undid, where the merge always completed and the
+line-by-line reading silently degraded on large diffs.
 
 Tasks are dispatched **one at a time**, even when the dependency graph says they are
 independent. Sub-agents share one working tree, so concurrent writers interleave edits and
 no gate can attribute a failure to a task — independent in the graph is not disjoint in the
-diff. (`review` fans out in parallel only because all four specialists are read-only.) The
+diff. (`review-lead` fans out in parallel only because all five lenses are read-only.) The
 upgrade path is a git worktree per task plus a merge step; do not "fix" this by spawning
 concurrent writers.
 
-Acceptance criteria are captured **verbatim at intake** and verified at Stage 10 against
+Acceptance criteria are captured **verbatim at intake** and verified at Stage 9 against
 **evidence** — a test name or a review finding. Every gate used to compare against its
 predecessor and none against the source, which looks closed-loop but lets a criterion lost
 at decomposition pass silently.
@@ -217,7 +250,7 @@ tracker's own state**. `backlog-manager` resolves them: `backlog.task_states` fr
 profile, else the states the item actually accepts, else post a comment and say so.
 
 `implemented` (code-complete, unverified) is deliberately not `done` (delivered, verified
-at Stage 10). Where a tracker cannot express `implemented`, the item **stays where it is
+at Stage 9). Where a tracker cannot express `implemented`, the item **stays where it is
 and gets a comment** — it must never fall back to the terminal state, because closing on
 code-completeness claims a verification that has not happened and no later transition
 undoes it once the team has watched the item leave the board.
@@ -250,13 +283,13 @@ Consequences worth preserving:
   continue. Halting delivery over a metering table is the wrong trade.
 
 ### Vendored skills
-20 of the 56 skills are unmodified copies from
+20 of the 58 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-36 are hand-written or adopted and are the ones to edit — 33 repo-scope
+38 are hand-written or adopted and are the ones to edit — 35 repo-scope
 (csharp/python-implementation, csharp/python-testing, dotnet/python-startup-discovery,
-code-review-checklist, artifact-coverage,
+development-practices, testing-practices, code-review-checklist, artifact-coverage,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
 architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
@@ -275,7 +308,7 @@ ignoring only the `applies_to` line. Run it before a re-sync; hand the result to
 `capability-scout` to decide what is worth taking.
 
 ### Personal preferences are not shipped
-`trade-off-reporting`, `code-review` and `cloud-native-patterns` once lived under a separate
+`trade-off-reporting`, `code-reviewer` and `cloud-native-patterns` once lived under a separate
 `user/skills/` folder, because that is where they were first written — a person's own
 `~/.copilot/skills/`. They now sit in `skills/` with everything else: all three are `applies_to:
 all` engineering skills that the agents rely on, none is a personal preference, and both paths were
@@ -294,7 +327,7 @@ this harness is installed by many people, and one person's tone is another's noi
 
 ### Model-tier convention
 Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),
-`mid` (mechanical authoring: `coding`, `infrastructure`, `testing`, `backlog-manager`), or
+`mid` (mechanical authoring: `coding`, `infrastructure`, `backlog-manager`), or
 `heavy` (deep reasoning: `architect` and all review agents).
 
 **Nothing reads it.** It is declared by all 13 agents and consumed by no script, no
@@ -312,7 +345,7 @@ files live in `<skill-name>/references/`, scripts in `<skill-name>/scripts/`.
 ecosystem, otherwise a comma-separated list of the ecosystems it actually assumes
 (`dotnet`, `python`, `azure, terraform`, `kubernetes, helm, kustomize`, `docker`,
 `github-actions`, …). It is **required on every skill**; a missing value is a defect, not
-a default. The split today is 30 `all` / 26 scoped.
+a default. The split today is 32 `all` / 26 scoped.
 
 **Nothing reads it.** Like `model_tier`, it is declared on every skill and consumed by no
 script, no manifest, and not by the CLI — it is a local field that upstream has no equivalent

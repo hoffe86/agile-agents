@@ -35,7 +35,7 @@ For Azure-targeted designs, lean on:
 | Region availability + quotas | **`azure-quotas`** MCP tool |
 | AKS topology | **`azure-kubernetes`** plugin skill |
 | AI / agent system design | **`microsoft-foundry`** user skill, **`azure-ai`** plugin skill |
-| Threat surface | **`threat-model-analyst`** (vendored), **`security-review`** (vendored) |
+| Threat surface | **`threat-model-analyst`** (vendored), **`security-reviewer`** (vendored) |
 | .NET design patterns | **`dotnet-design-pattern-review`** (vendored) |
 
 ## 3. Deliverable structure

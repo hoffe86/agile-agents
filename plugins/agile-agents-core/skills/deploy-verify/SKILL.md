@@ -1,7 +1,7 @@
 ---
 name: deploy-verify
 description: >-
-  Opt-in deployed verification — push the feature branch, let the project's own CI/CD pipeline deploy pipeline + IaC + application to the first non-production environment, and report whether it actually deployed. Proves the things `plan` / `what-if` structurally cannot: quota, policy denial, name collisions, RBAC at apply time, unregistered providers, non-idempotent IaC. Gated on `solution-profile.yaml: infrastructure.deploy_verify` (default `off`) and never touches production. Loaded by `dev-lead` at Stage 8 after the test bar passes.
+  Opt-in deployed verification — push the feature branch, let the project's own CI/CD pipeline deploy pipeline + IaC + application to the first non-production environment, and report whether it actually deployed. Proves the things `plan` / `what-if` structurally cannot: quota, policy denial, name collisions, RBAC at apply time, unregistered providers, non-idempotent IaC. Gated on `solution-profile.yaml: infrastructure.deploy_verify` (default `off`) and never touches production. Loaded by `dev-lead` at Stage 7 after the test bar passes.
 applies_to: all
 ---
 
@@ -30,7 +30,7 @@ The justification for spending the time and the cloud money:
 
 ## When this skill fires
 
-At **Stage 8**, immediately after the test bar returns green, and only when **all** preconditions hold. Any precondition unmet → emit a `skipped` event with the specific reason and pass through. Never block a run because deployed verification was unavailable — it is an enhancement to the gate, not a new mandatory gate.
+At **Stage 7**, immediately after the test bar returns green, and only when **all** preconditions hold. Any precondition unmet → emit a `skipped` event with the specific reason and pass through. Never block a run because deployed verification was unavailable — it is an enhancement to the gate, not a new mandatory gate.
 
 Preconditions:
 

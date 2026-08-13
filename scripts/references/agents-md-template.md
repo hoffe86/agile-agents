@@ -28,16 +28,15 @@ This repository runs a **supervisor + specialist** topology. The
 → Review): it researches against the prepared concept + ADRs, decomposes
 the story into tasks that `backlog-manager` creates as child work items in
 the tracker (approved by a human), then delegates to the specialist agents
-in sequence (architect → coding → testing → infrastructure → review
+in sequence (architect → coding → infrastructure → review
 fan-out). Each worker emits a **sentinel hand-off block** on
 completion — those block names are canonical and parsed by
 `dev-lead`:
 
-- `IMPLEMENTATION COMPLETE` (coding)
-- `TESTS COMPLETE` (testing)
+- `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
-- `REVIEW COMPLETE` (review — the specialist reviewers report into it)
+- `REVIEW COMPLETE` (review-lead — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
 - `BOOTSTRAP COMPLETE` (bootstrapper)
 

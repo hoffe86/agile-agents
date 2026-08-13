@@ -30,9 +30,9 @@ from collections import Counter
 
 # Mirror plugins/agile-agents-core/skills/run-event-log/references/event-schema.json (keep in sync).
 AGENTS = {
-    "dev-lead", "architect", "coding", "testing", "infrastructure",
-    "review", "security-review", "architecture-review",
-    "infrastructure-review", "test-review",
+    "dev-lead", "architect", "coding", "infrastructure",
+    "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
+    "infrastructure-reviewer", "test-reviewer",
 }
 EVENT_TYPES = {
     "run_start", "run_complete", "phase_start", "phase_complete",
@@ -40,8 +40,8 @@ EVENT_TYPES = {
 }
 REQUIRED_FIELDS = ("timestamp", "run_id", "agent", "phase", "event_type")
 REVIEWERS = {
-    "review", "security-review", "architecture-review",
-    "infrastructure-review", "test-review",
+    "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
+    "infrastructure-reviewer", "test-reviewer",
 }
 IMPLEMENTERS = {"coding", "infrastructure"}
 
@@ -108,14 +108,18 @@ def run_checks(events):
     add("implement-phase", True, implement_i is not None,
         "" if implement_i is not None else "no implement phase (coding / infrastructure) found")
 
-    has_testing = any(e.get("agent") == "testing" for e in events)
-    add("testing-phase", True, has_testing,
-        "" if has_testing else "no testing agent activity found")
-
-    # test-bar gate = a gate_check emitted by dev-lead, before the first review activity.
+    # Tests are no longer a separate agent: `coding` covers the code it writes,
+    # `infrastructure` covers its IaC. The trajectory signal that verification
+    # happened is therefore the deterministic test bar, not a testing phase --
+    # and it must fire after implementation, or it graded nothing.
     testbar_i = _first_index(events, lambda e: e.get("event_type") == "gate_check"
                              and e.get("agent") == "dev-lead"
                              and e.get("phase") == "test-bar")
+    verified = testbar_i is not None and implement_i is not None and testbar_i > implement_i
+    add("implement-verified", True, verified,
+        "" if verified else "no test-bar gate after the implement phase - nothing verified the change")
+
+    # test-bar gate = a gate_check emitted by dev-lead, before the first review activity.
     first_review_i = _first_index(events, lambda e: e.get("agent") in REVIEWERS)
     if testbar_i is None:
         add("test-bar-gate", True, False, "no dev-lead gate_check (test-bar gate) found")
@@ -225,20 +229,22 @@ def build_golden():
         ev("coding", "coding", "phase_start"),
         ev("coding", "coding", "tool_call", tool_name="edit",
            args_summary="modules/storage.bicep - add hardened account"),
+        ev("coding", "coding", "tool_call", tool_name="edit",
+           args_summary="tests/storage.tests.ps1 - assert hardened defaults"),
+        ev("coding", "coding", "tool_call", tool_name="powershell",
+           args_summary="bicep build modules/storage.bicep; Invoke-Pester tests/"),
         ev("coding", "coding", "phase_complete", outcome="success"),
-        ev("testing", "testing", "phase_start"),
-        ev("testing", "testing", "tool_call", tool_name="powershell", args_summary="bicep build modules/storage.bicep"),
-        ev("testing", "testing", "phase_complete", outcome="success"),
         ev("dev-lead", "implement", "phase_complete", outcome="success"),
         ev("dev-lead", "test-bar", "gate_check", outcome="success",
            payload={"gate": "lint+typecheck+unit", "retries": 0}),
-        ev("dev-lead", "review", "phase_start"),
-        ev("review", "review", "phase_start"),
-        ev("security-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("architecture-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("test-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("review", "review", "phase_complete", outcome="success"),
-        ev("dev-lead", "review", "phase_complete", outcome="success"),
+        ev("dev-lead", "review-lead", "phase_start"),
+        ev("review-lead", "review-lead", "phase_start"),
+        ev("code-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
+        ev("security-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
+        ev("architecture-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
+        ev("test-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
+        ev("review-lead", "review-lead", "phase_complete", outcome="success"),
+        ev("dev-lead", "review-lead", "phase_complete", outcome="success"),
         ev("dev-lead", "wrap-up", "run_complete", outcome="success",
            duration_ms=524000),
     ]
@@ -270,9 +276,14 @@ def self_test():
                   "single-run-id" in required_fail_ids(mutate(break_runid)), True))
 
     def drop_testbar(e):
-        del e[17]  # the dev-lead test-bar gate_check
+        # match on what it is, not where it sits - the fixture's shape changes
+        e[:] = [x for x in e if not (x["event_type"] == "gate_check"
+                                     and x["agent"] == "dev-lead"
+                                     and x["phase"] == "test-bar")]
     cases.append(("no test-bar gate trips test-bar-gate",
                   "test-bar-gate" in required_fail_ids(mutate(drop_testbar)), True))
+    cases.append(("no test-bar gate trips implement-verified",
+                  "implement-verified" in required_fail_ids(mutate(drop_testbar)), True))
 
     def drop_reviewer_gates(e):
         e[:] = [x for x in e if not (x["event_type"] == "gate_check" and x["agent"] in REVIEWERS)]

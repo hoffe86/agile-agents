@@ -1,6 +1,6 @@
 # Failure report format
 
-The `test-bar-gate` runner prints this markdown block to stdout when any check fails. The `dev-lead` supervisor copies it verbatim into the next prompt to `coding` (or `testing`) for the one allowed corrective retry.
+The `test-bar-gate` runner prints this markdown block to stdout when any check fails. The `dev-lead` supervisor copies it verbatim into the next prompt to `coding` (or `infrastructure` when the diff is IaC-only) for the one allowed corrective retry.
 
 ## Template
 
@@ -34,7 +34,7 @@ Return to `<coding|testing>` with this report and one corrective retry. If the g
 | `<argv ...>`     | The exact command list, joined with single spaces, with no shell quoting beyond what the runner uses |
 | `<int>`          | Process exit code. `127` when the tool is not installed; the `Reason` line then reads `command_not_found` |
 | stderr block     | Last 30 lines of stderr; if stdout-only tools, fall back to last 30 lines of stdout |
-| Suggested action | `coding` for lint/typecheck failures and most test failures; `testing` only when the failing assertion clearly belongs to the test layer |
+| Suggested action | `coding` for lint / typecheck / test failures in application code and its tests; `infrastructure` when the diff is IaC-only. A unit-test failure must say whether the code or the assertion was wrong — the two fixes are opposite |
 
 ## Sample populated report (Python typecheck failure)
 

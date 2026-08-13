@@ -83,7 +83,7 @@ the project type or technology choice.
 ## Pre-PR self-review (mandatory)
 
 Before a pull request is opened, self-review the change against the standards above. This
-catches issues before CI and reviewers see them. `review` also uses this list as the
+catches issues before CI and reviewers see them. `review-lead` also uses this list as the
 structure for its general code-quality pass.
 
 1. **Build & checks pass locally** — full build, tests, lint, and format checks. Never push
