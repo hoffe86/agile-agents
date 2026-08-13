@@ -52,7 +52,7 @@ re-sync prompts below will not work.
 
 | Skill | Plugin | Was | Status |
 |---|---|---|---|
-| polyglot-test-agent | `agile-agents-core` | `github/awesome-copilot/skills/polyglot-test-agent` | Removed upstream (confirmed 404, 2026-08). **Kept** — `testing` routes to it as the cross-language fallback when no language skill is installed, and `test-review` cites it for cross-language test scaffolding. Editing it in place is now allowed; it has no upstream to diverge from. |
+| polyglot-test-agent | `agile-agents-core` | `github/awesome-copilot/skills/polyglot-test-agent` | Removed upstream (confirmed 404, 2026-08). **Kept** — `testing-practices` routes to it as the cross-language fallback when no language skill is installed, and `test-review` cites it for cross-language test scaffolding. Editing it in place is now allowed; it has no upstream to diverge from. |
 
 Before removing an adopted skill, check what routes to it — a skill with no upstream is still a
 dependency if an agent names it.

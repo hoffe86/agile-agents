@@ -188,7 +188,7 @@ ai_copilot:
   responsible_ai_tier: ""       # low | medium | high — drives RAI review depth.
   pii_handling_rule: ""         # E.g. "no-pii-to-llm", "redact-then-send", "tenant-bound-only"
   active_agents: []             # Subset of the agent suite that applies in this repo.
-                                # E.g. ["dev-lead", "architect", "coding", "testing", "review"]
+                                # E.g. ["dev-lead", "architect", "coding", "review"]
   mandatory_skills: []          # Skills that must always load (in addition to agent defaults).
 
 # ─── code_localisation ────────────────────────────────────────────────────────
