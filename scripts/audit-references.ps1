@@ -10,17 +10,33 @@
 
     Two checks:
 
-      skills  Every skill named in an agent's "Skills you compose with" section
-              must either ship under plugins/*/skills, or be hedged
-              on the same line as optional ("not bundled", "when installed",
-              "if installed", "when available", "when present", "separately
-              installed"). Hedged is fine — that is the documented contract for
-              a skill the user may install themselves. Unhedged and unshipped
-              is the bug.
+      skills  Every skill named in an agent's skills section — any "## Skills…"
+              heading, because agents word it differently ("Skills you compose
+              with", "Skills the dev-lead loads") — must either ship under
+              plugins/*/skills, or be hedged on the same line as optional
+              ("not bundled", "when installed", "if installed", "when
+              available", "when present", "separately installed"). Hedged is
+              fine — that is the documented contract for a skill the user may
+              install themselves. Unhedged and unshipped is the bug.
 
       servers Every namespaced tool grant (foo/bar) in an agent's `tools:`
               frontmatter must name a server defined in some plugin's .mcp.json,
               or appear in $ExternalServers below.
+
+    Known limits — measured, not assumed:
+
+      * Only the skills section is scanned. Elsewhere an agent body is full of
+        backticked kebab-case prose (`pending-approval`, `test-bar`) that is not
+        a skill, so whole-file scanning trades these silent misses for constant
+        false positives. Four agents (architect, backlog-manager, bootstrapper,
+        capability-scout) currently have no skills heading at all, so their
+        references are unchecked until one is added.
+
+      * A name that is both an agent and a skill (today: code-review,
+        security-review) can never be validated, because backticked agent names
+        are skipped so that "delegate to `test-review`" is not read as a skill.
+        Delete such a skill and this script stays green. A purely name-based
+        rule cannot tell "agent named in prose" from "skill that vanished".
 #>
 [CmdletBinding()]
 param(
@@ -39,6 +55,15 @@ $ExternalServers = @(
 
 # Pseudo-tools that are not MCP servers.
 $NotServers = @('agent', 'browser', 'edit', 'execute', 'read', 'search', 'todo', 'vscode', 'web')
+
+# Kebab-case prose inside a skills section that names a tool, mode or backend
+# rather than a skill. Kept deliberately short: every entry here is a name this
+# script can no longer protect, so prefer rewording the reference over adding to
+# the list.
+$NotSkills = @(
+    'what-if',      # the Azure CLI / Bicep deployment operation
+    'tree-sitter'   # a code-localisation backend, named in solution-profile.yaml
+)
 
 $hedge = 'not bundled|when installed|is installed|if installed|when available|is available|if available|when present|is present|separately installed|may install|not shipped|does not ship|none of them ship|only when|external|without vendoring'
 
@@ -68,9 +93,13 @@ foreach ($file in $agentFiles) {
     $lines = Get-Content $file.FullName
 
     # --- skills -----------------------------------------------------------
-    # Scope to the "Skills you compose with" section: elsewhere in an agent
-    # body, backticked names are agent names, MCP tools, tags and prose.
-    $start = ($lines | Select-String -Pattern '^#+\s*Skills you compose with' | Select-Object -First 1).LineNumber
+    # Scope to the skills section: elsewhere in an agent body, backticked
+    # names are agent names, MCP tools, tags and prose. Match any "## Skills…"
+    # heading — agents word it differently, and anchoring on the exact phrase
+    # "Skills you compose with" silently excluded dev-lead (whose heading reads
+    # "Skills the dev-lead loads") along with the 32 references it makes, the
+    # most of any agent in the suite.
+    $start = ($lines | Select-String -Pattern '^#+\s*Skills' | Select-Object -First 1).LineNumber
     if ($start) {
         $end = $lines.Length
         for ($i = $start; $i -lt $lines.Length; $i++) {
@@ -96,7 +125,7 @@ foreach ($file in $agentFiles) {
 
             foreach ($m in [regex]::Matches($line, '`([a-z][a-z0-9]+(?:-[a-z0-9]+)+)`')) {
                 $skill = $m.Groups[1].Value
-                if ($skill -in $agentNames -or $skill -in $pluginNames) { continue }
+                if ($skill -in $agentNames -or $skill -in $pluginNames -or $skill -in $NotSkills) { continue }
                 if ($skill -notin $shippedSkills) {
                     $failures.Add("$rel`:$($i + 1)  skill '$skill' is referenced but ships nowhere, and neither the line nor its group lead-in marks it optional.")
                 }
