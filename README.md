@@ -3,8 +3,8 @@
 The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plugins.
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
-over 13 specialist agents (1 supervisor + 3 authors + 6 reviewers, plus a backlog-manager, a bootstrapper and a capability-scout) plus
-58 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
+over 14 specialist agents (1 supervisor + 4 authors + 6 reviewers, plus a backlog-manager, a bootstrapper and a capability-scout) plus
+59 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 **Start here:** install `agile-agents-core`, then run **`bootstrapper`** — it profiles your repo,
 writes the operational contract every agent reads, and installs the companion plugins your stack
@@ -66,7 +66,7 @@ The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skill
 
 ## What you get
 
-**13 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 3 authors + 6 reviewers + backlog-manager + bootstrapper + capability-scout:
+**14 agents** (`plugins/agile-agents-core/agents/`) — 1 supervisor + 4 authors + 6 reviewers + backlog-manager + bootstrapper + capability-scout:
 
 | Role | Agent | Purpose |
 |------|-------|---------|
@@ -74,6 +74,7 @@ The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skill
 | Author | `architect` | Read-only/advisory: serves the Research phase — verifies the change fits the prepared concept (in the framework declared by `documentation.framework`) + any accepted decision records, cites them, reports decision gaps; never authors ADRs |
 | Author | `coding` | Implements features/fixes **and covers them with tests** (C# / Python; xUnit/NUnit/MSTest/TUnit, pytest) — one engineer's job, one hand-off |
 | Author | `infrastructure` | Bicep, Terraform, Helm/Kustomize, CI/CD pipelines — and their IaC tests |
+| Author | `data-scientist` | Analysis, experiments, models and their evaluation — two rubrics (classical ML and AI/LLM). Owns the model and its evidence; `coding` owns the app that serves it |
 | Backlog | `backlog-manager` | Creates / improves / reviews tracker work items (ADO, GitHub, Jira, Linear); in the Plan phase materialises `dev-lead`'s task breakdown as child work items linked to the parent story |
 | Bootstrap | `bootstrapper` | One-off bootstrap and repair: runs the profile interview, writes `solution-profile.yaml`, derives the companion plugins the declared stack needs and installs them with the user's approval, then reports what is still missing |
 | Coverage | `capability-scout` | Dependency manager for harness artifacts: derives what each phase needs for the declared stack, reports the gaps, and proposes what would fill them and where it belongs. Read-only — proposes, never adopts |
@@ -145,7 +146,7 @@ just means the tool isn't there.
 |---|---|---|
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
-| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 13 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
+| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 14 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
 | `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-reviewer`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
 | `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
 
@@ -156,9 +157,9 @@ MCP servers above. On top of that:
 
 | Extra | Agents |
 |---|---|
-| `edit` | `architect`, `coding`, `infrastructure`, `backlog-manager`, `bootstrapper` |
+| `edit` | `architect`, `coding`, `data-scientist`, `infrastructure`, `backlog-manager`, `bootstrapper` |
 | `agent` (delegation) | `architect`, `coding`, `infrastructure`, `backlog-manager` + `dev-lead`, `review-lead` |
-| `browser` + `playwright/*` | all 13 — `coding` for E2E and browser-driven diagnosis, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
+| `browser` + `playwright/*` | all 14 — `coding` for E2E and browser-driven diagnosis, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
 
 **Reviewers never get `edit`.** That's the defence-in-depth half of
 `reviewer-read-only-rules` — the contract is enforced in the prompt *and* by tool grant.
@@ -281,6 +282,7 @@ orchestration, mid = mechanical authoring, heavy = deep multi-file reasoning).
 |---|---|
 | `dev-lead` | light |
 | `coding`, `infrastructure`, `backlog-manager` | mid |
+| `data-scientist` | heavy |
 | `architect`, `review-lead`, `code-reviewer`, `architecture-reviewer`, `security-reviewer`, `infrastructure-reviewer`, `test-reviewer` | heavy |
 
 ### AGENTS.md generation (`scripts/`)

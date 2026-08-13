@@ -30,7 +30,7 @@ from collections import Counter
 
 # Mirror plugins/agile-agents-core/skills/run-event-log/references/event-schema.json (keep in sync).
 AGENTS = {
-    "dev-lead", "architect", "coding", "infrastructure",
+    "dev-lead", "architect", "coding", "data-scientist", "infrastructure",
     "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
     "infrastructure-reviewer", "test-reviewer",
 }
@@ -43,7 +43,7 @@ REVIEWERS = {
     "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
     "infrastructure-reviewer", "test-reviewer",
 }
-IMPLEMENTERS = {"coding", "infrastructure"}
+IMPLEMENTERS = {"coding", "data-scientist", "infrastructure"}
 
 
 def _first_index(events, pred):

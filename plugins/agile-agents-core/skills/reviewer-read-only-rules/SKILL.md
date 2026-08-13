@@ -28,7 +28,7 @@ This skill defines the **read-only contract** every reviewer enforces. It is loa
 
 ## When asked to apply a fix
 
-Refuse and recommend the appropriate write-capable agent. The calling agent supplies the **role-specific routing line** (e.g. code-reviewer → `coding` / `infrastructure` / `architect`, test-reviewer → `coding`, security-reviewer → `coding` / `infrastructure`, architecture-reviewer → `architect`, infrastructure-reviewer → `infrastructure` + `azure-deploy`, orchestrating `review-lead` → whichever owner the merged finding names). Cite the finding in the recommendation so the next agent can act without re-reviewing.
+Refuse and recommend the appropriate write-capable agent. The calling agent supplies the **role-specific routing line** (e.g. code-reviewer → `coding` / `data-scientist` / `infrastructure` / `architect`, test-reviewer → `coding`, security-reviewer → `coding` / `infrastructure`, architecture-reviewer → `architect`, infrastructure-reviewer → `infrastructure` + `azure-deploy`, orchestrating `review-lead` → whichever owner the merged finding names). Cite the finding in the recommendation so the next agent can act without re-reviewing.
 
 ## Hand-off contract
 

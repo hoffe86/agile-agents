@@ -42,7 +42,7 @@ Every event has these required fields:
 | ------------ | ------- | -------------------------------------------------------------- |
 | `timestamp`  | string  | ISO 8601 UTC, millisecond precision, `Z` suffix                |
 | `run_id`     | string  | UUID minted by `dev-lead` at run start                         |
-| `agent`      | enum    | `dev-lead` / `architect` / `coding` / `infrastructure` / `review-lead` / `code-reviewer` / `security-reviewer` / `architecture-reviewer` / `infrastructure-reviewer` / `test-reviewer` |
+| `agent`      | enum    | `dev-lead` / `architect` / `coding` / `data-scientist` / `infrastructure` / `review-lead` / `code-reviewer` / `security-reviewer` / `architecture-reviewer` / `infrastructure-reviewer` / `test-reviewer` |
 | `phase`      | string  | free-form phase name (e.g. `architecture`, `coding`, `review-lead`) |
 | `event_type` | enum    | `run_start` / `run_complete` / `phase_start` / `phase_complete` / `tool_call` / `gate_check` / `handoff_received` / `error` |
 

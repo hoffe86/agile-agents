@@ -34,6 +34,7 @@ completion — those block names are canonical and parsed by
 `dev-lead`:
 
 - `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
+- `ANALYSIS COMPLETE` (data-scientist — an answer plus its evidence)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
 - `REVIEW COMPLETE` (review-lead — the specialist reviewers report into it)
@@ -98,12 +99,19 @@ Implements features, fixes bugs, and refactors application code **and covers the
 - **Tools**: agent, browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: _none_
 
+### `data-scientist`
+
+Analyses data, designs and runs experiments, builds and evaluates models, and supports AI-integrated features with the evidence that says whether they work. Carries two evaluation rubrics and routes by what the project is building: **classical ML** (train/test/holdout discipline, leakage, calibration, drift, cohort fairness) and **AI/LLM** (evaluation-set design, groundedness, task adherence, LLM-as-judge caveats, responsible-AI risk-to-metric mapping). Owns the model and its evidence; `coding` owns the application that serves it. USE FOR: exploratory data analysis, data profiling and quality assessment, feature engineering, training or tuning a model, choosing and computing evaluation metrics, designing an evaluation set for an LLM or agent feature, measuring an AI feature's output quality, drift and cohort-fairness analysis, statistical questions ("is this difference real?"), and answering whether the data supports a proposed capability at all. DO NOT USE FOR: production application code, services or APIs — including the code that serves a model (use coding), Infrastructure-as-Code, pipelines or training-cluster provisioning (use infrastructure), system or data-platform architecture decisions (use architect), reviewing someone else's diff (use review-lead), end-to-end autonomous delivery (use dev-lead). Hands off with `ANALYSIS COMPLETE`, which reports a negative result as a legitimate outcome rather than a failure.
+
+- **Tools**: agent, browser, context7/*, edit, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
+- **Sub-agents**: _none_
+
 ### `dev-lead`
 
 Autonomous development lead. Takes a single, already-prepared requirement and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the requirement into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent work item in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this requirement autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + review, autonomous / unattended runs against a requirements file or backlog item, executing a plan you already produced in planning mode (hand it the `plan.md` path — it adopts that decomposition instead of re-deriving one), when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving one retry, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / infrastructure / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review-lead), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
 
 - **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
-- **Sub-agents**: architect, backlog-manager, bootstrapper, coding, infrastructure, review-lead
+- **Sub-agents**: architect, backlog-manager, bootstrapper, coding, data-scientist, infrastructure, review-lead
 
 ### `infrastructure-reviewer`
 
@@ -168,6 +176,7 @@ natural-language workflow.
 - **cost-budget** (`agile-agents-core`) — Read the per-run / per-phase cost envelope from `solution-profile.yaml: cost_envelope`, gate run start (refuse if envelope is missing on production-tier engagements), checkpoint at every phase tran...
 - **csharp-implementation** (`agile-agents-dotnet`) — Implement C#/.NET features end-to-end using current best practices (modern C# language features, async correctness, DI, SOLID, secure-by-default).
 - **csharp-testing** (`agile-agents-dotnet`) — Add or extend tests for C#/.NET code using xUnit, NUnit, MSTest, or TUnit (whichever the solution already uses), then run them and pursue coverage.
+- **data-science-practices** (`agile-agents-core`) — The craft bar for data work — question-before-method discipline, data quality and provenance, leakage and split hygiene, baselines, uncertainty, cohort fairness, reproducibility, and PII/synthetic-...
 - **deploy-verify** (`agile-agents-core`) — Opt-in deployed verification — push the feature branch, let the project's own CI/CD pipeline deploy pipeline + IaC + application to the first non-production environment, and report whether it actua...
 - **dev-lead-templates** (`agile-agents-core`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 4), the conditional design-approval gate prompt (Stage 5), and the final Done/Stop report (Stage 9).
 - **development-practices** (`agile-agents-core`) — The implementation half of the build-and-verify craft — smallest-change bias, no speculative generality, cloud-native and observability defaults, error handling, documentation-in-the-same-change, l...

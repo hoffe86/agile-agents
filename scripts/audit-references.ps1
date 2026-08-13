@@ -85,6 +85,10 @@ $NotSkills = @(
     'mermaid-c4',       # documentation.diagram_convention value
     'out-of-scope',     # requirement_acs status
     'accepted-risk',    # findings-ledger status
+    'ai-generated',     # dataset validation_status value (data-science-practices)
+    'expert-reviewed',  # dataset validation_status value
+    'synthetic-only',   # data_science.data_privacy.pii_policy value
+    'real-with-approval', # data_science.data_privacy.pii_policy value
     'built-in'          # prose ("built-in fixtures")
 )
 

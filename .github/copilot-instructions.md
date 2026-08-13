@@ -72,7 +72,7 @@ agent/                               Marketplace root
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
 │   ├── agile-agents-core/           The autonomous-coding agent harness
 │   │   ├── .github/plugin/plugin.json   Plugin manifest (name: agile-agents-core)
-│   │   ├── agents/                  13 *.agent.md (1 supervisor + 3 authors
+│   │   ├── agents/                  14 *.agent.md (1 supervisor + 4 authors
 │   │   │                            + 6 reviewers + backlog-manager + bootstrapper
 │   │   │                            + capability-scout)
 │   │   ├── skills/                  38 repo-scope skills, incl.
@@ -187,6 +187,7 @@ purely name-based rule can distinguish "agent named in prose" from "skill that v
 Worker agents emit a recognisable terminator block on completion — `dev-lead` parses these.
 Renaming any silently breaks the pipeline:
 - `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
+- `ANALYSIS COMPLETE` (data-scientist — an answer plus its evidence; ⚠️ inconclusive and ❌ not-supported are **completed** outcomes, not failures)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
 - `REVIEW COMPLETE` (review-lead — the specialist reviewers report into it, they do not emit it)
@@ -283,13 +284,13 @@ Consequences worth preserving:
   continue. Halting delivery over a metering table is the wrong trade.
 
 ### Vendored skills
-20 of the 58 skills are unmodified copies from
+20 of the 59 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-38 are hand-written or adopted and are the ones to edit — 35 repo-scope
+39 are hand-written or adopted and are the ones to edit — 36 repo-scope
 (csharp/python-implementation, csharp/python-testing, dotnet/python-startup-discovery,
-development-practices, testing-practices, code-review-checklist, artifact-coverage,
+development-practices, testing-practices, data-science-practices, code-review-checklist, artifact-coverage,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
 architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
@@ -330,7 +331,7 @@ Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestrati
 `mid` (mechanical authoring: `coding`, `infrastructure`, `backlog-manager`), or
 `heavy` (deep reasoning: `architect` and all review agents).
 
-**Nothing reads it.** It is declared by all 13 agents and consumed by no script, no
+**Nothing reads it.** It is declared by all 14 agents and consumed by no script, no
 manifest, and not by the CLI — whose own frontmatter field is `model`. Treat it as recorded
 intent (the rationale lives in ADR 0007 and `cost-budget/references/tier-defaults.md`), keep
 it accurate when editing, and do not expect changing it to change which model runs.
@@ -345,7 +346,7 @@ files live in `<skill-name>/references/`, scripts in `<skill-name>/scripts/`.
 ecosystem, otherwise a comma-separated list of the ecosystems it actually assumes
 (`dotnet`, `python`, `azure, terraform`, `kubernetes, helm, kustomize`, `docker`,
 `github-actions`, …). It is **required on every skill**; a missing value is a defect, not
-a default. The split today is 32 `all` / 26 scoped.
+a default. The split today is 33 `all` / 26 scoped.
 
 **Nothing reads it.** Like `model_tier`, it is declared on every skill and consumed by no
 script, no manifest, and not by the CLI — it is a local field that upstream has no equivalent
