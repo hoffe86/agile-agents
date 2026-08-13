@@ -30,12 +30,12 @@
         "architect",
         "coding",
         "infrastructure",
-        "review",
-        "code-review",
-        "security-review",
-        "architecture-review",
-        "infrastructure-review",
-        "test-review"
+        "review-lead",
+        "code-reviewer",
+        "security-reviewer",
+        "architecture-reviewer",
+        "infrastructure-reviewer",
+        "test-reviewer"
       ],
       "description": "Which coding-suite agent emitted the event."
     },
@@ -43,7 +43,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
-      "description": "Free-form phase name, e.g. 'architecture', 'coding', 'infrastructure', 'review', 'wrap-up'."
+      "description": "Free-form phase name, e.g. 'architecture', 'coding', 'infrastructure', 'review-lead', 'wrap-up'."
     },
     "event_type": {
       "type": "string",
@@ -133,8 +133,8 @@
     {
       "timestamp": "2026-04-15T08:46:55.410Z",
       "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
-      "agent": "security-review",
-      "phase": "review",
+      "agent": "security-reviewer",
+      "phase": "review-lead",
       "event_type": "gate_check",
       "outcome": "fail",
       "payload": {

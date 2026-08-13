@@ -1,5 +1,5 @@
 ---
-name: security-review
+name: security-reviewer
 description: 'AI-powered codebase security scanner that reasons about code like a security researcher — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matching tools miss. Use this skill when asked to scan code for security vulnerabilities, find bugs, check for SQL injection, XSS, command injection, exposed API keys, hardcoded secrets, insecure dependencies, access control issues, or any request like "is my code secure?", "review for security issues", "audit this codebase", or "check for vulnerabilities". Covers injection flaws, authentication and access control bugs, secrets exposure, weak cryptography, insecure dependencies, and business logic issues across JavaScript, TypeScript, Python, Java, PHP, Go, Ruby, and Rust.'
 applies_to: all
 ---
@@ -23,7 +23,7 @@ Use this skill when the request involves:
 - Detecting insecure cryptography or weak randomness
 - Performing a data flow analysis to trace user input to dangerous sinks
 - Any request phrasing like "is my code secure?", "scan this file", or "check my repo for vulnerabilities"
-- Running `/security-review` or `/security-review <path>`
+- Running `/security-reviewer` or `/security-reviewer <path>`
 
 ## How This Skill Works
 
@@ -41,7 +41,7 @@ Follow these steps **in order** every time:
 
 ### Step 1 — Scope Resolution
 Determine what to scan:
-- If a path was provided (`/security-review src/auth/`), scan only that scope
+- If a path was provided (`/security-reviewer src/auth/`), scan only that scope
 - If no path given, scan the **entire project** starting from the root
 - Identify the language(s) and framework(s) in use (check package.json, requirements.txt,
   go.mod, Cargo.toml, pom.xml, Gemfile, composer.json, etc.)

@@ -31,8 +31,8 @@ from collections import Counter
 # Mirror plugins/agile-agents-core/skills/run-event-log/references/event-schema.json (keep in sync).
 AGENTS = {
     "dev-lead", "architect", "coding", "infrastructure",
-    "review", "code-review", "security-review", "architecture-review",
-    "infrastructure-review", "test-review",
+    "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
+    "infrastructure-reviewer", "test-reviewer",
 }
 EVENT_TYPES = {
     "run_start", "run_complete", "phase_start", "phase_complete",
@@ -40,8 +40,8 @@ EVENT_TYPES = {
 }
 REQUIRED_FIELDS = ("timestamp", "run_id", "agent", "phase", "event_type")
 REVIEWERS = {
-    "review", "code-review", "security-review", "architecture-review",
-    "infrastructure-review", "test-review",
+    "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
+    "infrastructure-reviewer", "test-reviewer",
 }
 IMPLEMENTERS = {"coding", "infrastructure"}
 
@@ -237,14 +237,14 @@ def build_golden():
         ev("dev-lead", "implement", "phase_complete", outcome="success"),
         ev("dev-lead", "test-bar", "gate_check", outcome="success",
            payload={"gate": "lint+typecheck+unit", "retries": 0}),
-        ev("dev-lead", "review", "phase_start"),
-        ev("review", "review", "phase_start"),
-        ev("code-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("security-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("architecture-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("test-review", "review", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("review", "review", "phase_complete", outcome="success"),
-        ev("dev-lead", "review", "phase_complete", outcome="success"),
+        ev("dev-lead", "review-lead", "phase_start"),
+        ev("review-lead", "review-lead", "phase_start"),
+        ev("code-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
+        ev("security-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
+        ev("architecture-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
+        ev("test-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
+        ev("review-lead", "review-lead", "phase_complete", outcome="success"),
+        ev("dev-lead", "review-lead", "phase_complete", outcome="success"),
         ev("dev-lead", "wrap-up", "run_complete", outcome="success",
            duration_ms=524000),
     ]

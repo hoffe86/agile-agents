@@ -170,13 +170,26 @@ The PR command derives from **`identity.repo_url`**, never from `backlog.platfor
 host and board host are independent, and a project may keep code on GitHub with work items
 in Azure Boards.
 
+### Agent naming convention (`-reviewer` is an actor, `-review` is a process)
+Read-only review agents end in **`-reviewer`**; the skills that carry review *knowledge*
+keep **`-review`**. So `code-reviewer` (agent) loads nothing from `code-review` (skill), and
+`security-reviewer` (agent) may cite `security-review` (vendored skill) without either name
+being ambiguous. The orchestrator is **`review-lead`**, mirroring `dev-lead` — it supervises
+reviewers rather than being one, so it does not take the lens suffix.
+
+**Never give an agent and a skill the same name.** `audit-references.ps1` skips backticked
+agent names so that "delegate to `test-reviewer`" is not read as a skill reference — which
+means a shared name can never be validated, and deleting the same-named skill leaves the
+audit green. That was live for `code-review` and `security-review` until the rename; no
+purely name-based rule can distinguish "agent named in prose" from "skill that vanished".
+
 ### Hand-off block-name canon (do not change)
 Worker agents emit a recognisable terminator block on completion — `dev-lead` parses these.
 Renaming any silently breaks the pipeline:
 - `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
-- `REVIEW COMPLETE` (review — the specialist reviewers report into it, they do not emit it)
+- `REVIEW COMPLETE` (review-lead — the specialist reviewers report into it, they do not emit it)
 - `TASKS PLANNED` (backlog-manager — the Plan-phase task-creation hand-off)
 - `BOOTSTRAP COMPLETE` (bootstrapper — the one-off profile + plugin bootstrap)
 
@@ -204,11 +217,11 @@ without buying independence, since the independent judgement is the reviewers' a
 different agents by design. The guard that replaces the split is explicit: an author may fix
 production code to pass a test, but never weaken a test to pass production code, and every
 modified existing test is justified in the `Existing tests modified` hand-off field, which
-`dev-lead` gates on and `test-review` adjudicates.
+`dev-lead` gates on and `test-reviewer` adjudicates.
 
-**The reviewers went the other way, deliberately** (ADR 0010). `review` performs **no lens
-itself** — it triages, dispatches five read-only specialists in parallel (`code-review`,
-`security-review`, `test-review`, `architecture-review`, `infrastructure-review`), and merges.
+**The reviewers went the other way, deliberately** (ADR 0010). `review-lead` performs **no lens
+itself** — it triages, dispatches five read-only specialists in parallel (`code-reviewer`,
+`security-reviewer`, `test-reviewer`, `architecture-reviewer`, `infrastructure-reviewer`), and merges.
 The merge logic that applied to `coding`+`testing` does not transfer here: reviewers never
 hand off to each other, so the split costs no round, and independence is the product rather
 than a side-effect. Do not "consolidate" a lens into the orchestrator to save a dispatch —
@@ -218,7 +231,7 @@ line-by-line reading silently degraded on large diffs.
 Tasks are dispatched **one at a time**, even when the dependency graph says they are
 independent. Sub-agents share one working tree, so concurrent writers interleave edits and
 no gate can attribute a failure to a task — independent in the graph is not disjoint in the
-diff. (`review` fans out in parallel only because all five lenses are read-only.) The
+diff. (`review-lead` fans out in parallel only because all five lenses are read-only.) The
 upgrade path is a git worktree per task plus a merge step; do not "fix" this by spawning
 concurrent writers.
 
@@ -295,7 +308,7 @@ ignoring only the `applies_to` line. Run it before a re-sync; hand the result to
 `capability-scout` to decide what is worth taking.
 
 ### Personal preferences are not shipped
-`trade-off-reporting`, `code-review` and `cloud-native-patterns` once lived under a separate
+`trade-off-reporting`, `code-reviewer` and `cloud-native-patterns` once lived under a separate
 `user/skills/` folder, because that is where they were first written — a person's own
 `~/.copilot/skills/`. They now sit in `skills/` with everything else: all three are `applies_to:
 all` engineering skills that the agents rely on, none is a personal preference, and both paths were

@@ -10,7 +10,7 @@ description: >-
   under a parent work item (the Plan workflow).
   DO NOT USE FOR: writing code, tests, or IaC (use coding /
   infrastructure), design or ADR decisions (use architect), reviewing a diff
-  (use review), estimating / prioritising / progressing item state on your own
+  (use review-lead), estimating / prioritising / progressing item state on your own
   authority (the team decides — you capture what was agreed), end-to-end
   autonomous delivery (use dev-lead).
 # `tools` is a filter, not a hint: a tracker server that is not listed here is unreachable even when

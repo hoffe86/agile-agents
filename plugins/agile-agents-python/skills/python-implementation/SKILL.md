@@ -53,5 +53,5 @@ After writing code:
 
 ## 5. What you do NOT do
 
-- Don't run a security/design review — `review` does that after tests pass.
+- Don't run a security/design review — `review-lead` does that after tests pass.
 - Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

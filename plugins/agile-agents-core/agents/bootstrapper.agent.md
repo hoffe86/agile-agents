@@ -13,7 +13,7 @@ description: >-
   that is missing required fields.
   DO NOT USE FOR: delivering a requirement end-to-end (use dev-lead), writing code,
   tests or IaC (use coding / infrastructure), designing a system (use
-  architect), reviewing a change (use review), maintaining *this* harness repo's own
+  architect), reviewing a change (use review-lead), maintaining *this* harness repo's own
   vendored skills (that is the repo-local `capability-scout`). Never installs anything —
   plugin or otherwise — without explicit approval, and never invents a profile value
   to get past a question.

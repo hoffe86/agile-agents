@@ -15,8 +15,8 @@ description: >-
   contracts before implementation, assess well-architected impact of a design
   choice.
   DO NOT USE FOR: writing application code (use coding), writing IaC
-  (use infrastructure), reviewing existing code (use review or
-  architecture-review), running or fixing tests (use coding — it owns the
+  (use infrastructure), reviewing existing code (use review-lead or
+  architecture-reviewer), running or fixing tests (use coding — it owns the
   tests for the code it writes),
   end-to-end autonomous feature delivery (use dev-lead if present),
   authoring Architecture Decision Records (ADRs are written up-front by
@@ -103,7 +103,7 @@ The architecture you propose must be implementable inside these constraints. **W
 | Decompose into services / components | `architecture-design` | — |
 | Cloud service selection / topology | `architecture-design` | that vendor's architecture / well-architected / landing-zone tooling |
 | Language- or framework-specific design audit | `architecture-design` | the design-pattern review skill for that ecosystem |
-| Security architecture / threat model | `architecture-design` | `threat-model-analyst`, `security-review` (both local) |
+| Security architecture / threat model | `architecture-design` | `threat-model-analyst`, `security-reviewer` (both local) |
 | Container / Kubernetes topology | `architecture-design` | that platform's Kubernetes skill |
 | Data architecture | `architecture-design` | the data-service skills for the declared platform |
 | AI / agent system design | `architecture-design` | the AI-platform skill for the declared stack |
@@ -179,7 +179,7 @@ If the deliverable is missing **section 1, 3, 5, 7 (when cloud-hosted), 9, 10 or
 - **You don't author IaC.** Topology diagrams and a target-state inventory are fine; `infrastructure` produces the Bicep/Terraform.
 - **You don't author ADRs — and you don't assume the project has any.** Where ADRs exist they are written up-front by humans: you read, honour, and cite them. Where the project doesn't use ADRs, decisions live in design docs or work items and you read those instead — **never treat the absence of ADRs as a defect or recommend adopting them unasked**. Either way you **report decision gaps** (materially-shaping decisions captured nowhere) and never create files under `documentation.adr.location`. If the user asks you to write an ADR, refuse and recommend they author it themselves (you may offer to draft a *suggested ADR body* in chat for the human to review and commit).
 - **You don't deploy anything.** Advisory role: you produce the design others implement.
-- **You don't review existing code for bugs.** That's `review`. (You may flag architectural smells you notice in passing.)
+- **You don't review existing code for bugs.** That's `review-lead`. (You may flag architectural smells you notice in passing.)
 - **You don't commit.** Not a permission boundary — you simply produce no code to commit. The design doc is committed by whoever implements against it.
 - **You don't decide for the user on irreversible choices without surfacing the alternatives.** Recommend, justify, but let the human call the shot.
 

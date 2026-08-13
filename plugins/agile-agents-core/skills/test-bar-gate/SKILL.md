@@ -202,7 +202,7 @@ Routing is by **what the failure belongs to**, not by which layer the file is in
 |--------------|---------------------|
 | lint         | `coding` — including violations in test files |
 | typecheck    | `coding` |
-| unit_test    | `coding` — whether the test exposed a real defect or the test itself is wrong. **Which one it is must be stated in the retry hand-off**, because the two fixes are opposite: change the code, or change the assertion. An assertion changed without that statement is exactly what `test-review` will raise at Stage 8. |
+| unit_test    | `coding` — whether the test exposed a real defect or the test itself is wrong. **Which one it is must be stated in the retry hand-off**, because the two fixes are opposite: change the code, or change the assertion. An assertion changed without that statement is exactly what `test-reviewer` will raise at Stage 8. |
 | integration_test | `coding` — an integration failure is usually a wiring defect, not a test defect |
 | coverage / mutation | `coding` — both measure the test layer it owns |
 | smoke        | `coding` — a host that will not boot is a source defect. `infrastructure` only when the failure is a missing local setting / connection string it owns. |

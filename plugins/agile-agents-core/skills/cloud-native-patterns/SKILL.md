@@ -7,15 +7,15 @@ description: >-
   microservices.io, the Twelve-Factor App, OpenTelemetry semantic conventions,
   and IETF RFC 9457 (Problem Details) into agent-actionable defaults and
   anti-patterns. Loaded by coding (apply), review and
-  architecture-review (check).
+  architecture-reviewer (check).
 applies_to: all
 ---
 
 # Cloud-native patterns
 
 This skill is **applied** by authoring agents (`coding`,
-`infrastructure`) and **checked** by review agents (`review`,
-`architecture-review`). It is intentionally short and reference-shaped —
+`infrastructure`) and **checked** by review agents (`review-lead`,
+`architecture-reviewer`). It is intentionally short and reference-shaped —
 not a tutorial. Look up the citation when you need depth.
 
 ## When to apply

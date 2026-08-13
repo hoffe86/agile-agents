@@ -56,7 +56,7 @@ Ecosystem-neutral, all in core. Listed so a run can confirm coverage rather than
 | Repo context / preamble | `read-repo-context` |
 | Code localisation | `code-localisation` |
 | Quality bar | `engineering-standards`, `code-review-checklist` |
-| Security lens | `security-review`, `threat-model-analyst`, `codeql` |
+| Security lens | `security-reviewer`, `threat-model-analyst`, `codeql` |
 | Architecture | `architecture-design`, `architecture-decision-records` |
 | Backlog | `backlog-item-standards` + tracker mechanics (`ado-work-items` / `github-issues`) |
 | Gates | `test-bar-gate`, `deploy-verify` |

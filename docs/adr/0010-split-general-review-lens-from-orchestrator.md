@@ -4,6 +4,7 @@
 - **Date:** 2026-08
 - **Deciders:** Harness maintainers (review-topology split)
 - **Related:** ADR 0009 (coding + testing merge — the *opposite* decision, for reasons that do not transfer), ADR 0007 (`model_tier` roster)
+- **Note (2026-08):** ADR 0011 renamed every agent named below — `review` is now `review-lead` and the five lenses take the `-reviewer` suffix (`code-review` -> `code-reviewer`, and so on). It also resolved the agent/skill name collision this ADR recorded as unfixable; that framing was wrong, and the fix was a rename. The topology decision here is unchanged.
 
 ## Context
 

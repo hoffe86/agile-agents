@@ -139,7 +139,7 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
 
 ## `gate_check`
 
-**Who:** reviewer agents (`review`, `security-review`, `architecture-review`, `infrastructure-review`, `test-review`) and `dev-lead` (when invoking `test-bar-gate`, lands in H3).
+**Who:** reviewer agents (`review-lead`, `security-reviewer`, `architecture-reviewer`, `infrastructure-reviewer`, `test-reviewer`) and `dev-lead` (when invoking `test-bar-gate`, lands in H3).
 **When:** When a quality gate / checklist is evaluated.
 **Required additional:** `outcome`.
 **Recommended:** `payload.gate` (gate name), `payload.finding_count`, `payload.severity`.
@@ -148,8 +148,8 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
 {
   "timestamp": "2026-04-15T08:46:55.410Z",
   "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
-  "agent": "security-review",
-  "phase": "review",
+  "agent": "security-reviewer",
+  "phase": "review-lead",
   "event_type": "gate_check",
   "outcome": "fail",
   "payload": {
@@ -175,8 +175,8 @@ Companion to `event-schema.json`. For each `event_type`, lists when to emit, whi
 {
   "timestamp": "2026-04-15T08:46:31.000Z",
   "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
-  "agent": "review",
-  "phase": "review",
+  "agent": "review-lead",
+  "phase": "review-lead",
   "event_type": "handoff_received",
   "payload": {
     "from_agent": "coding",

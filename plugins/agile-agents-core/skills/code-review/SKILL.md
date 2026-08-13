@@ -1,5 +1,5 @@
 ---
-name: code-review
+name: code-reviewer
 description: >-
   Standalone whole-repository code audit — no diff, no pipeline. Surveys an
   entire codebase across architecture, clean code, security and test quality in
@@ -8,7 +8,7 @@ description: >-
   decision). USE FOR an ad-hoc request to audit, assess or health-check a whole
   project or repository — "review this codebase", "what tech debt do we have",
   "produce a quality report before the release". DO NOT USE FOR reviewing a
-  diff, branch or PR inside the agent pipeline — that is the `review` agent and
+  diff, branch or PR inside the agent pipeline — that is the `review-lead` agent and
   its five specialist lenses, which use different severity, id and owner
   conventions; loading this skill there produces a second, conflicting review.
 applies_to: all
@@ -22,17 +22,17 @@ Perform deep, multi-dimensional code reviews that produce actionable, classified
 
 This skill is the **standalone audit path**: a human points at a repository and asks "how healthy is this?". There is no diff, no orchestrator, and no specialist agents already running.
 
-**Inside the agent pipeline, do not load this skill.** There, `review` orchestrates five read-only specialist agents (`code-review`, `security-review`, `test-review`, `architecture-review`, `infrastructure-review`) over a *diff*, and this skill would spawn a second, competing fan-out under conventions that do not match:
+**Inside the agent pipeline, do not load this skill.** There, `review-lead` orchestrates five read-only specialist agents (`code-reviewer`, `security-reviewer`, `test-reviewer`, `architecture-reviewer`, `infrastructure-reviewer`) over a *diff*, and this skill would spawn a second, competing fan-out under conventions that do not match:
 
-| | This skill (standalone audit) | The pipeline (`review` + lenses) |
+| | This skill (standalone audit) | The pipeline (`review-lead` + lenses) |
 |---|---|---|
 | Input | a whole repository | a diff (`git diff <base>...HEAD`) |
-| Fan-out | 4 explore agents it launches itself | 5 specialist agents, dispatched by `review` |
+| Fan-out | 4 explore agents it launches itself | 5 specialist agents, dispatched by `review-lead` |
 | Severity | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low | 🔴 Critical / 🟠 Major / 🟡 Minor / 🔵 Nit |
 | Finding ids | `SEC-01`, `ARCH-03`, `CODE-07` | `C1`, `M1`, `m1`, `N1` |
 | Owner | 🤖 Agent vs 👤 User | `coding` / `infrastructure` / `architect` |
 
-Mixing the two yields duplicate findings at incompatible severities that `dev-lead` cannot route. Pick the path that matches the input: repository → this skill; diff → the `review` agent.
+Mixing the two yields duplicate findings at incompatible severities that `dev-lead` cannot route. Pick the path that matches the input: repository → this skill; diff → the `review-lead` agent.
 
 ## When to Use
 

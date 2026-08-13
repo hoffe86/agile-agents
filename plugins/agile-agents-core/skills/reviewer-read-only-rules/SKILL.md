@@ -1,6 +1,6 @@
 ---
 name: reviewer-read-only-rules
-description: Defence-in-depth read-only contract that every review agent enforces. Defines the canonical refuse-list (write tools, file/repo mutations, workspace-mutating commands, real deploys), the allowed read-only operations, and the rule for routing fix requests to the right write-capable agent. Loaded by review, security-review, architecture-review, infrastructure-review, test-review. NOT loaded by author agents.
+description: Defence-in-depth read-only contract that every review agent enforces. Defines the canonical refuse-list (write tools, file/repo mutations, workspace-mutating commands, real deploys), the allowed read-only operations, and the rule for routing fix requests to the right write-capable agent. Loaded by review, security-reviewer, architecture-reviewer, infrastructure-reviewer, test-reviewer. NOT loaded by author agents.
 applies_to: all
 ---
 
@@ -28,7 +28,7 @@ This skill defines the **read-only contract** every reviewer enforces. It is loa
 
 ## When asked to apply a fix
 
-Refuse and recommend the appropriate write-capable agent. The calling agent supplies the **role-specific routing line** (e.g. code-review → `coding` / `infrastructure` / `architect`, test-review → `coding`, security-review → `coding` / `infrastructure`, architecture-review → `architect`, infrastructure-review → `infrastructure` + `azure-deploy`, orchestrating `review` → whichever owner the merged finding names). Cite the finding in the recommendation so the next agent can act without re-reviewing.
+Refuse and recommend the appropriate write-capable agent. The calling agent supplies the **role-specific routing line** (e.g. code-reviewer → `coding` / `infrastructure` / `architect`, test-reviewer → `coding`, security-reviewer → `coding` / `infrastructure`, architecture-reviewer → `architect`, infrastructure-reviewer → `infrastructure` + `azure-deploy`, orchestrating `review-lead` → whichever owner the merged finding names). Cite the finding in the recommendation so the next agent can act without re-reviewing.
 
 ## Hand-off contract
 

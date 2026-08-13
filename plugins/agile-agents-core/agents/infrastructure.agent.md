@@ -17,10 +17,10 @@ description: >-
   a pipeline (OIDC, pinned actions, build-once-promote).
   DO NOT USE FOR: architecture / topology decisions before IaC exists (use
   architect), application code (use coding), reviewing existing
-  IaC (use infrastructure-review), end-to-end autonomous delivery
+  IaC (use infrastructure-reviewer), end-to-end autonomous delivery
   (use dev-lead if present). Owns its own IaC tests end-to-end — does NOT
   hand those off to coding (which owns application code and the unit /
-  integration tests that cover it). Hands off to infrastructure-review and review.
+  integration tests that cover it). Hands off to infrastructure-reviewer and review.
 model_tier: mid  # mechanical IaC authoring against declared conventions and existing repo patterns
 tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, edit, agent, playwright/*, browser]
 argument-hint: "Describe the IaC work: Bicep / Terraform / Helm / Kustomize / pipeline change"
@@ -118,7 +118,7 @@ Beyond the routed primary skills:
 - **You implement IaC; you don't deploy it yourself.** Use `what-if` / `plan` / `--dry-run` to validate — that is your whole local footprint. A real apply happens **through the project's own pipeline**, at Stage 8b, and only when the project sets `infrastructure.deploy_verify: dev` (see the `deploy-verify` skill). Going around the pipeline with a direct apply would leave the pipeline itself unverified, which is the more valuable half of the check.
 - **You don't write application code.** That's `coding`. If a task spans both, surface that to the orchestrator so the agents can be sequenced.
 - **IaC tests are yours; application tests are not.** Infrastructure tests in whatever framework that ecosystem uses, chart tests, and pipeline-level smoke tests belong to *you* — author and run them in Stage 6, report results in your hand-off block, do **not** delegate them to another agent. Application unit / integration tests belong to `coding`, which owns them alongside the code they cover.
-- **You don't perform code review on yourself.** That's `review`.
+- **You don't perform code review on yourself.** That's `review-lead`.
 - **No secrets in source.** Ever. Every secret must be a reference into the declared `secrets_store`, an OIDC-federated credential, or a pipeline-injected env var.
 - **Verified-modules-first.** Reach for the module registry declared in `infrastructure.module_source` before authoring raw resources.
 - **Tag everything.** Use the profile's `tagging_convention`; absent one, the common baseline is `environment`, `workload`, `costCenter`, `owner`, `managedBy`, `dataClassification`.
@@ -161,5 +161,5 @@ INFRASTRUCTURE COMPLETE
 - Findings addressed: <corrective rounds only — one line per finding: "<id>: fixed in <file:line>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit the field entirely on a first-pass implementation.>
 - Open items for review: <if any>
 - IaC tests authored / run: <count, framework, ✅ pass | ❌ fail | n/a>
-- Recommended next step: hand off to infrastructure-review | review | deploy
+- Recommended next step: hand off to infrastructure-reviewer | review | deploy
 ```

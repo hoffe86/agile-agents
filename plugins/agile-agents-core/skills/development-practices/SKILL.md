@@ -155,7 +155,7 @@ prompt templates in code, invoke the `ai-prompt-engineering-safety-review` skill
 before hand-off **if the project installs it** — it is not bundled with this
 plugin. Without it, self-check against the OWASP LLM Top 10 (untrusted input
 reaching a prompt, unvalidated model output reaching a sink, over-broad tool
-grants) and surface any unaddressed item as a trade-off so `security-review` can
+grants) and surface any unaddressed item as a trade-off so `security-reviewer` can
 pick it up.
 
 ## 9. Verification before hand-off
@@ -179,7 +179,7 @@ what its CI already runs). Never invent a toolchain the repo doesn't use.
 Then walk the change through the Pre-PR review checklist from
 `engineering-standards` (standards, security, edge cases, regressions, docs)
 before writing the hand-off. **You do not review yourself** — that is the
-`review` agent's verdict; this is a self-check, not a review.
+`review-lead` agent's verdict; this is a self-check, not a review.
 
 ## 10. Write permissions
 

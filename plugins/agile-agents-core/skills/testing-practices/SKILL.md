@@ -11,7 +11,7 @@ description: >-
   covering new or changed behaviour, repairing failing tests, adding edge-case
   and negative-path tests, setting up fixtures, diagnosing a failure the output
   doesn't explain. DO NOT USE FOR: reviewing someone else's test diff (that is
-  the `test-review` agent), IaC tests like Terratest / Pester (those belong to
+  the `test-reviewer` agent), IaC tests like Terratest / Pester (those belong to
   the infrastructure agent), or the pre-reviewer automated gate (that is
   `test-bar-gate`).
 applies_to: all

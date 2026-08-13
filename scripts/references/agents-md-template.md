@@ -36,7 +36,7 @@ completion — those block names are canonical and parsed by
 - `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
-- `REVIEW COMPLETE` (review — the specialist reviewers report into it)
+- `REVIEW COMPLETE` (review-lead — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
 - `BOOTSTRAP COMPLETE` (bootstrapper)
 

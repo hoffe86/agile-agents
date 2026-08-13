@@ -33,18 +33,22 @@
 
     Known limits — measured, not assumed:
 
-      * A name that is both an agent and a skill (today: code-review,
-        security-review) can never be validated, because backticked agent names
-        are skipped so that "delegate to `test-review`" is not read as a skill.
-        Delete such a skill and this script stays green. A purely name-based
-        rule cannot tell "agent named in prose" from "skill that vanished".
-
       * The hedge list contains broad bare phrases ("external", "only when")
         that fire incidentally in prose. 71 of 2103 agent lines match a hedge,
         and on those lines every name is skipped — so a dangling reference
         sharing a line with the word "external" still slips through. Tightening
         the list is a separate change: it would re-expose every reference
         currently relying on those phrases, so it needs its own measurement.
+
+    Resolved limit, kept as a warning: agents and skills used to share names
+    (an agent "code-review" alongside a skill of the same name, likewise
+    "security-review"). A shared name could never be validated, because
+    backticked agent names are skipped so that "delegate to `test-reviewer`" is
+    not read as a skill — so deleting the same-named skill left this script
+    green. Agents now take the `-reviewer` suffix and skills keep `-review`,
+    which removes the overlap and puts those skill references back under audit.
+    **Do not re-introduce a name that is both**: no purely name-based rule can
+    tell "agent named in prose" from "skill that vanished".
 #>
 [CmdletBinding()]
 param(
@@ -90,7 +94,7 @@ $agentFiles = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Recurse -Filter '*.
 if (-not $agentFiles) { throw "No agent files found under $RepoRoot/plugins" }
 
 # Agent names and plugin names also appear in backticks inside the skills
-# section ("delegate to `test-review`") and are not skills.
+# section ("delegate to `test-reviewer`") and are not skills.
 $agentNames  = $agentFiles | ForEach-Object { $_.BaseName -replace '\.agent$', '' }
 $pluginNames = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Directory | ForEach-Object { $_.Name }
 

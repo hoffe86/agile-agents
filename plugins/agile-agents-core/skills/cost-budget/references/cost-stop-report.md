@@ -59,7 +59,7 @@ Do **not** auto-retry. The same prompt with the same agents is overwhelmingly li
 | coding    | coding (retry x2)  |      1,100 |    28,000 |      9,200 |
 | **Total** |                    | **13,200** |**345,000**| **97,500** |
 
-> Note the two `coding` retries triggered by `review` — this is the canonical author/reviewer ping-pong loop. The retry budget for `coding` should be capped and / or the reviewer findings batched.
+> Note the two `coding` retries triggered by `review-lead` — this is the canonical author/reviewer ping-pong loop. The retry budget for `coding` should be capped and / or the reviewer findings batched.
 >
 > Note also how little of the input is fresh: most of it is cache reads, which bill at a fraction of new input. That is exactly why the gate is on AIU — a flat per-token rate would overstate this run by roughly an order of magnitude.
 
