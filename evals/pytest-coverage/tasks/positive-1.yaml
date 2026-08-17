@@ -1,0 +1,19 @@
+id: pytest-coverage-positive-1
+name: Should route to pytest-coverage
+description: >-
+    Exactly this skill's job.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Run the suite with coverage, find the lines that aren't covered, and close them out
+    to 100%.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-pytest-coverage
+    config:
+      skill_path: plugins/agile-agents-python/skills/pytest-coverage/SKILL.md
+      mode: positive
+      threshold: 0.6

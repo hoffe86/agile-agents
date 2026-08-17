@@ -1,0 +1,19 @@
+id: update-avm-modules-in-bicep-negative-1
+name: Should NOT route to update-avm-modules-in-bicep
+description: >-
+    Partner skill: greenfield authoring belongs to bicep-implementation.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Write the Bicep for a storage account with private networking and diagnostic
+    settings.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-update-avm-modules-in-bicep
+    config:
+      skill_path: plugins/agile-agents-bicep/skills/update-avm-modules-in-bicep/SKILL.md
+      mode: negative
+      threshold: 0.6

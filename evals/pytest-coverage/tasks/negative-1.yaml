@@ -1,0 +1,18 @@
+id: pytest-coverage-negative-1
+name: Should NOT route to pytest-coverage
+description: >-
+    Wrong ecosystem entirely — should not fire on a .NET request.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Write xUnit tests for this C# service class.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-pytest-coverage
+    config:
+      skill_path: plugins/agile-agents-python/skills/pytest-coverage/SKILL.md
+      mode: negative
+      threshold: 0.6

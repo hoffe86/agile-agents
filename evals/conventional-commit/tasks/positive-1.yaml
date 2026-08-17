@@ -1,0 +1,19 @@
+id: conventional-commit-positive-1
+name: Should route to conventional-commit
+description: >-
+    Message *shape* — the skill's job.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    What's the right conventional-commit type and scope for a change that fixes a null
+    check in the parser?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-conventional-commit
+    config:
+      skill_path: plugins/agile-agents-core/skills/conventional-commit/SKILL.md
+      mode: positive
+      threshold: 0.6

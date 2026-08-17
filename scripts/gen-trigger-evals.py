@@ -31,6 +31,18 @@ SKILL_PATHS = {
     "read-repo-context": "plugins/agile-agents-core/skills/read-repo-context/SKILL.md",
     "test-bar-gate": "plugins/agile-agents-core/skills/test-bar-gate/SKILL.md",
     "csharp-testing": "plugins/agile-agents-dotnet/skills/csharp-testing/SKILL.md",
+    # Wave 2 — the pairs the collision analysis showed genuinely compete, i.e. that a
+    # single project installs together. Cross-plugin twins (csharp/python-testing,
+    # bicep/terraform, ado/github) score higher still but are mutually exclusive
+    # installs, so they never contend and are deliberately not prioritised here.
+    "bicep-implementation": "plugins/agile-agents-bicep/skills/bicep-implementation/SKILL.md",
+    "update-avm-modules-in-bicep": "plugins/agile-agents-bicep/skills/update-avm-modules-in-bicep/SKILL.md",
+    "python-testing": "plugins/agile-agents-python/skills/python-testing/SKILL.md",
+    "pytest-coverage": "plugins/agile-agents-python/skills/pytest-coverage/SKILL.md",
+    "pr-description": "plugins/agile-agents-core/skills/pr-description/SKILL.md",
+    "release-notes": "plugins/agile-agents-core/skills/release-notes/SKILL.md",
+    "conventional-commit": "plugins/agile-agents-core/skills/conventional-commit/SKILL.md",
+    "git-commit": "plugins/agile-agents-core/skills/git-commit/SKILL.md",
 }
 
 # (skill, task-id, kind, prompt, why)
@@ -109,6 +121,79 @@ CASES = [
      "Add pytest cases for this Python module and raise coverage.",
      "The sharpest near-miss in the repo: identical intent, wrong ecosystem. "
      "csharp-testing and python-testing score 0.53 description similarity."),
+
+    # === Wave 2: same-project collision pairs =================================
+    # Each negative is the *partner skill's* job, so these directly probe the
+    # overlap the collision analysis measured.
+
+    # --- bicep-implementation <-> update-avm-modules-in-bicep (0.46) ----------
+    ("bicep-implementation", "positive-1", "positive",
+     "Write the Bicep for a storage account with private networking and diagnostic "
+     "settings.",
+     "Authoring new Bicep — the skill's own job."),
+    ("bicep-implementation", "positive-2", "positive",
+     "Add an Azure Key Vault to our Bicep deployment using a verified module.",
+     "Authoring with AVM, still authoring."),
+    ("bicep-implementation", "negative-1", "negative",
+     "Bump every AVM module in our Bicep files to the latest published version.",
+     "Partner skill: a version-bump sweep is update-avm-modules-in-bicep, not authoring."),
+
+    ("update-avm-modules-in-bicep", "positive-1", "positive",
+     "Bump every AVM module in our Bicep files to the latest published version.",
+     "Exactly this skill's job."),
+    ("update-avm-modules-in-bicep", "negative-1", "negative",
+     "Write the Bicep for a storage account with private networking and diagnostic "
+     "settings.",
+     "Partner skill: greenfield authoring belongs to bicep-implementation."),
+
+    # --- python-testing <-> pytest-coverage (0.36) ----------------------------
+    ("python-testing", "positive-1", "positive",
+     "Add pytest cases for this Python module, including the error paths.",
+     "Authoring Python tests — the skill's job."),
+    ("python-testing", "negative-1", "negative",
+     "Run the suite with coverage and drive the missing lines to 100%.",
+     "Partner skill: a coverage-to-100% sweep is pytest-coverage."),
+
+    ("pytest-coverage", "positive-1", "positive",
+     "Run the suite with coverage, find the lines that aren't covered, and close "
+     "them out to 100%.",
+     "Exactly this skill's job."),
+    ("pytest-coverage", "negative-1", "negative",
+     "Write xUnit tests for this C# service class.",
+     "Wrong ecosystem entirely — should not fire on a .NET request."),
+
+    # --- pr-description <-> release-notes (0.29) ------------------------------
+    ("pr-description", "positive-1", "positive",
+     "Write the pull-request description for this branch, covering what changed and "
+     "the risk.",
+     "The skill's job."),
+    ("pr-description", "negative-1", "negative",
+     "Generate the changelog entry for everything between v1.2.0 and v1.3.0.",
+     "Partner skill: spanning two tags is release-notes, not a PR body."),
+
+    ("release-notes", "positive-1", "positive",
+     "Generate the changelog entry for everything between v1.2.0 and v1.3.0.",
+     "The skill's job."),
+    ("release-notes", "negative-1", "negative",
+     "Write the pull-request description for this branch, covering what changed and "
+     "the risk.",
+     "Partner skill: a single branch's PR body is pr-description."),
+
+    # --- conventional-commit <-> git-commit (0.27) ----------------------------
+    ("conventional-commit", "positive-1", "positive",
+     "What's the right conventional-commit type and scope for a change that fixes a "
+     "null check in the parser?",
+     "Message *shape* — the skill's job."),
+    ("conventional-commit", "negative-1", "negative",
+     "Stage the related files and make the commit for me.",
+     "Partner skill: actually performing the commit is git-commit."),
+
+    ("git-commit", "positive-1", "positive",
+     "Stage the related files and make the commit for me.",
+     "Performing the commit — the skill's job."),
+    ("git-commit", "negative-1", "negative",
+     "Add pytest cases for this Python module, including the error paths.",
+     "Unrelated authoring work; commit tooling should stay out."),
 ]
 
 EVAL_TEMPLATE = """\

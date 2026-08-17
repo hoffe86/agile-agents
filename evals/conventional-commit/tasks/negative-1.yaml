@@ -1,0 +1,18 @@
+id: conventional-commit-negative-1
+name: Should NOT route to conventional-commit
+description: >-
+    Partner skill: actually performing the commit is git-commit.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Stage the related files and make the commit for me.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-conventional-commit
+    config:
+      skill_path: plugins/agile-agents-core/skills/conventional-commit/SKILL.md
+      mode: negative
+      threshold: 0.6

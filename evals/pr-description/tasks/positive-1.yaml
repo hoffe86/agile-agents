@@ -1,0 +1,19 @@
+id: pr-description-positive-1
+name: Should route to pr-description
+description: >-
+    The skill's job.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Write the pull-request description for this branch, covering what changed and the
+    risk.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-pr-description
+    config:
+      skill_path: plugins/agile-agents-core/skills/pr-description/SKILL.md
+      mode: positive
+      threshold: 0.6

@@ -186,7 +186,14 @@ runner is mechanical. If Waza stalls, we keep the corpus and change the runner.
 - **S2 efficacy A/B.** `waza run --baseline`. Most expensive, and most likely to produce
   an uncomfortable answer about skills that do nothing.
 - **Description-collision analysis** across all 61 (including vendored, which we never edit
-  but which still compete in the matching pool).
+  but which still compete in the matching pool). **Done, and it found real collisions** —
+  wave 2 of the routing corpus confirmed three false triggers where one skill would answer
+  for another (`bicep-implementation` for `update-avm-modules-in-bicep`, `python-testing`
+  for `pytest-coverage`, `conventional-commit` for `git-commit`; see `eval/baselines.md`).
+  Repairing those descriptions is **deliberately deferred until S1**: `bicep-implementation`
+  scoring 0.80 on its partner's job and 0.38 on its own looks like a genuinely mis-tuned
+  description rather than a threshold artifact, but confirming that needs observed-invocation
+  data, and editing prose against an uncalibrated heuristic is how metric gaming starts.
 - **Live confirmation of skill naming under plugin delivery** — whether `skill_invocation`
   reports bare or plugin-namespaced names. Not load-bearing: the Copilot CLI emits skill
   loads as a `skill` tool call (`{"name":"skill","arguments":"{\"skill\":\"…\"}"}`, by bare

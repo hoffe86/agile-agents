@@ -45,14 +45,33 @@ zero-credit and deterministic, so it can be regenerated at will:
 | 2026-08-17 | `871ec16` | Skills with an eval suite             | 0 / 61     | Starting point |
 | 2026-08-17 | `9c2e4b8` | Skills with an eval suite             | 6 / 61     | Routing pilot |
 | 2026-08-17 | `9c2e4b8` | Routing accuracy (trigger heuristic)  | 17 / 18    | 1 missed trigger, 0 false triggers |
+| 2026-08-17 | `c6143d8` | Skills with an eval suite             | 14 / 61    | Wave 2 — the collision pairs that genuinely co-install |
+| 2026-08-17 | `c6143d8` | Routing accuracy (trigger heuristic)  | 30 / 35    | 2 missed triggers, **3 false triggers** |
 
-**The one miss:** `engineering-judgement` scores **0.46** (threshold 0.6) on its own core
-case — *"the ticket doesn't say what should happen when the upload fails; should I stop and
-ask, or make the sensible call?"*. Its description is written in abstract vocabulary that
-shares few tokens with how the situation is actually phrased.
+**Wave 2 confirmed the collisions are real, not theoretical.** Each negative case is the
+*partner skill's* task, so a failure means one skill would answer for another:
 
-Two things not to do with that number. Do not raise a threshold to clear it, and do not
-stuff keywords into the description — the threshold is Waza's uncalibrated default, and
-editing prose to move a metric is exactly what `engineering-judgement` §7 forbids. This is
-why the routing suite **reports** while the frontmatter and token checks **gate**.
+| False trigger | Score | Should have been |
+|---|---|---|
+| `bicep-implementation` on *"bump every AVM module to the latest version"* | 0.80 | `update-avm-modules-in-bicep` |
+| `python-testing` on *"run with coverage and drive the missing lines to 100%"* | 0.71 | `pytest-coverage` |
+| `conventional-commit` on *"stage the related files and make the commit"* | 0.60 | `git-commit` |
+
+`bicep-implementation` is the sharpest case and its numbers are **inverted**: it scores
+**0.80 on its partner's job** and only **0.38 on its own** (*"write the Bicep for a storage
+account with private networking"*). Its description over-indexes on module/version
+vocabulary and barely describes authoring — which is the failure the collision analysis
+predicted from a 0.46 similarity with `update-avm-modules-in-bicep`.
+
+**The one miss carried over from wave 1:** `engineering-judgement` scores **0.46**
+(threshold 0.6) on its own core case — *"the ticket doesn't say what should happen when the
+upload fails; should I stop and ask, or make the sensible call?"*. Its description is
+written in abstract vocabulary that shares few tokens with how the situation is phrased.
+
+Two things not to do with any of these numbers. Do not raise a threshold to clear them,
+and do not stuff keywords into a description — the threshold is Waza's uncalibrated
+default, and editing prose to move a metric is exactly what `engineering-judgement` §7
+forbids. This is why the routing suite **reports** while the frontmatter, drift and token
+checks **gate**. Confirm against S1 (observed invocation) before editing any description.
+
 
