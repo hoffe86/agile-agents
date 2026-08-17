@@ -1,4 +1,4 @@
-# `evals-s2/` — efficacy A/B (blocked on environment isolation)
+# `s2-efficacy/` — efficacy A/B (blocked on environment isolation)
 
 **Status: cannot produce a valid result on a machine with the plugins installed.**
 Not blocked on credits — blocked on isolation. Read this before running anything here.

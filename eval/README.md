@@ -31,20 +31,23 @@ end-to-end integration checkpoint.
 L0/L1/L2 grade **runs**. A second axis grades the **artifacts** the runs load
 ([ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md)), using
 [`microsoft/waza`](https://github.com/microsoft/waza) — whose unit of evaluation is
-`SKILL.md` itself:
+`SKILL.md` itself. It lives in **[`skills/`](skills/README.md)**, one directory per tier:
 
 | Layer | What it grades | Cost | Where |
 |---|---|---|---|
-| **S0** skill hygiene | frontmatter validity, token budget, eval coverage | zero-credit, deterministic, **gating** | [`skill-quality.yml`](../.github/workflows/skill-quality.yml) |
-| **S1** routing | does the right skill fire (precision/recall) | medium | planned (ADR 0014) |
-| **S2** efficacy | does the skill beat *not* loading it (`--baseline` A/B) | 2× model | planned (ADR 0014) |
+| **S0** skill hygiene | frontmatter validity, token budget, `copilot-instructions` drift | zero-credit, deterministic, **gating** | [`skill-quality.yml`](../.github/workflows/skill-quality.yml) |
+| **S0** routing | should this prompt reach this skill (offline heuristic) | zero-credit | [`skills/s0-routing/`](skills/s0-routing/) — reports, uncalibrated |
+| **S1** invocation | did the agent actually invoke it | model | [`skills/s1-invocation/`](skills/s1-invocation/README.md) |
+| **S2** efficacy | is the outcome better than *not* loading it | 2× model | [`skills/s2-efficacy/`](skills/s2-efficacy/README.md) — blocked on isolation |
 
-Run S0 locally exactly as CI does:
+Run the free tier locally exactly as CI does:
 
 ```powershell
 python scripts/check-skill-frontmatter.py --self-test   # prove each assertion trips
 python scripts/check-skill-frontmatter.py               # 76 artifacts, strict YAML
+python scripts/check-instructions-drift.py              # roster counts match reality
 ./scripts/check-skill-tokens.ps1                        # token ratchet + coverage
+./scripts/run-trigger-evals.ps1                         # routing baseline
 ```
 
 Two things S0 exists to stop, both of which had already happened:

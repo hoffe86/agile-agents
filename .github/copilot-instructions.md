@@ -90,7 +90,9 @@ agent/                               Marketplace root
 │                                    check-skill-tokens.ps1, check-instructions-drift.py,
 │                                    gen-trigger-evals.py, run-trigger-evals.ps1
 ├── eval/                            swe-bench-subset + custom-eval + trajectory + baselines.md
-│                                    (run evals: L0/L1/L2 — ADR 0008; skill evals S0/S1/S2 — ADR 0014)
+│                                    (run evals: L0/L1/L2 — ADR 0008)
+│   └── skills/                      s0-routing + s1-invocation + s2-efficacy
+│                                    (skill evals: S0/S1/S2 — ADR 0014)
 ├── .waza.yaml                       Waza config: skill token ratchet + eval paths (ADR 0014)
 ├── docs/
 │   ├── adr/                         Architecture decision records (0001–0014)

@@ -77,7 +77,7 @@ checks **gate**. Confirm against S1 (observed invocation) before editing any des
 ## S1 — observed invocation (first results)
 
 Ground truth for two of the three S0 false triggers. Run via Waza's `copilot-sdk`
-executor, 3 trials each; see [`evals-s1/README.md`](../evals-s1/README.md).
+executor, 3 trials each; see [`eval/skills/s1-invocation/README.md`](skills/s1-invocation/README.md).
 
 | Date | Collision S0 predicted | S0 heuristic | Observed (3 trials) | Verdict |
 |---|---|---|---|---|
@@ -115,7 +115,7 @@ can add skills to a run; it cannot subtract the ones the CLI already has.
 S2 therefore needs an **isolated environment** (a container, CI runner, or profile that
 never ran `copilot plugin install`), plus a pre-flight check that a `--no-skills` run
 invokes nothing at all. Blocked on isolation, not on credits. See
-[`evals-s2/README.md`](../evals-s2/README.md).
+[`eval/skills/s2-efficacy/README.md`](skills/s2-efficacy/README.md).
 
 **The transferable lesson:** a contaminated baseline does not error — it returns a
 plausible number that reads like a result. Verify the control pass invoked nothing before

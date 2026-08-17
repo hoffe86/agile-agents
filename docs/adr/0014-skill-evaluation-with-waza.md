@@ -176,7 +176,7 @@ runner is mechanical. If Waza stalls, we keep the corpus and change the runner.
 
 ## Not doing yet
 
-- **S1 routing as observed.** ~~Deferred~~ — **first results are in** (`evals-s1/`, two
+- **S1 routing as observed.** ~~Deferred~~ — **first results are in** (`eval/skills/s1-invocation/`, two
   suites, 3 trials each). Two findings that change how S0 should be read:
 
   1. **The S0 heuristic over-reports collisions.** It flagged `bicep-implementation` as
@@ -211,8 +211,8 @@ runner is mechanical. If Waza stalls, we keep the corpus and change the runner.
 
   So S2 is blocked on **environment isolation, not credits**: it needs a container, CI
   runner or profile where the plugins were never installed, plus a pre-flight assertion
-  that a `--no-skills` run invokes nothing. The suite (`evals-s2/`) is written and
-  outcome-graded, ready for that environment. See `evals-s2/README.md`.
+  that a `--no-skills` run invokes nothing. The suite (`eval/skills/s2-efficacy/`) is written and
+  outcome-graded, ready for that environment. See `eval/skills/s2-efficacy/README.md`.
 
   Worth recording as a general hazard: **a contaminated baseline fails silently and
   plausibly.** It reports a believable number rather than an error, and only inspecting

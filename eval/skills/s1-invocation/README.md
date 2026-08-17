@@ -1,7 +1,7 @@
-# `evals-s1/` — observed-invocation evals (S1)
+# `s1-invocation/` — observed-invocation evals (S1)
 
 **Not free, not in CI.** These call a real model through Waza's `copilot-sdk` executor.
-S0 (`evals/`) is the offline heuristic tier that gates; this is the ground-truth tier
+S0 (`eval/skills/s0-routing/`) is the offline heuristic tier that gates; this is the ground-truth tier
 that tells you whether the heuristic was right. See
 [ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md).
 
@@ -9,7 +9,7 @@ that tells you whether the heuristic was right. See
 
 ```powershell
 $env:GH_TOKEN = "<a GitHub token with Copilot access>"   # or: copilot login
-waza run evals-s1/bicep-collision/eval.yaml -o results.json
+waza run eval/skills/s1-invocation/bicep-collision/eval.yaml -o results.json
 ```
 
 Waza uses **its own embedded Copilot CLI** (`%LOCALAPPDATA%\copilot-sdk\`), not the one

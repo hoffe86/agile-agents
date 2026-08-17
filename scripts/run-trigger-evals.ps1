@@ -22,8 +22,9 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Push-Location $repoRoot
 try {
-    $evalFiles = Get-ChildItem (Join-Path $repoRoot 'evals') -Filter 'eval.yaml' -Recurse -ErrorAction SilentlyContinue
-    if (-not $evalFiles) { Write-Host 'No eval suites found under evals/.'; exit 0 }
+    $s0Root = Join-Path $repoRoot 'eval/skills/s0-routing'
+    $evalFiles = Get-ChildItem $s0Root -Filter 'eval.yaml' -Recurse -ErrorAction SilentlyContinue
+    if (-not $evalFiles) { Write-Host 'No S0 routing suites found under eval/skills/s0-routing/.'; exit 0 }
 
     $rows = @()
     foreach ($f in $evalFiles | Sort-Object FullName) {

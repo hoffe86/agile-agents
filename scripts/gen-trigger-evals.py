@@ -22,7 +22,7 @@ import os
 import textwrap
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EVALS = os.path.join(REPO, "evals")
+EVALS = os.path.join(REPO, "eval", "skills", "s0-routing")
 
 SKILL_PATHS = {
     "engineering-judgement": "plugins/agile-agents-core/skills/engineering-judgement/SKILL.md",

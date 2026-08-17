@@ -13,7 +13,7 @@
 
 paths:
   skills: plugins/agile-agents-core/skills
-  evals: evals
+  evals: eval/skills/s0-routing
   results: .waza-results
 
 defaults:
