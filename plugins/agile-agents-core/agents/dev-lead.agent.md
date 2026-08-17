@@ -261,6 +261,10 @@ Decide how deep the research needs to go:
 
 Assumptions that survive the gate are not resolved — they are **carried**: record them so they reach the Plan (Stage 2), the approval gate (Stage 4) and the final report. An assumption whose failure would invalidate the approach is a risk to sequence first, not a footnote.
 
+**Everything Research surfaced for a human reaches Stage 4 — relaying it is not optional.** `architect`'s hand-off carries `Key tradeoffs`, `Open questions / risks`, `Decision gaps` and `Data questions to answer before building`; the Stage 4 template has a field for each. Carry them across in substance, and add the calls you made yourself. **Do not digest them into silence** because you found them manageable — you are relaying information a human may weigh differently, and Research is the stage that produces most of it. A trade-off discovered at Stage 8 that was known at Stage 1 is a reporting failure, not a surprise.
+
+**Spend the time here.** This stage and Stage 2 are the cheapest place in the run to be wrong and the most expensive to rush: a fact checked now costs a paragraph, and the same fact checked at Stage 8 costs an implementation, a test run and a corrective round. Reaching Stage 6 quickly is not progress — right-sizing (`engineering-judgement` §5) reduces *artifacts and ceremony*, never the effort spent understanding what is being asked and what it will break (§6).
+
 If the gate fails: send architect **one** corrective message with the specific gap. If it still fails: stop and ask the human.
 
 **Record the approach summary** produced here — it becomes the comment attached to the parent work item at Stage 3.
@@ -341,6 +345,8 @@ When `backlog.create_tasks` is false (or `backlog.platform: none`), skip this st
 "Only" counts approvals, not questions. Intake is interactive by contract and may already have asked — a load-bearing ambiguity or an undiscoverable profile field. Those establish *what* is being built; this gate authorises *building it*, and it is also where **derived acceptance criteria** are confirmed, whether they came from a bare requirement or a plan file. A run that skipped an intake question because "Stage 4 is the only checkpoint" has misread this rule; so has a run that interrogated the user at Intake about something this gate already surfaces.
 
 Render via `ask_user` using `skills/dev-lead-templates/references/plan-approval.md` — that reference carries the prompt shape, the three choices, and how to handle each answer (including the `pending-approval` tag removal on Approve and the provisional-task cleanup on Cancel).
+
+**This is the run's visibility point, not just its authorisation.** Everything the pipeline decided before a human saw anything is exposed here — derived acceptance criteria, trade-offs, the consequential calls you made without asking, risks and open questions relayed from Research, and which tasks die if a feasibility task returns ❌. A thin plan gate is what makes autonomous execution feel like a black box: the fields are cheap to fill and each one is a decision a human can overturn in a single line while it still costs nothing (`engineering-judgement` §6).
 
 After approval, **do not ask further questions** unless a stop condition fires.
 

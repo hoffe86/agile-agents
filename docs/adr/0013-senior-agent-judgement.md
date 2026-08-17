@@ -59,6 +59,20 @@ gates.**
    new **Acceptance criteria I derived** field on the Stage 4 plan-approval template.
 5. **`backlog-manager`'s autonomy tiers were scoped** to the direct-invocation path, and
    the `dev-lead` Plan path made an explicit exception.
+6. **The plan-approval gate was widened into the run's visibility point.** Deciding more
+   only stays safe if the decisions become visible somewhere, and the gate a human actually
+   reads had no slot for them — it relayed *Assumptions* and nothing else. `architect`
+   already reports `Key tradeoffs`, `Open questions / risks` and `Decision gaps`; Stage 2
+   already promised the human would see feasibility fallout "at Stage 4". None of it had a
+   field. Added: **Trade-offs**, **Decisions I made that you may want to change**, **Risks
+   and open questions**, and **What dies if a feasibility task returns ❌**, with an explicit
+   relay-don't-digest rule and `none` defined as a claim rather than a default.
+7. **`engineering-judgement` §6 ("Raise it early") front-loads the cost curve.** Without it,
+   §1 (*don't ask*) and §5 (*right-size the effort*) read together as licence to skim
+   Research and surface things late — the opposite of the intent. §6 states that
+   right-sizing cuts **artifacts and ceremony, never the effort spent understanding the
+   problem**, and that a consequential call belongs at the earliest gate someone could act
+   on it. `dev-lead` Stage 1 carries the same rule concretely.
 
 ## What was deliberately *not* changed
 
@@ -68,7 +82,7 @@ the negative-result rules for `data-scientist` / `data-reviewer` are untouched. 
 autonomy means *fewer questions*, not *fewer controls* — the two are routinely conflated
 and the distinction is the whole content of this ADR.
 
-`engineering-judgement` §7 exists to make that explicit in the place an agent actually
+`engineering-judgement` §8 exists to make that explicit in the place an agent actually
 reads: seniority never licenses skipping verification, weakening a test, expanding scope,
 inventing a fact, or routing around a gate because the change looked safe. Without §7 this
 change would read as permission to be confident, which is the opposite of the intent.
@@ -94,6 +108,12 @@ working context and its anti-pattern table in the name of concision. That conten
 removing it would produce a terser agent that finds less. Terse is not senior.
 
 ## Consequences
+
+**The load-bearing pairing.** "Decide rather than ask" is only safe when paired with "and
+expose the decision at the next gate". Taken alone, the first half produces a confident
+black box — which is the failure this ADR is most likely to be blamed for if the pairing is
+ever broken. §6 and the widened Stage 4 gate are that second half; **do not remove one
+while keeping the other.** Autonomy is bought with visibility, not with trust.
 
 **Positive**
 

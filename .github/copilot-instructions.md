@@ -345,11 +345,22 @@ would be the same for every user of the harness. "Escalate irreversible decision
 **Autonomy means fewer questions, never fewer controls.** Every human gate is unchanged and
 must stay that way: plan approval, PR approval, human-only merge/complete/close, force-push
 and production-deploy bans, reviewer read-only, the test-asymmetry rule, and the
-negative-result rules. `engineering-judgement` §7 states the boundaries seniority never
+negative-result rules. `engineering-judgement` §8 states the boundaries seniority never
 licenses crossing — skipping verification, weakening a test, expanding scope, inventing a
 fact, routing around a gate — and it exists precisely because without it the rest of that
 skill reads as permission to be confident. **Do not "extend" the autonomy work by relaxing a
 gate**; that was considered and rejected in ADR 0013.
+
+**"Decide rather than ask" is half a rule — the other half is "expose it at the next gate".**
+Deciding more is only safe because Stage 4 shows the human what was decided: derived
+acceptance criteria, trade-offs, the consequential calls made without asking, risks and open
+questions relayed from Research, and what dies if a feasibility task fails. `engineering-judgement`
+§6 front-loads this (raise it at the earliest gate someone could act on it) and warns that
+right-sizing cuts **artifacts and ceremony, never the effort spent understanding the problem** —
+because §1 and §5 read together would otherwise licence skimming Research. **Never remove one
+half of the pairing while keeping the other**: without the visibility, autonomy is a black box;
+without the autonomy, the gate is an interrogation. Research and Plan are where a run is cheapest
+to correct, so that is where the thinking is spent and where it is shown.
 
 **Don't add an `autonomy_level` profile key.** It was rejected as the *"config knob for a
 value that never changes"* `dev-lead`'s own rules forbid — the posture calibrates off
