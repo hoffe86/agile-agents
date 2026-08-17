@@ -75,12 +75,12 @@ agent/                               Marketplace root
 │   │   ├── agents/                  15 *.agent.md (1 supervisor + 4 authors
 │   │   │                            + 7 reviewers + backlog-manager + bootstrapper
 │   │   │                            + capability-scout)
-│   │   ├── skills/                  38 repo-scope skills, incl.
+│   │   ├── skills/                  41 repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
-│   ├── agile-agents-dotnet/         5 skills — C# / .NET
-│   ├── agile-agents-python/         4 skills — Python
-│   ├── agile-agents-bicep/          2 skills — Bicep IaC
+│   ├── agile-agents-dotnet/         6 skills — C# / .NET
+│   ├── agile-agents-python/         5 skills — Python
+│   ├── agile-agents-bicep/          3 skills — Bicep IaC
 │   ├── agile-agents-terraform/      3 skills — Terraform IaC
 │   ├── agile-agents-azure/          1 skill  — Azure platform grounding (CAF / AVM / WAF)
 │   ├── agile-agents-ado/            1 skill  — Azure DevOps Boards tracker mechanics
@@ -284,15 +284,16 @@ Consequences worth preserving:
   continue. Halting delivery over a metering table is the wrong trade.
 
 ### Vendored skills
-20 of the 60 skills are unmodified copies from
+20 of the 61 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-40 are hand-written or adopted and are the ones to edit — 37 repo-scope
+41 are hand-written or adopted and are the ones to edit — 38 repo-scope
 (csharp/python-implementation, csharp/python-testing, dotnet/python-startup-discovery,
 development-practices, testing-practices, data-science-practices, data-engineering-practices, code-review-checklist, artifact-coverage,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
 architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
+engineering-judgement,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
 test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standards,
 ado-work-items, github-issues, azure-platform-grounding, deploy-verify,
@@ -325,6 +326,40 @@ how someone phrases a directive belong in that person's own `~/.copilot/skills/w
 outside the plugin — `read-repo-context` §3 honours one if present and falls back to the
 repository's own instructions if not. **Never add a person's preferences to a plugin skill**:
 this harness is installed by many people, and one person's tone is another's noise.
+
+### Seniority is judgement, not looser gates (ADR 0013)
+Agents are expected to behave like experienced practitioners: decide inside their mandate,
+fill an under-specified request with the professional default, and escalate on
+**reversibility × blast radius** — never on unfamiliarity or on "the request didn't say".
+That posture lives in **one** place, the `engineering-judgement` skill, loaded silently on
+every turn by `read-repo-context` §3. It pairs with `engineering-standards` the way a
+practitioner pairs with a spec: standards are *what good looks like*, judgement is *how an
+experienced person decides*. Each agent then carries a short **"The calls only you make"**
+naming the judgement that role and no other exercises.
+
+**This is an operating posture, not a personal preference** — which is why it ships inside
+the plugin while `working-style` deliberately does not. The test is whether the content
+would be the same for every user of the harness. "Escalate irreversible decisions" is;
+"keep answers short and skip the preamble" isn't.
+
+**Autonomy means fewer questions, never fewer controls.** Every human gate is unchanged and
+must stay that way: plan approval, PR approval, human-only merge/complete/close, force-push
+and production-deploy bans, reviewer read-only, the test-asymmetry rule, and the
+negative-result rules. `engineering-judgement` §7 states the boundaries seniority never
+licenses crossing — skipping verification, weakening a test, expanding scope, inventing a
+fact, routing around a gate — and it exists precisely because without it the rest of that
+skill reads as permission to be confident. **Do not "extend" the autonomy work by relaxing a
+gate**; that was considered and rejected in ADR 0013.
+
+**Don't add an `autonomy_level` profile key.** It was rejected as the *"config knob for a
+value that never changes"* `dev-lead`'s own rules forbid — the posture calibrates off
+`identity.lifecycle_stage` and `engagement_context.engagement_type`, which already declare
+blast radius.
+
+**Terse is not senior.** The reviewers' rubrics and working-context blocks were deliberately
+*not* trimmed: that content is reference material a review needs, not procedure the reviewer
+should have internalised. Cutting it would produce a shorter agent that finds less. When
+adding judgement, pay for it by deleting *procedure* — never by deleting *reference*.
 
 ### Model-tier convention
 Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),

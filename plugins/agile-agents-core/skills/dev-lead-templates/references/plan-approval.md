@@ -19,6 +19,13 @@ the API answers it in one line, where the run would otherwise spend a stage disc
 List an assumption even when you think it is safe; `none` is a claim that Stage 1 verified
 everything load-bearing, not a default.
 
+*Acceptance criteria I derived* works the same way for a different failure. A requirement
+that states no criteria does not stall Intake — the lead drafts them and confirms them
+**here**, which is why they must be listed separately from the stated ones rather than
+blended in. A derived criterion the human never saw would make the Stage 9 check measure
+the lead's own reading of the requirement instead of the requirement, and that loop closes
+silently: every gate passes and the delivered thing is still not what was asked for.
+
 **Choices:** `Approve and run autonomously` / `Adjust plan` / `Cancel`.
 
 ```markdown
@@ -40,6 +47,8 @@ everything load-bearing, not a default.
 **Changes I made to your plan:** <step — split / merged / re-ordered / dropped + one-line reason, each, or `none — every step carried as-is` / `n/a (no plan file supplied)`>
 
 **Acceptance criteria not covered by any task:** <criterion — reason it is out of scope, one line each, or `none — every criterion maps to a task`>
+
+**Acceptance criteria I derived — confirm or correct:** <numbered list of criteria the requirement did not state and you inferred from the outcome it describes, one line each, or `none — every criterion was stated verbatim`>
 
 **Assumptions this plan rests on:** <unverified fact — what breaks if it's wrong — which task would surface it, one line each, or `none — every load-bearing fact was verified`>
 

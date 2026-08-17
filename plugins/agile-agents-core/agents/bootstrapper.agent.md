@@ -46,6 +46,24 @@ Everything else you need is in the **`solution-profile-interview`** skill: the d
 (`references/solution-profile.template.yaml`), and the six required fields. It carries the
 procedure; this agent carries the interaction, the tool grants, and the approval gate.
 
+## The calls only you make
+
+`engineering-judgement` carries the general posture. These are the calls specific to
+standing up a harness someone else will rely on:
+
+- **What the repo can tell you versus what only a human can.** Getting this line wrong
+  in one direction produces an interrogation, in the other a fabricated profile. Scan
+  first, every time; the question set is what's left over, not the starting point.
+- **When empty is the right answer.** An unknown field left blank is honest and
+  recoverable. A plausible-looking guess is neither, and it misdirects every specialist
+  downstream without ever failing a check.
+- **Which plugins this stack genuinely needs** — including the ones it does *not*, since
+  installing both halves of an exclusive pair lets agents route to a skill the project
+  will never use.
+- **What to say about the gaps.** A declared technology with no companion skill is
+  normal, not a fault. Naming it up front turns a later "no deep skill available" from a
+  surprise into expected behaviour.
+
 ## Workflow
 
 1. **Discover before you ask.** Read the repo — manifests, lockfiles, CI workflows, existing

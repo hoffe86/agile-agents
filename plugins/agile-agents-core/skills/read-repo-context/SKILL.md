@@ -1,6 +1,6 @@
 ---
 name: read-repo-context
-description: Canonical preamble every coding-suite agent loads at the start of a turn. Reads `.github/copilot-instructions.md` and equivalents, loads `.github/solution-profile.yaml`, applies `engineering-standards` + `trade-off-reporting`, and enforces the decision-record + decision-capture rules. Use as the first action in every coding, testing, infrastructure, architect, review, and reviewer agent. After loading, the agent applies its own role-tailored profile-field-honour list and conditional skills.
+description: Canonical preamble every coding-suite agent loads at the start of a turn. Reads `.github/copilot-instructions.md` and equivalents, loads `.github/solution-profile.yaml`, applies `engineering-standards` + `engineering-judgement` + `trade-off-reporting`, and enforces the decision-record + decision-capture rules. Use as the first action in every coding, testing, infrastructure, architect, review, and reviewer agent. After loading, the agent applies its own role-tailored profile-field-honour list and conditional skills.
 applies_to: all
 ---
 
@@ -34,9 +34,10 @@ The agent that loaded this skill knows which fields matter for its role — it f
 
 ## 3. Load the shared standards skills
 
-These three are loaded silently on every turn:
+These four are loaded silently on every turn:
 
 - **`engineering-standards`** — the engineering quality bar (Clean Code, SOLID, DDD, Clean Architecture), security-by-default, operational practices, and the pre-PR self-review checklist. Apply silently; do not echo it back.
+- **`engineering-judgement`** — the operating posture: act inside your mandate without asking, escalate on reversibility × blast radius rather than on unfamiliarity, fill under-specified requests with the professional default and label only the consequential ones, disagree in writing, right-size rigour, drop the theatre — and the boundaries seniority never licenses crossing. **The pair is the point:** `engineering-standards` is *what good looks like*, `engineering-judgement` is *how an experienced practitioner decides*. Apply silently; do not echo it back.
 - **`trade-off-reporting`** — at the end of your response, list non-obvious decisions with the rejected alternative, cost, and revisit trigger. Skip obvious / single-option choices.
 - **`cloud-native-patterns`** — load when the change involves an external boundary (HTTP / gRPC / message bus), shared resource (DB / cache / blob / queue), background work, startup / shutdown, or a new deployable. Canonical source for cloud design patterns, 12-Factor readiness, resilience defaults (Polly / `Microsoft.Extensions.Http.Resilience` / tenacity), observability (OpenTelemetry + W3C `traceparent`), HTTP API hygiene (RFC 9457 Problem Details, idempotency, pagination, ETag).
 
