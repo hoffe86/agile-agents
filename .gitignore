@@ -3,6 +3,7 @@
 
 # Eval run outputs
 eval/runs/
+eval/**/runs/
 eval/**/results/
 eval/**/.runs/
 

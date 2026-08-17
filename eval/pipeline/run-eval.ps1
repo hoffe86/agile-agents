@@ -63,7 +63,9 @@ Set-StrictMode -Version Latest
 # plugin name from plugins/agile-agents-core/.github/plugin/plugin.json ("agile-agents-core"), so the supervisor
 # agent is addressed as agile-agents-core:dev-lead — NOT bare dev-lead (the CLI errors
 # "No such agent: dev-lead" without the plugin prefix).
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+# Repo root = two levels up from eval/pipeline/. Loaded as a local plugin so the agent
+# resolves without a prior `copilot plugin install`. --plugin-dir registers it under the
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
 # Every plugin folder is registered, so companion skills (dotnet / python / bicep /
 # terraform / trackers) resolve during a run — otherwise language tasks would silently
 # fall back to repo conventions and the score wouldn't reflect the shipped suite.

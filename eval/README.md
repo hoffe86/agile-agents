@@ -13,15 +13,46 @@ adopter who forks this template) can answer two questions with numbers, not vibe
 Self-benchmarking is the **first** improvement (Phase 1, item H2 in the improvement plan) for a
 reason: every later quality lift needs a quantitative anchor to be measured against.
 
+## How `eval/` is organised
+
+One folder per **unit of evaluation** — the thing being graded — with everything shared
+at the root:
+
+```
+eval/
+├── README.md          this file
+├── baselines.md       every tier's numbers, in one place
+├── pipeline/          grades RUNS    — L0/L1/L2 (ADR 0008)
+│   ├── trajectory/    L0 · process conformance over the event log (free, gating)
+│   ├── custom-eval/   L2 · framework-representative tasks
+│   ├── swe-bench-subset/  L2 · external comparable benchmark
+│   └── run-eval.{ps1,sh}, score-judge.{ps1,sh}, scoring-rubric.md, references/
+└── skills/            grades SKILLS  — S0/S1/S2 (ADR 0014)
+    ├── s0-routing/    should a prompt reach this skill (offline, free)
+    ├── s1-invocation/ did the agent actually invoke it (model)
+    └── s2-efficacy/   is the outcome better with it than without (2× model)
+```
+
+**Why `pipeline/` and not `runs/`:** `eval/**/runs/` is the gitignored output directory
+that `run-eval` writes into. Naming the source folder `runs/` would collide with its own
+artifacts.
+
+**An `agents/` folder is the obvious third slot** — grading `*.agent.md` rather than
+skills or runs — and it is well-motivated: tool grants are a documented recurring defect
+here (wrong in three separate PRs, silent in both directions), and Waza's
+`tool_constraint` grader validates exactly which tools an agent used or avoided. It is
+deliberately **not created empty**; add it when the first agent eval exists, and keep to
+the convention above.
+
 ## Eval layers
 
 This outcome eval is the **top** of a layered pyramid ([ADR 0008](../docs/adr/0008-layered-evaluation-strategy.md)):
 
 | Layer | What it grades | Cost | Where |
 |---|---|---|---|
-| **L0** trajectory | *how* a run executed (RPI process conformance over the event log) | zero-credit, deterministic, gating | [`trajectory/`](trajectory/README.md) |
+| **L0** trajectory | *how* a run executed (RPI process conformance over the event log) | zero-credit, deterministic, gating | [`pipeline/trajectory/`](pipeline/trajectory/README.md) |
 | **L1** review-detection | the Review phase (seeded-defect recall/precision) | medium | planned (ADR 0008) |
-| **L2** outcome | *what* a run produced (acceptance vs. artifact) | credit-heavy, manual | this folder |
+| **L2** outcome | *what* a run produced (acceptance vs. artifact) | credit-heavy, manual | [`pipeline/`](pipeline/) |
 
 L0 runs free on every push/PR and catches process failures L2 is blind to; L2 (below) is the
 end-to-end integration checkpoint.
@@ -80,7 +111,7 @@ For each task the harness:
 1. Loads the task prompt + (for custom-eval) `solution-profile.yaml` context.
 2. Invokes `dev-lead` once with the prompt (TODO — see *Limitations* below).
 3. Captures stdout/stderr + any produced artefacts.
-4. Scores the run against the rubric in [`scoring-rubric.md`](./scoring-rubric.md):
+4. Scores the run against the rubric in [`scoring-rubric.md`](pipeline/scoring-rubric.md):
    - **resolved** — all acceptance criteria pass
    - **partial** — some criteria pass, none failed catastrophically (no broken build)
    - **failed** — nothing meaningful produced or build broken
@@ -92,20 +123,20 @@ For each task the harness:
 
 ```powershell
 # Full SWE-bench subset
-./run-eval.ps1 -Suite swe-bench-subset
+./pipeline/run-eval.ps1 -Suite swe-bench-subset
 
 # Single custom-eval task
-./run-eval.ps1 -Suite custom-eval -TaskFilter 'task-03'
+./pipeline/run-eval.ps1 -Suite custom-eval -TaskFilter 'task-03'
 
 # All custom-eval tasks matching a regex
-./run-eval.ps1 -Suite custom-eval -TaskFilter 'bicep|helm'
+./pipeline/run-eval.ps1 -Suite custom-eval -TaskFilter 'bicep|helm'
 ```
 
 ### Bash (Linux / macOS)
 
 ```bash
-./run-eval.sh --suite custom-eval --task-filter 'task-03'
-./run-eval.sh --suite custom-eval --dry-run     # print the copilot command per task; no auth/credits
+./pipeline/run-eval.sh --suite custom-eval --task-filter 'task-03'
+./pipeline/run-eval.sh --suite custom-eval --dry-run     # print the copilot command per task; no auth/credits
 ```
 
 `custom-eval` invokes `dev-lead` for real: it reads each task's `prompt.md`, seeds a fresh
@@ -162,7 +193,7 @@ runs/
 
 The `runs/` folder is gitignored in the distribution; only `baselines.md` is committed.
 
-## Scoring rubric (short form — full form in [`scoring-rubric.md`](./scoring-rubric.md))
+## Scoring rubric (short form — full form in [`scoring-rubric.md`](pipeline/scoring-rubric.md))
 
 | Status | Meaning |
 |---|---|

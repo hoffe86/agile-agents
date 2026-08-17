@@ -40,7 +40,7 @@ layer targets a different phase and failure mode.
 | **L1** | Review-detection (planned) | the Review phase | medium (review agents only) | on demand |
 | **L2** | Outcome (existing, `eval/`) | the Implement phase end-to-end | high (full pipeline + judge) | no — manual checkpoint |
 
-**L0 is built now** (`eval/trajectory/`): assertions over the `run-event-log` JSONL
+**L0 is built now** (`eval/pipeline/trajectory/`): assertions over the `run-event-log` JSONL
 stream (ADR 0006) verifying dev-lead bookends, RPI phase ordering, a test-bar
 `gate_check` (ADR 0003) before review, reviewer `gate_check`s, and cost telemetry
 (ADR 0004). It runs against a golden fixture generated from one in-code source, plus
@@ -101,7 +101,7 @@ integration checkpoint, run manually or on demand, never a per-PR gate.
 
 ## References
 
-- `eval/trajectory/check-trajectory.py`, `eval/trajectory/README.md`
+- `eval/pipeline/trajectory/check-trajectory.py`, `eval/pipeline/trajectory/README.md`
 - `.github/workflows/trajectory-eval.yml` (L0, gating) and `.github/workflows/eval.yml` (L2, manual)
 - ADR 0002 (self-benchmarking composition), ADR 0003 (test-bar gate), ADR 0004 (cost envelope), ADR 0006 (run-event-log schema)
 - `skills/run-event-log/references/event-schema.json`

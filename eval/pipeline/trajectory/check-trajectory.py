@@ -15,7 +15,7 @@ asserts it conforms to the expected RPI pipeline shape:
 This is the cheapest eval layer: deterministic, zero-credit, schema-grounded.
 It catches an entire class of silent failures - the pipeline "ran" but its own
 machinery (event log / test-bar gate / cost-budget) never fired - without
-calling any model. See eval/trajectory/README.md and docs/adr/0008.
+calling any model. See eval/pipeline/trajectory/README.md and docs/adr/0008.
 
 Exit code: 0 if every REQUIRED check passes, 1 otherwise.
 

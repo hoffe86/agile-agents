@@ -23,7 +23,7 @@ TASK_FILTER=".*"
 PASS_THRESHOLD=60
 DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PLUGIN_DIR="${REPO_ROOT}/plugins/agile-agents-core"
 # Every plugin folder is registered, so companion skills (dotnet / python / bicep /
 # terraform / trackers) resolve during a run — otherwise language tasks would silently

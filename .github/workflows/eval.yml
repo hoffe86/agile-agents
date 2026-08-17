@@ -60,7 +60,7 @@ jobs:
               exit 1
             fi
           fi
-          bash eval/run-eval.sh \
+          bash eval/pipeline/run-eval.sh \
             --suite "${{ inputs.suite }}" \
             --task-filter "${{ inputs.task_filter }}" \
             --pass-threshold "${{ inputs.pass_threshold }}" \

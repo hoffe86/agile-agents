@@ -21,15 +21,15 @@ jobs:
           python-version: '3.12'
 
       - name: Self-test the checker
-        run: python eval/trajectory/check-trajectory.py --self-test
+        run: python eval/pipeline/trajectory/check-trajectory.py --self-test
 
       - name: Fixture is in sync with the generator
         run: |
-          python eval/trajectory/check-trajectory.py --emit-fixture /tmp/regen.jsonl
-          if ! diff -u eval/trajectory/fixtures/full-run.events.jsonl /tmp/regen.jsonl; then
+          python eval/pipeline/trajectory/check-trajectory.py --emit-fixture /tmp/regen.jsonl
+          if ! diff -u eval/pipeline/trajectory/fixtures/full-run.events.jsonl /tmp/regen.jsonl; then
             echo "::error::full-run.events.jsonl is out of sync with build_golden(). Re-run --emit-fixture and commit."
             exit 1
           fi
 
       - name: Check the golden trajectory
-        run: python eval/trajectory/check-trajectory.py eval/trajectory/fixtures/full-run.events.jsonl
+        run: python eval/pipeline/trajectory/check-trajectory.py eval/pipeline/trajectory/fixtures/full-run.events.jsonl

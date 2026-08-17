@@ -250,17 +250,17 @@ Per run the harness writes `summary.json` with absolute counts and the derived r
 metric; the runner exits `0` when `resolved% ≥ pass-threshold` (default `60`), `1` otherwise, so
 it can gate CI. Every run appends a row to [`eval/baselines.md`](eval/baselines.md) — the
 committed trend line; diff against it after any non-trivial agent or skill change. Full
-definitions in [`eval/scoring-rubric.md`](eval/scoring-rubric.md); methodology and the
+definitions in [`eval/pipeline/scoring-rubric.md`](eval/pipeline/scoring-rubric.md); methodology and the
 add-a-task contract in [`eval/README.md`](eval/README.md); composition rationale in
 [ADR 0002](docs/adr/0002-self-benchmarking-harness-composition.md).
 
-**Run it** locally with `eval/run-eval.ps1` (Windows) / `eval/run-eval.sh` (POSIX), or on demand
+**Run it** locally with `eval/pipeline/run-eval.ps1` (Windows) / `eval/pipeline/run-eval.sh` (POSIX), or on demand
 via the [`Run eval`](.github/workflows/eval.yml) workflow (`workflow_dispatch` → pick suite,
 task-filter, threshold; `summary.json` lands in the run summary and `eval/runs/` is uploaded as
 an artifact).
 
 **Layered evaluation.** This outcome eval is the top of a pyramid ([ADR 0008](docs/adr/0008-layered-evaluation-strategy.md)):
-a free, deterministic **L0 trajectory eval** ([`eval/trajectory/`](eval/trajectory/README.md))
+a free, deterministic **L0 trajectory eval** ([`eval/pipeline/trajectory/`](eval/pipeline/trajectory/README.md))
 asserts each run's [`run-event-log`](plugins/agile-agents-core/skills/run-event-log/SKILL.md) stream conformed to the RPI
 shape (dev-lead bookends, research→implement→test→**test-bar gate**→review ordering, reviewer
 gate_checks, cost telemetry). It runs on every push/PR via the
