@@ -87,7 +87,8 @@ agent/                               Marketplace root
 │   └── agile-agents-github/         1 skill  — GitHub Issues tracker mechanics
 ├── scripts/                         generate-agents-md.{ps1,sh}, audit-references.ps1,
 │                                    check-plugin-versions.ps1, check-skill-frontmatter.py,
-│                                    check-skill-tokens.ps1
+│                                    check-skill-tokens.ps1, check-instructions-drift.py,
+│                                    gen-trigger-evals.py, run-trigger-evals.ps1
 ├── eval/                            swe-bench-subset + custom-eval + trajectory + baselines.md
 │                                    (run evals: L0/L1/L2 — ADR 0008; skill evals S0/S1/S2 — ADR 0014)
 ├── .waza.yaml                       Waza config: skill token ratchet + eval paths (ADR 0014)
@@ -501,3 +502,22 @@ runner, unreproducible locally:
 Both were invisible until this repo had a profile with populated lists. When touching
 either generator, check parity with and without `yq`, and under `LC_ALL=C` as well as
 UTF-8.
+
+### This file is checked, too
+`AGENTS.md` has had a sync check since ADR 0005; **this file now has one as well** —
+`scripts/check-instructions-drift.py`, run by the `skill-quality` workflow. It compares
+the *countable* claims here (agent count, per-plugin skill counts, workflow count, ADR
+range, vendored vs hand-written totals) against what the repository actually contains.
+
+It exists because those numbers are hand-maintained and went stale repeatedly — this
+file simultaneously claimed 38 core skills (40), 5 dotnet (6), 4 python (5), 2 bicep (3),
+4 workflows (5), and an ADR range ending six entries early. That matters more here than
+in ordinary docs: `read-repo-context` loads this file first and every agent treats it as
+binding, so a wrong count misinforms every run.
+
+Deliberately narrow — it validates counts, never prose. If you reword a line the check
+reads, it reports *"no claim found"* rather than silently passing; update the regex in
+the script. Counting vendored skills means the rows under **`## Skill → Upstream` only**:
+`VENDORED.md` has three tables, and the adopted (`polyglot-test-agent`) and
+suggested-contribution tables are not vendored entries.
+

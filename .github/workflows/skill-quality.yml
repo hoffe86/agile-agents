@@ -5,20 +5,25 @@ on:
   pull_request:
   workflow_dispatch:
 
-# S0 skill eval: deterministic, zero-credit, no secrets. Grades the *skills* as
-# artifacts, where the eval/ pyramid (ADR 0008) grades *runs*. Safe to gate on for
-# the same reason the trajectory eval is — no model is called.
+# S0 artifact checks: deterministic, zero-credit, no secrets. Grades the *skills* (and
+# the instructions that steer them) as artifacts, where the eval/ pyramid (ADR 0008)
+# grades *runs*. Safe to gate on for the same reason the trajectory eval is — no model
+# is called.
 #
-# Two gates, both catching failures that are otherwise completely silent:
+# Three gates, each catching a failure that is otherwise completely silent:
 #
 #  1. Frontmatter validity. Invalid YAML does not error anywhere — the CLI just
 #     drops the skill, and a dropped skill is indistinguishable from one that was
 #     never a good match. Measured: the installed core plugin had 36 skills on disk
 #     and offered 35, the missing one being the only skill whose frontmatter would
 #     not parse.
-#  2. Token ratchet. A skill body is loaded into context when it triggers, so its
+#  2. Instructions drift. copilot-instructions.md is binding and hand-maintained, and
+#     its counts have gone stale repeatedly.
+#  3. Token ratchet. A skill body is loaded into context when it triggers, so its
 #     size is recurring cost. Limits in .waza.yaml are set at today's measured
 #     values so a regression fails; they are not an endorsement of current size.
+#
+# Routing (trigger accuracy) also runs here but only reports — see the step comment.
 
 permissions:
   contents: read
@@ -45,6 +50,16 @@ jobs:
 
       - name: Every skill and agent has parseable frontmatter
         run: python scripts/check-skill-frontmatter.py
+
+      # copilot-instructions.md is binding — read-repo-context loads it first and every
+      # agent treats it as repo convention — but its counts are hand-maintained and have
+      # gone stale repeatedly (38 vs 40 core skills, 4 vs 5 workflows, an ADR range three
+      # entries behind). This is the equivalent of check-agents-md-in-sync for that file.
+      - name: Self-test the instructions-drift checker
+        run: python scripts/check-instructions-drift.py --self-test
+
+      - name: copilot-instructions.md matches the actual roster
+        run: python scripts/check-instructions-drift.py
 
       - name: Cache waza binary
         id: waza-cache
