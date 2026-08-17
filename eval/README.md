@@ -26,6 +26,43 @@ This outcome eval is the **top** of a layered pyramid ([ADR 0008](../docs/adr/00
 L0 runs free on every push/PR and catches process failures L2 is blind to; L2 (below) is the
 end-to-end integration checkpoint.
 
+### The S-layer — grading skills, not runs
+
+L0/L1/L2 grade **runs**. A second axis grades the **artifacts** the runs load
+([ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md)), using
+[`microsoft/waza`](https://github.com/microsoft/waza) — whose unit of evaluation is
+`SKILL.md` itself:
+
+| Layer | What it grades | Cost | Where |
+|---|---|---|---|
+| **S0** skill hygiene | frontmatter validity, token budget, eval coverage | zero-credit, deterministic, **gating** | [`skill-quality.yml`](../.github/workflows/skill-quality.yml) |
+| **S1** routing | does the right skill fire (precision/recall) | medium | planned (ADR 0014) |
+| **S2** efficacy | does the skill beat *not* loading it (`--baseline` A/B) | 2× model | planned (ADR 0014) |
+
+Run S0 locally exactly as CI does:
+
+```powershell
+python scripts/check-skill-frontmatter.py --self-test   # prove each assertion trips
+python scripts/check-skill-frontmatter.py               # 76 artifacts, strict YAML
+./scripts/check-skill-tokens.ps1                        # token ratchet + coverage
+```
+
+Two things S0 exists to stop, both of which had already happened:
+
+- **A skill whose frontmatter does not parse is silently dropped by the CLI.** Not a
+  theoretical risk — the installed core plugin had 36 skills on disk and offered 35, and
+  the missing one was the only one whose YAML was invalid. It could never be invoked and
+  nothing reported it.
+- **Token budgets are a ratchet, not a target.** A skill body enters context when it
+  triggers, so its size is recurring spend; the always-on set costs ~8,100 tokens on
+  *every* agent turn. Limits in `.waza.yaml` sit at today's measured cost so a regression
+  fails. Raising one to go green is metric gaming — trim the skill, or move detail into
+  `references/`, which loads on demand rather than on trigger.
+
+**A skill graded alone is not a skill in the pipeline.** Waza evaluates a skill in
+isolation; ours run inside a 15-agent chain. The S-layer complements L0/L2 — it never
+replaces them.
+
 ## Methodology
 
 Two evaluation suites, both runnable through the same harness:
