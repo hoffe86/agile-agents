@@ -1,0 +1,19 @@
+id: engineering-judgement-positive-2
+name: Should route to engineering-judgement
+description: >-
+    Reversibility x blast radius — the escalation test the skill defines.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    We need to change the persisted event schema. Is that something I can just decide,
+    or does it need sign-off first?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-engineering-judgement
+    config:
+      skill_path: plugins/agile-agents-core/skills/engineering-judgement/SKILL.md
+      mode: positive
+      threshold: 0.6

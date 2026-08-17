@@ -1,0 +1,19 @@
+id: test-bar-gate-positive-1
+name: Should route to test-bar-gate
+description: >-
+    Exactly the gate's job, including the smoke slot.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Implementation is finished. Run lint, type-check and the unit tests, and confirm the
+    app still starts before review.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-test-bar-gate
+    config:
+      skill_path: plugins/agile-agents-core/skills/test-bar-gate/SKILL.md
+      mode: positive
+      threshold: 0.6

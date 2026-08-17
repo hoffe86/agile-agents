@@ -1,0 +1,18 @@
+id: testing-practices-negative-1
+name: Should NOT route to testing-practices
+description: >-
+    Near-miss on 'coverage'/'check' vocabulary but squarely infrastructure.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Provision the storage account and wire up its private endpoint in Bicep.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-testing-practices
+    config:
+      skill_path: plugins/agile-agents-core/skills/testing-practices/SKILL.md
+      mode: negative
+      threshold: 0.6

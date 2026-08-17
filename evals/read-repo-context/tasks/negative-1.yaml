@@ -1,0 +1,18 @@
+id: read-repo-context-negative-1
+name: Should NOT route to read-repo-context
+description: >-
+    Near-miss on 'read' — code comprehension, not repo conventions.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Summarise what this 400-line function does.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-read-repo-context
+    config:
+      skill_path: plugins/agile-agents-core/skills/read-repo-context/SKILL.md
+      mode: negative
+      threshold: 0.6

@@ -1,0 +1,19 @@
+id: engineering-judgement-negative-1
+name: Should NOT route to engineering-judgement
+description: >-
+    Near-miss: concrete test authoring belongs to testing-practices.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Write the xUnit test cases covering the null and empty-string branches of this
+    parser.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-engineering-judgement
+    config:
+      skill_path: plugins/agile-agents-core/skills/engineering-judgement/SKILL.md
+      mode: negative
+      threshold: 0.6

@@ -1,0 +1,18 @@
+id: development-practices-negative-1
+name: Should NOT route to development-practices
+description: >-
+    Near-miss: reviewing a diff is a reviewer's job, not the authoring bar.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Review this diff and tell me whether the error handling is good enough.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-development-practices
+    config:
+      skill_path: plugins/agile-agents-core/skills/development-practices/SKILL.md
+      mode: negative
+      threshold: 0.6

@@ -30,14 +30,28 @@ ADR 0008's pyramid rather than inside it.
 
 | Tier | Grades | Cost | Gate? |
 |---|---|---|---|
-| **S0** | frontmatter validity, token budget, eval coverage | free, offline, deterministic | **yes — every push/PR** |
-| **S1** | routing precision/recall (`skill_invocation`) | model | on demand |
+| **S0** | frontmatter validity, token budget, **routing heuristic**, eval coverage | free, offline, deterministic | **yes — every push/PR** (routing reports only, see below) |
+| **S1** | routing as *observed* (`skill_invocation` over real SDK telemetry) | model | on demand |
 | **S2** | efficacy A/B (`--baseline`: run with skills, then with skills stripped) | 2× model | manual |
 
 L0/L1/L2 grade *runs*; S0/S1/S2 grade *skills*. Same doctrine as ADR 0008 — the free
 deterministic tier gates, the expensive tiers stay manual.
 
 **S0 is built now.** S1/S2 are specified and deferred (see *Not doing yet*).
+
+### Routing turned out to be free, which was not the plan
+
+The plan assumed measuring routing needed model calls. It does not: Waza's `trigger`
+grader is a **pure offline heuristic** — it scores a prompt against a skill's own
+description (keyword overlap plus `USE FOR:` phrase matching) with no agent in the loop.
+Combined with `executor: mock`, an 18-task routing corpus runs in about a second and
+costs nothing, so routing moved from S1 down into S0.
+
+That does **not** make S1 redundant. The heuristic scores *what the description says*;
+`skill_invocation` measures *what the model actually did*. The first is a cheap proxy
+that can gate; the second is ground truth that costs credits. Keep both, and never let
+the proxy's score become the goal — see the calibration caveat below.
+
 
 ### Why Waza
 
@@ -100,7 +114,24 @@ Neither defect is exotic. Both are invisible on review, and both survived multip
   `trade-off-reporting` + `engineering-judgement` — is **~8,100 tokens on every agent
   turn**, and ADR 0013 added 2,389 of that without anyone measuring it. Those four now
   carry the tightest ceilings in the repo.
-- A baseline exists to improve against: **0/61 skills have an eval suite.**
+- A baseline exists to improve against: **0/61 skills have an eval suite**, and the
+  6-skill routing pilot scores **17/18 (94%) — 1 missed trigger, 0 false triggers**.
+
+**The routing baseline's one miss is worth reading carefully.** The prompt *"the ticket
+doesn't say what should happen when the upload fails — should I stop and ask, or make
+the sensible call and carry on?"* scores **0.46** against `engineering-judgement`, below
+the 0.6 threshold. That is the skill's own core case (§3, "under-specification is the
+normal state"), and it does not route. The cause is that the description is written in
+abstract vocabulary — *operating posture*, *reversibility × blast radius* — that shares
+almost no tokens with how the situation is actually phrased.
+
+**Do not fix that by stuffing keywords into the description.** The threshold is Waza's
+default and is uncalibrated against this repo's style; the honest responses are to
+calibrate the threshold, or to make the description name the *situations* it applies to
+because that genuinely helps a reader too. Editing prose to move a number is the metric
+gaming `engineering-judgement` §7 bans, which is also why the routing suite **reports
+and does not gate** while the token ratchet and frontmatter check do.
+
 
 **Negative / accepted**
 
@@ -145,9 +176,13 @@ runner is mechanical. If Waza stalls, we keep the corpus and change the runner.
 
 ## Not doing yet
 
-- **S1 routing eval.** `skill_invocation` precision/recall over a pilot set. Needs model
-  credits and a hand-authored query corpus per skill. Highest-value next tier, because
-  routing is the failure mode with no other signal.
+- **S1 routing as observed.** `skill_invocation` precision/recall against real Copilot SDK
+  `SkillInvoked` telemetry, rather than the S0 heuristic's reading of the description.
+  Needs model credits. Highest-value next tier: it is the only way to tell "the
+  description looks right" from "the model actually picked it".
+- **Threshold calibration for the S0 routing suite.** 0.6 is Waza's default and has never
+  been checked against this repo's description style; until it is, that suite reports
+  rather than gates. Calibrating it against S1's observed data is the natural pairing.
 - **S2 efficacy A/B.** `waza run --baseline`. Most expensive, and most likely to produce
   an uncomfortable answer about skills that do nothing.
 - **Description-collision analysis** across all 61 (including vendored, which we never edit

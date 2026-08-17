@@ -1,0 +1,15 @@
+name: development-practices-trigger
+description: >-
+  Routing (trigger-accuracy) eval for the development-practices skill. Scores whether a prompt
+  should activate it, using Waza's offline `trigger` grader — keyword and USE-FOR
+  phrase overlap against the skill's own description. No model is called, so this
+  runs in the free S0 tier.
+skill: development-practices
+version: "1.0"
+config:
+  trials_per_task: 1
+  timeout_seconds: 60
+  parallel: false
+  executor: mock
+tasks:
+  - "tasks/*.yaml"

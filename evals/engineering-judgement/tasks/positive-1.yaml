@@ -1,0 +1,19 @@
+id: engineering-judgement-positive-1
+name: Should route to engineering-judgement
+description: >-
+    The skill's core case: under-specification, decide-vs-escalate.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    The ticket doesn't say what should happen when the upload fails. Should I stop and
+    ask, or make the sensible call and carry on?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-engineering-judgement
+    config:
+      skill_path: plugins/agile-agents-core/skills/engineering-judgement/SKILL.md
+      mode: positive
+      threshold: 0.6

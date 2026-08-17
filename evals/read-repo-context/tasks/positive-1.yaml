@@ -1,0 +1,19 @@
+id: read-repo-context-positive-1
+name: Should route to read-repo-context
+description: >-
+    The preamble's whole purpose.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Before you start, what conventions does this repository already declare that I have
+    to follow?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-read-repo-context
+    config:
+      skill_path: plugins/agile-agents-core/skills/read-repo-context/SKILL.md
+      mode: positive
+      threshold: 0.6

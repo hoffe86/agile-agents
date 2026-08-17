@@ -71,3 +71,11 @@ jobs:
       - name: Skill token ratchet + eval coverage
         shell: pwsh
         run: ./scripts/check-skill-tokens.ps1 -WazaPath "$HOME/.local/bin/waza"
+
+      # Reports, does not gate: the 0.6 trigger threshold is Waza's uncalibrated
+      # default, so a low score is a finding to investigate rather than a build to
+      # fail. Free regardless — the trigger grader is an offline heuristic and the
+      # executor is `mock`, so no model is called.
+      - name: Routing (trigger-accuracy) baseline
+        shell: pwsh
+        run: ./scripts/run-trigger-evals.ps1 -WazaPath "$HOME/.local/bin/waza"

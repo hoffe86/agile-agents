@@ -1,0 +1,19 @@
+id: testing-practices-positive-2
+name: Should route to testing-practices
+description: >-
+    Coverage-of-the-change judgement.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    How much of this new behaviour needs test coverage, and which edge cases actually
+    matter?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-testing-practices
+    config:
+      skill_path: plugins/agile-agents-core/skills/testing-practices/SKILL.md
+      mode: positive
+      threshold: 0.6

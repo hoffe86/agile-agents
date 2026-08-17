@@ -1,0 +1,19 @@
+id: testing-practices-positive-1
+name: Should route to testing-practices
+description: >-
+    The never-weaken-a-test boundary is this skill's load-bearing rule.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    This test is failing after my change. Can I relax the assertion so the suite goes
+    green again?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-testing-practices
+    config:
+      skill_path: plugins/agile-agents-core/skills/testing-practices/SKILL.md
+      mode: positive
+      threshold: 0.6

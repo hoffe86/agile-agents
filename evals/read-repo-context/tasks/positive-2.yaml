@@ -1,0 +1,18 @@
+id: read-repo-context-positive-2
+name: Should route to read-repo-context
+description: >-
+    Profile loading is step 2 of the skill.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Which solution-profile fields should shape how I approach this task?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-read-repo-context
+    config:
+      skill_path: plugins/agile-agents-core/skills/read-repo-context/SKILL.md
+      mode: positive
+      threshold: 0.6

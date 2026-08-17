@@ -1,0 +1,19 @@
+id: development-practices-positive-1
+name: Should route to development-practices
+description: >-
+    Smallest-change bias plus cloud-native defaults.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    I'm about to add a retry wrapper around this HTTP call. What's the smallest correct
+    change here?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-development-practices
+    config:
+      skill_path: plugins/agile-agents-core/skills/development-practices/SKILL.md
+      mode: positive
+      threshold: 0.6

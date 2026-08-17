@@ -1,0 +1,19 @@
+id: csharp-testing-negative-1
+name: Should NOT route to csharp-testing
+description: >-
+    The sharpest near-miss in the repo: identical intent, wrong ecosystem. csharp-
+    testing and python-testing score 0.53 description similarity.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Add pytest cases for this Python module and raise coverage.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-csharp-testing
+    config:
+      skill_path: plugins/agile-agents-dotnet/skills/csharp-testing/SKILL.md
+      mode: negative
+      threshold: 0.6

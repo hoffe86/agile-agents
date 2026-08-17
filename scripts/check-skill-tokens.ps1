@@ -67,13 +67,19 @@ try {
     if (-not $SkipCoverage) {
         $covArgs = @('coverage', '--no-update-check', '-f', 'json')
         foreach ($d in $skillDirs) { $covArgs += @('--path', $d) }
+        # Skills live under plugins/*/skills but their eval suites live at repo-root
+        # evals/<skill>/ — without this the scan finds every skill and no suite, and
+        # reports a flat 0%.
+        if (Test-Path (Join-Path $repoRoot 'evals')) { $covArgs += @('--path', 'evals') }
+
         $covRaw = & $WazaPath @covArgs 2>&1 | Out-String
         try {
             $cov = $covRaw | ConvertFrom-Json
+            $withSuite = [int]$cov.covered + [int]$cov.partial
             Write-Host ''
-            Write-Host ("Eval coverage: {0}/{1} skills have an eval suite ({2}%)." -f
-                $cov.covered, $cov.total_skills, $cov.coverage_pct)
-            Write-Host '  (informational — S1/S2 suites are being built out; see docs/adr/0014)'
+            Write-Host ("Eval coverage: {0}/{1} skills have an eval suite ({2} full, {3} partial)." -f
+                $withSuite, $cov.total_skills, $cov.covered, $cov.partial)
+            Write-Host '  (informational — S1/S2 tiers are being built out; see docs/adr/0014)'
         } catch {
             Write-Host "Coverage report unavailable (non-fatal): $covRaw"
         }
