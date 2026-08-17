@@ -200,10 +200,27 @@ runner is mechanical. If Waza stalls, we keep the corpus and change the runner.
 - **Threshold calibration for the S0 routing suite.** Now has real data to calibrate
   against, and the direction is clear — 0.6 is too low, since both flagged "false
   triggers" were heuristic artifacts. Calibrate before letting routing gate.
-- **S2 efficacy A/B.** `waza run --baseline`. Most expensive, and most likely to produce
-  an uncomfortable answer about skills that do nothing. **S1 has already made that answer
-  more likely**: one of two probes completed its task correctly with no skill invoked at
-  all. S2 is now the highest-value remaining tier, not the optional one.
+- **S2 efficacy A/B.** `waza run --baseline`. **Attempted, and it cannot produce a valid
+  result on a developer machine.** The first run reported *"skills have negative/neutral
+  impact (100.0% vs 100.0%)"* — which looked like a finding and was an artifact: the
+  skills-stripped pass **invoked the skill too**. Escalating to the explicit `--no-skills`
+  flag changed nothing. The skill comes from the developer's own globally installed
+  plugins (`~/.copilot/installed-plugins/…/agile-agents-bicep/skills/`), which the
+  embedded Copilot CLI loads regardless of Waza's configuration. **Waza can add skills to
+  a run; it cannot subtract the ones the CLI already has.**
+
+  So S2 is blocked on **environment isolation, not credits**: it needs a container, CI
+  runner or profile where the plugins were never installed, plus a pre-flight assertion
+  that a `--no-skills` run invokes nothing. The suite (`evals-s2/`) is written and
+  outcome-graded, ready for that environment. See `evals-s2/README.md`.
+
+  Worth recording as a general hazard: **a contaminated baseline fails silently and
+  plausibly.** It reports a believable number rather than an error, and only inspecting
+  whether the control pass invoked anything reveals it.
+
+  S1's findings are unaffected — they do not depend on removing skills, and the
+  "no skill invoked" result is strengthened by knowing the skill was both installed
+  *and* injected.
 - **Description-collision analysis** across all 61 (including vendored, which we never edit
   but which still compete in the matching pool). **Done, and it found real collisions** —
   wave 2 of the routing corpus confirmed three false triggers where one skill would answer

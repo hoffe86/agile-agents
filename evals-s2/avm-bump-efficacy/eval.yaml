@@ -1,0 +1,25 @@
+name: s2-avm-bump-efficacy
+description: >-
+  S2 efficacy A/B. S1 established that `update-avm-modules-in-bicep` *does* get
+  invoked on this task (3/3). This asks the question that actually matters:
+  **does invoking it produce a better outcome than not having it at all?**
+
+  Run with `--baseline`, which executes every task twice — once with skills loaded,
+  once with them stripped — and reports the delta. Graders are deliberately
+  *outcome* graders, not `skill_invocation`: a skill-invocation check would
+  trivially fail the skills-stripped pass and measure nothing.
+skill: update-avm-modules-in-bicep
+version: "1.0"
+config:
+  trials_per_task: 2
+  timeout_seconds: 420
+  parallel: false
+  executor: copilot-sdk
+  model: claude-haiku-4.5
+  # --baseline is a documented no-op unless one of skill_directories /
+  # required_skills is non-empty.
+  skill_directories:
+    - plugins/agile-agents-bicep/skills
+    - plugins/agile-agents-core/skills
+tasks:
+  - "tasks/*.yaml"

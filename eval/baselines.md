@@ -101,5 +101,26 @@ knowledge the model lacks, and skipped when the model can already do the task.**
 datapoints, not a conclusion — but it is the question S2 (`--baseline`) exists to settle,
 and it matters for all 61.
 
+## S2 — attempted, and it cannot be measured here
+
+`waza run --baseline` reported *"skills have negative/neutral impact (100.0% vs 100.0%)"*.
+**That number is an artifact — do not cite it.** The skills-stripped pass invoked
+`update-avm-modules-in-bicep` as well, so the A/B compared skills-on against skills-on.
+The explicit `--no-skills` flag did not help either.
+
+The cause: the skill is in the developer's **globally installed** plugins, and the
+embedded Copilot CLI loads those regardless of Waza's `skill_directories` or flags. Waza
+can add skills to a run; it cannot subtract the ones the CLI already has.
+
+S2 therefore needs an **isolated environment** (a container, CI runner, or profile that
+never ran `copilot plugin install`), plus a pre-flight check that a `--no-skills` run
+invokes nothing at all. Blocked on isolation, not on credits. See
+[`evals-s2/README.md`](../evals-s2/README.md).
+
+**The transferable lesson:** a contaminated baseline does not error — it returns a
+plausible number that reads like a result. Verify the control pass invoked nothing before
+believing any delta.
+
+
 
 
