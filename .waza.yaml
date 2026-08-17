@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/microsoft/waza/main/schemas/config.schema.json
+#
+# Waza config — skill evaluation (the "S-layer", see docs/adr/0014).
+#
+# Waza grades *skills*; the eval/ pyramid (ADR 0008) grades *runs*. They are
+# orthogonal and the S-layer never replaces L0/L2 — Waza evaluates a skill in
+# isolation, whereas ours are consumed by a 15-agent RPI pipeline.
+#
+# NOTE ON PATHS: `paths.skills` is a single directory in Waza's schema, but this
+# repo is a marketplace with skills under `plugins/*/skills`. Multi-plugin scans
+# therefore pass repeatable `--path` flags (see scripts/run-skill-checks.ps1);
+# the value below is only the default for single-plugin invocations.
+
+paths:
+  skills: plugins/agile-agents-core/skills
+  evals: evals
+  results: .waza-results
+
+defaults:
+  engine: copilot-sdk
+  timeout: 300
+
+tokens:
+  # Why these numbers are what they are.
+  #
+  # A skill's body is loaded into context when it triggers, so tokens are a real
+  # recurring cost, not a style preference. Waza's built-in default is 500, which
+  # 88% of this repo's skills exceed (median 1355, max 4295) — these are
+  # procedural references, deliberately richer than the short-instruction shape
+  # that default assumes.
+  #
+  # So this is a **ratchet, not an aspiration**: the limits below are set at
+  # today's measured cost so that *regression* fails the build, while the work of
+  # actually shrinking these skills is tracked separately. Do not raise a limit to
+  # make a check pass — that is the metric gaming `engineering-judgement` §7 bans.
+  # Lower them as skills are trimmed.
+  warningThreshold: 1500
+  fallbackLimit: 3600 # today's largest hand-written skill is test-bar-gate at 3510
+
+  limits:
+    defaults:
+      # Waza applies a built-in SKILL.md limit (observed: 2000) when no pattern
+      # matches, so the ratchet has to be stated as an explicit glob — a bare
+      # `fallbackLimit` is not consulted for these files.
+      "**/SKILL.md": 3600
+
+    overrides:
+      # Patterns are workspace-root-relative (a leading `**/` does not match).
+      #
+      # Always-on skills: `read-repo-context` §3 loads these on EVERY agent turn,
+      # so their cost is multiplied by every turn of every agent — currently
+      # ~8,100 tokens before a single task-specific skill loads. They get the
+      # tightest ratchet in the repo, and adding to them should be deliberate.
+      "plugins/agile-agents-core/skills/read-repo-context/SKILL.md": 3000
+      "plugins/agile-agents-core/skills/engineering-judgement/SKILL.md": 2500
+      "plugins/agile-agents-core/skills/engineering-standards/SKILL.md": 1500
+      "plugins/agile-agents-core/skills/trade-off-reporting/SKILL.md": 1500
+
+      # Vendored copies are unmodifiable in place (see plugins/VENDORED.md), so a
+      # limit they exceed would be a permanently-red check we are forbidden to
+      # fix. Recorded explicitly rather than hidden behind a lax global.
+      "plugins/agile-agents-core/skills/refactor/SKILL.md": 4400
+      "plugins/agile-agents-terraform/skills/import-infrastructure-as-code/SKILL.md": 4200

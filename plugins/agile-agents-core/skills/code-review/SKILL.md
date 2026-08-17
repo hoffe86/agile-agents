@@ -1,5 +1,5 @@
 ---
-name: code-reviewer
+name: code-review
 description: >-
   Standalone whole-repository code audit — no diff, no pipeline. Surveys an
   entire codebase across architecture, clean code, security and test quality in

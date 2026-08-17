@@ -1,6 +1,11 @@
 ---
 name: github-issues
-description: GitHub Issues mechanics for reading and writing work items — tool entry points, the single-body field layout with section headings, cross-reference and closing-keyword syntax, labels / milestones / issue types / project fields, sub-issue parent-child hierarchy, comment templates, and content sanitisation. Load only when `solution-profile.yaml: backlog.platform == github-issues`. Used by backlog-manager.
+description: >-
+  GitHub Issues mechanics for reading and writing work items — tool entry points, the
+  single-body field layout with section headings, cross-reference and closing-keyword
+  syntax, labels / milestones / issue types / project fields, sub-issue parent-child
+  hierarchy, comment templates, and content sanitisation. Load only when
+  `solution-profile.yaml: backlog.platform == github-issues`. Used by backlog-manager.
 applies_to: github-issues
 ---
 
