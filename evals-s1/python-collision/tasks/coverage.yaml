@@ -1,0 +1,24 @@
+id: s1-coverage-001
+name: A coverage-closing request should reach pytest-coverage
+description: >-
+  The prompt on which S0's heuristic wrongly favoured `python-testing` (0.71).
+  Ground truth: with both skills available and a real module in front of it, which
+  does the agent actually invoke?
+tags:
+  - s1-collision
+inputs:
+  prompt: >-
+    Run the test suite with coverage, find the lines in this module that aren't
+    covered, and close them out to 100%.
+  context:
+    fixture: fixtures
+graders:
+  - type: skill_invocation
+    name: reaches-the-coverage-skill
+    config:
+      mode: any_order
+      required_skills:
+        - pytest-coverage
+      forbidden_skills:
+        - python-testing
+      allow_extra: true

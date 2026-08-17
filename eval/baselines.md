@@ -74,4 +74,32 @@ default, and editing prose to move a metric is exactly what `engineering-judgeme
 forbids. This is why the routing suite **reports** while the frontmatter, drift and token
 checks **gate**. Confirm against S1 (observed invocation) before editing any description.
 
+## S1 — observed invocation (first results)
+
+Ground truth for two of the three S0 false triggers. Run via Waza's `copilot-sdk`
+executor, 3 trials each; see [`evals-s1/README.md`](../evals-s1/README.md).
+
+| Date | Collision S0 predicted | S0 heuristic | Observed (3 trials) | Verdict |
+|---|---|---|---|---|
+| 2026-08-17 | `bicep-implementation` answers for `update-avm-modules-in-bicep` | 0.80 false trigger | **3/3 invoked the correct skill**; the wrong one never fired | **S0 was wrong** |
+| 2026-08-17 | `python-testing` answers for `pytest-coverage` | 0.71 false trigger | **0/3 invoked any skill** | **S0 asked the wrong question** |
+
+**The heuristic over-reports collisions.** It compares description vocabulary; the model
+has the file and the task shape and disambiguates easily. Rewriting
+`bicep-implementation`'s description on S0 evidence would have "fixed" a skill that was
+never broken — which is exactly why the routing suite reports rather than gates.
+
+**The bigger finding is the second row.** Asked to close coverage gaps, the agent explored
+the fixture, ran coverage, found 13%, wrote 25 tests and reached 100% — invoking
+**no skill at all**, not `pytest-coverage`, `python-testing` or `testing-practices`. The
+job was done correctly and the library was bypassed.
+
+Contrast the two: the bicep task needed knowledge the model lacks (current AVM versions —
+it reached for `web_fetch`) and the skill fired; the pytest task needed nothing the model
+cannot already do, and nothing fired. **Hypothesis: skills are invoked when they carry
+knowledge the model lacks, and skipped when the model can already do the task.** Two
+datapoints, not a conclusion — but it is the question S2 (`--baseline`) exists to settle,
+and it matters for all 61.
+
+
 

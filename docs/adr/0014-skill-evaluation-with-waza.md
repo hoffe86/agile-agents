@@ -176,15 +176,34 @@ runner is mechanical. If Waza stalls, we keep the corpus and change the runner.
 
 ## Not doing yet
 
-- **S1 routing as observed.** `skill_invocation` precision/recall against real Copilot SDK
-  `SkillInvoked` telemetry, rather than the S0 heuristic's reading of the description.
-  Needs model credits. Highest-value next tier: it is the only way to tell "the
-  description looks right" from "the model actually picked it".
-- **Threshold calibration for the S0 routing suite.** 0.6 is Waza's default and has never
-  been checked against this repo's description style; until it is, that suite reports
-  rather than gates. Calibrating it against S1's observed data is the natural pairing.
+- **S1 routing as observed.** ~~Deferred~~ — **first results are in** (`evals-s1/`, two
+  suites, 3 trials each). Two findings that change how S0 should be read:
+
+  1. **The S0 heuristic over-reports collisions.** It flagged `bicep-implementation` as
+     answering for `update-avm-modules-in-bicep` (0.80 vs 0.38 on its own case). Observed:
+     **3/3 trials invoked the correct skill** and the wrong one never fired. Rewriting that
+     description on S0 evidence would have "fixed" a skill that was never broken —
+     vindicating the decision to make routing report rather than gate.
+  2. **Skills can be bypassed entirely.** Asked to close coverage gaps, the agent did the
+     job correctly — 13% → 100%, 25 tests — and invoked **no skill at all**. Not
+     `pytest-coverage`, not `python-testing`, not `testing-practices`.
+
+  The second is the more consequential result, and it reframes the whole exercise: the
+  risk is less that skills *compete* than that they are *ignored*. Working hypothesis,
+  on two datapoints: **skills fire when they carry knowledge the model lacks (the bicep
+  task needed current AVM versions and reached for `web_fetch`) and are skipped when the
+  model can already do the job.** Testing that across the library is now the priority.
+
+  Remaining S1 work: the third collision (`conventional-commit` / `git-commit`), and
+  invocation coverage for the always-on skills.
+
+- **Threshold calibration for the S0 routing suite.** Now has real data to calibrate
+  against, and the direction is clear — 0.6 is too low, since both flagged "false
+  triggers" were heuristic artifacts. Calibrate before letting routing gate.
 - **S2 efficacy A/B.** `waza run --baseline`. Most expensive, and most likely to produce
-  an uncomfortable answer about skills that do nothing.
+  an uncomfortable answer about skills that do nothing. **S1 has already made that answer
+  more likely**: one of two probes completed its task correctly with no skill invoked at
+  all. S2 is now the highest-value remaining tier, not the optional one.
 - **Description-collision analysis** across all 61 (including vendored, which we never edit
   but which still compete in the matching pool). **Done, and it found real collisions** —
   wave 2 of the routing corpus confirmed three false triggers where one skill would answer

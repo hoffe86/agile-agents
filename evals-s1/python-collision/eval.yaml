@@ -1,0 +1,19 @@
+name: s1-python-collision
+description: >-
+  Second S1 collision datapoint. S0's heuristic scored `python-testing` at 0.71 on
+  a coverage-closing request — `pytest-coverage`'s job — and called it a false
+  trigger. The bicep run already showed the heuristic over-reporting once; this
+  checks whether that is a pattern or a one-off.
+skill: pytest-coverage
+version: "1.0"
+config:
+  trials_per_task: 3
+  timeout_seconds: 300
+  parallel: false
+  executor: copilot-sdk
+  model: claude-haiku-4.5
+  skill_directories:
+    - plugins/agile-agents-python/skills
+    - plugins/agile-agents-core/skills
+tasks:
+  - "tasks/*.yaml"
