@@ -241,6 +241,27 @@ quality_gates:
       command: ""
       enabled: false            # On only when mutation_score_threshold_percent > 0.
 
+# ─── data_science ─────────────────────────────────────────────────────────────
+# Drives the `data-scientist` agent and the `data-science-practices` skill.
+# Leave `enabled: false` (the default) on projects with no data or ML work: the
+# agent then declines the task and says so, rather than improvising a stack.
+data_science:
+  enabled: false                # true when this project does analytics / ML / AI-feature evaluation.
+  data_platform: ""             # E.g. "fabric", "databricks", "synapse", "snowflake", "bigquery", "local-files".
+  ml_frameworks: []             # E.g. ["scikit-learn", "pytorch"]. Empty = analysis only, no model training.
+  experiment_tracking: ""       # E.g. "mlflow", "azure-ml", "weights-and-biases", "none".
+  artifact_location: ""         # Where notebooks / evaluation sets / model cards live. E.g. "analysis/".
+  ai_evaluation:
+    # For LLM / agent features. The metrics are neutral; the harness is not.
+    framework: ""               # E.g. "azure-ai-foundry", "promptflow", "ragas", "deepeval", "none".
+    judge_model: ""             # Model used for LLM-as-judge scoring, when that approach is used.
+  data_privacy:
+    pii_policy: ""              # REQUIRED when enabled. synthetic-only | anonymised | real-with-approval.
+                                # `synthetic-only` is the safe default: examples are generated, never
+                                # copied from real records. The agent stops and asks when this is empty
+                                # and the data looks personal — absence of a rule is not permission.
+    approval_reference: ""      # Ticket / DPIA / agreement permitting real-data use, when applicable.
+
 # ─── testing ──────────────────────────────────────────────────────────────────
 # Test-layer toggles that go beyond the unit-test discipline declared in `tech_stack`.
 # Today only `e2e` is wired up — drives the `e2e-testing` skill (plugins/agile-agents-core/skills/e2e-testing/).

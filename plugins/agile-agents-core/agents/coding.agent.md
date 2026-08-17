@@ -90,6 +90,8 @@ that changes production code:
   determinism, framework routing, browser-driven diagnosis, and the
   never-weaken-a-test boundary.
 
+**Load `data-engineering-practices` as well when the task is a data pipeline** — ingestion, transformation, export, or a dataset other teams consume. Transformation logic is yours; the platform and orchestration that run it are `infrastructure`'s; what the fields mean is `data-scientist`'s. It carries the rules that ordinary application testing does not: idempotent and replayable loads, explicit grain and keys, schema-evolution compatibility, and quality gates that stop bad data rather than logging about it.
+
 Load `testing-practices` alone for a coverage-only or test-repair task, and
 `development-practices` alone only when the change is genuinely untestable
 (pure config, a comment, a doc string) — say which in the hand-off.

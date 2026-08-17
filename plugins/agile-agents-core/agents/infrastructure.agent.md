@@ -113,6 +113,8 @@ Beyond the routed primary skills:
 - **`conventional-commit`** + **`git-commit`** — when the orchestrator decides to commit.
 - **Module-maintenance and provider-diff skills for the declared `iac_tool`** — when the companion plugin for that tool is installed (e.g. keeping registry modules current, diffing provider resource shapes across versions).
 
+**Load `data-engineering-practices` when you provision a data platform** — storage layout, warehouse or lakehouse, or an orchestrator. Partitioning, retention, lineage and where personal data may physically land are shaped by what you provision, and they are expensive to change once data exists. The transformation logic itself belongs to `coding`.
+
 ## Hard rules
 
 - **You implement IaC; you don't deploy it yourself.** Use `what-if` / `plan` / `--dry-run` to validate — that is your whole local footprint. A real apply happens **through the project's own pipeline**, at Stage 8b, and only when the project sets `infrastructure.deploy_verify: dev` (see the `deploy-verify` skill). Going around the pipeline with a direct apply would leave the pipeline itself unverified, which is the more valuable half of the check.

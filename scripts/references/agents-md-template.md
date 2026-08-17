@@ -34,6 +34,7 @@ completion — those block names are canonical and parsed by
 `dev-lead`:
 
 - `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
+- `ANALYSIS COMPLETE` (data-scientist — an answer plus its evidence)
 - `INFRASTRUCTURE COMPLETE` (infrastructure)
 - `ARCHITECTURE DESIGN COMPLETE` (architect)
 - `REVIEW COMPLETE` (review-lead — the specialist reviewers report into it)
