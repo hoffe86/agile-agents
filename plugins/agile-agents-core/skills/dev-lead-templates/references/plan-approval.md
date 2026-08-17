@@ -19,6 +19,34 @@ the API answers it in one line, where the run would otherwise spend a stage disc
 List an assumption even when you think it is safe; `none` is a claim that Stage 1 verified
 everything load-bearing, not a default.
 
+*Acceptance criteria I derived* works the same way for a different failure. A requirement
+that states no criteria does not stall Intake — the lead drafts them and confirms them
+**here**, which is why they must be listed separately from the stated ones rather than
+blended in. A derived criterion the human never saw would make the Stage 9 check measure
+the lead's own reading of the requirement instead of the requirement, and that loop closes
+silently: every gate passes and the delivered thing is still not what was asked for.
+
+**This gate is where the run's thinking becomes visible, or doesn't.** *Trade-offs*,
+*Decisions I made that you may want to change*, *Risks and open questions* and *What dies if
+a feasibility task returns ❌* exist because the pipeline decides a great deal before a human
+sees anything, and Research is where most of it is decided. `architect` already reports *Key
+tradeoffs*, *Open questions / risks* and *Decision gaps* in its hand-off; **relaying those
+here is not optional**, and neither is adding the calls the lead made while decomposing.
+
+Three rules keep these fields honest:
+
+- **Relay, don't digest.** A trade-off you found manageable is still a trade-off the human
+  may weigh differently. Judging it settled is not the same as it being settled.
+- **`none` is a claim.** Write it only after looking. It asserts that this plan involved no
+  non-obvious choice and no open risk — rarely true, and cheap to disprove later.
+- **Recommend, don't abdicate.** Each entry carries the alternative and your recommendation.
+  A list of unresolved options hands the work back; the point is to let a human overturn a
+  decision in one line, not to make them take it.
+
+Filling them well is what makes the *"decide rather than ask"* posture safe: the lead resolves
+what it can, and this gate is where every consequential resolution is exposed while it is
+still cheap to reverse (`engineering-judgement` §6).
+
 **Choices:** `Approve and run autonomously` / `Adjust plan` / `Cancel`.
 
 ```markdown
@@ -41,7 +69,17 @@ everything load-bearing, not a default.
 
 **Acceptance criteria not covered by any task:** <criterion — reason it is out of scope, one line each, or `none — every criterion maps to a task`>
 
+**Acceptance criteria I derived — confirm or correct:** <numbered list of criteria the requirement did not state and you inferred from the outcome it describes, one line each, or `none — every criterion was stated verbatim`>
+
 **Assumptions this plan rests on:** <unverified fact — what breaks if it's wrong — which task would surface it, one line each, or `none — every load-bearing fact was verified`>
+
+**Trade-offs in this approach:** <the choice — what was rejected — what it costs, one line each. Relay every trade-off Research surfaced (`architect`'s *Key tradeoffs*) plus any you made while decomposing. `none — no non-obvious choice was made` is a claim, not a default.>
+
+**Decisions I made that you may want to change:** <the call — the alternative — why I chose this, one line each. These are the consequential judgement calls taken without asking, listed here rather than raised as separate questions. `none — nothing consequential was left unspecified`.>
+
+**Risks and open questions:** <risk or question — impact if it goes the wrong way — who owns it, one line each. Relay `architect`'s *Open questions / risks* and *Decision gaps* verbatim in substance; add your own. `none` only after looking.>
+
+**What dies if a feasibility task returns ❌:** <the dependent tasks, per feasibility task, or `n/a — no feasibility task in this plan`>
 
 **Stages I will run per task (autonomously after your approval):**
 - Coding — <skip / run + 1-line reason>

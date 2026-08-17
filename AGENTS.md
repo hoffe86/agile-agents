@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-08-13.
+> Generated from `solution-profile.yaml` on 2026-08-17.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
 This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
@@ -193,6 +193,7 @@ natural-language workflow.
 - **e2e-testing** (`agile-agents-core`) — End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip).
 - **editorconfig** (`agile-agents-core`) — Generates a comprehensive and best-practice-oriented .editorconfig file based on project analysis and user preferences.
 - **ef-core** (`agile-agents-dotnet`) — Get best practices for Entity Framework Core
+- **engineering-judgement** (`agile-agents-core`) — The operating posture every agent in the suite works to — how someone with long experience in the role decides, escalates, and reports.
 - **engineering-standards** (`agile-agents-core`) — The engineering quality bar every agent in the suite works to — Clean Code, SOLID, DDD, Clean Architecture, security-by-default, error handling, immutability, configuration over hardcoding, Infrast...
 - **git-commit** (`agile-agents-core`) — Execute git commit with conventional commit message analysis, intelligent staging, and message generation.
 - **github-issues** (`agile-agents-github`) — GitHub Issues mechanics for reading and writing work items — tool entry points, the single-body field layout with section headings, cross-reference and closing-keyword syntax, labels / milestones /...
