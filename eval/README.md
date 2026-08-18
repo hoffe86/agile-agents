@@ -66,7 +66,7 @@ L0/L1/L2 grade **runs**. A second axis grades the **artifacts** the runs load
 
 | Layer | What it grades | Cost | Where |
 |---|---|---|---|
-| **S0** skill hygiene | frontmatter validity, token budget, `copilot-instructions` drift | zero-credit, deterministic, **gating** | [`skill-quality.yml`](../.github/workflows/skill-quality.yml) |
+| **S0** skill hygiene | frontmatter validity, token budget, `copilot-instructions` drift | zero-credit, deterministic, **gating** | [`eval-skills.yml`](../.github/workflows/eval-skills.yml) |
 | **S0** routing | should this prompt reach this skill (offline heuristic) | zero-credit | [`skills/s0-routing/`](skills/s0-routing/) — reports, uncalibrated |
 | **S1** invocation | did the agent actually invoke it | model | [`skills/s1-invocation/`](skills/s1-invocation/README.md) |
 | **S2** efficacy | is the outcome better than *not* loading it | 2× model | [`skills/s2-efficacy/`](skills/s2-efficacy/README.md) — blocked on isolation |
@@ -156,7 +156,7 @@ login`); use `--dry-run` to validate the wiring without either.
 
 ### CI (on demand)
 
-The [`Run eval`](../.github/workflows/eval.yml) workflow runs the harness on GitHub Actions via
+The [`Eval · pipeline outcome`](../.github/workflows/eval-pipeline-outcome.yml) workflow runs the harness on GitHub Actions via
 `workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold, and a
 `dry_run` toggle (**default on** — renders the per-task command without auth/credits, so the
 default dispatch is a free wiring check). It posts `summary.json` to the run summary and uploads

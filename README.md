@@ -255,7 +255,7 @@ add-a-task contract in [`eval/README.md`](eval/README.md); composition rationale
 [ADR 0002](docs/adr/0002-self-benchmarking-harness-composition.md).
 
 **Run it** locally with `eval/pipeline/run-eval.ps1` (Windows) / `eval/pipeline/run-eval.sh` (POSIX), or on demand
-via the [`Run eval`](.github/workflows/eval.yml) workflow (`workflow_dispatch` → pick suite,
+via the [`Eval · pipeline outcome`](.github/workflows/eval-pipeline-outcome.yml) workflow (`workflow_dispatch` → pick suite,
 task-filter, threshold; `summary.json` lands in the run summary and `eval/pipeline/runs/` is uploaded as
 an artifact).
 
@@ -264,7 +264,7 @@ a free, deterministic **L0 trajectory eval** ([`eval/pipeline/trajectory/`](eval
 asserts each run's [`run-event-log`](plugins/agile-agents-core/skills/run-event-log/SKILL.md) stream conformed to the RPI
 shape (dev-lead bookends, research→implement→test→**test-bar gate**→review ordering, reviewer
 gate_checks, cost telemetry). It runs on every push/PR via the
-[`Trajectory eval`](.github/workflows/trajectory-eval.yml) workflow — no credits, no model — and
+[`Eval · pipeline trajectory`](.github/workflows/eval-pipeline-trajectory.yml) workflow — no credits, no model — and
 catches process failures the outcome eval is blind to (e.g. a run that produces a plausible
 artifact while its gates never fire). An L1 review-detection eval is planned.
 

@@ -18,7 +18,7 @@ evaluation is `SKILL.md` itself. No Azure, no AI Foundry — the executor enum i
 
 Hygiene checks that also belong to S0 — frontmatter validity, the token ratchet, and the
 `copilot-instructions.md` drift check — live in `scripts/` and run in the
-[`skill-quality`](../../.github/workflows/skill-quality.yml) workflow. Those **do** gate;
+[`Eval · skills`](../../.github/workflows/eval-skills.yml) workflow. Those **do** gate;
 they are deterministic and offline.
 
 ## Running each tier

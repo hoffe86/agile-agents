@@ -44,7 +44,7 @@ python eval/pipeline/trajectory/check-trajectory.py --emit-fixture eval/pipeline
 
 `fixtures/full-run.events.jsonl` is a recorded "good" run — a 26-event successful RPI trajectory.
 It is the deterministic anchor the CI checks against. It is **generated from `build_golden()`**
-inside the checker (single source of truth), so the [`Trajectory eval`](../../.github/workflows/trajectory-eval.yml)
+inside the checker (single source of truth), so the [`Eval · pipeline trajectory`](../../../.github/workflows/eval-pipeline-trajectory.yml)
 workflow regenerates it and fails if the committed copy drifted. Edit `build_golden()`, then
 re-emit and commit — never hand-edit the fixture.
 

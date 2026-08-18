@@ -116,7 +116,7 @@ catalogue comes from each `<skill>/SKILL.md` frontmatter.
 
 `AGENTS.md` is now committed at the template repo's (simulated) root —
 [`AGENTS.md`](../AGENTS.md) — and kept in sync by the
-[`agents-md-sync`](../../../.github/workflows/agents-md-sync.yml) GitHub
+[`agents-md-sync`](../.github/workflows/agents-md-sync.yml) GitHub
 Actions workflow. The workflow re-runs `generate-agents-md.ps1` on every
 push / PR that touches `solution-profile.yaml`, any `*.agent.md`, any
 `SKILL.md`, or the generator scripts, then fails the build if

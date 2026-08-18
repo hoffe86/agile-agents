@@ -238,7 +238,7 @@ runner is mechanical. If Waza stalls, we keep the corpus and change the runner.
 ## References
 
 - `.waza.yaml`, `scripts/check-skill-frontmatter.py`, `scripts/check-skill-tokens.ps1`
-- `.github/workflows/skill-quality.yml` (S0, gating)
+- `.github/workflows/eval-skills.yml` (S0, gating)
 - `microsoft/waza` — https://github.com/microsoft/waza (MIT); grader docs under `docs/graders/`
 - Agent Skills specification — https://agentskills.io/specification.md
 - ADR 0008 (run-eval pyramid), ADR 0011 (reviewer naming), ADR 0013 (engineering judgement)

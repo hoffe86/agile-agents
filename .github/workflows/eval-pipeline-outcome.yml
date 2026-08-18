@@ -1,4 +1,4 @@
-name: Run eval
+name: Eval · pipeline outcome (L2)
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ on:
 # limit scope, and keep threshold 0 until you trust the scores. ubuntu-latest ships bash + jq.
 
 jobs:
-  eval:
+  pipeline-outcome:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -47,7 +47,7 @@ jobs:
         if: ${{ inputs.dry_run == false }}
         run: npm install -g @github/copilot
 
-      - name: Run eval harness
+      - name: Eval · pipeline outcome (L2) harness
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
         run: |

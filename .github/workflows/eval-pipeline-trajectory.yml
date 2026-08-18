@@ -1,4 +1,4 @@
-name: Trajectory eval
+name: Eval · pipeline trajectory (L0)
 
 on:
   push:
