@@ -256,7 +256,7 @@ add-a-task contract in [`eval/README.md`](eval/README.md); composition rationale
 
 **Run it** locally with `eval/pipeline/run-eval.ps1` (Windows) / `eval/pipeline/run-eval.sh` (POSIX), or on demand
 via the [`Run eval`](.github/workflows/eval.yml) workflow (`workflow_dispatch` → pick suite,
-task-filter, threshold; `summary.json` lands in the run summary and `eval/runs/` is uploaded as
+task-filter, threshold; `summary.json` lands in the run summary and `eval/pipeline/runs/` is uploaded as
 an artifact).
 
 **Layered evaluation.** This outcome eval is the top of a pyramid ([ADR 0008](docs/adr/0008-layered-evaluation-strategy.md)):

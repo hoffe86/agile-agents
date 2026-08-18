@@ -72,7 +72,7 @@ jobs:
           {
             echo "## Eval result — ${{ inputs.suite }}"
             echo '```json'
-            cat eval/runs/*/summary.json 2>/dev/null || echo 'no summary.json produced'
+            cat eval/pipeline/runs/*/summary.json 2>/dev/null || echo 'no summary.json produced'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -81,5 +81,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: eval-${{ inputs.suite }}-${{ github.run_id }}
-          path: eval/runs/
+          path: eval/pipeline/runs/
           if-no-files-found: error
