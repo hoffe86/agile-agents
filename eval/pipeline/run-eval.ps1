@@ -201,7 +201,11 @@ foreach ($task in $tasks) {
         $exit = Invoke-DevLead -PromptText $promptText -Workspace $ws -LogPath $logPath
 
         if ($DryRun) {
-            $status = 'failed'   # not a real run; excluded from a real score
+            # A dry run never invoked the agent, so there is nothing to grade. Marking
+            # these 'failed' (as this did) is a lie in the honest-looking direction: the
+            # log reads "Failed: N/N" while the job exits 0 because the threshold was
+            # set low, so a wiring check and a total collapse look identical.
+            $status = 'skipped'
         }
         elseif ($exit -ne 0 -or -not (Test-Path $logPath) -or (Get-Item $logPath).Length -eq 0) {
             $status = 'failed'
@@ -241,6 +245,7 @@ $total    = @($results).Count
 $resolved = @($results | Where-Object { $_.status -eq 'resolved' }).Count
 $partial  = @($results | Where-Object { $_.status -eq 'partial'  }).Count
 $failed   = @($results | Where-Object { $_.status -eq 'failed'   }).Count
+$skipped  = @($results | Where-Object { $_.status -eq 'skipped'  }).Count
 $pct      = if ($total -gt 0) { [math]::Round(100.0 * $resolved / $total, 1) } else { 0 }
 
 $summary = [ordered]@{
@@ -250,6 +255,8 @@ $summary = [ordered]@{
     resolved     = $resolved
     partial      = $partial
     failed       = $failed
+    skipped      = $skipped
+    dry_run      = [bool]$DryRun
     resolved_pct = $pct
     partial_pct  = if ($total) { [math]::Round(100.0 * $partial / $total, 1) } else { 0 }
     failed_pct   = if ($total) { [math]::Round(100.0 * $failed  / $total, 1) } else { 0 }
@@ -258,6 +265,14 @@ $summary = [ordered]@{
 $summary | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $runDir 'summary.json') -Encoding utf8
 
 Write-Host ''
+if ($DryRun) {
+    # Wiring check only — say so plainly rather than reporting a score nobody computed.
+    Write-Host ("DRY RUN — wiring validated for {0} task(s); none executed, none scored." -f $total)
+    Write-Host ('Summary:  {0}' -f (Join-Path $runDir 'summary.json'))
+    Write-Host 'Re-run without -DryRun to produce an actual score.'
+    exit 0
+}
+
 Write-Host ('Resolved: {0}/{1} ({2}%)' -f $resolved, $total, $pct)
 Write-Host ('Partial:  {0}/{1}' -f $partial, $total)
 Write-Host ('Failed:   {0}/{1}' -f $failed, $total)
