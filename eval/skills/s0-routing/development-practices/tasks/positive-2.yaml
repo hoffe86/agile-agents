@@ -1,0 +1,18 @@
+id: development-practices-positive-2
+name: Should route to development-practices
+description: >-
+    Observability is part of done (§5).
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Should this new service emit traces and structured logs before I call it done?
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-development-practices
+    config:
+      skill_path: plugins/agile-agents-core/skills/development-practices/SKILL.md
+      mode: positive
+      threshold: 0.6

@@ -1,0 +1,27 @@
+id: s1-avm-bump-001
+name: A module-bump request should reach update-avm-modules-in-bicep
+description: >-
+  The exact prompt on which S0's heuristic wrongly favoured `bicep-implementation`
+  (0.80). Ground truth: which skill does the agent actually invoke when both are
+  available and a real Bicep file is in front of it?
+tags:
+  - s1-collision
+inputs:
+  prompt: >-
+    Bump every AVM module in this Bicep file to the latest published version.
+  context:
+    # `inputs.files` does NOT materialise anything into the workspace — the first
+    # attempt used it and all three trials found an empty directory, globbed, and
+    # gave up. `context.fixture` is the key that copies files in before the run.
+    fixture: fixtures
+graders:
+  - type: skill_invocation
+    name: reaches-the-bump-skill
+    config:
+      mode: any_order
+      required_skills:
+        - update-avm-modules-in-bicep
+      # The partner skill answering instead is exactly the failure S0 predicted.
+      forbidden_skills:
+        - bicep-implementation
+      allow_extra: true

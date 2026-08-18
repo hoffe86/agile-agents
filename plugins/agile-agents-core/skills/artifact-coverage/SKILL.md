@@ -1,6 +1,13 @@
 ---
 name: artifact-coverage
-description: Work out which capabilities the agent harness needs for a given stack, which installed skills cover them, and where the gaps are — then judge whether a candidate artifact is worth adopting and which plugin it belongs in. USE FOR "what capability are we missing", "which plugins does this stack need", "is there already a skill for X", "where should this new skill live", auditing coverage after a stack change, or assessing an artifact found upstream. Demand-first: derive what the phases need before looking at what any source offers.
+description: >-
+  Work out which capabilities the agent harness needs for a given stack, which
+  installed skills cover them, and where the gaps are — then judge whether a candidate
+  artifact is worth adopting and which plugin it belongs in. USE FOR "what capability
+  are we missing", "which plugins does this stack need", "is there already a skill for
+  X", "where should this new skill live", auditing coverage after a stack change, or
+  assessing an artifact found upstream. Demand-first — derive what the phases need
+  before looking at what any source offers.
 applies_to: all
 ---
 

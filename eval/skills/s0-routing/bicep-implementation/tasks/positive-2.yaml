@@ -1,0 +1,18 @@
+id: bicep-implementation-positive-2
+name: Should route to bicep-implementation
+description: >-
+    Authoring with AVM, still authoring.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Add an Azure Key Vault to our Bicep deployment using a verified module.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-bicep-implementation
+    config:
+      skill_path: plugins/agile-agents-bicep/skills/bicep-implementation/SKILL.md
+      mode: positive
+      threshold: 0.6

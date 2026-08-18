@@ -2,7 +2,7 @@
 .copilot-tracking/
 
 # Eval run outputs
-eval/runs/
+eval/**/runs/
 eval/**/results/
 eval/**/.runs/
 
@@ -17,3 +17,7 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Waza skill-eval run artifacts (regenerate with scripts/run-trigger-evals.ps1)
+.waza-results/
+.waza-cache/

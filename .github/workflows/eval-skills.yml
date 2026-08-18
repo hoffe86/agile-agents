@@ -1,0 +1,96 @@
+name: Eval · skills (S0)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# S0 artifact checks: deterministic, zero-credit, no secrets. Grades the *skills* (and
+# the instructions that steer them) as artifacts, where the eval/ pyramid (ADR 0008)
+# grades *runs*. Safe to gate on for the same reason the trajectory eval is — no model
+# is called.
+#
+# Three gates, each catching a failure that is otherwise completely silent:
+#
+#  1. Frontmatter validity. Invalid YAML does not error anywhere — the CLI just
+#     drops the skill, and a dropped skill is indistinguishable from one that was
+#     never a good match. Measured: the installed core plugin had 36 skills on disk
+#     and offered 35, the missing one being the only skill whose frontmatter would
+#     not parse.
+#  2. Instructions drift. copilot-instructions.md is binding and hand-maintained, and
+#     its counts have gone stale repeatedly.
+#  3. Token ratchet. A skill body is loaded into context when it triggers, so its
+#     size is recurring cost. Limits in .waza.yaml are set at today's measured
+#     values so a regression fails; they are not an endorsement of current size.
+#
+# Routing (trigger accuracy) also runs here but only reports — see the step comment.
+
+permissions:
+  contents: read
+
+jobs:
+  skill-quality:
+    runs-on: ubuntu-latest
+    env:
+      WAZA_VERSION: v0.38.6
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      # Proves each assertion trips before trusting a green result.
+      - name: Self-test the frontmatter checker
+        run: python scripts/check-skill-frontmatter.py --self-test
+
+      - name: Every skill and agent has parseable frontmatter
+        run: python scripts/check-skill-frontmatter.py
+
+      # copilot-instructions.md is binding — read-repo-context loads it first and every
+      # agent treats it as repo convention — but its counts are hand-maintained and have
+      # gone stale repeatedly (38 vs 40 core skills, 4 vs 5 workflows, an ADR range three
+      # entries behind). This is the equivalent of check-agents-md-in-sync for that file.
+      - name: Self-test the instructions-drift checker
+        run: python scripts/check-instructions-drift.py --self-test
+
+      - name: copilot-instructions.md matches the actual roster
+        run: python scripts/check-instructions-drift.py
+
+      - name: Cache waza binary
+        id: waza-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/waza
+          key: waza-${{ env.WAZA_VERSION }}-linux-amd64
+
+      - name: Install waza
+        if: steps.waza-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.local/bin
+          base="https://github.com/microsoft/waza/releases/download/${WAZA_VERSION}"
+          curl -sSfL "$base/waza-linux-amd64" -o ~/.local/bin/waza
+          curl -sSfL "$base/checksums.txt" -o /tmp/waza-checksums.txt
+          expected=$(grep 'waza-linux-amd64' /tmp/waza-checksums.txt | awk '{print $1}')
+          actual=$(sha256sum ~/.local/bin/waza | awk '{print $1}')
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::waza checksum mismatch (expected $expected, got $actual)"
+            exit 1
+          fi
+          chmod +x ~/.local/bin/waza
+
+      - name: Skill token ratchet + eval coverage
+        shell: pwsh
+        run: ./scripts/check-skill-tokens.ps1 -WazaPath "$HOME/.local/bin/waza"
+
+      # Reports, does not gate: the 0.6 trigger threshold is Waza's uncalibrated
+      # default, so a low score is a finding to investigate rather than a build to
+      # fail. Free regardless — the trigger grader is an offline heuristic and the
+      # executor is `mock`, so no model is called.
+      - name: Routing (trigger-accuracy) baseline
+        shell: pwsh
+        run: ./scripts/run-trigger-evals.ps1 -WazaPath "$HOME/.local/bin/waza"

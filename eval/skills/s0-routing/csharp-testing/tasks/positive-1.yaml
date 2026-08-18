@@ -1,0 +1,18 @@
+id: csharp-testing-positive-1
+name: Should route to csharp-testing
+description: >-
+    Directly the skill's scope.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Add xUnit tests for this C# service class and get the coverage up.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-csharp-testing
+    config:
+      skill_path: plugins/agile-agents-dotnet/skills/csharp-testing/SKILL.md
+      mode: positive
+      threshold: 0.6

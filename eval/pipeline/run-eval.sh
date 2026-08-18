@@ -23,7 +23,7 @@ TASK_FILTER=".*"
 PASS_THRESHOLD=60
 DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PLUGIN_DIR="${REPO_ROOT}/plugins/agile-agents-core"
 # Every plugin folder is registered, so companion skills (dotnet / python / bicep /
 # terraform / trackers) resolve during a run — otherwise language tasks would silently
@@ -153,7 +153,7 @@ echo "Output:    $RUN_DIR"
 echo ""
 
 # --- Execute each task -------------------------------------------------------
-RESOLVED=0; PARTIAL=0; FAILED=0
+RESOLVED=0; PARTIAL=0; FAILED=0; SKIPPED=0
 TASK_RESULTS_JSON=""
 
 for i in "${!FILTERED_IDS[@]}"; do
@@ -188,7 +188,11 @@ for i in "${!FILTERED_IDS[@]}"; do
         invoke_dev_lead "$prompt_text" "$ws" "$log" || rc=$?
 
         if [[ "$DRY_RUN" == "1" ]]; then
-            status="failed"          # not a real run; excluded from a real score
+            # A dry run never invoked the agent, so there is nothing to grade. Marking
+            # these "failed" (as this did) is a lie in the honest-looking direction: the
+            # log reads "Failed: N/N" while the job exits 0 because the threshold was
+            # set low, so a wiring check and a total collapse look identical.
+            status="skipped"
         elif [[ $rc -ne 0 || ! -s "$log" ]]; then
             status="failed"
         elif [[ -f "${folder}/score.sh" ]]; then
@@ -207,6 +211,7 @@ for i in "${!FILTERED_IDS[@]}"; do
     case "$status" in
         resolved) RESOLVED=$((RESOLVED+1)) ;;
         partial)  PARTIAL=$((PARTIAL+1)) ;;
+        skipped)  SKIPPED=$((SKIPPED+1)) ;;
         *)        FAILED=$((FAILED+1)) ;;
     esac
 
@@ -233,6 +238,8 @@ cat > "${RUN_DIR}/summary.json" <<EOF
   "resolved": ${RESOLVED},
   "partial": ${PARTIAL},
   "failed": ${FAILED},
+  "skipped": ${SKIPPED},
+  "dry_run": $([[ "$DRY_RUN" == "1" ]] && echo true || echo false),
   "resolved_pct": ${PCT},
   "partial_pct": ${PARTIAL_PCT},
   "failed_pct": ${FAILED_PCT},
@@ -243,6 +250,14 @@ ${TASK_RESULTS_JSON}
 EOF
 
 echo ""
+if [[ "$DRY_RUN" == "1" ]]; then
+    # Wiring check only — say so plainly rather than reporting a score nobody computed.
+    echo "DRY RUN — wiring validated for ${TOTAL} task(s); none executed, none scored."
+    echo "Summary:  ${RUN_DIR}/summary.json"
+    echo "Re-run without --dry-run to produce an actual score."
+    exit 0
+fi
+
 echo "Resolved: ${RESOLVED}/${TOTAL} (${PCT}%)"
 echo "Partial:  ${PARTIAL}/${TOTAL}"
 echo "Failed:   ${FAILED}/${TOTAL}"

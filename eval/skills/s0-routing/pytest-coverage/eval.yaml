@@ -1,0 +1,15 @@
+name: pytest-coverage-trigger
+description: >-
+  Routing (trigger-accuracy) eval for the pytest-coverage skill. Scores whether a prompt
+  should activate it, using Waza's offline `trigger` grader — keyword and USE-FOR
+  phrase overlap against the skill's own description. No model is called, so this
+  runs in the free S0 tier.
+skill: pytest-coverage
+version: "1.0"
+config:
+  trials_per_task: 1
+  timeout_seconds: 60
+  parallel: false
+  executor: mock
+tasks:
+  - "tasks/*.yaml"

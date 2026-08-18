@@ -1,0 +1,18 @@
+id: update-avm-modules-in-bicep-positive-1
+name: Should route to update-avm-modules-in-bicep
+description: >-
+    Exactly this skill's job.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Bump every AVM module in our Bicep files to the latest published version.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-update-avm-modules-in-bicep
+    config:
+      skill_path: plugins/agile-agents-bicep/skills/update-avm-modules-in-bicep/SKILL.md
+      mode: positive
+      threshold: 0.6

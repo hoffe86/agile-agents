@@ -1,0 +1,23 @@
+name: s1-bicep-collision
+description: >-
+  S1 ground truth for the sharpest collision S0 found. The offline trigger heuristic
+  scores `bicep-implementation` at **0.80** on "bump every AVM module" — which is
+  `update-avm-modules-in-bicep`'s job — and only **0.38** on its own authoring case.
+  An inverted profile like that is either a genuinely mis-tuned description or an
+  artifact of the heuristic, and only observed invocation can tell them apart.
+
+  This runs the real agent over a real Bicep fixture and records which skill it
+  actually reaches for. Both companion skills are on the path so the choice is free.
+skill: update-avm-modules-in-bicep
+version: "1.0"
+config:
+  trials_per_task: 3 # routing is stochastic; a single run proves nothing
+  timeout_seconds: 300
+  parallel: false
+  executor: copilot-sdk
+  model: claude-haiku-4.5
+  skill_directories:
+    - plugins/agile-agents-bicep/skills
+    - plugins/agile-agents-core/skills
+tasks:
+  - "tasks/*.yaml"

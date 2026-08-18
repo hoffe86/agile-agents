@@ -1,4 +1,4 @@
-# `eval/trajectory/` — L0 trajectory eval (process conformance)
+# `eval/pipeline/trajectory/` — L0 trajectory eval (process conformance)
 
 The cheapest layer of the eval pyramid (see [ADR 0008](../../docs/adr/0008-layered-evaluation-strategy.md)).
 It grades **how the pipeline ran**, not what it produced: given a
@@ -31,20 +31,20 @@ All are required: the checker exits `0` only when every check passes, `1` otherw
 
 ```bash
 # Grade a real run's event log
-python eval/trajectory/check-trajectory.py .copilot-runs/<run-id>/events.jsonl
+python eval/pipeline/trajectory/check-trajectory.py .copilot-runs/<run-id>/events.jsonl
 
 # Verify the checks themselves (mutates an in-code golden; no file, no model)
-python eval/trajectory/check-trajectory.py --self-test
+python eval/pipeline/trajectory/check-trajectory.py --self-test
 
 # Regenerate the golden fixture after changing build_golden()
-python eval/trajectory/check-trajectory.py --emit-fixture eval/trajectory/fixtures/full-run.events.jsonl
+python eval/pipeline/trajectory/check-trajectory.py --emit-fixture eval/pipeline/trajectory/fixtures/full-run.events.jsonl
 ```
 
 ## Fixture
 
 `fixtures/full-run.events.jsonl` is a recorded "good" run — a 26-event successful RPI trajectory.
 It is the deterministic anchor the CI checks against. It is **generated from `build_golden()`**
-inside the checker (single source of truth), so the [`Trajectory eval`](../../.github/workflows/trajectory-eval.yml)
+inside the checker (single source of truth), so the [`Eval · pipeline trajectory`](../../../.github/workflows/eval-pipeline-trajectory.yml)
 workflow regenerates it and fails if the committed copy drifted. Edit `build_golden()`, then
 re-emit and commit — never hand-edit the fixture.
 

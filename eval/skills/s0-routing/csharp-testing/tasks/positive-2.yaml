@@ -1,0 +1,18 @@
+id: csharp-testing-positive-2
+name: Should route to csharp-testing
+description: >-
+    Framework detection within the same ecosystem.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Our .NET solution uses NUnit. Extend the fixtures to cover the new handler.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-csharp-testing
+    config:
+      skill_path: plugins/agile-agents-dotnet/skills/csharp-testing/SKILL.md
+      mode: positive
+      threshold: 0.6

@@ -1,0 +1,18 @@
+id: test-bar-gate-negative-1
+name: Should NOT route to test-bar-gate
+description: >-
+    Near-miss: authoring tests is coding/testing-practices, not the gate.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Write a new integration test for the checkout flow.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-test-bar-gate
+    config:
+      skill_path: plugins/agile-agents-core/skills/test-bar-gate/SKILL.md
+      mode: negative
+      threshold: 0.6

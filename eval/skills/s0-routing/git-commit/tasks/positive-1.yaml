@@ -1,0 +1,18 @@
+id: git-commit-positive-1
+name: Should route to git-commit
+description: >-
+    Performing the commit — the skill's job.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Stage the related files and make the commit for me.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-git-commit
+    config:
+      skill_path: plugins/agile-agents-core/skills/git-commit/SKILL.md
+      mode: positive
+      threshold: 0.6

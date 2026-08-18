@@ -1,4 +1,4 @@
-name: Run eval
+name: Eval · pipeline outcome (L2)
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ on:
 # limit scope, and keep threshold 0 until you trust the scores. ubuntu-latest ships bash + jq.
 
 jobs:
-  eval:
+  pipeline-outcome:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -47,7 +47,7 @@ jobs:
         if: ${{ inputs.dry_run == false }}
         run: npm install -g @github/copilot
 
-      - name: Run eval harness
+      - name: Eval · pipeline outcome (L2) harness
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
         run: |
@@ -60,7 +60,7 @@ jobs:
               exit 1
             fi
           fi
-          bash eval/run-eval.sh \
+          bash eval/pipeline/run-eval.sh \
             --suite "${{ inputs.suite }}" \
             --task-filter "${{ inputs.task_filter }}" \
             --pass-threshold "${{ inputs.pass_threshold }}" \
@@ -72,7 +72,7 @@ jobs:
           {
             echo "## Eval result — ${{ inputs.suite }}"
             echo '```json'
-            cat eval/runs/*/summary.json 2>/dev/null || echo 'no summary.json produced'
+            cat eval/pipeline/runs/*/summary.json 2>/dev/null || echo 'no summary.json produced'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -81,5 +81,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: eval-${{ inputs.suite }}-${{ github.run_id }}
-          path: eval/runs/
+          path: eval/pipeline/runs/
           if-no-files-found: error

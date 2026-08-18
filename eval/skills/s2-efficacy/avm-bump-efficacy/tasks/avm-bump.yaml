@@ -1,0 +1,32 @@
+id: s2-avm-bump-001
+name: Are the AVM modules actually bumped, with the file left valid?
+description: >-
+  Outcome-graded, so it means something in both passes of the A/B. The fixture pins
+  two AVM modules at known-old versions; a correct result moves both off those pins
+  while keeping the module references and their parameters intact.
+tags:
+  - s2-efficacy
+inputs:
+  prompt: >-
+    Bump every AVM module in this Bicep file to the latest published version.
+  context:
+    fixture: fixtures
+graders:
+  - type: file
+    name: modules-bumped-and-intact
+    config:
+      must_exist:
+        - "main.bicep"
+      content_patterns:
+        - path: "main.bicep"
+          must_match:
+            # Both modules still referenced — a "bump" that deletes them is not a pass.
+            - "avm/res/storage/storage-account:"
+            - "avm/res/key-vault/vault:"
+            # Parameters preserved, so the edit was surgical rather than a rewrite.
+            - "publicNetworkAccess"
+            - "enablePurgeProtection"
+          must_not_match:
+            # The original pins. Still present means nothing was bumped.
+            - "storage-account:0\\.9\\.0"
+            - "vault:0\\.6\\.1"

@@ -65,9 +65,9 @@ agent/                               Marketplace root
 │   │                                template it ships (see below)
 │   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace,
 │   │                                pluginRoot ./plugins)
-│   └── workflows/                   4 workflows -> CI checks audit-references,
+│   └── workflows/                   5 workflows -> CI checks audit-references,
 │                                    check-agents-md-in-sync, trajectory,
-│                                    plugin-versions
+│                                    plugin-versions, skill-quality
 ├── plugins/                         One folder per plugin
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
 │   ├── agile-agents-core/           The autonomous-coding agent harness
@@ -86,10 +86,18 @@ agent/                               Marketplace root
 │   ├── agile-agents-ado/            1 skill  — Azure DevOps Boards tracker mechanics
 │   └── agile-agents-github/         1 skill  — GitHub Issues tracker mechanics
 ├── scripts/                         generate-agents-md.{ps1,sh}, audit-references.ps1,
-│                                    check-plugin-versions.ps1
-├── eval/                            swe-bench-subset + custom-eval + trajectory + baselines.md
+│                                    check-plugin-versions.ps1, check-skill-frontmatter.py,
+│                                    check-skill-tokens.ps1, check-instructions-drift.py,
+│                                    gen-trigger-evals.py, run-trigger-evals.ps1
+├── eval/                            One folder per unit of evaluation
+│   ├── pipeline/                    grades RUNS   — trajectory (L0) + custom-eval /
+│   │                                swe-bench-subset (L2) + run-eval — ADR 0008
+│   ├── skills/                      grades SKILLS — s0-routing + s1-invocation +
+│   │                                s2-efficacy — ADR 0014
+│   └── baselines.md                 every tier's numbers, in one place
+├── .waza.yaml                       Waza config: skill token ratchet + eval paths (ADR 0014)
 ├── docs/
-│   ├── adr/                         Architecture decision records (0001–0008)
+│   ├── adr/                         Architecture decision records (0001–0014)
 │   ├── research/                    Whitepaper + spikes
 │   └── AGENTS-MD-MAPPING.md         Folder→agent mapping for the generator
 ├── AGENTS.md                        Generated — do not hand-edit
@@ -388,6 +396,33 @@ Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `descripti
 not (see below). The frontmatter is followed by the workflow in natural language; reference
 files live in `<skill-name>/references/`, scripts in `<skill-name>/scripts/`.
 
+**Frontmatter that does not parse silently deletes the skill.** Invalid YAML produces no
+error anywhere — the CLI just drops the artifact, and from inside a session a dropped skill
+is indistinguishable from one that never matched. Measured: the installed core plugin had
+**36 skills on disk and offered 35**, the missing one being the only one whose YAML was
+invalid. The usual cause is a *plain* (unquoted) scalar containing a colon-space, which YAML
+reads as a nested mapping:
+
+```yaml
+description: ... Load only when `solution-profile.yaml: backlog.platform == x`.   # INVALID
+description: >-                                                                   # correct
+  ... Load only when `solution-profile.yaml: backlog.platform == x`.
+```
+
+Use the `>-` block scalar — it is the house style and colons are legal inside it.
+`scripts/check-skill-frontmatter.py` gates this, and also enforces that `name` matches the
+containing directory (a mismatch makes the skill unaddressable and, for the review skills,
+re-created the very agent/skill collision ADR 0011 removed).
+
+**Keep SKILL.md small; put depth in `references/`.** A skill body is loaded into context
+when it triggers, so its size is recurring spend, not a style preference. The always-on set
+(`read-repo-context` → `engineering-standards` + `engineering-judgement` +
+`trade-off-reporting`) already costs **~8,100 tokens on every agent turn**. `.waza.yaml`
+holds per-skill token limits **ratcheted at today's measured cost**: they exist to fail a
+regression, not to bless the current size. Raising one to make CI pass is metric gaming
+(`engineering-judgement` §7) — trim the skill, or move detail into `references/`, which
+loads on demand rather than on trigger. See ADR 0014.
+
 `applies_to` declares the technology scope — `all` for a technique that holds in any
 ecosystem, otherwise a comma-separated list of the ecosystems it actually assumes
 (`dotnet`, `python`, `azure, terraform`, `kubernetes, helm, kustomize`, `docker`,
@@ -471,3 +506,22 @@ runner, unreproducible locally:
 Both were invisible until this repo had a profile with populated lists. When touching
 either generator, check parity with and without `yq`, and under `LC_ALL=C` as well as
 UTF-8.
+
+### This file is checked, too
+`AGENTS.md` has had a sync check since ADR 0005; **this file now has one as well** —
+`scripts/check-instructions-drift.py`, run by the `skill-quality` workflow. It compares
+the *countable* claims here (agent count, per-plugin skill counts, workflow count, ADR
+range, vendored vs hand-written totals) against what the repository actually contains.
+
+It exists because those numbers are hand-maintained and went stale repeatedly — this
+file simultaneously claimed 38 core skills (40), 5 dotnet (6), 4 python (5), 2 bicep (3),
+4 workflows (5), and an ADR range ending six entries early. That matters more here than
+in ordinary docs: `read-repo-context` loads this file first and every agent treats it as
+binding, so a wrong count misinforms every run.
+
+Deliberately narrow — it validates counts, never prose. If you reword a line the check
+reads, it reports *"no claim found"* rather than silently passing; update the regex in
+the script. Counting vendored skills means the rows under **`## Skill → Upstream` only**:
+`VENDORED.md` has three tables, and the adopted (`polyglot-test-agent`) and
+suggested-contribution tables are not vendored entries.
+

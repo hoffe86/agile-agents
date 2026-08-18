@@ -1,0 +1,18 @@
+id: python-testing-negative-1
+name: Should NOT route to python-testing
+description: >-
+    Partner skill: a coverage-to-100% sweep is pytest-coverage.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Run the suite with coverage and drive the missing lines to 100%.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-python-testing
+    config:
+      skill_path: plugins/agile-agents-python/skills/python-testing/SKILL.md
+      mode: negative
+      threshold: 0.6

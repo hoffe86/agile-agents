@@ -1,0 +1,19 @@
+id: bicep-implementation-positive-1
+name: Should route to bicep-implementation
+description: >-
+    Authoring new Bicep — the skill's own job.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Write the Bicep for a storage account with private networking and diagnostic
+    settings.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-bicep-implementation
+    config:
+      skill_path: plugins/agile-agents-bicep/skills/bicep-implementation/SKILL.md
+      mode: positive
+      threshold: 0.6

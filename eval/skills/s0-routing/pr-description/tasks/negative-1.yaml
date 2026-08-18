@@ -1,0 +1,18 @@
+id: pr-description-negative-1
+name: Should NOT route to pr-description
+description: >-
+    Partner skill: spanning two tags is release-notes, not a PR body.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Generate the changelog entry for everything between v1.2.0 and v1.3.0.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-pr-description
+    config:
+      skill_path: plugins/agile-agents-core/skills/pr-description/SKILL.md
+      mode: negative
+      threshold: 0.6

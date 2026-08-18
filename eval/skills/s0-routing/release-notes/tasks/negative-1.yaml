@@ -1,0 +1,19 @@
+id: release-notes-negative-1
+name: Should NOT route to release-notes
+description: >-
+    Partner skill: a single branch's PR body is pr-description.
+tags:
+  - negative-trigger
+inputs:
+  prompt: >-
+    Write the pull-request description for this branch, covering what changed and the
+    risk.
+expected:
+  should_trigger: false
+graders:
+  - type: trigger
+    name: stays-out-of-release-notes
+    config:
+      skill_path: plugins/agile-agents-core/skills/release-notes/SKILL.md
+      mode: negative
+      threshold: 0.6

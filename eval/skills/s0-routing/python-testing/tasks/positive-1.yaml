@@ -1,0 +1,18 @@
+id: python-testing-positive-1
+name: Should route to python-testing
+description: >-
+    Authoring Python tests — the skill's job.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Add pytest cases for this Python module, including the error paths.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-python-testing
+    config:
+      skill_path: plugins/agile-agents-python/skills/python-testing/SKILL.md
+      mode: positive
+      threshold: 0.6

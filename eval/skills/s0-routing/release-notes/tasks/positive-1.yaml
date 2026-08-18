@@ -1,0 +1,18 @@
+id: release-notes-positive-1
+name: Should route to release-notes
+description: >-
+    The skill's job.
+tags:
+  - positive-trigger
+inputs:
+  prompt: >-
+    Generate the changelog entry for everything between v1.2.0 and v1.3.0.
+expected:
+  should_trigger: true
+graders:
+  - type: trigger
+    name: routes-to-release-notes
+    config:
+      skill_path: plugins/agile-agents-core/skills/release-notes/SKILL.md
+      mode: positive
+      threshold: 0.6

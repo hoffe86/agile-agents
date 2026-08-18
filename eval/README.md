@@ -13,18 +13,89 @@ adopter who forks this template) can answer two questions with numbers, not vibe
 Self-benchmarking is the **first** improvement (Phase 1, item H2 in the improvement plan) for a
 reason: every later quality lift needs a quantitative anchor to be measured against.
 
+## How `eval/` is organised
+
+One folder per **unit of evaluation** — the thing being graded — with everything shared
+at the root:
+
+```
+eval/
+├── README.md          this file
+├── baselines.md       every tier's numbers, in one place
+├── pipeline/          grades RUNS    — L0/L1/L2 (ADR 0008)
+│   ├── trajectory/    L0 · process conformance over the event log (free, gating)
+│   ├── custom-eval/   L2 · framework-representative tasks
+│   ├── swe-bench-subset/  L2 · external comparable benchmark
+│   └── run-eval.{ps1,sh}, score-judge.{ps1,sh}, scoring-rubric.md, references/
+└── skills/            grades SKILLS  — S0/S1/S2 (ADR 0014)
+    ├── s0-routing/    should a prompt reach this skill (offline, free)
+    ├── s1-invocation/ did the agent actually invoke it (model)
+    └── s2-efficacy/   is the outcome better with it than without (2× model)
+```
+
+**Why `pipeline/` and not `runs/`:** `eval/**/runs/` is the gitignored output directory
+that `run-eval` writes into. Naming the source folder `runs/` would collide with its own
+artifacts.
+
+**An `agents/` folder is the obvious third slot** — grading `*.agent.md` rather than
+skills or runs — and it is well-motivated: tool grants are a documented recurring defect
+here (wrong in three separate PRs, silent in both directions), and Waza's
+`tool_constraint` grader validates exactly which tools an agent used or avoided. It is
+deliberately **not created empty**; add it when the first agent eval exists, and keep to
+the convention above.
+
 ## Eval layers
 
 This outcome eval is the **top** of a layered pyramid ([ADR 0008](../docs/adr/0008-layered-evaluation-strategy.md)):
 
 | Layer | What it grades | Cost | Where |
 |---|---|---|---|
-| **L0** trajectory | *how* a run executed (RPI process conformance over the event log) | zero-credit, deterministic, gating | [`trajectory/`](trajectory/README.md) |
+| **L0** trajectory | *how* a run executed (RPI process conformance over the event log) | zero-credit, deterministic, gating | [`pipeline/trajectory/`](pipeline/trajectory/README.md) |
 | **L1** review-detection | the Review phase (seeded-defect recall/precision) | medium | planned (ADR 0008) |
-| **L2** outcome | *what* a run produced (acceptance vs. artifact) | credit-heavy, manual | this folder |
+| **L2** outcome | *what* a run produced (acceptance vs. artifact) | credit-heavy, manual | [`pipeline/`](pipeline/) |
 
 L0 runs free on every push/PR and catches process failures L2 is blind to; L2 (below) is the
 end-to-end integration checkpoint.
+
+### The S-layer — grading skills, not runs
+
+L0/L1/L2 grade **runs**. A second axis grades the **artifacts** the runs load
+([ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md)), using
+[`microsoft/waza`](https://github.com/microsoft/waza) — whose unit of evaluation is
+`SKILL.md` itself. It lives in **[`skills/`](skills/README.md)**, one directory per tier:
+
+| Layer | What it grades | Cost | Where |
+|---|---|---|---|
+| **S0** skill hygiene | frontmatter validity, token budget, `copilot-instructions` drift | zero-credit, deterministic, **gating** | [`eval-skills.yml`](../.github/workflows/eval-skills.yml) |
+| **S0** routing | should this prompt reach this skill (offline heuristic) | zero-credit | [`skills/s0-routing/`](skills/s0-routing/) — reports, uncalibrated |
+| **S1** invocation | did the agent actually invoke it | model | [`skills/s1-invocation/`](skills/s1-invocation/README.md) |
+| **S2** efficacy | is the outcome better than *not* loading it | 2× model | [`skills/s2-efficacy/`](skills/s2-efficacy/README.md) — blocked on isolation |
+
+Run the free tier locally exactly as CI does:
+
+```powershell
+python scripts/check-skill-frontmatter.py --self-test   # prove each assertion trips
+python scripts/check-skill-frontmatter.py               # 76 artifacts, strict YAML
+python scripts/check-instructions-drift.py              # roster counts match reality
+./scripts/check-skill-tokens.ps1                        # token ratchet + coverage
+./scripts/run-trigger-evals.ps1                         # routing baseline
+```
+
+Two things S0 exists to stop, both of which had already happened:
+
+- **A skill whose frontmatter does not parse is silently dropped by the CLI.** Not a
+  theoretical risk — the installed core plugin had 36 skills on disk and offered 35, and
+  the missing one was the only one whose YAML was invalid. It could never be invoked and
+  nothing reported it.
+- **Token budgets are a ratchet, not a target.** A skill body enters context when it
+  triggers, so its size is recurring spend; the always-on set costs ~8,100 tokens on
+  *every* agent turn. Limits in `.waza.yaml` sit at today's measured cost so a regression
+  fails. Raising one to go green is metric gaming — trim the skill, or move detail into
+  `references/`, which loads on demand rather than on trigger.
+
+**A skill graded alone is not a skill in the pipeline.** Waza evaluates a skill in
+isolation; ours run inside a 15-agent chain. The S-layer complements L0/L2 — it never
+replaces them.
 
 ## Methodology
 
@@ -40,7 +111,7 @@ For each task the harness:
 1. Loads the task prompt + (for custom-eval) `solution-profile.yaml` context.
 2. Invokes `dev-lead` once with the prompt (TODO — see *Limitations* below).
 3. Captures stdout/stderr + any produced artefacts.
-4. Scores the run against the rubric in [`scoring-rubric.md`](./scoring-rubric.md):
+4. Scores the run against the rubric in [`scoring-rubric.md`](pipeline/scoring-rubric.md):
    - **resolved** — all acceptance criteria pass
    - **partial** — some criteria pass, none failed catastrophically (no broken build)
    - **failed** — nothing meaningful produced or build broken
@@ -52,20 +123,20 @@ For each task the harness:
 
 ```powershell
 # Full SWE-bench subset
-./run-eval.ps1 -Suite swe-bench-subset
+./pipeline/run-eval.ps1 -Suite swe-bench-subset
 
 # Single custom-eval task
-./run-eval.ps1 -Suite custom-eval -TaskFilter 'task-03'
+./pipeline/run-eval.ps1 -Suite custom-eval -TaskFilter 'task-03'
 
 # All custom-eval tasks matching a regex
-./run-eval.ps1 -Suite custom-eval -TaskFilter 'bicep|helm'
+./pipeline/run-eval.ps1 -Suite custom-eval -TaskFilter 'bicep|helm'
 ```
 
 ### Bash (Linux / macOS)
 
 ```bash
-./run-eval.sh --suite custom-eval --task-filter 'task-03'
-./run-eval.sh --suite custom-eval --dry-run     # print the copilot command per task; no auth/credits
+./pipeline/run-eval.sh --suite custom-eval --task-filter 'task-03'
+./pipeline/run-eval.sh --suite custom-eval --dry-run     # print the copilot command per task; no auth/credits
 ```
 
 `custom-eval` invokes `dev-lead` for real: it reads each task's `prompt.md`, seeds a fresh
@@ -85,7 +156,7 @@ login`); use `--dry-run` to validate the wiring without either.
 
 ### CI (on demand)
 
-The [`Run eval`](../.github/workflows/eval.yml) workflow runs the harness on GitHub Actions via
+The [`Eval · pipeline outcome`](../.github/workflows/eval-pipeline-outcome.yml) workflow runs the harness on GitHub Actions via
 `workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold, and a
 `dry_run` toggle (**default on** — renders the per-task command without auth/credits, so the
 default dispatch is a free wiring check). It posts `summary.json` to the run summary and uploads
@@ -122,7 +193,7 @@ runs/
 
 The `runs/` folder is gitignored in the distribution; only `baselines.md` is committed.
 
-## Scoring rubric (short form — full form in [`scoring-rubric.md`](./scoring-rubric.md))
+## Scoring rubric (short form — full form in [`scoring-rubric.md`](pipeline/scoring-rubric.md))
 
 | Status | Meaning |
 |---|---|
