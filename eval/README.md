@@ -117,7 +117,32 @@ For each task the harness:
    - **failed** — nothing meaningful produced or build broken
 5. Appends the run to `baselines.md`.
 
-## How to run
+## Isolation — why a run needs a token
+
+Runs execute against an **isolated Copilot configuration root** (`runs/<run-id>/.copilot-home`).
+This is not a nicety: plugins install at **User** scope under the home directory, and
+`--plugin-dir` does **not** override an installed plugin of the same name — the installed copy
+wins silently. A harness that passed `--plugin-dir` believing it exercised the working tree was
+reading whatever version happened to be installed. When this was found, that was
+`agile-agents-core v0.14.0` against a working tree at `v0.16.0`.
+
+Two consequences:
+
+- **Stored auth does not survive isolation**, so a token must be in the environment —
+  `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`. Without one the run **exits 2** rather
+  than falling back to your own configuration: a silent fall-back would produce a
+  plausible-looking score for the wrong plugin version, which is the exact defect isolation
+  exists to remove.
+- **Your personal MCP servers are dropped; the harness's own are kept.** Servers declared in
+  `plugins/agile-agents-core/.mcp.json` (context7, microsoft-docs, playwright) arrive through
+  `--plugin-dir` and still load. That is the right line — the harness keeps the tools it ships
+  and loses the ones that merely happened to be on one machine. Verified: task-04 depends on
+  `microsoft-docs` for its primary-sources criterion and still scores `resolved` isolated.
+
+`--no-isolation` / `-NoIsolation` restores the old behaviour for comparing against historical
+numbers. The banner and `summary.json` both record which mode ran (`isolated`, `mcp_servers`),
+because a score means something different in each.
+
 
 ### PowerShell (Windows / cross-platform PowerShell 7+)
 

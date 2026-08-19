@@ -52,11 +52,33 @@ param(
 
     # Print the resolved copilot command per task without executing it (no auth /
     # no credits) — use to verify the wiring.
-    [switch]$DryRun
+    [switch]$DryRun,
+
+    # Run against the developer's own Copilot configuration instead of an isolated one.
+    # This reinstates the plugin-shadowing defect described below, so the run no longer
+    # measures the working tree. Only useful for comparing against historical numbers.
+    [switch]$NoIsolation
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+function Write-FatalError {
+    <#
+        Writes a setup error and exits with a deterministic code.
+
+        `$ErrorActionPreference = 'Stop'` makes `Write-Error` terminating, so the
+        `exit 2` that used to follow it never ran and the script exited 1 instead —
+        while the .sh twin exited 2 for the same condition. Callers (and CI) cannot
+        distinguish "bad setup" from "tasks failed" when the code is wrong.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [int]$Code = 2
+    )
+    [Console]::Error.WriteLine($Message)
+    exit $Code
+}
 
 # Repo root = parent of eval/. Loaded as a local plugin so the agent resolves
 # without a prior `copilot plugin install`. --plugin-dir registers it under the
@@ -75,8 +97,88 @@ $pluginDir = $pluginDirs[0]  # retained for messages that name a single represen
 $devLeadAgent = 'agile-agents-core:dev-lead'
 
 if (-not $DryRun -and -not (Get-Command copilot -ErrorAction SilentlyContinue)) {
-    Write-Error "copilot CLI not found on PATH. Install it, run 'copilot login', or use -DryRun."
-    exit 2
+    Write-FatalError "copilot CLI not found on PATH. Install it, run 'copilot login', or use -DryRun."
+}
+
+# --- Isolated Copilot configuration root --------------------------------------
+# Plugins install at **User** scope under the home directory, and `--plugin-dir` does
+# NOT override an installed plugin of the same name — the installed copy wins silently.
+# A run that believed it was exercising the working tree was reading whatever version
+# happened to be installed (found at v0.14.0 against a working tree at v0.16.0). Every
+# measurement of a modified existing skill was therefore of the wrong file.
+#
+# Redirecting HOME / USERPROFILE to a throwaway directory removes User-scope plugins from
+# resolution, leaving --plugin-dir as the only source.
+#
+# Two consequences, both deliberate and both reported in the banner and summary.json:
+#   1. Stored auth does not survive isolation, so a token must be supplied via the
+#      environment. That is how CI supplies it anyway.
+#   2. The developer's own MCP servers are configured in the same place, so they are
+#      dropped. Servers declared by the plugins themselves (plugins/agile-agents-core/.mcp.json
+#      ships context7, microsoft-docs and playwright) still load, because they arrive via
+#      --plugin-dir. That is the desired line: the harness keeps the tools it declares and
+#      loses the ones that merely happened to be on the developer's machine. Verified —
+#      task-04 depends on microsoft-docs for its primary-sources criterion and still scores
+#      `resolved` under isolation.
+$isolate = -not $NoIsolation
+$isolatedHome = $null
+
+if ($isolate -and -not $DryRun) {
+    $tokenNames = @('COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN')
+    $haveToken = $false
+    foreach ($n in $tokenNames) {
+        if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($n))) { $haveToken = $true; break }
+    }
+    if (-not $haveToken) {
+        # Fail rather than fall back. A silent fall-back to the developer's config would
+        # produce a plausible-looking score for the wrong plugin version — exactly the
+        # class of defect this isolation exists to remove.
+        Write-FatalError @"
+Isolated runs need a token in the environment, because stored auth does not survive
+isolation. Set one of: $($tokenNames -join ', ').
+
+  PowerShell:  `$env:GH_TOKEN = (gh auth token)
+
+Or re-run with -NoIsolation to use your own Copilot configuration — but be aware that
+an installed plugin of the same name shadows --plugin-dir, so the run will NOT measure
+the working tree.
+"@
+    }
+}
+
+function Invoke-WithIsolation {
+    <#
+        Runs a scriptblock with the isolated configuration root in effect, restoring the
+        caller's environment afterwards so nothing leaks into the rest of the script.
+        Child processes (the judge runs as its own pwsh) inherit these, so they are
+        isolated too — the judge loads plugins exactly like the agent did.
+    #>
+    param([Parameter(Mandatory)][scriptblock]$Body)
+
+    $savedProfile = $env:USERPROFILE
+    $savedHome    = $env:HOME
+    try {
+        if ($isolatedHome) {
+            $env:USERPROFILE = $isolatedHome
+            $env:HOME        = $isolatedHome
+        }
+        & $Body
+    }
+    finally {
+        $env:USERPROFILE = $savedProfile
+        $env:HOME        = $savedHome
+    }
+}
+
+function Invoke-Copilot {
+    param(
+        [Parameter(Mandatory)][string[]]$CopilotArgs,
+        [Parameter(Mandatory)][string]$LogPath
+    )
+    Invoke-WithIsolation {
+        & copilot @CopilotArgs *>&1 | Tee-Object -FilePath $LogPath | Out-Null
+    }
+    return $LASTEXITCODE
 }
 
 # --- dev-lead invocation ------------------------------------------------------
@@ -105,22 +207,20 @@ function Invoke-DevLead {
         @("[DRY RUN] would invoke dev-lead with:", $rendered) | Set-Content -Path $LogPath -Encoding utf8
         return 0
     }
-    & copilot @copilotArgs *>&1 | Tee-Object -FilePath $LogPath | Out-Null
-    return $LASTEXITCODE
+    return (Invoke-Copilot -CopilotArgs $copilotArgs -LogPath $LogPath)
 }
 
 # --- Resolve task list --------------------------------------------------------
 $suiteRoot = Join-Path $PSScriptRoot $Suite
 if (-not (Test-Path $suiteRoot)) {
-    Write-Error "Suite folder not found: $suiteRoot"
-    exit 2
+    Write-FatalError "Suite folder not found: $suiteRoot"
 }
 
 $tasks = @()
 switch ($Suite) {
     'swe-bench-subset' {
         $manifestPath = Join-Path $suiteRoot 'tasks.json'
-        if (-not (Test-Path $manifestPath)) { Write-Error "Missing $manifestPath"; exit 2 }
+        if (-not (Test-Path $manifestPath)) { Write-FatalError "Missing $manifestPath" }
         $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
         $tasks = $manifest | ForEach-Object {
             [pscustomobject]@{
@@ -133,7 +233,7 @@ switch ($Suite) {
     }
     'custom-eval' {
         $tasksDir = Join-Path $suiteRoot 'tasks'
-        if (-not (Test-Path $tasksDir)) { Write-Error "Missing $tasksDir"; exit 2 }
+        if (-not (Test-Path $tasksDir)) { Write-FatalError "Missing $tasksDir" }
         $tasks = Get-ChildItem -Path $tasksDir -Directory | ForEach-Object {
             [pscustomobject]@{
                 Id        = $_.Name
@@ -147,8 +247,7 @@ switch ($Suite) {
 
 $tasks = $tasks | Where-Object { $_.Id -match $TaskFilter }
 if (-not $tasks -or $tasks.Count -eq 0) {
-    Write-Error "No tasks matched filter '$TaskFilter' in suite '$Suite'."
-    exit 2
+    Write-FatalError "No tasks matched filter '$TaskFilter' in suite '$Suite'."
 }
 
 # --- Set up run folder --------------------------------------------------------
@@ -156,10 +255,22 @@ $runId   = '{0:yyyyMMdd-HHmmss}-{1}' -f (Get-Date), $Suite
 $runDir  = Join-Path $OutputRoot $runId
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
+if ($isolate -and -not $DryRun) {
+    $isolatedHome = Join-Path $runDir '.copilot-home'
+    New-Item -ItemType Directory -Force -Path $isolatedHome | Out-Null
+}
+
 Write-Host "Run ID:    $runId"
 Write-Host "Suite:     $Suite"
 Write-Host "Tasks:     $($tasks.Count) (filter: '$TaskFilter')"
 Write-Host "Output:    $runDir"
+if ($DryRun) {
+    Write-Host "Config:    (dry run — the CLI is not invoked)"
+} elseif ($isolate) {
+    Write-Host "Config:    isolated ($isolatedHome) — plugins and MCP servers come only from --plugin-dir"
+} else {
+    Write-Host "Config:    NOT ISOLATED — user plugins shadow --plugin-dir; this does not measure the working tree" -ForegroundColor Yellow
+}
 Write-Host ''
 
 # --- Execute each task --------------------------------------------------------
@@ -226,7 +337,12 @@ foreach ($task in $tasks) {
                 $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
             }
             else {
-                & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance *>> $logPath
+                # The judge invokes the CLI too, so it runs under the same isolation —
+                # a judge loading a different plugin set than the agent would grade
+                # against conventions the agent never saw.
+                Invoke-WithIsolation {
+                    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance *>> $logPath
+                }
                 $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
             }
         }
@@ -257,6 +373,10 @@ $summary = [ordered]@{
     failed       = $failed
     skipped      = $skipped
     dry_run      = [bool]$DryRun
+    # Whether the run measured the working tree or the developer's installed plugins.
+    # A score carries a different meaning in each case, so it travels with the score.
+    isolated     = [bool]$isolate
+    mcp_servers  = if ($isolate) { 'plugin-declared only' } else { 'plugin-declared + user config' }
     resolved_pct = $pct
     partial_pct  = if ($total) { [math]::Round(100.0 * $partial / $total, 1) } else { 0 }
     failed_pct   = if ($total) { [math]::Round(100.0 * $failed  / $total, 1) } else { 0 }

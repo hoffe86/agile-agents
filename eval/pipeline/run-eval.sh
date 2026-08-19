@@ -22,6 +22,7 @@ SUITE=""
 TASK_FILTER=".*"
 PASS_THRESHOLD=60
 DRY_RUN=0
+NO_ISOLATION=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PLUGIN_DIR="${REPO_ROOT}/plugins/agile-agents-core"
@@ -47,6 +48,8 @@ Options:
   --pass-threshold <int>     Optional. Resolved% needed to exit 0. Default: 60
   --output-root <path>       Optional. Where to write runs/. Default: ./runs
   --dry-run                  Print the resolved copilot command per task; don't execute.
+  --no-isolation             Use your own Copilot config instead of an isolated one.
+                             Reinstates plugin shadowing: does NOT measure the working tree.
   -h, --help                 Show this help and exit.
 EOF
 }
@@ -59,6 +62,7 @@ while [[ $# -gt 0 ]]; do
         --pass-threshold)   PASS_THRESHOLD="$2"; shift 2 ;;
         --output-root)      OUTPUT_ROOT="$2"; shift 2 ;;
         --dry-run)          DRY_RUN=1; shift ;;
+        --no-isolation)     NO_ISOLATION=1; shift ;;
         -h|--help)          usage; exit 0 ;;
         *)                  echo "Unknown arg: $1" >&2; usage; exit 2 ;;
     esac
@@ -79,6 +83,59 @@ if [[ "$DRY_RUN" != "1" ]] && ! command -v copilot >/dev/null 2>&1; then
     exit 2
 fi
 
+# --- Isolated Copilot configuration root -------------------------------------
+# Plugins install at **User** scope under the home directory, and `--plugin-dir` does
+# NOT override an installed plugin of the same name — the installed copy wins silently.
+# A run that believed it was exercising the working tree was reading whatever version
+# happened to be installed (found at v0.14.0 against a working tree at v0.16.0). Every
+# measurement of a modified existing skill was therefore of the wrong file.
+#
+# Redirecting HOME to a throwaway directory removes User-scope plugins from resolution,
+# leaving --plugin-dir as the only source.
+#
+# Two consequences, both deliberate and both reported in the banner and summary.json:
+#   1. Stored auth does not survive isolation, so a token must be supplied via the
+#      environment. That is how CI supplies it anyway.
+#   2. The user's own MCP servers are configured in the same place, so they are dropped.
+#      Servers declared by the plugins themselves (plugins/agile-agents-core/.mcp.json ships
+#      context7, microsoft-docs and playwright) still load, because they arrive via
+#      --plugin-dir. That is the desired line: the harness keeps the tools it declares and
+#      loses the ones that merely happened to be on the developer's machine. Verified —
+#      task-04 depends on microsoft-docs for its primary-sources criterion and still scores
+#      `resolved` under isolation.
+ISOLATED_HOME=""
+
+if [[ "$NO_ISOLATION" != "1" && "$DRY_RUN" != "1" ]]; then
+    if [[ -z "${COPILOT_GITHUB_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]]; then
+        # Fail rather than fall back. A silent fall-back to the user's config would
+        # produce a plausible-looking score for the wrong plugin version — exactly the
+        # class of defect this isolation exists to remove.
+        cat >&2 <<'EOF'
+ERROR: isolated runs need a token in the environment, because stored auth does not
+survive isolation. Set one of: COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN.
+
+  export GH_TOKEN="$(gh auth token)"
+
+Or re-run with --no-isolation to use your own Copilot configuration — but be aware that
+an installed plugin of the same name shadows --plugin-dir, so the run will NOT measure
+the working tree.
+EOF
+        exit 2
+    fi
+fi
+
+# Runs a command with the isolated configuration root in effect. Child processes (the
+# judge runs as its own shell) inherit it, so the judge loads plugins exactly like the
+# agent did — a judge with a different plugin set would grade against conventions the
+# agent never saw.
+run_isolated() {
+    if [[ -n "$ISOLATED_HOME" ]]; then
+        HOME="$ISOLATED_HOME" USERPROFILE="$ISOLATED_HOME" "$@"
+    else
+        "$@"
+    fi
+}
+
 # --- dev-lead invocation -----------------------------------------------------
 # The repo is loaded as a local plugin (name "agile-agents-core") so `--agent
 # agile-agents-core:dev-lead` resolves the in-repo agents/skills without `copilot plugin install`.
@@ -91,7 +148,7 @@ invoke_dev_lead() {
         } > "$log"
         return 0
     fi
-    copilot -p "$prompt_text" \
+    run_isolated copilot -p "$prompt_text" \
         --agent "$DEV_LEAD_AGENT" \
         "${PLUGIN_ARGS[@]}" \
         --allow-all-tools \
@@ -146,10 +203,22 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-${SUITE}"
 RUN_DIR="${OUTPUT_ROOT}/${RUN_ID}"
 mkdir -p "$RUN_DIR"
 
+if [[ "$NO_ISOLATION" != "1" && "$DRY_RUN" != "1" ]]; then
+    ISOLATED_HOME="${RUN_DIR}/.copilot-home"
+    mkdir -p "$ISOLATED_HOME"
+fi
+
 echo "Run ID:    $RUN_ID"
 echo "Suite:     $SUITE"
 echo "Tasks:     ${#FILTERED_IDS[@]} (filter: '$TASK_FILTER')"
 echo "Output:    $RUN_DIR"
+if [[ "$DRY_RUN" == "1" ]]; then
+    echo "Config:    (dry run — the CLI is not invoked)"
+elif [[ -n "$ISOLATED_HOME" ]]; then
+    echo "Config:    isolated (${ISOLATED_HOME}) — plugins and MCP servers come only from --plugin-dir"
+else
+    echo "Config:    NOT ISOLATED — user plugins shadow --plugin-dir; this does not measure the working tree"
+fi
 echo ""
 
 # --- Execute each task -------------------------------------------------------
@@ -201,9 +270,11 @@ for i in "${!FILTERED_IDS[@]}"; do
             bash "${folder}/score.sh" "$ws" >> "$log" 2>&1 || sc=$?
             case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         else
-            # Default: LLM judge grades the workspace against acceptance.md.
+            # Default: LLM judge grades the workspace against acceptance.md. It runs under
+            # the same isolation — a judge loading a different plugin set than the agent
+            # would grade against conventions the agent never saw.
             sc=0
-            bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
+            run_isolated bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
             case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         fi
     fi
@@ -240,6 +311,8 @@ cat > "${RUN_DIR}/summary.json" <<EOF
   "failed": ${FAILED},
   "skipped": ${SKIPPED},
   "dry_run": $([[ "$DRY_RUN" == "1" ]] && echo true || echo false),
+  "isolated": $([[ -n "$ISOLATED_HOME" ]] && echo true || echo false),
+  "mcp_servers": "$([[ -n "$ISOLATED_HOME" ]] && echo "plugin-declared only" || echo "plugin-declared + user config")",
   "resolved_pct": ${PCT},
   "partial_pct": ${PARTIAL_PCT},
   "failed_pct": ${FAILED_PCT},

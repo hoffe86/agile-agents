@@ -86,7 +86,17 @@ if (Test-Path $Workspace) {
         Sort-Object FullName
     foreach ($f in $files) {
         if ($total -ge $maxTotal) { break }
+        # This loop previously referenced $rel and $body without ever assigning them,
+        # so the PowerShell judge threw on its first file and had never once produced a
+        # grade. The .sh twin was correct, which is why the defect stayed invisible.
+        $rel  = $f.FullName.Substring($Workspace.Length).TrimStart('\', '/')
+        $body = Get-Content -Path $f.FullName -Raw -ErrorAction SilentlyContinue
+        if ([string]::IsNullOrEmpty($body)) { continue }
+        if ($body.Length -gt $maxPerFile) {
+            $body = $body.Substring(0, $maxPerFile) + "`n...[truncated]"
+        }
         $artifacts += "### $rel`n```````n$body`n```````n`n"
+        $total += $body.Length
     }
 }
 if ([string]::IsNullOrWhiteSpace($artifacts)) {

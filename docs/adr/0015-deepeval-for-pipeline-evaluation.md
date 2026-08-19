@@ -124,16 +124,22 @@ copy was ignored.
 **any measurement of a modified existing skill has been reading the installed copy instead.** This
 is the same family as the S2 contamination in ADR 0014 that produced "skills have neutral impact".
 
-**Resolved (2026-08-19): an isolated configuration root fixes it.** Plugins are installed at
-**User** scope under the home directory, so redirecting `USERPROFILE` / `HOME` to a throwaway
-directory removes them from resolution and leaves `--plugin-dir` as the only source. Verified by
-probe: the same question that previously returned the stale installed text (`PHRASE: no`) returns
-the working-tree text (`PHRASE: yes`) under an isolated home. Auth does not survive isolation, so
-the run must be given `GH_TOKEN` — which is how CI would supply it anyway.
+**Resolved (2026-08-19): an isolated configuration root fixes it, and it is now wired into the
+harness.** Plugins are installed at **User** scope under the home directory, so redirecting
+`USERPROFILE` / `HOME` to a per-run throwaway directory removes them from resolution and leaves
+`--plugin-dir` as the only source. Verified by probe: the same question that previously returned
+the stale installed text (`PHRASE: no`) returns the working-tree text (`PHRASE: yes`) under an
+isolated home. Auth does not survive isolation, so the run must be given a token — which is how
+CI would supply it anyway, and the harness now **exits 2** rather than falling back.
 
-This is a **precondition for adoption**, not a refinement: without it the harness measures the
-developer's machine. The installed copy was `agile-agents-core v0.14.0` while the working tree was
-at `v0.16.0` — two minor versions of drift, silently winning.
+The installed copy was `agile-agents-core v0.14.0` while the working tree was at `v0.16.0` — two
+minor versions of drift, silently winning.
+
+MCP servers split the right way: the developer's personal servers are dropped, while those the
+plugins declare themselves (`plugins/agile-agents-core/.mcp.json` — context7, microsoft-docs,
+playwright) still load because they arrive via `--plugin-dir`. Task-04 depends on `microsoft-docs`
+for its primary-sources criterion and scores `resolved` under isolation, so the capability the
+harness declares survives while the ambient environment does not.
 
 **Correction to an earlier reading of this data.** The observation "88 skills offered where the
 repo defines 62" was evidence of contamination, but `session.skills_loaded` turns out to list
