@@ -39,7 +39,7 @@ Append a single section at the end of your response (or per file/component if yo
 
 Keep each entry to **one line** (or two if the trigger needs a clause). If you have more than ~5 trade-offs in one response, you are probably narrating — re-read the rules and cut.
 
-For decisions that warrant longer reasoning (multi-paragraph, multiple options compared, durable architectural impact) → **promote to an ADR** (MADR template) instead of inline notes, and link to it:
+For decisions that warrant longer reasoning (multi-paragraph, multiple options compared, durable architectural impact) → **promote to an ADR** (via the `architecture-decision-records` skill, which resolves the project's format) instead of inline notes, and link to it:
 
 ```markdown
 ### Trade-offs made
@@ -77,7 +77,7 @@ Good: *"**HTTP client** — Chose **`HttpClient` with `IHttpClientFactory`** ove
 ## Interaction with ADRs
 
 - One-line inline notes are **not** a replacement for ADRs.
-- If a trade-off is architectural (cross-component, hard to reverse, affects multiple teams) → write an ADR (MADR), put it in `docs/adr/`, and the inline note becomes a pointer.
+- If a trade-off is architectural (cross-component, hard to reverse, affects multiple teams) → write an ADR (via `architecture-decision-records`), put it in the project's ADR location, and the inline note becomes a pointer.
 - If the project has no ADR folder yet and the decision deserves one, **say so** in the trade-off note: *"Recommend creating ADR-0001 for this."*
 
 ## Scoping under a supervisor agent

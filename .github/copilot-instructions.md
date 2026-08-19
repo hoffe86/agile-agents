@@ -75,7 +75,7 @@ agent/                               Marketplace root
 │   │   ├── agents/                  15 *.agent.md (1 supervisor + 4 authors
 │   │   │                            + 7 reviewers + backlog-manager + bootstrapper
 │   │   │                            + capability-scout)
-│   │   ├── skills/                  41 repo-scope skills, incl.
+│   │   ├── skills/                  42 repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
 │   ├── agile-agents-dotnet/         6 skills — C# / .NET
@@ -97,7 +97,7 @@ agent/                               Marketplace root
 │   └── baselines.md                 every tier's numbers, in one place
 ├── .waza.yaml                       Waza config: skill token ratchet + eval paths (ADR 0014)
 ├── docs/
-│   ├── adr/                         Architecture decision records (0001–0014)
+│   ├── adr/                         Architecture decision records (0001–0015)
 │   ├── research/                    Whitepaper + spikes
 │   └── AGENTS-MD-MAPPING.md         Folder→agent mapping for the generator
 ├── AGENTS.md                        Generated — do not hand-edit
@@ -292,16 +292,16 @@ Consequences worth preserving:
   continue. Halting delivery over a metering table is the wrong trade.
 
 ### Vendored skills
-20 of the 61 skills are unmodified copies from
+20 of the 62 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
 them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-41 are hand-written or adopted and are the ones to edit — 38 repo-scope
+42 are hand-written or adopted and are the ones to edit — 39 repo-scope
 (csharp/python-implementation, csharp/python-testing, dotnet/python-startup-discovery,
 development-practices, testing-practices, data-science-practices, data-engineering-practices, code-review-checklist, artifact-coverage,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
 architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
-engineering-judgement,
+engineering-judgement, acceptance-grading,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
 test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standards,
 ado-work-items, github-issues, azure-platform-grounding, deploy-verify,

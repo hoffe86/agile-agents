@@ -1,6 +1,6 @@
 ---
 name: architecture-decision-records
-description: Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format. Captures a single architecturally-significant decision with its context, considered options, decision drivers, chosen option, consequences (positive and negative), and links to related decisions. USE FOR any request to "write an ADR", "document this decision", "capture the rationale for choosing X", or "we picked X over Y — record it". Triggered by "ADR", "decision record", "MADR", "architecture decision".
+description: Author Architecture Decision Records (ADRs) in whichever format the project declares — the `documentation.adr.format` key in solution-profile.yaml selects Nygard (Context / Decision / Consequences / Alternatives considered / References), MADR, a custom house shape, or none. Captures a single architecturally-significant decision with the forces behind it, what was chosen, what becomes true as a result (including the costs), which alternatives were rejected and why, and links to related decisions. USE FOR any request to "write an ADR", "document this decision", "capture the rationale for choosing X", or "we picked X over Y — record it". Triggered by "ADR", "decision record", "MADR", "architecture decision".
 applies_to: all
 ---
 
@@ -31,7 +31,60 @@ For an `in-repo` project:
 - Number: zero-padded 4-digit sequential. Find the next number by listing the directory.
 - One decision per ADR. If you find yourself writing two — split.
 
-## MADR template (use this exactly)
+## Resolve the format before writing
+
+**`solution-profile.yaml: documentation.adr.format` decides the template.** The project has already declared how its decision records are shaped — read it rather than imposing a house style:
+
+| `adr.format` | What to write |
+|---|---|
+| `nygard` | The Nygard template below — *Context → Decision → Consequences*, plus `Alternatives considered` and `References`. |
+| `madr` | The MADR template below. |
+| `custom` | The project has its own shape. **Read the two most recent ADRs in the folder and match them exactly** — headings, metadata block, title line. Impose neither template. |
+| `none` | The project does not keep ADRs. Say so and stop; do not create a folder. |
+
+**When the key is absent**, infer from the existing records — list the ADR folder and match the shape already in use. Only when the folder is empty or missing does `nygard` apply as the default, because it is the smaller commitment and the easier of the two to grow into.
+
+A template that contradicts the project's own records is the failure mode to avoid here: it forks the convention, and the fork drifts.
+
+## Nygard template
+
+*Context → Decision → Consequences*, with two additions: an explicit `Alternatives considered` section, so a rejected option is recorded rather than implied, and `References`, so ADRs form a graph.
+
+```markdown
+# ADR <NNNN> — <what was decided, stated as the answer>
+
+- **Status:** Proposed | Accepted | Rejected | Deprecated | Superseded by ADR <NNNN>
+- **Date:** YYYY-MM
+- **Deciders:** <names / roles (scope of the decision)>
+- **Related:** ADR <NNNN> (<why it relates>), … — optional
+- **Supersedes in part:** ADR <NNNN> (<exactly which part; the rest stands>) — optional
+
+## Context
+
+<2–5 sentences. What question are we answering, what forces are at play, and why does this need deciding *now*? Concrete drivers belong here — not "performance" but "P95 < 200 ms at 500 RPS sustained".>
+
+## Decision
+
+<What we are doing, stated plainly. One or two sentences of justification tied to the forces above. If the decision is conditional or gated on something, say so here.>
+
+## Consequences
+
+<What becomes true because of this — capability gained, cost incurred, constraint accepted. **Negative consequences are mandatory**; if you cannot name one, you have not thought hard enough.>
+
+## Alternatives considered
+
+<Each rejected option, what it was good for, and why it lost. "Rejected as insufficient" and "rejected as wrong" are different outcomes — say which. Note any option kept as a fallback.>
+
+## References
+
+<Related ADRs, design docs, external sources. Link both directions: when this supersedes or amends an earlier ADR, add the forward pointer to that ADR too.>
+```
+
+**Optional sections** may be added where the decision warrants them, placed before `Alternatives considered`: `Verification` (how the decision was proven out), `What was deliberately not changed` (to bound scope), `Not doing yet` (deferred follow-ons). An accepted ADR that later shifts gains an `Amendment (<date>)` section rather than a silent edit.
+
+## MADR template
+
+Use when `adr.format: madr`. Same discipline, different shape — drivers and per-option pros/cons are explicit sections rather than prose.
 
 ```markdown
 # <NNNN>. <Short title in title case>
@@ -46,67 +99,54 @@ Technical Story: <link to issue, PR, or design doc — optional>
 
 ## Context and Problem Statement
 
-<2–5 sentences. What is the question we are answering? What forces are at play? Why does this need a decision *now*?>
+<2–5 sentences. What question are we answering, what forces are at play, why now?>
 
 ## Decision Drivers
 
-- <driver 1, e.g., "must support 10× current load within 12 months">
-- <driver 2, e.g., "team has no Kafka operational experience">
-- <driver 3, e.g., "data residency: EU only">
+- <driver — concrete, e.g. "P95 < 200 ms at 500 RPS sustained">
 
 ## Considered Options
 
 - Option 1: <name>
 - Option 2: <name>
-- Option 3: <name>
 
 ## Decision Outcome
 
-Chosen option: **"<Option N>"**, because <one or two sentences justifying the choice in terms of the drivers above>.
+Chosen option: **"<Option N>"**, because <justification in terms of the drivers>.
 
 ### Positive Consequences
 
 - <consequence>
-- <consequence>
 
 ### Negative Consequences
 
-- <consequence — be honest, every choice has them>
-- <consequence>
+- <consequence — mandatory, every choice has them>
 
 ## Pros and Cons of the Options
 
 ### Option 1: <name>
 <one-paragraph description>
 - 👍 Good, because <argument>
-- 👍 Good, because <argument>
 - 👎 Bad, because <argument>
-- 👎 Bad, because <argument>
-
-### Option 2: <name>
-<…>
-
-### Option 3: <name>
-<…>
 
 ## Links
 
 - [Related ADR](./NNNN-….md)
-- [Design doc](../architecture/<topic>/<topic>-design.md)
 - [External reference](https://…)
 ```
 
 ## Authoring workflow
 
 1. **Confirm a decision is actually needed.** If the user is just exploring, don't write an ADR yet — write a design note.
-2. **Get the next number** by listing the ADR folder resolved above (or start at `0001`).
-3. **Title is the question framed as a statement** of the answer — "Use Cosmos DB for the event store" not "Cosmos DB or PostgreSQL?". The question goes in *Context*.
-4. **Status starts as `proposed`** unless the user has already decided. Move to `accepted` when the human signs off. **Never silently flip a `proposed` ADR to `accepted`.**
-5. **At least 2 considered options.** "We chose X" without alternatives is not a decision, it's a memo. If there were no alternatives, say so explicitly in *Context*.
-6. **Decision drivers are concrete and ranked.** Not "performance" — but "P95 < 200 ms under 500 RPS sustained".
-7. **Negative consequences are mandatory.** If you can't think of one, you haven't thought hard enough.
-8. **No code in ADRs.** ADRs explain *why*; code lives in the repo. A 3-line snippet to disambiguate a choice is OK; a class definition is not.
-9. **Link to related ADRs and the design doc** — ADRs are a graph, not a list.
+2. **Resolve the format** from `documentation.adr.format` (or from the existing records) before drafting, so the shape is right the first time.
+3. **Get the next number** by listing the ADR folder resolved above (or start at `0001`).
+4. **Title states the answer, not the question** — "Use Cosmos DB for the event store", not "Cosmos DB or PostgreSQL?". Follow the title line of the resolved template exactly (`# ADR 0007 — …` for Nygard, `# 0007. …` for MADR). The question itself goes in *Context*.
+5. **Status starts at proposed** unless the user has already decided. Move to accepted when the human signs off, matching the casing the resolved template uses. **Never silently flip a proposed ADR to accepted.**
+6. **At least 2 considered options.** "We chose X" without alternatives is not a decision, it's a memo. If there were no alternatives, say so explicitly in *Context*.
+7. **Decision drivers are concrete and ranked** — not "performance" but "P95 < 200 ms under 500 RPS sustained". They live in *Context* under Nygard, in *Decision Drivers* under MADR.
+8. **Negative consequences are mandatory.** If you can't think of one, you haven't thought hard enough.
+9. **No code in ADRs.** ADRs explain *why*; code lives in the repo. A 3-line snippet to disambiguate a choice is OK; a class definition is not.
+10. **Link to related ADRs and the design doc** — ADRs are a graph, not a list.
 
 ## Lifecycle
 
@@ -114,7 +154,9 @@ Chosen option: **"<Option N>"**, because <one or two sentences justifying the ch
 - `accepted` — decision made; this is now the rule.
 - `rejected` — considered and explicitly turned down. **Keep the file** — it's valuable history.
 - `deprecated` — no longer applies (e.g., the system was retired). Don't delete.
-- `superseded by [ADR-NNNN]` — replaced by a newer decision. Both files live on; the old one points forward, the new one points back via *Links*.
+- `superseded` — replaced by a newer decision. Both files live on; the old one points forward, the new one points back via *References* (Nygard) or *Links* (MADR). Record it in **both** directions — a one-way supersede leaves the old ADR looking current.
+
+Match the casing of the resolved template (`Accepted` under Nygard here, `accepted` under MADR).
 
 **Never delete an ADR.** If a decision was wrong, supersede it with a new ADR explaining what changed.
 
@@ -123,7 +165,7 @@ Chosen option: **"<Option N>"**, because <one or two sentences justifying the ch
 ```
 ADR(S) WRITTEN
 - New ADRs: <list of NNNN-title.md>
-- Status: proposed (awaiting human acceptance)
+- Status: Proposed (awaiting human acceptance)
 - Linked from: <design doc, if any>
 - Recommended next step: human review → flip to accepted, then architect links into the design doc
 ```
