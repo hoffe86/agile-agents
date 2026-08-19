@@ -44,7 +44,66 @@ python eval/deepeval/report_skill_usage.py eval/pipeline/runs \
 ([`metrics/local_model.py`](metrics/local_model.py)), because opting out after import is
 too late. Set it in CI as well — belt and braces.
 
+## Outcome grading
+
+`metrics/acceptance.py` replaces the `score-judge.{sh,ps1}` twin pair with one Python
+implementation, exposed two ways:
+
+```bash
+# drop-in scorer — same exit contract as score-judge: 0 resolved, 2 partial, 1 failed
+python eval/deepeval/score_workspace.py <workspace> <acceptance.md> --isolated-home <dir>
+
+# contract check, no CLI call and no network
+python eval/deepeval/score_workspace.py --self-test
+```
+
+`AcceptanceMetric` is a real DeepEval `BaseMetric` (checked with `issubclass`, because
+DeepEval type-checks with `isinstance` and duck typing is rejected), so it composes with
+`evaluate()` and the rest of the framework.
+
+**Parity is tested, not asserted.** The verdict parser is exercised against the exact cases
+`score-judge.sh --self-test` uses — last verdict wins, case-insensitive, unparseable is
+FAILED so an unclear judge never inflates a score. Verified end-to-end as well: on the same
+task-04 workspace, the shell judge and this metric both return `RESOLVED`.
+
+Two deliberate differences from the shell judge:
+
+- **It verifies instead of reading a dump.** The old prompt inlined file contents and told
+  the grader to decide "strictly from those artifacts", so a truncated listing became
+  evidence of absence — a task was once failed for missing tests that existed and passed.
+  Here the judge runs *in* the workspace with tools; the file listing is an orientation
+  index, explicitly labelled as not the workspace, and build output is pruned.
+- **Doctrine lives in the `acceptance-grading` skill**, not in the prompt. The prompt is a
+  shim that loads it. Restating grading rules in an eval-private template is the same
+  fork-then-drift that caused the MADR mismatch.
+
+`UNVERIFIED` is surfaced separately and never folded into the score: it means the harness
+failed to show the judge evidence, which understates the agent.
+
 ## Findings so far
+
+**Task-04 did *not* bypass its skill — until isolation was switched on.** The two
+contaminated runs invoked `architecture-decision-records`; the two isolated runs did not.
+The likely mechanism is that contaminated runs loaded the *installed* `agile-agents-core
+v0.14.0` agent while isolated runs load the working tree at `v0.16.0` — which is exactly
+what isolation exists to reveal. Two runs either side is a signal to investigate, not a
+conclusion.
+
+**The eval has been rewarding skill bypass.** Correlating skill invocation with output
+shape shows it cleanly:
+
+| Run | Skill invoked | ADR shape produced | Judge |
+|---|---|---|---|
+| contaminated ×2 | yes (v0.14.0 skill → MADR) | `Context and Problem Statement / Decision Drivers / …` | partial |
+| isolated ×2 | no | `Status / Context / Decision / Consequences / Alternatives / Related decisions` | resolved |
+
+Task-04's criterion 2 demands "all six MADR sections in order: Status, Context, Decision,
+Consequences, Alternatives, Related decisions" — a list that is neither upstream MADR nor
+this repo's Nygard house style. The runs that consulted a skill produced something the
+criterion rejected; the runs that consulted nothing produced what the criterion happened to
+describe. **A criterion that restates a convention it does not own can invert the incentive
+it was meant to create.** This is the concrete case behind the `acceptance-grading` rule
+that the skill wins and the judge reports the drift as an eval defect.
 
 **Task-04 did *not* bypass its skill.** Both real runs invoked
 `architecture-decision-records`. The earlier skill-bypass hypothesis rested on three

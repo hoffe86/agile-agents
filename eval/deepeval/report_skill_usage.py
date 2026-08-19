@@ -16,7 +16,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from _console import use_utf8_stdio  # noqa: E402
 from adapters.copilot_trace import parse_log, verify_schema  # noqa: E402
+
+use_utf8_stdio()
 
 
 def main() -> int:
@@ -28,7 +31,16 @@ def main() -> int:
     args = ap.parse_args()
 
     root = Path(args.path)
-    logs = [root] if root.is_file() else sorted(root.rglob("*.log"))
+    if root.is_file():
+        logs = [root]
+    else:
+        # The isolated config root lives under the run directory and keeps its own CLI
+        # process logs. Those are not session transcripts, and scanning them raises a
+        # spurious schema-drift alarm that masks the real result.
+        logs = sorted(
+            p for p in root.rglob("*.log")
+            if ".copilot-home" not in p.parts and ".copilot" not in p.parts
+        )
     if not logs:
         print(f"no logs found under {root}")
         return 1
