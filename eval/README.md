@@ -117,6 +117,27 @@ For each task the harness:
    - **failed** — nothing meaningful produced or build broken
 5. Appends the run to `baselines.md`.
 
+## Choosing a scorer
+
+A task with no deterministic `score.ps1` / `score.sh` is graded by an LLM judge. Which one
+is selected by `--scorer` / `-Scorer` (or `EVAL_SCORER`):
+
+| Value | Judge | Behaviour |
+|---|---|---|
+| `shell` (default) | `score-judge.{ps1,sh}` | Reads an inlined artifact dump. Loads no skills. |
+| `deepeval` | `eval/deepeval` | Runs **in** the workspace with tools, and loads the `acceptance-grading` skill — so it verifies rather than infers. |
+| `both` | both | Runs each and records whether they agree. Two gradings per task. |
+
+All three share the same exit contract (`0` resolved / `2` partial / `1` failed), so the
+choice cannot silently change what a status means.
+
+`both` is how the migration is evidenced rather than asserted. While comparing, the **shell
+judge stays authoritative** — a disagreement must not quietly move the headline score during
+the very run that is measuring disagreement. Agreement is written to `summary.json` as
+`scorer_comparison` (per task) and `scorer_agreement_pct`, and every disagreement is named
+individually in the console output, because an aggregate rate hides the one task worth
+looking at.
+
 ## Isolation — why a run needs a token
 
 Runs execute against an **isolated Copilot configuration root** (`runs/<run-id>/.copilot-home`).
@@ -151,6 +172,7 @@ independent measurement, and the run **exits 2** if they match. Both are recorde
 numbers. The banner and `summary.json` both record which mode ran (`isolated`, `mcp_servers`),
 because a score means something different in each.
 
+## How to run
 
 ### PowerShell (Windows / cross-platform PowerShell 7+)
 
@@ -279,20 +301,26 @@ can mirror internally.
 After a successful `dev-lead` run the harness scores the produced workspace against the task's
 `acceptance.md` and maps the result to `resolved` / `partial` / `failed` (exit `0` / `2` / else):
 
-1. **Default — LLM judge.** [`score-judge.ps1`](score-judge.ps1) / [`score-judge.sh`](score-judge.sh)
-   collect the files the agent produced (excluding the seeded `solution-profile.yaml`), fill the
-   shared grading prompt in [`references/judge-prompt.md`](references/judge-prompt.md) with the
-   acceptance criteria + those artifacts, and ask `copilot` for a verdict. An unparseable or empty
-   verdict, or no produced files, scores `failed` — the judge never inflates the score. This
-   automates the rubric's "human reviewer checks the criteria" path for narrative tasks (ADR, PR
-   description, threat model) and source-level checks for code tasks.
+1. **Default — LLM judge.** Two are available; see *Choosing a scorer* above.
+   - `shell` (current default): [`score-judge.ps1`](pipeline/score-judge.ps1) /
+     [`score-judge.sh`](pipeline/score-judge.sh) collect the files the agent produced
+     (excluding the seeded `solution-profile.yaml`), fill the grading prompt in
+     [`references/judge-prompt.md`](pipeline/references/judge-prompt.md) with the acceptance
+     criteria + those artifacts, and ask `copilot` for a verdict.
+   - `deepeval`: [`score_workspace.py`](deepeval/score_workspace.py) instead runs the judge
+     **in** the workspace with tools and loads the `acceptance-grading` skill, so a criterion
+     about behaviour is decided by running it rather than by reading a dump of the source.
+
+   Either way an unparseable or empty verdict, or no produced files, scores `failed` — the
+   judge never inflates the score.
 2. **Override — deterministic per-task scorer.** Drop a `score.ps1` (pwsh) or `score.sh` (bash) in
-   the task folder and it takes precedence over the judge. Use this when acceptance needs a real
+   the task folder and it takes precedence over both judges. Use this when acceptance needs a real
    build/test rather than a judgement (e.g. `dotnet build` / `dotnet test`, `bicep build`). It runs
    in the task workspace and uses the same `0 / 2 / else` exit-code contract.
 
 The judge needs `copilot` installed and authenticated, same as the run itself. Self-check the
-verdict parser with `score-judge.ps1 -SelfTest` / `score-judge.sh --self-test` (no copilot call).
+verdict parser with `pipeline/score-judge.ps1 -SelfTest`, `pipeline/score-judge.sh --self-test`,
+or `python deepeval/score_workspace.py --self-test` (none call copilot).
 
 ## Status & limitations (be honest)
 

@@ -67,7 +67,17 @@ param(
 
     # The model the judge runs on. Must differ from the agent's: a model grading its own
     # output is not an independent measurement.
-    [string]$JudgeModel = $(if ($env:JUDGE_MODEL) { $env:JUDGE_MODEL } else { 'gpt-5.6-sol' })
+    [string]$JudgeModel = $(if ($env:JUDGE_MODEL) { $env:JUDGE_MODEL } else { 'gpt-5.6-sol' }),
+
+    # Which default judge grades a task that has no deterministic score.ps1/score.sh.
+    #   shell    — score-judge.{ps1,sh}: reads an inlined artifact dump, loads no skills.
+    #   deepeval — eval/deepeval: runs in the workspace with tools and loads the
+    #              `acceptance-grading` skill, so it verifies rather than infers.
+    #   both     — run each and record whether they agree. Costs two gradings per task;
+    #              this is how the cutover is evidenced rather than asserted.
+    # The exit contract (0 resolved / 2 partial / 1 failed) is identical for all of them.
+    [ValidateSet('shell', 'deepeval', 'both')]
+    [string]$Scorer = $(if ($env:EVAL_SCORER) { $env:EVAL_SCORER } else { 'shell' })
 )
 
 $ErrorActionPreference = 'Stop'
@@ -280,6 +290,7 @@ if ($isolate -and -not $DryRun) {
 Write-Host "Run ID:    $runId"
 Write-Host "Suite:     $Suite"
 Write-Host "Models:    agent=$AgentModel  judge=$JudgeModel"
+Write-Host "Scorer:    $Scorer$(if ($Scorer -eq 'both') { ' (shell authoritative; agreement recorded)' })"
 Write-Host "Tasks:     $($tasks.Count) (filter: '$TaskFilter')"
 Write-Host "Output:    $runDir"
 if ($DryRun) {
@@ -293,6 +304,7 @@ Write-Host ''
 
 # --- Execute each task --------------------------------------------------------
 $results = @()
+$scorerComparison = @()
 foreach ($task in $tasks) {
     $logPath = Join-Path $runDir "$($task.Id).log"
     Write-Host "  → $($task.Id) ... " -NoNewline
@@ -355,13 +367,44 @@ foreach ($task in $tasks) {
                 $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
             }
             else {
-                # The judge invokes the CLI too, so it runs under the same isolation —
-                # a judge loading a different plugin set than the agent would grade
-                # against conventions the agent never saw.
-                Invoke-WithIsolation {
-                    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance -JudgeModel $JudgeModel *>> $logPath
+                # Both judges invoke the CLI, so both run under the same isolation — a
+                # judge loading a different plugin set than the agent would grade against
+                # conventions the agent never saw.
+                $shellStatus = $null
+                $deepStatus  = $null
+
+                if ($Scorer -in @('shell', 'both')) {
+                    Invoke-WithIsolation {
+                        & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance -JudgeModel $JudgeModel *>> $logPath
+                    }
+                    $shellStatus = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
                 }
-                $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
+
+                if ($Scorer -in @('deepeval', 'both')) {
+                    $scoreWorkspace = Join-Path $repoRoot 'eval/deepeval/score_workspace.py'
+                    $deepArgs = @($scoreWorkspace, $ws, $acceptance, '--model', $JudgeModel)
+                    if ($isolatedHome) { $deepArgs += @('--isolated-home', $isolatedHome) }
+                    # No Invoke-WithIsolation here: the scorer takes the isolated home as an
+                    # argument and sets it on the child itself, so the redirect cannot leak.
+                    & python @deepArgs *>> $logPath
+                    $deepStatus = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
+                }
+
+                if ($Scorer -eq 'both') {
+                    $agree = $shellStatus -eq $deepStatus
+                    $line = "[scorer] shell=$shellStatus deepeval=$deepStatus agree=$agree"
+                    $line | Add-Content -Path $logPath -Encoding utf8
+                    Write-Host "     $line"
+                    $scorerComparison += [ordered]@{
+                        task = $task.Id; shell = $shellStatus; deepeval = $deepStatus; agree = $agree
+                    }
+                    # The shell judge stays authoritative while comparing, so a disagreement
+                    # cannot silently move the headline score during the evaluation itself.
+                    $status = $shellStatus
+                }
+                else {
+                    $status = if ($Scorer -eq 'deepeval') { $deepStatus } else { $shellStatus }
+                }
             }
         }
     }
@@ -391,6 +434,7 @@ $summary = [ordered]@{
     failed       = $failed
     skipped      = $skipped
     dry_run      = [bool]$DryRun
+    scorer       = $Scorer
     # Pinned, and recorded: a score is only comparable to another score from the same pair.
     agent_model  = $AgentModel
     judge_model  = $JudgeModel
@@ -401,9 +445,26 @@ $summary = [ordered]@{
     resolved_pct = $pct
     partial_pct  = if ($total) { [math]::Round(100.0 * $partial / $total, 1) } else { 0 }
     failed_pct   = if ($total) { [math]::Round(100.0 * $failed  / $total, 1) } else { 0 }
+    # Populated only by -Scorer both. This is the evidence the cutover decision rests on:
+    # a per-task record of where the two judges agreed, kept even when they did not.
+    scorer_comparison = $scorerComparison
+    scorer_agreement_pct = if ($scorerComparison.Count) {
+        [math]::Round(100.0 * (@($scorerComparison | Where-Object { $_.agree }).Count) / $scorerComparison.Count, 1)
+    } else { $null }
     tasks        = $results
 }
 $summary | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $runDir 'summary.json') -Encoding utf8
+
+if ($scorerComparison.Count) {
+    $agreed = @($scorerComparison | Where-Object { $_.agree }).Count
+    Write-Host ''
+    Write-Host ("Scorer agreement: {0}/{1} ({2}%)" -f $agreed, $scorerComparison.Count, $summary.scorer_agreement_pct)
+    foreach ($d in $scorerComparison | Where-Object { -not $_.agree }) {
+        # Named individually: an aggregate agreement rate hides which task disagreed, and
+        # that task is the whole reason to look.
+        Write-Host ("  DISAGREE  {0}: shell={1} deepeval={2}" -f $d.task, $d.shell, $d.deepeval)
+    }
+}
 
 Write-Host ''
 if ($DryRun) {

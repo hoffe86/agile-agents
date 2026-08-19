@@ -30,6 +30,14 @@ NO_ISOLATION=0
 # not an independent measurement.
 AGENT_MODEL="${AGENT_MODEL:-claude-opus-4.8}"
 JUDGE_MODEL="${JUDGE_MODEL:-gpt-5.6-sol}"
+# Which default judge grades a task with no deterministic score.sh:
+#   shell    - score-judge.sh: reads an inlined artifact dump, loads no skills.
+#   deepeval - eval/deepeval: runs in the workspace with tools and loads the
+#              acceptance-grading skill, so it verifies rather than infers.
+#   both     - run each and record whether they agree. Two gradings per task; this is how
+#              the cutover is evidenced rather than asserted.
+# The exit contract (0 resolved / 2 partial / 1 failed) is identical for all of them.
+EVAL_SCORER="${EVAL_SCORER:-shell}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PLUGIN_DIR="${REPO_ROOT}/plugins/agile-agents-core"
@@ -56,6 +64,7 @@ Options:
   --output-root <path>       Optional. Where to write runs/. Default: ./runs
   --agent-model <name>       Model the agent runs on. Default: claude-opus-4.8.
   --judge-model <name>       Model the judge runs on. Must differ from the agent model.
+  --scorer <shell|deepeval|both>  Default judge. 'both' records agreement. Default: shell.
   --dry-run                  Print the resolved copilot command per task; don't execute.
   --no-isolation             Use your own Copilot config instead of an isolated one.
                              Reinstates plugin shadowing: does NOT measure the working tree.
@@ -74,6 +83,7 @@ while [[ $# -gt 0 ]]; do
         --no-isolation)     NO_ISOLATION=1; shift ;;
         --agent-model)      AGENT_MODEL="$2"; shift 2 ;;
         --judge-model)      JUDGE_MODEL="$2"; shift 2 ;;
+        --scorer)           EVAL_SCORER="$2"; shift 2 ;;
         -h|--help)          usage; exit 0 ;;
         *)                  echo "Unknown arg: $1" >&2; usage; exit 2 ;;
     esac
@@ -93,6 +103,11 @@ if [[ "$DRY_RUN" != "1" ]] && ! command -v copilot >/dev/null 2>&1; then
     echo "ERROR: copilot CLI not found on PATH. Install it, run 'copilot login', or use --dry-run." >&2
     exit 2
 fi
+
+case "$EVAL_SCORER" in
+    shell|deepeval|both) ;;
+    *) echo "ERROR: --scorer must be shell, deepeval or both (got '$EVAL_SCORER')" >&2; exit 2 ;;
+esac
 
 if [[ "$AGENT_MODEL" == "$JUDGE_MODEL" ]]; then
     echo "ERROR: agent and judge models are both '$AGENT_MODEL'. A model grading its own output is not an independent measurement — set --judge-model to a different model." >&2
@@ -228,6 +243,7 @@ fi
 echo "Run ID:    $RUN_ID"
 echo "Suite:     $SUITE"
 echo "Models:    agent=$AGENT_MODEL  judge=$JUDGE_MODEL"
+echo "Scorer:    $EVAL_SCORER"
 echo "Tasks:     ${#FILTERED_IDS[@]} (filter: '$TASK_FILTER')"
 echo "Output:    $RUN_DIR"
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -240,6 +256,9 @@ fi
 echo ""
 
 # --- Execute each task -------------------------------------------------------
+SCORER_ROWS=()
+SCORER_AGREED=0
+SCORER_TOTAL=0
 RESOLVED=0; PARTIAL=0; FAILED=0; SKIPPED=0
 TASK_RESULTS_JSON=""
 
@@ -288,12 +307,43 @@ for i in "${!FILTERED_IDS[@]}"; do
             bash "${folder}/score.sh" "$ws" >> "$log" 2>&1 || sc=$?
             case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         else
-            # Default: LLM judge grades the workspace against acceptance.md. It runs under
-            # the same isolation — a judge loading a different plugin set than the agent
+            # Default: LLM judge grades the workspace against acceptance.md. Both judges run
+            # under the same isolation — one loading a different plugin set than the agent
             # would grade against conventions the agent never saw.
-            sc=0
-            JUDGE_MODEL="$JUDGE_MODEL" run_isolated bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
-            case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
+            shell_status=""
+            deep_status=""
+
+            if [[ "$EVAL_SCORER" == "shell" || "$EVAL_SCORER" == "both" ]]; then
+                sc=0
+                JUDGE_MODEL="$JUDGE_MODEL" run_isolated bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
+                case "$sc" in 0) shell_status="resolved" ;; 2) shell_status="partial" ;; *) shell_status="failed" ;; esac
+            fi
+
+            if [[ "$EVAL_SCORER" == "deepeval" || "$EVAL_SCORER" == "both" ]]; then
+                sc=0
+                deep_args=("${REPO_ROOT}/eval/deepeval/score_workspace.py" "$ws" "${folder}/acceptance.md" --model "$JUDGE_MODEL")
+                # No run_isolated here: the scorer takes the isolated home as an argument and
+                # sets it on the child itself, so the redirect cannot leak.
+                [[ -n "$ISOLATED_HOME" ]] && deep_args+=(--isolated-home "$ISOLATED_HOME")
+                python "${deep_args[@]}" >> "$log" 2>&1 || sc=$?
+                case "$sc" in 0) deep_status="resolved" ;; 2) deep_status="partial" ;; *) deep_status="failed" ;; esac
+            fi
+
+            if [[ "$EVAL_SCORER" == "both" ]]; then
+                if [[ "$shell_status" == "$deep_status" ]]; then agree="true"; else agree="false"; fi
+                echo "[scorer] shell=${shell_status} deepeval=${deep_status} agree=${agree}" >> "$log"
+                echo "     [scorer] shell=${shell_status} deepeval=${deep_status} agree=${agree}"
+                SCORER_ROWS+=("    {\"task\": \"${id}\", \"shell\": \"${shell_status}\", \"deepeval\": \"${deep_status}\", \"agree\": ${agree}}")
+                [[ "$agree" == "true" ]] && SCORER_AGREED=$((SCORER_AGREED+1))
+                SCORER_TOTAL=$((SCORER_TOTAL+1))
+                # The shell judge stays authoritative while comparing, so a disagreement
+                # cannot silently move the headline score during the evaluation itself.
+                status="$shell_status"
+            elif [[ "$EVAL_SCORER" == "deepeval" ]]; then
+                status="$deep_status"
+            else
+                status="$shell_status"
+            fi
         fi
     fi
 
@@ -329,6 +379,7 @@ cat > "${RUN_DIR}/summary.json" <<EOF
   "failed": ${FAILED},
   "skipped": ${SKIPPED},
   "dry_run": $([[ "$DRY_RUN" == "1" ]] && echo true || echo false),
+  "scorer": "${EVAL_SCORER}",
   "agent_model": "${AGENT_MODEL}",
   "judge_model": "${JUDGE_MODEL}",
   "isolated": $([[ -n "$ISOLATED_HOME" ]] && echo true || echo false),
@@ -336,11 +387,25 @@ cat > "${RUN_DIR}/summary.json" <<EOF
   "resolved_pct": ${PCT},
   "partial_pct": ${PARTIAL_PCT},
   "failed_pct": ${FAILED_PCT},
+  "scorer_comparison": [
+$(IFS=$',\n'; echo "${SCORER_ROWS[*]}")
+  ],
+  "scorer_agreement_pct": $([[ $SCORER_TOTAL -gt 0 ]] && awk "BEGIN{printf \"%.1f\", 100*${SCORER_AGREED}/${SCORER_TOTAL}}" || echo null),
   "tasks": [
 ${TASK_RESULTS_JSON}
   ]
 }
 EOF
+
+if [[ $SCORER_TOTAL -gt 0 ]]; then
+    echo ""
+    echo "Scorer agreement: ${SCORER_AGREED}/${SCORER_TOTAL} ($(awk "BEGIN{printf \"%.1f\", 100*${SCORER_AGREED}/${SCORER_TOTAL}}")%)"
+    # Named individually: an aggregate agreement rate hides which task disagreed, and that
+    # task is the whole reason to look.
+    for row in "${SCORER_ROWS[@]}"; do
+        [[ "$row" == *'"agree": false'* ]] && echo "  DISAGREE  ${row}"
+    done
+fi
 
 echo ""
 if [[ "$DRY_RUN" == "1" ]]; then
