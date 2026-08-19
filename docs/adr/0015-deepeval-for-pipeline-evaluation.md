@@ -113,6 +113,45 @@ pointed at a blackhole. The proxy was itself falsified first (a control request 
   including those in an AI Foundry resource; Foundry's wider model catalogue (Azure AI Inference)
   would need the same thin custom-model shim the probe already exercised.
 
+### The cutover, and why its stated criterion had to change (2026-08-19)
+
+This ADR gated adoption on the spike, then on the two harnesses agreeing before cutting over.
+The spike passed and the isolation precondition was resolved, so both judges were run over all
+10 custom tasks with `--scorer both`.
+
+**They agreed on 3 of 10.** Taken at face value that reads as a failed cutover test. It is not,
+because the criterion was wrong: *agreement* presumes the shell judge is a valid reference, and
+the disagreements showed it is not.
+
+On 6 of the 7 disagreements the shell judge was demonstrably incorrect, and the causes were
+structural rather than matters of judgement:
+
+- **Build output floods the size budget.** Tasks 01, 07 and 09 had 497/515, 263/279 and 167/179
+  files under `bin`/`obj`. The judge exhausted its budget before reaching `src/` and reported
+  source files "missing" that were present — task-01 was failed for having no `Program.cs`.
+- **`.github/` is excluded wholesale**, to skip the seeded `solution-profile.yaml`. Task-06's
+  entire deliverable is `.github/workflows/deploy-prod.yml`, so the judge saw zero files and
+  reported "no gradable files". **That task could never have passed.**
+- **Its own truncation is read as the agent's absence.** On task-08 the judge wrote "Truncation
+  prevents verifying" and then marked those criteria FAIL.
+- **It guesses where it cannot verify.** On task-03 it passed a Bicep template as "plausibly
+  valid"; the verifying judge reported `UNVERIFIED` because the Bicep CLI is absent.
+- **It misses detail present in the artifact.** On task-05 it passed a criterion that forbids
+  method signatures in a section that contains `CancelAsync(Guid orderId)`.
+
+All four of the shell judge's `failed` verdicts were its own collection defects. Under the
+verifying judge the suite has zero failures — the headline counts are close (3 vs 2 resolved)
+but the shell numbers describe the harness rather than the agent.
+
+The criterion actually applied was therefore **"the new judge is demonstrably more accurate on
+every disagreement"**, evidenced task by task in `eval/baselines.md`. `--scorer deepeval` is the
+default from commit `703e384`; `shell` is retained only for reproducing pre-cutover numbers.
+
+Two things this did **not** settle. The twins are not yet deleted — `score-judge.{ps1,sh}` still
+exist to serve `--scorer shell`. And the environment is missing toolchains the criteria assume:
+no Bicep CLI (task-03) and no `actionlint` (task-06), so those criteria return `UNVERIFIED` and
+understate the agent. That is a harness gap, reported rather than folded into a score.
+
 ### The plugin-shadowing defect this work uncovered
 
 While verifying an unrelated skill change, `--plugin-dir` was found **not to override an

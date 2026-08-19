@@ -70,14 +70,18 @@ param(
     [string]$JudgeModel = $(if ($env:JUDGE_MODEL) { $env:JUDGE_MODEL } else { 'gpt-5.6-sol' }),
 
     # Which default judge grades a task that has no deterministic score.ps1/score.sh.
+    #   deepeval — runs in the workspace with tools and loads the `acceptance-grading`
+    #              skill, so it verifies rather than infers. Default since the 2026-08-19
+    #              A/B (see eval/baselines.md): the two judges agreed on only 3 of 10
+    #              tasks, and on 6 of the 7 disagreements the shell judge was
+    #              demonstrably wrong — all 4 of its `failed` verdicts were its own
+    #              artifact-collection defects rather than agent failures.
     #   shell    — score-judge.{ps1,sh}: reads an inlined artifact dump, loads no skills.
-    #   deepeval — eval/deepeval: runs in the workspace with tools and loads the
-    #              `acceptance-grading` skill, so it verifies rather than infers.
-    #   both     — run each and record whether they agree. Costs two gradings per task;
-    #              this is how the cutover is evidenced rather than asserted.
+    #              Retained for reproducing pre-cutover numbers, not for new measurement.
+    #   both     — run each and record whether they agree.
     # The exit contract (0 resolved / 2 partial / 1 failed) is identical for all of them.
     [ValidateSet('shell', 'deepeval', 'both')]
-    [string]$Scorer = $(if ($env:EVAL_SCORER) { $env:EVAL_SCORER } else { 'shell' })
+    [string]$Scorer = $(if ($env:EVAL_SCORER) { $env:EVAL_SCORER } else { 'deepeval' })
 )
 
 $ErrorActionPreference = 'Stop'

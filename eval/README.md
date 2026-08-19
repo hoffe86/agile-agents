@@ -124,14 +124,20 @@ is selected by `--scorer` / `-Scorer` (or `EVAL_SCORER`):
 
 | Value | Judge | Behaviour |
 |---|---|---|
-| `shell` (default) | `score-judge.{ps1,sh}` | Reads an inlined artifact dump. Loads no skills. |
-| `deepeval` | `eval/deepeval` | Runs **in** the workspace with tools, and loads the `acceptance-grading` skill — so it verifies rather than infers. |
+| `deepeval` (default) | `eval/deepeval` | Runs **in** the workspace with tools, and loads the `acceptance-grading` skill — so it verifies rather than infers. |
+| `shell` | `score-judge.{ps1,sh}` | Reads an inlined artifact dump. Loads no skills. Retained for reproducing pre-cutover numbers, not for new measurement. |
 | `both` | both | Runs each and records whether they agree. Two gradings per task. |
 
 All three share the same exit contract (`0` resolved / `2` partial / `1` failed), so the
 choice cannot silently change what a status means.
 
-`both` is how the migration is evidenced rather than asserted. While comparing, the **shell
+`deepeval` became the default on 2026-08-19 after an A/B over all 10 custom tasks: the judges
+agreed on only 3, and on 6 of the 7 disagreements the shell judge was demonstrably wrong — **all
+four of its `failed` verdicts were its own artifact-collection defects** (build output flooding the
+size budget, `.github/` excluded so a workflow task could never pass, its own truncation reported
+as the agent's absence). The per-task evidence is in [`baselines.md`](baselines.md).
+
+`both` is how that migration was evidenced rather than asserted. While comparing, the **shell
 judge stays authoritative** — a disagreement must not quietly move the headline score during
 the very run that is measuring disagreement. Agreement is written to `summary.json` as
 `scorer_comparison` (per task) and `scorer_agreement_pct`, and every disagreement is named

@@ -6,7 +6,43 @@ automatically; humans may add a `Notes` clarification afterwards.
 | Run ID                              | Date       | Commit SHA | Suite              | Resolved | Partial | Failed | Notes                              |
 |-------------------------------------|------------|------------|--------------------|----------|---------|--------|------------------------------------|
 | `<first run pending>`               | YYYY-MM-DD | `0000000`  | `swe-bench-subset` |   0 / 25 |  0 / 25 | 0 / 25 | Will be filled by first eval run   |
-| `<first run pending>`               | YYYY-MM-DD | `0000000`  | `custom-eval`      |   0 / 10 |  0 / 10 | 0 / 10 | Will be filled by first eval run   |
+| `20260819-180010-custom-eval`       | 2026-08-19 | `703e384`  | `custom-eval`      |   3 / 10 |  3 / 10 | 4 / 10 | Judge A/B (`-Scorer both`), isolated, agent=`claude-opus-4.8` judge=`gpt-5.6-sol`. Shell-judge figures shown; see *Judge cutover* below. |
+
+## Judge cutover — the 2026-08-19 A/B
+
+Everything above this run was scored by the shell judge (`score-judge.{ps1,sh}`) **and is not
+comparable to anything after it**, for two independent reasons: those runs also loaded whichever
+plugin version happened to be installed rather than the working tree, and on an unpinned model.
+
+The A/B ran both judges over all 10 custom tasks. **They agreed on 3.** That is a low number, and
+the reason to act on it is not the disagreement rate itself but what the disagreements were:
+
+| Task | shell | deepeval | Which was right, and why |
+|---|---|---|---|
+| 01 csharp-api | failed | partial | **deepeval.** 497 of 515 workspace files were `bin`/`obj`; the shell judge's budget was exhausted before `src/`, so it reported "no `Program.cs`, no `.csproj`" for files that exist. deepeval ran `dotnet build -warnaserror`, `dotnet test` (2/2), and live HTTP calls, then failed one criterion for a real violation — `GetStatusAsync` added to `IOrderRepository`, which the task forbids. |
+| 03 bicep-waf | resolved | partial | **deepeval, with a caveat.** The shell judge passed criterion 1 as *"plausibly valid"* — a guess. deepeval marked it `UNVERIFIED` because the Bicep CLI is not installed. Honest, but the resulting `partial` understates the agent: the fix is installing the toolchain, not changing the judge. |
+| 05 pr-description | resolved | partial | **deepeval.** Criterion 4 forbids method signatures in `## What`; the description contains `CancelAsync(Guid orderId)`. The shell judge missed it. |
+| 06 gha-oidc | failed | partial | **deepeval.** The shell judge excludes all of `.github/` to skip the seeded profile — and task-06's entire deliverable is `.github/workflows/deploy-prod.yml`. It saw zero files and reported "no gradable files". **It could never have passed this task.** |
+| 07 coverage | failed | partial | **deepeval.** 263 of 279 files were build output. Same flooding as task-01. |
+| 08 threat-model | partial | resolved | **deepeval.** The shell judge wrote *"Truncation prevents verifying"* on two criteria and then marked them FAIL — its own 8000-char truncation read as the agent's absence. deepeval read the whole 11,529-byte document and found all six STRIDE sections and 15 threats. |
+| 09 polly | failed | partial | **deepeval.** 167 of 179 files were build output. |
+
+**All four of the shell judge's `failed` verdicts were its own artifact-collection defects.** Under
+deepeval the suite has zero failures. The headline counts look similar (3 vs 2 resolved) but the
+composition is entirely different, and the shell numbers describe the harness rather than the agent.
+
+ADR 0015 set the cutover criterion as "both harnesses agree". That criterion assumed the shell
+judge was a valid reference, and it is not — agreement with a judge that cannot see the workspace
+would have been the wrong thing to wait for. The criterion actually applied is *the new judge is
+demonstrably more accurate on every disagreement*, which is the table above.
+
+`--scorer deepeval` is the default from commit `703e384` onwards. `--scorer shell` is retained for
+reproducing pre-cutover numbers, not for new measurement.
+
+**Known environment gap:** the Bicep CLI is absent, so IaC build criteria come back `UNVERIFIED`
+and understate the agent (task-03). `actionlint` is likewise absent for task-06. These are harness
+limitations and are reported as such rather than folded silently into a score.
+
 
 ## How to read this
 

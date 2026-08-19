@@ -109,6 +109,23 @@ def test_index_skips_the_seeded_profile(tmp_path):
     assert "solution-profile.yaml" not in index
 
 
+def test_index_shows_github_workflows(tmp_path):
+    """A deliverable under .github must be visible.
+
+    The shell judge excluded .github wholesale to skip the seeded profile, so task-06 —
+    whose entire deliverable is a workflow file — showed zero gradable files and could
+    never pass. Skip the seeded file by name, not the directory around it.
+    """
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "deploy-prod.yml").write_text("on: push")
+    (tmp_path / ".github" / "solution-profile.yaml").write_text("x: 1")
+
+    index = workspace_index(tmp_path)
+    assert ".github/workflows/deploy-prod.yml" in index
+    assert "solution-profile.yaml" not in index
+
+
 def test_index_reports_when_capped(tmp_path):
     for i in range(12):
         (tmp_path / f"f{i}.md").write_text("x")

@@ -57,9 +57,14 @@ VERDICT_EXIT: dict[Verdict, int] = {
 _VERDICT_RE = re.compile(r"VERDICT:\s*(RESOLVED|PARTIAL|FAILED)", re.IGNORECASE)
 
 # Directories that are build output or vendored code. A real run once put 29 of 34 files
-# through the judge as bin/obj, blowing the size budget before it reached tests/.
+# through the judge as bin/obj, and a later one 497 of 515.
+#
+# `.github` is deliberately NOT pruned. The shell judge excluded it wholesale to skip the
+# seeded solution-profile.yaml, which meant a task whose entire deliverable is a workflow
+# file (task-06) showed zero gradable files and could never pass. Skip that one seeded file
+# by name instead of hiding the directory that may hold the answer.
 PRUNED_DIRS = {
-    ".git", ".github", "bin", "obj", "node_modules", ".venv", "venv",
+    ".git", "bin", "obj", "node_modules", ".venv", "venv",
     "__pycache__", "dist", "build", "target", ".pytest_cache", ".copilot-home",
 }
 SKIP_FILES = {"solution-profile.yaml"}

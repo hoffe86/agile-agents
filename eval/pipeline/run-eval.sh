@@ -31,13 +31,16 @@ NO_ISOLATION=0
 AGENT_MODEL="${AGENT_MODEL:-claude-opus-4.8}"
 JUDGE_MODEL="${JUDGE_MODEL:-gpt-5.6-sol}"
 # Which default judge grades a task with no deterministic score.sh:
-#   shell    - score-judge.sh: reads an inlined artifact dump, loads no skills.
-#   deepeval - eval/deepeval: runs in the workspace with tools and loads the
-#              acceptance-grading skill, so it verifies rather than infers.
-#   both     - run each and record whether they agree. Two gradings per task; this is how
-#              the cutover is evidenced rather than asserted.
+#   deepeval - runs in the workspace with tools and loads the acceptance-grading skill, so
+#              it verifies rather than infers. Default since the 2026-08-19 A/B (see
+#              eval/baselines.md): the two judges agreed on only 3 of 10 tasks, and on 6 of
+#              the 7 disagreements the shell judge was demonstrably wrong - all 4 of its
+#              "failed" verdicts were its own artifact-collection defects, not agent failures.
+#   shell    - score-judge.sh: reads an inlined artifact dump, loads no skills. Retained for
+#              reproducing pre-cutover numbers, not for new measurement.
+#   both     - run each and record whether they agree.
 # The exit contract (0 resolved / 2 partial / 1 failed) is identical for all of them.
-EVAL_SCORER="${EVAL_SCORER:-shell}"
+EVAL_SCORER="${EVAL_SCORER:-deepeval}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PLUGIN_DIR="${REPO_ROOT}/plugins/agile-agents-core"
@@ -64,7 +67,7 @@ Options:
   --output-root <path>       Optional. Where to write runs/. Default: ./runs
   --agent-model <name>       Model the agent runs on. Default: claude-opus-4.8.
   --judge-model <name>       Model the judge runs on. Must differ from the agent model.
-  --scorer <shell|deepeval|both>  Default judge. 'both' records agreement. Default: shell.
+  --scorer <shell|deepeval|both>  Default judge. 'both' records agreement. Default: deepeval.
   --dry-run                  Print the resolved copilot command per task; don't execute.
   --no-isolation             Use your own Copilot config instead of an isolated one.
                              Reinstates plugin shadowing: does NOT measure the working tree.
