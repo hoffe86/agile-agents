@@ -106,10 +106,10 @@ issue or a wrong design decision dwarfs the per-call price difference.
 
 ## References
 
-- `agents/dev-lead.agent.md` line 27
+- `plugins/agile-agents-core/agents/dev-lead.agent.md` (`model_tier:` frontmatter)
   (`model_tier: light` with the orchestrator-vs-specialist rationale
   inline)
-- `solution-profile.yaml` lines 134–143
+- `solution-profile.yaml` → `ai_copilot.approved_models:` block
   (`ai_copilot.approved_models`, `responsible_ai_tier`)
 - `docs/research/autonomous-coding-agents-2026.md` §6 row H4; Stream E
   "Cost Economics", §21 (Shopify mid-tier fine-tune, 2.2× faster + 68%

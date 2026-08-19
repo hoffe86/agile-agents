@@ -139,6 +139,6 @@ Concretely:
 - `plugins/agile-agents-core/skills/development-practices/SKILL.md`
 - `plugins/agile-agents-core/skills/testing-practices/SKILL.md` (§2 — the asymmetry rule)
 - `plugins/agile-agents-core/agents/dev-lead.agent.md` (Stage 6 gate; renumbered stage table)
-- `plugins/agile-agents-core/agents/test-review.agent.md` (independent judgement on author-written tests)
+- `plugins/agile-agents-core/agents/test-reviewer.agent.md` (independent judgement on author-written tests) — created here as `test-review.agent.md`; renamed by [ADR 0011](0011-reviewer-agent-naming.md)
 - `plugins/agile-agents-core/skills/test-bar-gate/SKILL.md` (retry routing)
 - ADR 0003 (gate placement — unchanged), ADR 0006 (event schema `agent` enum), ADR 0007 (`model_tier` roster)

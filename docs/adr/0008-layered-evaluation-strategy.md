@@ -4,6 +4,7 @@
 - **Date:** 2026-06
 - **Deciders:** eval harness hardening (follow-on to ADR 0002 self-benchmarking composition)
 - **Related:** ADR 0002 (self-benchmarking harness), ADR 0003 (test-bar gate), ADR 0004 (cost envelope), ADR 0006 (run-event-log schema)
+- **Extended by:** [ADR 0014](0014-skill-evaluation-with-waza.md) (adds an S-layer for skills *beside* this pyramid — it evaluates a different unit, so it is not a fourth tier), [ADR 0015](0015-deepeval-for-pipeline-evaluation.md) (replaces the L2 implementation with DeepEval; the layering below is unchanged)
 
 ## Context
 
@@ -104,4 +105,4 @@ integration checkpoint, run manually or on demand, never a per-PR gate.
 - `eval/pipeline/trajectory/check-trajectory.py`, `eval/pipeline/trajectory/README.md`
 - `.github/workflows/eval-pipeline-trajectory.yml` (L0, gating) and `.github/workflows/eval-pipeline-outcome.yml` (L2, manual)
 - ADR 0002 (self-benchmarking composition), ADR 0003 (test-bar gate), ADR 0004 (cost envelope), ADR 0006 (run-event-log schema)
-- `skills/run-event-log/references/event-schema.json`
+- `plugins/agile-agents-core/skills/run-event-log/references/event-schema.json`

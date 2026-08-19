@@ -5,6 +5,7 @@
 - **Deciders:** Wave 1+2 implementation of the autonomous-coding-agents improvement plan (H3)
 - **Related research:** `docs/research/autonomous-coding-agents-2026.md` §6 (row H3); Stream A §13.3; Stream E §17, §22
 - **Note (2026-08):** stage numbers below are the ones in force when this ADR was accepted. The pipeline has since been renumbered sequentially (the fractional 1.5/1.6/1.7/2.5/4.5 are gone), and ADR 0009 later merged the Coding and Testing stages into a single Implement stage, shifting everything after it down by one. The decision is unchanged — the gate still sits between implementation and review. Original → today: 1.5→2, 1.6→3, 1.7→4, 2.5→5, 3+4→6 (Implement, code + tests), 4.5→7 (this gate), 5→8 (Review), 6→9 (Done).
+- **UNRESOLVED (2026-08-19):** the retry policy below (**2 retries**, abort on the 3rd) **does not match the implementation**. `plugins/agile-agents-core/skills/test-bar-gate/SKILL.md` currently allows the author to be re-engaged **once**, then halts and asks the user on the second failure. `run.abort` / `test_bar_unrecoverable` still exist in the codebase. ADR 0009 superseded only this ADR's *stage numbering* and explicitly left the gate decision standing, so the retry count changed without a recorded decision. **Either this ADR or the skill must move — this note is a flag, not a resolution.**
 
 ## Context
 
@@ -19,7 +20,7 @@ Cognition's autofix loop (Stream E §17) and Stripe's deterministic graders
 expensive judgement steps. We want the same shape.
 
 Three placement options exist within our stage table
-(`agents/dev-lead.agent.md` Stage 0–6):
+(`plugins/agile-agents-core/agents/dev-lead.agent.md` Stage 0–6):
 
 - **Before Stage 4 (Test):** between Coding and Testing.
 - **Between Stage 4 (Test) and Stage 5 (Review):** after the testing agent
@@ -89,9 +90,9 @@ hand the persistent failure to a human.
 
 ## References
 
-- `agents/dev-lead.agent.md` (Stage 4→5 boundary;
+- `plugins/agile-agents-core/agents/dev-lead.agent.md` (Stage 4→5 boundary;
   retry table; halt-on-3rd-fail policy)
-- `solution-profile.yaml` lines 159–193
+- `solution-profile.yaml` → `quality_gates.test_bar:` block
   (`quality_gates.test_bar` block)
 - `skills/test-bar-gate/` (skill implementation,
   per-stack `references/commands.yaml` palette)

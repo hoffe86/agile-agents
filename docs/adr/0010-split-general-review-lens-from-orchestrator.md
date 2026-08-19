@@ -144,8 +144,8 @@ exists to produce.
 
 ## References
 
-- `plugins/agile-agents-core/agents/code-review.agent.md` (the extracted lens)
-- `plugins/agile-agents-core/agents/review.agent.md` (pure orchestrator; triage + merge rules)
+- `plugins/agile-agents-core/agents/code-reviewer.agent.md` (the extracted lens) — created here as `code-review.agent.md`; renamed by [ADR 0011](0011-reviewer-agent-naming.md)
+- `plugins/agile-agents-core/agents/review-lead.agent.md` (pure orchestrator; triage + merge rules) — created here as `review.agent.md`; renamed by [ADR 0011](0011-reviewer-agent-naming.md)
 - `plugins/agile-agents-core/skills/code-review/SKILL.md` (scope boundary table)
 - `plugins/agile-agents-core/skills/read-repo-context/SKILL.md` §3 (blanket load removed)
 - ADR 0009 (the opposite decision, and why it does not generalise), ADR 0007 (`model_tier`)

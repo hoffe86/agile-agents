@@ -27,7 +27,7 @@ envelope catches.
 ## Decision
 
 A new top-level `cost_envelope` block in
-`solution-profile.yaml` (lines 206–219), distinct from
+`solution-profile.yaml` (the `cost_envelope:` key), distinct from
 `operational.cost_band_eur_monthly`. Three orthogonal hard caps are
 enforced per run:
 
@@ -38,12 +38,12 @@ enforced per run:
 | `max_minutes_per_run` | 60 | Stuck loops where token spend stays low |
 
 `tier: small | medium | large` selects a default palette per
-`coding/skills/cost-budget/references/tier-defaults.md` (small ≈ $5,
+`plugins/agile-agents-core/skills/cost-budget/references/tier-defaults.md` (small ≈ $5,
 medium ≈ $25, large ≈ $100). Per-field overrides win over tier defaults.
 
 **`stop_on_breach: true` is the default.** On a hard breach (≥ 10% over any
 cap), the dev-lead writes the cost-stop report
-(`coding/skills/cost-budget/references/cost-stop-report.md`), emits
+(`plugins/agile-agents-core/skills/cost-budget/references/cost-stop-report.md`), emits
 `run.abort` with `gate=cost`, and stops. The user must approve the overrun
 or split scope into a follow-up — there is **no auto-retry** at the cost
 gate.
@@ -105,7 +105,7 @@ be unimplementable as written and were replaced:
 - **`sum-costs.sh` is gone.** It summed `cost_usd` fields that agents were
   asked to emit - but an agent cannot observe its own token consumption, so
   those fields were never populated and the gate silently reported $0.00 and
-  passed. Replaced by `skills/cost-budget/scripts/collect-usage.py`, which
+  passed. Replaced by `plugins/agile-agents-core/skills/cost-budget/scripts/collect-usage.py`, which
   reads the runtime's own usage store and attributes it to phases by
   timestamp window. Nothing is self-reported.
 - **The USD caps are inert by default.** The runtime meters in AIU, and cache
@@ -120,12 +120,12 @@ enforceable.
 
 ## References
 
-- `solution-profile.yaml` lines 206–219 (`cost_envelope`)
+- `solution-profile.yaml` → `cost_envelope:` key
   and 103–106 (`operational.cost_band_eur_monthly` — the *steady-state app*
   band, intentionally distinct)
-- `agents/dev-lead.agent.md` (Stage 0 envelope
+- `plugins/agile-agents-core/agents/dev-lead.agent.md` (Stage 0 envelope
   load, per-stage checkpoint, cost-breach handling)
-- `skills/cost-budget/` (skill, tier-defaults
+- `plugins/agile-agents-core/skills/cost-budget/` (skill, tier-defaults
   palette, cost-stop report template)
 - `docs/research/autonomous-coding-agents-2026.md` §6 row H4; Stream E
   "Cost Economics"
