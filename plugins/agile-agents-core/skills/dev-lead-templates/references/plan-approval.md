@@ -86,7 +86,7 @@ still cheap to reverse (`engineering-judgement` §6).
 - Testing — <skip / run + 1-line reason>
 - Review — always run
 
-**Stop conditions during autonomous run:** ambiguity, gate failure after one retry,
+**Stop conditions during autonomous run:** ambiguity, gate failure after its retry budget,
 scope change required, destructive action, missing secret, tracker-write failure,
 review verdict ❌ Block.
 

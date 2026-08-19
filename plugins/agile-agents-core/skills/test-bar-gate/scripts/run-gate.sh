@@ -166,7 +166,7 @@ failure_report() {
   [[ -n "$reason" ]] && printf -- '- **Reason:** %s\n' "$reason"
   printf -- '- **Working directory:** %s\n\n' "$(pwd)"
   printf '### stderr (last 30 lines)\n\n```text\n%s\n```\n\n' "$tail"
-  printf '### Suggested next action\n\nReturn to `coding` (or `infrastructure` when the diff is IaC-only) with this report and one corrective retry.\n'
+  printf '### Suggested next action\n\nReturn to `coding` (or `infrastructure` when the diff is IaC-only) with this report. Up to three corrective retries are allowed; if the gate still fails, halt and ask the user.\n'
 }
 
 run_check() {

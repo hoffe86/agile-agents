@@ -22,7 +22,7 @@ The `test-bar-gate` runner prints this markdown block to stdout when any check f
 
 ### Suggested next action
 
-Return to `<coding|testing>` with this report and one corrective retry. If the gate fails again on the same task, halt and ask the user how to proceed.
+Return to `<coding|testing>` with this report. Up to three corrective retries are allowed, each naming what the previous attempt failed to fix. If the gate still fails after the third, halt and ask the user how to proceed.
 ```
 
 ## Field rules
@@ -59,5 +59,5 @@ Return to `<coding|testing>` with this report and one corrective retry. If the g
 
 ### Suggested next action
 
-Return to `coding` with this report and one corrective retry. If the gate fails again on the same task, halt and ask the user how to proceed.
+Return to `coding` with this report. Up to three corrective retries are allowed, each naming what the previous attempt failed to fix. If the gate still fails after the third, halt and ask the user how to proceed.
 ```

@@ -76,7 +76,7 @@ The consequence to be honest about: **concurrent runs against the same dev envir
 
 ## Failure attribution
 
-Feeds the same corrective loop as the test bar — one retry, then halt and ask.
+Feeds the same corrective loop as the test bar — up to three retries, then halt and ask.
 
 | Failing stage | Author to re-engage |
 |---|---|

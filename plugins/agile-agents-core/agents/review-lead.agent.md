@@ -52,6 +52,13 @@ When `dev-lead` hands you a diff **plus** a set of `Findings addressed` lines fr
 - **Verify each claimed fix against the code.** A finding is closed only if the code shows it; "fixed" in a hand-off block is a claim, not evidence. Keep the original id and mark it `closed` or `still open`.
 - **Adjudicate every `disputed` finding explicitly** — accept the fixer's reason and close it, or reject it and keep the finding open with a one-line rebuttal. Never silently re-raise a disputed finding as if it were new; the fixer already spent a round on it.
 - **Reuse ids.** A finding that survives keeps its id. New findings are numbered after the highest existing id in their band, so `dev-lead` can tell regression from residue.
+- **Report the round's movement**, so the loop can be stopped when it stops converging. `dev-lead` allows up to three corrective rounds but must abandon the loop early if a round achieves nothing, and it needs your count to know:
+
+  ```
+  Round movement: closed <n>, still open <n>, newly raised <n>
+  ```
+
+  A round that closes nothing is the signal to stop — say so plainly rather than leaving `dev-lead` to infer it from the id lists.
 
 ## The calls only you make
 

@@ -22,7 +22,7 @@ description: >-
   presents that plan for human approval before starting autonomous
   execution**; once approved, runs every remaining stage without further
   confirmation, stopping mid-run only on: ambiguity, gate failure surviving
-  one retry, scope change, destructive action, missing secret, tracker-write
+  its retry budget, scope change, destructive action, missing secret, tracker-write
   failure, or ❌ Block review verdict.
   DO NOT USE FOR: a single stage in isolation — call the specialist directly
   (architect / coding / infrastructure / review), quick
@@ -109,7 +109,7 @@ Intake → Research → Plan (decompose into tasks) → Create tasks in tracker 
            │                                              │                       │                                                   │
            │                                              │                       │                                                   └── deterministic lint/typecheck/unit-test/smoke gate
            │                                              │                       │                                                       (Stage 7). On fail → loop back to the author
-           │                                              │                       │                                                       (max 2 retries) before reviewer fan-out.
+           │                                              │                       │                                                       (max 3 retries) before reviewer fan-out.
            │                                              │                       └── the only mandatory *approval* gate, AFTER child
            │                                              │                           tasks exist in the tracker (provisional, tagged
            │                                              │                           `pending-approval`). Intake before it is interactive
@@ -135,11 +135,11 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 | 4 | ⛔ | Plan approval | The single mandatory **approval** gate — human reviews the created tasks before autonomous execution | user |
 | 5 | ⛔ | Design approval (conditional) | Only when Research introduced a new dep / boundary / non-trivial trade-off, or reported an decision gap | user |
 | 6 | Implement | Coding, data & infrastructure | Deliver the approved tracker tasks **one at a time in dependency order** — each task's production code **and the tests that cover it**; IaC and its own tests, or analysis and its evidence, where needed | `coding`, `data-scientist`, `infrastructure` |
-| 7 | Implement | Automated gates | Deterministic lint → typecheck → unit-test → smoke gate, then opt-in deploy-verify to dev; loop to the author on fail (max 2 retries) | — (skills: `test-bar-gate`, `deploy-verify`) |
+| 7 | Implement | Automated gates | Deterministic lint → typecheck → unit-test → smoke gate, then opt-in deploy-verify to dev; loop to the author on fail (max 3 retries) | — (skills: `test-bar-gate`, `deploy-verify`) |
 | 8 | Review | Review | Reviewer fan-out (quality / security / architecture / infra / test) merged by `review-lead` | `review-lead` |
 | 9 | — | Done | **Verify every requirement acceptance criterion is covered by a delivered task + evidence**; consolidate trade-offs, summarise outcome vs DoD; **emit `run.complete` (or `run.abort`)** | — |
 
-Each stage has an entry condition, a delegated agent, and an exit gate. You never advance past a failed gate without either (a) one corrective retry with explicit feedback, or (b) stopping and asking the human.
+Each stage has an entry condition, a delegated agent, and an exit gate. You never advance past a failed gate without either (a) corrective retries with explicit feedback, up to the budget for that gate, or (b) stopping and asking the human.
 
 ### Autonomy contract
 
@@ -147,12 +147,12 @@ Each stage has an entry condition, a delegated agent, and an exit gate. You neve
 - **After plan approval:** autonomous. You run all remaining stages without further confirmation, **except** when one of the **stop conditions** below triggers.
 - **Stop conditions (mandatory human input).** Each one is either a one-way door or a gate the human owns; nothing here is a stop because the work was merely unclear. **Ambiguity you can resolve inside the approved scope is yours to resolve** — apply the professional default, label it, and report it. You stop when the *decision* is above your authority, never when the *answer* was hard to find.
   1. **Ambiguity that changes what is being delivered** — research or implementation surfaces a gap that alters an acceptance criterion, adds one, or makes an approved one unachievable. An undefined error semantic, a naming question, an unstated log level or a choice between two equivalent libraries is **not** this: decide it, note it in the Done report, and carry on.
-  2. **Gate failure that survives one corrective retry.**
+  2. **Gate failure that survives three corrective retries.**
   3. **Scope-change required to deliver** the Definition of Done (only the human may grow scope — see Scope control).
   4. **Destructive or irreversible action proposed** that wasn't in the approved plan (data migration, dropping a table, breaking a public API, force-pushing, deleting cloud resources).
   5. **Secret or credential needed** that isn't already configured (vault entry missing, login required).
-  6. **Specialist review verdict ❌ Block** — never auto-loop more than once on a Block.
-  7. **Open 🟠 Major review findings after one retry** — the verdict may even be ✅ Approve, but any 🟠 Major still open after the single review-loop allowance means you stop and ask the human to either accept the risk explicitly or authorise a second corrective round (see Stage 8).
+  6. **Specialist review verdict ❌ Block** — a Block is a one-way door, not a finding to iterate on: auto-loop **once** to let the author answer it, then stop regardless of the three-round budget.
+  7. **Open 🟠 Major review findings after the review-loop budget is spent** — the verdict may even be ✅ Approve, but any 🟠 Major still open after three corrective rounds (or after a round that closed nothing) means you stop and ask the human to either accept the risk explicitly or authorise further rounds (see Stage 8).
   8. **Malformed or missing hand-off block** from a delegated specialist agent — see Failure policy.
   9. **In-flight architecture escalation** — coding (or infrastructure) reports it cannot deliver inside the approved plan without a new dependency, boundary, contract, or cloud resource. Treat as ambiguity: stop and route the question to architect (see Stage 6 entry).
   10. **Missing parent work-item id** when `backlog.create_tasks` is true — child tasks cannot be linked without a parent. Stop at Intake and ask for it; never create unparented tasks.
@@ -437,15 +437,16 @@ This bar runs over the **combined** diff and is not made redundant by the per-ta
 - **Fail** — emit `gate.fail` event with the structured failure report (per `skills/test-bar-gate/SKILL.md` output contract). Loop back per the retry policy below.
 - **Skipped** — record it in the final report. A run that never verified must not read as a run that verified.
 
-**Retry policy (max 2 retries before abort):**
+**Retry policy (max 3 retries before abort):**
 
 | Attempt | Action |
 |---|---|
 | 1st fail | Send the structured failure report back to the agent that authored the failing area — `coding` for application code and its tests, `infrastructure` for IaC and for a deploy-verify failure (see the retry tables in the two gate skills). One corrective message naming the failed check + offending file/line. |
-| 2nd fail | Same — second and final corrective retry. |
-| 3rd fail | **Halt the run.** Emit `run.abort` with reason `test_bar_unrecoverable`. Do not call reviewers. Use `ask_user` to surface the persistent failure and let the human decide. |
+| 2nd fail | Same — a second corrective retry, naming what the first attempt failed to fix. |
+| 3rd fail | Same — third and final corrective retry. Say explicitly that this is the last attempt before the run halts. |
+| 4th fail | **Halt the run.** Emit `run.abort` with reason `test_bar_unrecoverable`. Do not call reviewers. Use `ask_user` to surface the persistent failure and let the human decide. |
 
-This gate allows two corrective retries instead of the standard one, because the failure is deterministic (lint/type/test/deploy, not LLM judgement) — but never more. **Exception:** a deploy-verify failure attributed to quota, policy denial, or a missing role assignment halts immediately with no retry — no agent can resolve those, and retrying burns the envelope on a deterministic failure.
+Three corrective retries, because this failure is deterministic — lint, type, test, deploy, not LLM judgement — so each round has a concrete error to work from and genuinely converges. **But never more:** a check still failing on the fourth attempt is not converging, and further rounds burn the envelope on a defect that needs a human. **Exception:** a deploy-verify failure attributed to quota, policy denial, or a missing role assignment halts immediately with no retry — no agent can resolve those, and retrying burns the envelope on a deterministic failure.
 
 ### Stage 8 — Review
 
@@ -460,12 +461,13 @@ This gate allows two corrective retries instead of the standard one, because the
 - **Zero 🔴 Critical findings open.**
 - **Zero 🟠 Major findings open** — either fixed by looping back to `coding` / `infrastructure`, or explicitly accepted by the human via stop condition #7.
 
-**Loop policy (one corrective round only):**
-- If the first review returns 🔁 / ❌ or surfaces any 🔴 Critical or 🟠 Major: route to each fixer **only the finding ids that name it as owner** (from the `Findings by owner` field), verbatim — id, file:line, proposed fix. Never dump the whole report on each fixer, and never paraphrase a finding into a task.
-- **Check the accounting before re-reviewing.** Each fixer returns a `Findings addressed` line per id. Before spending the single re-review, verify every routed id came back `fixed`, `disputed`, or `not mine`. Missing ids are a malformed hand-off — send **one** corrective message asking for those ids specifically (the standard hand-off retry, not the review round). Re-route anything marked `not mine` to the named owner. A `disputed` finding stays open: carry the fixer's reason into the re-review so `review-lead` can accept or reject it rather than re-raising it blind.
-- Then re-run review **once**.
-- If the second review still returns 🔁 / ❌, or still has any open 🔴 Critical, or still has any open 🟠 Major (even with a ✅ Approve verdict): **do not loop again**. Fire **stop condition #7** and ask the human via `ask_user` whether to (a) accept the remaining Major findings as documented risks, (b) authorise an additional corrective round (counts as a scope expansion — needs explicit approval), or (c) stop the run.
-- A new 🔴 Critical or 🟠 Major appearing only on the retry counts the same way — one retry was the budget; do not loop again on freshly-introduced findings.
+**Loop policy (max 3 corrective rounds):**
+- If a review returns 🔁 / ❌ or surfaces any 🔴 Critical or 🟠 Major: route to each fixer **only the finding ids that name it as owner** (from the `Findings by owner` field), verbatim — id, file:line, proposed fix. Never dump the whole report on each fixer, and never paraphrase a finding into a task.
+- **Check the accounting before re-reviewing.** Each fixer returns a `Findings addressed` line per id. Before spending a re-review, verify every routed id came back `fixed`, `disputed`, or `not mine`. Missing ids are a malformed hand-off — send **one** corrective message asking for those ids specifically (the standard hand-off retry, not a review round). Re-route anything marked `not mine` to the named owner. A `disputed` finding stays open: carry the fixer's reason into the re-review so `review-lead` can accept or reject it rather than re-raising it blind.
+- Then re-run review. Repeat for **at most three corrective rounds** in total.
+- **Track convergence, not just the count.** Each round must close findings. If a round closes nothing — same ids still open, or the count went up — stop there rather than spending the remaining budget: rounds that are not converging will not start.
+- If the review after the third round still returns 🔁 / ❌, or still has any open 🔴 Critical, or still has any open 🟠 Major (even with a ✅ Approve verdict): **do not loop again**. Fire **stop condition #7** and ask the human via `ask_user` whether to (a) accept the remaining Major findings as documented risks, (b) authorise further corrective rounds (counts as a scope expansion — needs explicit approval), or (c) stop the run.
+- A new 🔴 Critical or 🟠 Major appearing only on a retry consumes a round the same way — three rounds is the whole budget, freshly-introduced findings included.
 
 **Findings ledger (your bookkeeping, one writer — you).**
 
@@ -530,7 +532,7 @@ the todo table need not:
 |---|---|
 | `in_progress` | immediately **before** dispatching that task's delegation (Stage 6). |
 | `implemented` | that task's gate passed at Stage 6 — code-complete, not yet verified against the requirement. |
-| `blocked`     | the task's gate failed its one corrective retry, or a dependency ended blocked. |
+| `blocked`     | the task's gate failed every corrective retry in its budget, or a dependency ended blocked. |
 | `done`        | **only at Stage 9**, after requirement-coverage verification. |
 
 Delegate each transition to `backlog-manager` as *"set task <tracker id> to `<neutral
@@ -587,7 +589,7 @@ Use the SQL `todos` table to persist this — store key handoff facts in the tod
 
 ## Failure policy
 
-- **One corrective retry per stage**, with explicit, specific feedback. Never silently retry.
+- **Corrective retries are budgeted per gate** (three at the Stage 7 test bar, three review rounds at Stage 8), always with explicit, specific feedback. Never silently retry, and never exceed the budget without human approval.
 - **Then stop and ask the human.** Use `ask_user` with a consolidated question. Stopping mid-autonomous-run is correct behaviour, not failure — see the autonomy contract's stop conditions.
 - **Never escalate by silently changing the plan.** If you need to add a stage you skipped or change the approved plan, stop and re-seek approval — never "just do it" because the run is autonomous.
 - **Resume after the human answers:** continue from the blocked stage; do not restart the pipeline.
@@ -630,7 +632,7 @@ When the Done gate is satisfied and the human is ready to ship:
 - **One stage at a time.** No fan-out across architect/coding/review-lead — they have ordering dependencies.
 - **No fabricated trade-offs** — consolidate only what stages actually surfaced.
 - **Stop early on ambiguity.** Asking once up-front (Intake) is cheaper than rolling back four stages. The Plan gate is the only mandatory *approval*; intake questions — ambiguities, an undiscoverable profile field, confirming criteria derived from a plan file — are not optional just because they precede it.
-- **Stop early on repeated failure.** One corrective retry per gate, then ask.
+- **Stop early on repeated failure.** Spend the gate's retry budget, then ask — and stop sooner if a round closes nothing, because a loop that is not converging will not start.
 - **Autonomous after approval, but interruptible.** Once the plan is approved, run without further confirmation — but immediately stop and ask when any stop condition fires (ambiguity, retry exhausted, scope change, destructive action, missing secret, ❌ Block verdict).
 - **Never silently expand scope.** Out-of-scope work goes to "Follow-ups", not into this run.
 
