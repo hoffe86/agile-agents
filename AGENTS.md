@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-08-18.
+> Generated from `solution-profile.yaml` on 2026-08-19.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
 This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
@@ -163,6 +163,7 @@ The following skills are available in `.github/skills/` (or
 is a self-contained `<name>/SKILL.md` with YAML frontmatter and a
 natural-language workflow.
 
+- **acceptance-grading** (`agile-agents-core`) — How to grade produced work against acceptance criteria — the judgement contract for an evaluation harness.
 - **acquire-codebase-knowledge** (`agile-agents-core`) — Use this skill when the user explicitly asks to map, document, or onboard into an existing codebase.
 - **ado-work-items** (`agile-agents-ado`) — Azure DevOps Boards mechanics for reading and writing work items — MCP tool entry points, field mapping per work-item type (Epic / Feature / PBI / Issue / Task), markdown-vs-HTML formatting rules, ...
 - **architecture-decision-records** (`agile-agents-core`) — Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format.
