@@ -24,6 +24,16 @@ automatically; humans may add a `Notes` clarification afterwards.
 - Before/after pairs for a single change should be tagged in `Notes` (e.g., `pre-H1`, `post-H1`)
   so the delta is unambiguous.
 
+> **L2 scores recorded before 2026-08-19 understate the agent.** The judge collected
+> artifacts without excluding build output, so on a compiled project `bin/`+`obj/` consumed
+> the 60 KB budget before the source under test was reached. Measured on the first real
+> task-01 run: 34 files reached the judge, **29 of them build artifacts**, and
+> `tests/` (which sorts last) was never reached — so the judge reported "no
+> `OrderStatusEndpointTests` shown" for a task whose tests had just passed **2/2**.
+> The `.ps1` judge was worse: it never assigned `$rel`/`$body`, so it sent **147 empty
+> blocks** and could never score anything. Both fixed; re-run before citing any L2 number.
+
+
 ---
 
 # Skill-eval baselines (S-layer)

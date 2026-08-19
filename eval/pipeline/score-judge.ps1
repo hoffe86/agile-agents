@@ -75,20 +75,53 @@ if (-not (Get-Command copilot -ErrorAction SilentlyContinue)) {
 if (-not (Test-Path $AcceptancePath)) { Write-Host "[judge] missing acceptance: $AcceptancePath"; exit 1 }
 
 # --- Collect produced artifacts (exclude the seeded profile + .github) -----------
+#
+# Two defects lived here. The loop below never assigned $rel/$body and never
+# incremented $total, so this emitted one EMPTY "### / ```` ```` " block per file —
+# 147 of them on a built .NET workspace, containing no filename and no code. The
+# Windows scoring path therefore failed every criterion for reasons that had nothing
+# to do with the agent. Separately (and shared with the .sh twin) build output was not
+# excluded, so on a compiled project bin/obj exhausted the budget before the source
+# under test was reached.
 $maxPerFile = 8000
 $maxTotal   = 60000
 $skip = @('solution-profile.yaml')
+# Generated/vendored trees: large, uninformative, reproducible from source.
+$pruneDirs = 'bin|obj|node_modules|\.venv|venv|__pycache__|target|dist|packages|\.terraform|\.pytest_cache|\.mypy_cache|\.gradle|\.next|vendor'
 $artifacts = ''
+$omitted = New-Object System.Collections.Generic.List[string]
 $total = 0
 if (Test-Path $Workspace) {
+    $root = (Resolve-Path $Workspace).Path
     $files = Get-ChildItem -Path $Workspace -Recurse -File |
-        Where-Object { $_.FullName -notmatch '[\\/]\.github[\\/]' -and $skip -notcontains $_.Name } |
+        Where-Object {
+            $_.FullName -notmatch '[\\/]\.github[\\/]' -and
+            $_.FullName -notmatch '[\\/]\.git[\\/]' -and
+            $_.FullName -notmatch "[\\/]($pruneDirs)[\\/]" -and
+            $skip -notcontains $_.Name
+        } |
         Sort-Object FullName
     foreach ($f in $files) {
-        if ($total -ge $maxTotal) { break }
-        $artifacts += "### $rel`n```````n$body`n```````n`n"
+        $rel = $f.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+        $body = Get-Content -Path $f.FullName -Raw -ErrorAction SilentlyContinue
+        if ([string]::IsNullOrEmpty($body)) { continue }
+        # Binary files cost budget and tell the judge nothing.
+        if ($body.IndexOf([char]0) -ge 0) { continue }
+        if ($total -ge $maxTotal) { $omitted.Add($rel); continue }
+        if ($body.Length -gt $maxPerFile) { $body = $body.Substring(0, $maxPerFile) + "`n...[truncated]" }
+        $artifacts += "### $rel`n``````n$body`n``````n`n"
+        $total += $body.Length
     }
 }
+
+# Tell the judge what it could NOT see, so "absent" and "not shown" stay distinguishable.
+if ($omitted.Count -gt 0) {
+    $artifacts += "## Files omitted (artifact budget exhausted — NOT evidence of absence)`n`n"
+    $artifacts += (($omitted | Select-Object -First 40 | ForEach-Object { "- $_" }) -join "`n") + "`n"
+    if ($omitted.Count -gt 40) { $artifacts += "- ...and $($omitted.Count - 40) more`n" }
+    Write-Warning "[judge] artifact budget exhausted; $($omitted.Count) file(s) not shown to the judge."
+}
+
 if ([string]::IsNullOrWhiteSpace($artifacts)) {
     Write-Host '[judge] agent produced no gradable files → failed.'; exit 1
 }
@@ -102,4 +135,11 @@ $resp = & copilot -p $prompt -s --no-ask-user --allow-all-tools -C $Workspace 2>
 Write-Host '[judge] ----- response -----'
 Write-Host $resp.Trim()
 Write-Host '[judge] ----------------------'
+# An UNVERIFIED criterion means the harness could not show the judge the evidence. That
+# is a harness limitation, not an agent result — say so loudly rather than letting it
+# settle silently into the score.
+if ($resp -match '(?i)UNVERIFIED') {
+    Write-Warning '[judge] at least one criterion was UNVERIFIED (evidence omitted by the artifact budget).'
+    Write-Warning '[judge] This score understates the agent — treat it as a harness limit, not a result.'
+}
 exit (Get-VerdictExit $resp)
