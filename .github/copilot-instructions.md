@@ -97,7 +97,7 @@ agent/                               Marketplace root
 │   └── baselines.md                 every tier's numbers, in one place
 ├── .waza.yaml                       Waza config: skill token ratchet + eval paths (ADR 0014)
 ├── docs/
-│   ├── adr/                         Architecture decision records (0001–0014)
+│   ├── adr/                         Architecture decision records (0001–0015)
 │   ├── research/                    Whitepaper + spikes
 │   └── AGENTS-MD-MAPPING.md         Folder→agent mapping for the generator
 ├── AGENTS.md                        Generated — do not hand-edit

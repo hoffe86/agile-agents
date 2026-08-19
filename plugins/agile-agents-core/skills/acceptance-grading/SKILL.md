@@ -68,6 +68,19 @@ gets fixed, rather than charging it to the agent. This is not hypothetical — a
 criterion once enumerated "the six MADR sections" as a list that upstream MADR does not
 use, and failed work that had correctly followed the repo's own ADR skill.
 
+So, concretely, when a criterion names a convention and also asserts *how* that convention
+looks — a required section, a field's placement, an exact wording:
+
+- grade the **substance** the criterion asks for (was the fact recorded at all?);
+- grade the **form** against the skill that owns it, never against the criterion's
+  restatement;
+- if the work matches the skill but not the restatement, that is a **PASS**, with the
+  drift named in your reason so the criterion gets repaired.
+
+This does not license grading leniently (§4). It is narrower: the criterion decides *what
+must be true*, the skill decides *what that looks like*. A criterion cannot redefine a
+convention it does not own.
+
 ## 4. Grade the criterion as written
 
 **Do not invent a stricter requirement than the criterion states.** If it asks that the
@@ -75,6 +88,9 @@ build succeed with warnings-as-errors, a build you ran with `-warnaserror` repor
 warnings **passes** — do not additionally demand a particular project property unless the
 criterion names one. Substituting a static proxy for a behavioural fact is how a correct
 solution that took a different route gets marked wrong.
+
+This governs *scope*: never add requirements the criterion did not ask for. It does not
+make the criterion's wording authoritative over a convention a skill owns — that is §3.
 
 Equally, give no credit for intent: TODOs, comments promising work, and empty stubs are
 not implementations.

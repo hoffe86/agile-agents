@@ -71,6 +71,19 @@ these conventions resolve for both. Where a criterion and a skill disagree, the 
 wins** and the judge is told to report the disagreement — that is a defect in the eval,
 and it should surface as one rather than as an agent failure.
 
+The grading contract itself lives in the **`acceptance-grading` skill**, not in this
+harness: `pipeline/references/judge-prompt.md` is a shim that loads it and injects the
+criteria. Keeping the doctrine in a versioned skill is the same rule as above applied to
+the harness's own conventions — an eval-private restatement of how to grade would drift
+exactly like the MADR checklist did.
+
+**3. If a criterion refers to pre-existing repo state, the fixture must supply it.**
+Anything under a task's `fixture/` directory is copied into the workspace verbatim before
+the agent runs. Task-04 asked for a relative link to `ADR-0007` that the fixture never
+contained, so the only possible answer was a dangling link — an unsatisfiable criterion
+that reads like an agent failure. Narrating context in the prompt is not the same as
+providing it.
+
 ## Eval layers
 
 This outcome eval is the **top** of a layered pyramid ([ADR 0008](../docs/adr/0008-layered-evaluation-strategy.md)):
@@ -244,6 +257,8 @@ The harness exits **0** when resolved % ≥ 60% on the suite, **1** otherwise (c
    - `prompt.md` — the user-story prompt to give `dev-lead` (10-30 lines)
    - `acceptance.md` — 3-5 explicit, machine- or human-verifiable pass criteria
    - `solution-profile.yaml` — the synthetic profile context (tech stack, quality gates, etc.)
+   - `fixture/` — *optional*; pre-existing repo state, copied into the workspace verbatim.
+     Required if the prompt or criteria refer to files the agent is expected to find.
 3. The default LLM judge scores it against `acceptance.md` automatically — no scorer to write.
    Add an optional `score.ps1`/`score.sh` only if the task needs a deterministic build/test.
 4. Re-run with `-TaskFilter task-NN`.
@@ -257,7 +272,8 @@ This harness is intentionally minimal so a downstream fork can:
   internal coding interview tasks, etc.). The `tasks.json` schema is two required fields:
   `instance_id` and `repo`. `difficulty` is optional metadata.
 - **Replace `custom-eval/`** entirely with project-representative tasks. The folder convention
-  (`task-NN-<slug>/{prompt.md, acceptance.md, solution-profile.yaml}`) is the only contract.
+  (`task-NN-<slug>/{prompt.md, acceptance.md, solution-profile.yaml, fixture/}`) is the only
+  contract, and `fixture/` is optional.
 - **Keep `run-eval.ps1` / `run-eval.sh`** unchanged — they are profile-agnostic.
 - **Customise `scoring-rubric.md`** for stricter or laxer pass criteria (e.g., a regulated
   project may want `resolved` to require ADR + threat model on every task).

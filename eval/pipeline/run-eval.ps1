@@ -212,6 +212,13 @@ foreach ($task in $tasks) {
             Copy-Item $profileSrc (Join-Path $ws 'solution-profile.yaml') -Force
             Copy-Item $profileSrc (Join-Path $ws '.github/solution-profile.yaml') -Force
         }
+        # A task whose prompt refers to pre-existing repo state must be able to supply it,
+        # or the agent is asked to reference something that was never there. Anything under
+        # the task's fixture/ is copied in verbatim as the starting workspace.
+        $fixtureSrc = Join-Path $task.Folder 'fixture'
+        if (Test-Path $fixtureSrc) {
+            Copy-Item (Join-Path $fixtureSrc '*') $ws -Recurse -Force
+        }
 
         $exit = Invoke-DevLead -PromptText $promptText -Workspace $ws -LogPath $logPath
 

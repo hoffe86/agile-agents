@@ -201,6 +201,12 @@ for i in "${!FILTERED_IDS[@]}"; do
             cp "${folder}/solution-profile.yaml" "${ws}/solution-profile.yaml"
             cp "${folder}/solution-profile.yaml" "${ws}/.github/solution-profile.yaml"
         fi
+        # A task whose prompt refers to pre-existing repo state must be able to supply it,
+        # or the agent is asked to reference something that was never there. Anything under
+        # the task's fixture/ is copied in verbatim as the starting workspace.
+        if [[ -d "${folder}/fixture" ]]; then
+            cp -R "${folder}/fixture/." "${ws}/"
+        fi
         prompt_text="$(cat "$ref")"
 
         rc=0

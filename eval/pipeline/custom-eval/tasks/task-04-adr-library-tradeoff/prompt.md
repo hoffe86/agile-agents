@@ -15,7 +15,8 @@ The team is choosing between three options for HTTP-client resilience:
 3. **Roll-your-own** — `HttpMessageHandler` with manual retry / circuit-breaker logic
 
 We have decided on **Microsoft.Extensions.Http.Resilience**, but the previous ADR-0007
-recommended Polly directly, so this decision **supersedes** ADR-0007.
+(already in the repo under `docs/adr/`) recommended Polly directly, so this decision
+**supersedes** ADR-0007.
 
 ## Requested deliverable
 
