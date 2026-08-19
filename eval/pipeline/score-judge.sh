@@ -40,6 +40,7 @@ if [[ "${1:-}" == "--self-test" ]]; then
     [[ "$ok" == 1 ]] && { echo 'score-judge self-test: PASS'; exit 0; } || exit 1
 fi
 
+JUDGE_MODEL="${JUDGE_MODEL:-gpt-5.6-sol}"
 WS="${1:?workspace required}"
 ACCEPTANCE="${2:?acceptance.md required}"
 
@@ -73,7 +74,8 @@ prompt="$(awk -v acc="$acceptance_body" -v art="$artifacts" '
     { gsub(/\{\{ACCEPTANCE\}\}/, acc); gsub(/\{\{ARTIFACTS\}\}/, art); print }
 ' "$PROMPT_TEMPLATE")"
 
-resp="$(copilot -p "$prompt" -s --no-ask-user --allow-all-tools -C "$WS" 2>&1 || true)"
+resp="$(copilot -p "$prompt" -s --no-ask-user --allow-all-tools --model "$JUDGE_MODEL" -C "$WS" 2>&1 || true)"
+echo "[judge] model: ${JUDGE_MODEL}"
 echo '[judge] ----- response -----'
 echo "$resp"
 echo '[judge] ----------------------'

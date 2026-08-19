@@ -23,6 +23,13 @@ TASK_FILTER=".*"
 PASS_THRESHOLD=60
 DRY_RUN=0
 NO_ISOLATION=0
+# Pinned rather than inherited: the CLI default comes from user config, which an isolated
+# run does not have -- leaving it unset silently changed the model under test from
+# claude-opus-4.8 to claude-sonnet-5 and made runs incomparable for reasons unrelated to
+# isolation. A judge must also differ from the author: a model grading its own output is
+# not an independent measurement.
+AGENT_MODEL="${AGENT_MODEL:-claude-opus-4.8}"
+JUDGE_MODEL="${JUDGE_MODEL:-gpt-5.6-sol}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PLUGIN_DIR="${REPO_ROOT}/plugins/agile-agents-core"
@@ -47,6 +54,8 @@ Options:
   --task-filter <regex>      Optional. Only run tasks whose ID matches. Default: .*
   --pass-threshold <int>     Optional. Resolved% needed to exit 0. Default: 60
   --output-root <path>       Optional. Where to write runs/. Default: ./runs
+  --agent-model <name>       Model the agent runs on. Default: claude-opus-4.8.
+  --judge-model <name>       Model the judge runs on. Must differ from the agent model.
   --dry-run                  Print the resolved copilot command per task; don't execute.
   --no-isolation             Use your own Copilot config instead of an isolated one.
                              Reinstates plugin shadowing: does NOT measure the working tree.
@@ -63,6 +72,8 @@ while [[ $# -gt 0 ]]; do
         --output-root)      OUTPUT_ROOT="$2"; shift 2 ;;
         --dry-run)          DRY_RUN=1; shift ;;
         --no-isolation)     NO_ISOLATION=1; shift ;;
+        --agent-model)      AGENT_MODEL="$2"; shift 2 ;;
+        --judge-model)      JUDGE_MODEL="$2"; shift 2 ;;
         -h|--help)          usage; exit 0 ;;
         *)                  echo "Unknown arg: $1" >&2; usage; exit 2 ;;
     esac
@@ -80,6 +91,11 @@ SUITE_ROOT="${SCRIPT_DIR}/${SUITE}"
 
 if [[ "$DRY_RUN" != "1" ]] && ! command -v copilot >/dev/null 2>&1; then
     echo "ERROR: copilot CLI not found on PATH. Install it, run 'copilot login', or use --dry-run." >&2
+    exit 2
+fi
+
+if [[ "$AGENT_MODEL" == "$JUDGE_MODEL" ]]; then
+    echo "ERROR: agent and judge models are both '$AGENT_MODEL'. A model grading its own output is not an independent measurement — set --judge-model to a different model." >&2
     exit 2
 fi
 
@@ -150,6 +166,7 @@ invoke_dev_lead() {
     fi
     run_isolated copilot -p "$prompt_text" \
         --agent "$DEV_LEAD_AGENT" \
+        --model "$AGENT_MODEL" \
         "${PLUGIN_ARGS[@]}" \
         --allow-all-tools \
         --no-ask-user \
@@ -210,6 +227,7 @@ fi
 
 echo "Run ID:    $RUN_ID"
 echo "Suite:     $SUITE"
+echo "Models:    agent=$AGENT_MODEL  judge=$JUDGE_MODEL"
 echo "Tasks:     ${#FILTERED_IDS[@]} (filter: '$TASK_FILTER')"
 echo "Output:    $RUN_DIR"
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -274,7 +292,7 @@ for i in "${!FILTERED_IDS[@]}"; do
             # the same isolation — a judge loading a different plugin set than the agent
             # would grade against conventions the agent never saw.
             sc=0
-            run_isolated bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
+            JUDGE_MODEL="$JUDGE_MODEL" run_isolated bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
             case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         fi
     fi
@@ -311,6 +329,8 @@ cat > "${RUN_DIR}/summary.json" <<EOF
   "failed": ${FAILED},
   "skipped": ${SKIPPED},
   "dry_run": $([[ "$DRY_RUN" == "1" ]] && echo true || echo false),
+  "agent_model": "${AGENT_MODEL}",
+  "judge_model": "${JUDGE_MODEL}",
   "isolated": $([[ -n "$ISOLATED_HOME" ]] && echo true || echo false),
   "mcp_servers": "$([[ -n "$ISOLATED_HOME" ]] && echo "plugin-declared only" || echo "plugin-declared + user config")",
   "resolved_pct": ${PCT},

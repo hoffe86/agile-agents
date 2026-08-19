@@ -26,12 +26,19 @@
 
 .PARAMETER SelfTest
     Run the verdict-parser self-check (no copilot call) and exit 0 if it passes.
+
+.PARAMETER JudgeModel
+    Model the judge runs on. Pinned rather than inherited from the CLI default, which
+    comes from user config an isolated run does not have — leaving it unset silently
+    changes which model is grading, and a grade is only comparable to another grade
+    from the same model.
 #>
 [CmdletBinding()]
 param(
     [string]$Workspace,
     [string]$AcceptancePath,
     [string]$PromptTemplate = (Join-Path $PSScriptRoot 'references/judge-prompt.md'),
+    [string]$JudgeModel = $(if ($env:JUDGE_MODEL) { $env:JUDGE_MODEL } else { 'gpt-5.6-sol' }),
     [switch]$SelfTest
 )
 
@@ -108,7 +115,8 @@ $prompt = (Get-Content -Path $PromptTemplate -Raw).
     Replace('{{ARTIFACTS}}', $artifacts)
 
 # Read-only judgement: artifacts are inlined, so no tools are needed.
-$resp = & copilot -p $prompt -s --no-ask-user --allow-all-tools -C $Workspace 2>&1 | Out-String
+$resp = & copilot -p $prompt -s --no-ask-user --allow-all-tools --model $JudgeModel -C $Workspace 2>&1 | Out-String
+Write-Host "[judge] model: $JudgeModel"
 Write-Host '[judge] ----- response -----'
 Write-Host $resp.Trim()
 Write-Host '[judge] ----------------------'

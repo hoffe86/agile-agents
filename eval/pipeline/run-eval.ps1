@@ -57,7 +57,17 @@ param(
     # Run against the developer's own Copilot configuration instead of an isolated one.
     # This reinstates the plugin-shadowing defect described below, so the run no longer
     # measures the working tree. Only useful for comparing against historical numbers.
-    [switch]$NoIsolation
+    [switch]$NoIsolation,
+
+    # The model the agent runs on. Pinned rather than inherited: the CLI default comes
+    # from user config, which an isolated run does not have — so leaving it unset silently
+    # changed the model under test from claude-opus-4.8 to claude-sonnet-5 and made
+    # isolated and non-isolated runs incomparable for reasons unrelated to isolation.
+    [string]$AgentModel = $(if ($env:AGENT_MODEL) { $env:AGENT_MODEL } else { 'claude-opus-4.8' }),
+
+    # The model the judge runs on. Must differ from the agent's: a model grading its own
+    # output is not an independent measurement.
+    [string]$JudgeModel = $(if ($env:JUDGE_MODEL) { $env:JUDGE_MODEL } else { 'gpt-5.6-sol' })
 )
 
 $ErrorActionPreference = 'Stop'
@@ -98,6 +108,12 @@ $devLeadAgent = 'agile-agents-core:dev-lead'
 
 if (-not $DryRun -and -not (Get-Command copilot -ErrorAction SilentlyContinue)) {
     Write-FatalError "copilot CLI not found on PATH. Install it, run 'copilot login', or use -DryRun."
+}
+
+# A model grading its own output is not an independent measurement. Refuse rather than
+# quietly produce a self-assessed score.
+if ($AgentModel -eq $JudgeModel) {
+    Write-FatalError "Agent and judge models are both '$AgentModel'. A model grading its own output is not an independent measurement — set -JudgeModel to a different model."
 }
 
 # --- Isolated Copilot configuration root --------------------------------------
@@ -191,6 +207,7 @@ function Invoke-DevLead {
     $copilotArgs = @(
         '-p', $PromptText
         '--agent', $devLeadAgent
+        '--model', $AgentModel
     )
     foreach ($d in $pluginDirs) { $copilotArgs += @('--plugin-dir', $d) }
     $copilotArgs += @(
@@ -262,6 +279,7 @@ if ($isolate -and -not $DryRun) {
 
 Write-Host "Run ID:    $runId"
 Write-Host "Suite:     $Suite"
+Write-Host "Models:    agent=$AgentModel  judge=$JudgeModel"
 Write-Host "Tasks:     $($tasks.Count) (filter: '$TaskFilter')"
 Write-Host "Output:    $runDir"
 if ($DryRun) {
@@ -341,7 +359,7 @@ foreach ($task in $tasks) {
                 # a judge loading a different plugin set than the agent would grade
                 # against conventions the agent never saw.
                 Invoke-WithIsolation {
-                    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance *>> $logPath
+                    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance -JudgeModel $JudgeModel *>> $logPath
                 }
                 $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
             }
@@ -373,6 +391,9 @@ $summary = [ordered]@{
     failed       = $failed
     skipped      = $skipped
     dry_run      = [bool]$DryRun
+    # Pinned, and recorded: a score is only comparable to another score from the same pair.
+    agent_model  = $AgentModel
+    judge_model  = $JudgeModel
     # Whether the run measured the working tree or the developer's installed plugins.
     # A score carries a different meaning in each case, so it travels with the score.
     isolated     = [bool]$isolate

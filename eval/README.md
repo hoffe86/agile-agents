@@ -139,6 +139,14 @@ Two consequences:
   and loses the ones that merely happened to be on one machine. Verified: task-04 depends on
   `microsoft-docs` for its primary-sources criterion and still scores `resolved` isolated.
 
+**Models are pinned, not inherited** (`--agent-model` / `--judge-model`, default
+`claude-opus-4.8` and `gpt-5.6-sol`). The CLI default comes from user config, which an
+isolated run does not have — leaving it unset silently changed the model under test from
+`claude-opus-4.8` to `claude-sonnet-5`, so isolation and model moved together and neither
+could be attributed. The two must differ: a model grading its own output is not an
+independent measurement, and the run **exits 2** if they match. Both are recorded in
+`summary.json`, because a score is only comparable to another score from the same pair.
+
 `--no-isolation` / `-NoIsolation` restores the old behaviour for comparing against historical
 numbers. The banner and `summary.json` both record which mode ran (`isolated`, `mcp_servers`),
 because a score means something different in each.
