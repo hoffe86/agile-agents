@@ -47,6 +47,11 @@ param(
 
     [ValidateRange(0, 100)]
     [int]$PassThreshold = 60,
+    # Author and judge must be different models. Grading your own output is a known
+    # self-preference bias: a shared model cannot separate "this is correct" from "this is
+    # what I would have written". Overridable, but never default them to the same value.
+    [string]$AgentModel = 'claude-opus-4.8',
+    [string]$JudgeModel = 'gpt-5.6-sol',
 
     [string]$OutputRoot = (Join-Path $PSScriptRoot 'runs'),
 
@@ -92,6 +97,8 @@ function Invoke-DevLead {
     )
     foreach ($d in $pluginDirs) { $copilotArgs += @('--plugin-dir', $d) }
     $copilotArgs += @(
+        '--model'
+        $AgentModel
         '--allow-all-tools'
         '--no-ask-user'
         '--output-format', 'json'
@@ -110,6 +117,13 @@ function Invoke-DevLead {
 }
 
 # --- Resolve task list --------------------------------------------------------
+if ($AgentModel -eq $JudgeModel) {
+    Write-Error ("-AgentModel and -JudgeModel are both '$AgentModel'. A model grading its " +
+                 "own output cannot separate 'this is correct' from 'this is what I would " +
+                 "have written'. Pick different families.")
+    exit 2
+}
+
 $suiteRoot = Join-Path $PSScriptRoot $Suite
 if (-not (Test-Path $suiteRoot)) {
     Write-Error "Suite folder not found: $suiteRoot"
@@ -158,6 +172,7 @@ New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
 Write-Host "Run ID:    $runId"
 Write-Host "Suite:     $Suite"
+Write-Host "Models:    author=$AgentModel  judge=$JudgeModel"
 Write-Host "Tasks:     $($tasks.Count) (filter: '$TaskFilter')"
 Write-Host "Output:    $runDir"
 Write-Host ''
@@ -226,7 +241,7 @@ foreach ($task in $tasks) {
                 $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
             }
             else {
-                & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance *>> $logPath
+                & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'score-judge.ps1') -Workspace $ws -AcceptancePath $acceptance -JudgeModel $JudgeModel *>> $logPath
                 $status = switch ($LASTEXITCODE) { 0 { 'resolved' } 2 { 'partial' } default { 'failed' } }
             }
         }
@@ -250,6 +265,8 @@ $pct      = if ($total -gt 0) { [math]::Round(100.0 * $resolved / $total, 1) } e
 
 $summary = [ordered]@{
     suite        = $Suite
+    agent_model  = $AgentModel
+    judge_model  = $JudgeModel
     run_id       = $runId
     total        = $total
     resolved     = $resolved

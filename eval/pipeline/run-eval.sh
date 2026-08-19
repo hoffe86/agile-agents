@@ -21,6 +21,11 @@ set -euo pipefail
 SUITE=""
 TASK_FILTER=".*"
 PASS_THRESHOLD=60
+# Author and judge must be different models. Grading your own output is a known
+# self-preference bias: a shared model cannot separate "this is correct" from "this is
+# what I would have written". Overridable, but never default them to the same value.
+AGENT_MODEL="${AGENT_MODEL:-claude-opus-4.8}"
+JUDGE_MODEL="${JUDGE_MODEL:-gpt-5.6-sol}"
 DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -45,6 +50,9 @@ Options:
   --suite <name>             Required. Evaluation suite to run.
   --task-filter <regex>      Optional. Only run tasks whose ID matches. Default: .*
   --pass-threshold <int>     Optional. Resolved% needed to exit 0. Default: 60
+  --agent-model <id>         Optional. Model that does the work. Default: claude-opus-4.8
+  --judge-model <id>         Optional. Model that grades it. Default: gpt-5.6-sol
+                             These must differ — see the note at the top of this script.
   --output-root <path>       Optional. Where to write runs/. Default: ./runs
   --dry-run                  Print the resolved copilot command per task; don't execute.
   -h, --help                 Show this help and exit.
@@ -57,6 +65,8 @@ while [[ $# -gt 0 ]]; do
         --suite)            SUITE="$2"; shift 2 ;;
         --task-filter)      TASK_FILTER="$2"; shift 2 ;;
         --pass-threshold)   PASS_THRESHOLD="$2"; shift 2 ;;
+        --agent-model)      AGENT_MODEL="$2"; shift 2 ;;
+        --judge-model)      JUDGE_MODEL="$2"; shift 2 ;;
         --output-root)      OUTPUT_ROOT="$2"; shift 2 ;;
         --dry-run)          DRY_RUN=1; shift ;;
         -h|--help)          usage; exit 0 ;;
@@ -69,6 +79,13 @@ if [[ -z "$SUITE" ]]; then
 fi
 if [[ "$SUITE" != "swe-bench-subset" && "$SUITE" != "custom-eval" ]]; then
     echo "ERROR: --suite must be swe-bench-subset or custom-eval" >&2; exit 2
+fi
+
+if [[ "$AGENT_MODEL" == "$JUDGE_MODEL" ]]; then
+    echo "ERROR: --agent-model and --judge-model are both '$AGENT_MODEL'." >&2
+    echo "       A model grading its own output cannot separate 'this is correct' from" >&2
+    echo "       'this is what I would have written'. Pick different families." >&2
+    exit 2
 fi
 
 SUITE_ROOT="${SCRIPT_DIR}/${SUITE}"
@@ -87,12 +104,13 @@ invoke_dev_lead() {
     if [[ "$DRY_RUN" == "1" ]]; then
         {
             echo "[DRY RUN] would invoke dev-lead with:"
-            echo "copilot -p <prompt> --agent $DEV_LEAD_AGENT ${PLUGIN_ARGS[*]} --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\""
+            echo "copilot -p <prompt> --agent $DEV_LEAD_AGENT --model $AGENT_MODEL ${PLUGIN_ARGS[*]} --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\""
         } > "$log"
         return 0
     fi
     copilot -p "$prompt_text" \
         --agent "$DEV_LEAD_AGENT" \
+        --model "$AGENT_MODEL" \
         "${PLUGIN_ARGS[@]}" \
         --allow-all-tools \
         --no-ask-user \
@@ -148,6 +166,7 @@ mkdir -p "$RUN_DIR"
 
 echo "Run ID:    $RUN_ID"
 echo "Suite:     $SUITE"
+echo "Models:    author=$AGENT_MODEL  judge=$JUDGE_MODEL"
 echo "Tasks:     ${#FILTERED_IDS[@]} (filter: '$TASK_FILTER')"
 echo "Output:    $RUN_DIR"
 echo ""
@@ -203,7 +222,7 @@ for i in "${!FILTERED_IDS[@]}"; do
         else
             # Default: LLM judge grades the workspace against acceptance.md.
             sc=0
-            bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
+            JUDGE_MODEL="$JUDGE_MODEL" bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
             case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
         fi
     fi
@@ -233,6 +252,8 @@ TASK_RESULTS_JSON="${TASK_RESULTS_JSON%,$'\n'}"
 cat > "${RUN_DIR}/summary.json" <<EOF
 {
   "suite": "${SUITE}",
+  "agent_model": "${AGENT_MODEL}",
+  "judge_model": "${JUDGE_MODEL}",
   "run_id": "${RUN_ID}",
   "total": ${TOTAL},
   "resolved": ${RESOLVED},

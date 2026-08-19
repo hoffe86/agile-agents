@@ -21,8 +21,8 @@ recommended Polly directly, so this decision **supersedes** ADR-0007.
 
 A single Markdown file `docs/adr/0014-http-resilience-library.md` that:
 
-1. Follows our MADR-style ADR template (we use the lightweight one — Status / Context /
-   Decision / Consequences / Alternatives / Related decisions).
+1. Follows the ADR template this repo defines (the `architecture-decision-records` skill
+   is the source of truth — don't invent a variant).
 2. Numbers the ADR as `0014` and supersedes `0007`.
 3. Explains the **trade-off**, not just the conclusion. For each rejected option, state
    what we lose by not picking it.

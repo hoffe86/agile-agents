@@ -44,6 +44,33 @@ here (wrong in three separate PRs, silent in both directions), and Waza's
 deliberately **not created empty**; add it when the first agent eval exists, and keep to
 the convention above.
 
+## Writing acceptance criteria
+
+Two rules, both learned from criteria that graded the harness instead of the agent.
+
+**1. State the outcome; don't restate a standard that a skill already owns.** If a
+criterion is about a convention — an ADR template, arc42 structure, commit format, a
+review rubric — name the skill that defines it and stop there. Restating it forks the
+definition, and the fork drifts. Task-04 restated "the six MADR sections" as
+*Status / Context / Decision / Consequences / Alternatives / Related decisions*, which is
+not MADR (upstream MADR is Context and Problem Statement / Decision Drivers / Considered
+Options / Decision Outcome / Consequences / Pros and Cons). The agent produced correct
+MADR — matching this repo's own `architecture-decision-records` skill — and was marked
+wrong by a checklist that had drifted from the skill it was paraphrasing.
+
+**2. Behavioural criteria are verified by running, not by reading.** "Builds", "tests
+pass", "lints clean", "renders" are runtime facts. The judge runs in the workspace with
+tools and is instructed to execute the project's own commands. Do not soften such a
+criterion into something inspectable ("has a `TreatWarningsAsErrors` property") — that
+substitutes a proxy for the fact, and a correct solution that reaches the same outcome
+another way then fails. Task-01 ran `dotnet build -warnaserror` to zero warnings and was
+failed for lacking a csproj property no criterion asked for and no skill teaches.
+
+The judge is invoked with the same `--plugin-dir` set as the agent, so the skills that own
+these conventions resolve for both. Where a criterion and a skill disagree, the **skill
+wins** and the judge is told to report the disagreement — that is a defect in the eval,
+and it should surface as one rather than as an agent failure.
+
 ## Eval layers
 
 This outcome eval is the **top** of a layered pyramid ([ADR 0008](../docs/adr/0008-layered-evaluation-strategy.md)):

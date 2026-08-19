@@ -43,6 +43,14 @@ fi
 WS="${1:?workspace required}"
 ACCEPTANCE="${2:?acceptance.md required}"
 
+# --- Judge model -----------------------------------------------------------------
+# The judge must not be the model that produced the work. A model grading its own output
+# is a known source of self-preference bias, and an eval that shares one model between
+# author and grader cannot distinguish "this is good" from "this is what I would have
+# written". run-eval passes the pair explicitly; the default here keeps a stand-alone
+# invocation honest by picking a different family from the default author model.
+JUDGE_MODEL="${JUDGE_MODEL:-${3:-gpt-5.6-sol}}"
+
 command -v copilot >/dev/null 2>&1 || { echo '[judge] copilot not on PATH — cannot score.'; exit 1; }
 [[ -f "$ACCEPTANCE" ]] || { echo "[judge] missing acceptance: $ACCEPTANCE"; exit 1; }
 
@@ -96,26 +104,49 @@ if [[ -d "$WS" ]]; then
                   -print | LC_ALL=C sort)
 fi
 
-# Tell the judge what it could NOT see, so "absent" and "not shown" stay distinguishable.
+# Tell the judge where it stopped indexing, so it knows to look there itself.
 if [[ $omitted_n -gt 0 ]]; then
-    artifacts+=$'## Files omitted (artifact budget exhausted — NOT evidence of absence)\n\n'
+    artifacts+=$'## Not indexed (size cap reached — read these from the filesystem if a criterion needs them)\n\n'
     artifacts+="${omitted}"
     [[ $omitted_n -gt 40 ]] && artifacts+="- ...and $(( omitted_n - 40 )) more"$'\n'
-    echo "[judge] WARNING: artifact budget exhausted; ${omitted_n} file(s) not shown to the judge." >&2
+    echo "[judge] note: index capped; ${omitted_n} file(s) listed by name only." >&2
 fi
 
 if [[ -z "${artifacts// }" ]]; then
     echo '[judge] agent produced no gradable files → failed.'; exit 1
 fi
 
-# Fill the template. Use awk so acceptance/artifact contents are inserted literally
-# (no sed metacharacter pitfalls).
+# Fill the template by splitting on the placeholders and concatenating. Do NOT use awk,
+# sed, or ${var//pat/rep}: all three interpret `&` in the *replacement* as "the matched
+# text", so an acceptance criterion reading "**Builds & tests pass**" reached the judge as
+# "**Builds {{ACCEPTANCE}} tests pass**". Two of ten tasks contain an `&`. Verified on bash
+# 5.3: parameter expansion mangles it, prefix/suffix removal plus concatenation does not.
+# (The PowerShell twin uses String.Replace, which is literal, and was never affected.)
 acceptance_body="$(cat "$ACCEPTANCE")"
-prompt="$(awk -v acc="$acceptance_body" -v art="$artifacts" '
-    { gsub(/\{\{ACCEPTANCE\}\}/, acc); gsub(/\{\{ARTIFACTS\}\}/, art); print }
-' "$PROMPT_TEMPLATE")"
+template="$(cat "$PROMPT_TEMPLATE")"
 
-resp="$(copilot -p "$prompt" -s --no-ask-user --allow-all-tools -C "$WS" 2>&1 || true)"
+pre_acc="${template%%\{\{ACCEPTANCE\}\}*}"
+rest="${template#*\{\{ACCEPTANCE\}\}}"
+mid="${rest%%\{\{ARTIFACTS\}\}*}"
+post="${rest#*\{\{ARTIFACTS\}\}}"
+prompt="${pre_acc}${acceptance_body}${mid}${artifacts}${post}"
+
+# The judge grades *behaviour* as well as text, so it gets the workspace, tools, and the
+# same plugin path the agent had. Without --plugin-dir it cannot load the skills that own
+# this repo's conventions (the ADR template, arc42, commit format), and would fall back to
+# whatever the acceptance wording happens to restate — which is how a task came to be
+# graded against a definition of "MADR" that upstream MADR does not use.
+#
+# Discovering the plugins here (rather than taking them as an argument) keeps score-judge
+# runnable stand-alone, the same way run-eval.sh discovers them.
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+PLUGIN_ARGS=()
+for d in "${REPO_ROOT}"/plugins/agile-agents*; do
+    [[ -d "$d" ]] && PLUGIN_ARGS+=(--plugin-dir "$d")
+done
+
+resp="$(copilot -p "$prompt" -s --no-ask-user --allow-all-tools --model "$JUDGE_MODEL" "${PLUGIN_ARGS[@]}" -C "$WS" 2>&1 || true)"
+echo "[judge] model: ${JUDGE_MODEL}"
 echo '[judge] ----- response -----'
 echo "$resp"
 echo '[judge] ----------------------'

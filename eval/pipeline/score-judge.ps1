@@ -32,6 +32,12 @@ param(
     [string]$Workspace,
     [string]$AcceptancePath,
     [string]$PromptTemplate = (Join-Path $PSScriptRoot 'references/judge-prompt.md'),
+    # The judge must not be the model that produced the work. A model grading its own
+    # output is a known source of self-preference bias, and an eval that shares one model
+    # between author and grader cannot distinguish "this is good" from "this is what I
+    # would have written". run-eval passes the pair explicitly; this default keeps a
+    # stand-alone invocation honest by picking a different family from the author model.
+    [string]$JudgeModel = $(if ($env:JUDGE_MODEL) { $env:JUDGE_MODEL } else { 'gpt-5.6-sol' }),
     [switch]$SelfTest
 )
 
@@ -114,12 +120,12 @@ if (Test-Path $Workspace) {
     }
 }
 
-# Tell the judge what it could NOT see, so "absent" and "not shown" stay distinguishable.
+# Tell the judge where it stopped indexing, so it knows to look there itself.
 if ($omitted.Count -gt 0) {
-    $artifacts += "## Files omitted (artifact budget exhausted — NOT evidence of absence)`n`n"
+    $artifacts += "## Not indexed (size cap reached — read these from the filesystem if a criterion needs them)`n`n"
     $artifacts += (($omitted | Select-Object -First 40 | ForEach-Object { "- $_" }) -join "`n") + "`n"
     if ($omitted.Count -gt 40) { $artifacts += "- ...and $($omitted.Count - 40) more`n" }
-    Write-Warning "[judge] artifact budget exhausted; $($omitted.Count) file(s) not shown to the judge."
+    Write-Host "[judge] note: index capped; $($omitted.Count) file(s) listed by name only."
 }
 
 if ([string]::IsNullOrWhiteSpace($artifacts)) {
@@ -131,7 +137,19 @@ $prompt = (Get-Content -Path $PromptTemplate -Raw).
     Replace('{{ARTIFACTS}}', $artifacts)
 
 # Read-only judgement: artifacts are inlined, so no tools are needed.
-$resp = & copilot -p $prompt -s --no-ask-user --allow-all-tools -C $Workspace 2>&1 | Out-String
+# The judge grades *behaviour* as well as text, so it gets the workspace, tools, and the
+# same plugin path the agent had. Without --plugin-dir it cannot load the skills that own
+# this repo's conventions (the ADR template, arc42, commit format), and would fall back to
+# whatever the acceptance wording happens to restate — which is how a task came to be
+# graded against a definition of "MADR" that upstream MADR does not use.
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+$pluginArgs = @()
+foreach ($d in (Get-ChildItem -Path (Join-Path $repoRoot 'plugins') -Directory -Filter 'agile-agents*' -ErrorAction SilentlyContinue)) {
+    $pluginArgs += @('--plugin-dir', $d.FullName)
+}
+
+$resp = & copilot -p $prompt -s --no-ask-user --allow-all-tools --model $JudgeModel @pluginArgs -C $Workspace 2>&1 | Out-String
+Write-Host "[judge] model: $JudgeModel"
 Write-Host '[judge] ----- response -----'
 Write-Host $resp.Trim()
 Write-Host '[judge] ----------------------'

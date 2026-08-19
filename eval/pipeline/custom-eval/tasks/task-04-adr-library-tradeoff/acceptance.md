@@ -1,8 +1,9 @@
 # Acceptance criteria — task-04
 
 1. **File exists** at `docs/adr/0014-http-resilience-library.md`.
-2. **Template followed** — file contains all six MADR sections in order: Status, Context,
-   Decision, Consequences, Alternatives, Related decisions.
+2. **Template followed** — the ADR uses the template defined by the
+   `architecture-decision-records` skill (that skill is the single source of truth for
+   ADR structure here; do not grade against a restatement of it).
 3. **Supersedes link** — Status block explicitly says it supersedes ADR-0007 with a
    relative Markdown link.
 4. **Trade-off documented** — each of the three options has at least one paragraph stating
