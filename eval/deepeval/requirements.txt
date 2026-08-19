@@ -1,0 +1,6 @@
+# Pinned deliberately. ADR 0015 records that ToolCorrectnessMetric requires a model
+# object at construction but never invokes it while scoring -- an implementation detail,
+# not a documented contract. An unpinned upgrade could turn a deterministic, credential-
+# free metric into one that silently needs an LLM.
+deepeval==4.1.8
+pytest>=8.0

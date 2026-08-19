@@ -84,6 +84,48 @@ Against that:
 - A framework's concepts (goldens, test cases, metrics) get imposed on a harness whose failure
   modes are now well understood after extended debugging.
 
+## Verification (2026-08-19)
+
+The offline and cost preconditions were tested rather than assumed, in a throwaway venv on
+DeepEval **4.1.8** with no login, no API key, `DEEPEVAL_TELEMETRY_OPT_OUT=1`, and `HTTP(S)_PROXY`
+pointed at a blackhole. The proxy was itself falsified first (a control request failed with
+`ProxyError`), so the offline result is meaningful rather than a silent success.
+
+- **No subscription is required.** Confident AI is opt-in behind an explicit `deepeval login`.
+- **Both halves of this decision run with zero network.** `ToolCorrectness` scored 1.0 when the
+  `skill` tool appeared in `tools_called` and 0.0 when it did not — the skill-bypass measurement
+  works offline. A custom `BaseMetric` shelling out to a subprocess scored 1.0/0.0 correctly,
+  confirming execution-based outcome grading needs no model.
+- **Correction to the Decision section above:** `ToolCorrectness` was characterised as cheap and
+  effectively free. In 4.1.8 its constructor calls `initialize_model()` and **raises without an
+  `OPENAI_API_KEY`**, even though it never actually invokes the model (`llm_calls=0` while scoring
+  correctly). It is deterministic in behaviour with a spurious construction-time dependency,
+  satisfiable by a one-line `DeepEvalBaseLLM` stub. Pin the DeepEval version — this is an
+  implementation detail, not a documented contract.
+- **Telemetry is on by default** and sends event names, metric names, an anonymous UUID and the
+  **public IP** to PostHog. `DEEPEVAL_TELEMETRY_OPT_OUT=1` must be set in CI and locally.
+- **It fails closed.** With no key and no model it raises rather than emitting a fabricated score
+  — the right default given how much of this harness's history is silent degradation producing
+  plausible numbers.
+- **Azure OpenAI is first-class**, via `AzureOpenAIModel` / `deepeval set-azure-openai`, taking
+  either `AZURE_OPENAI_API_KEY` or `azure_ad_token` / `azure_ad_token_provider` — so Entra ID
+  passwordless auth works and CI need hold no static key. This covers Azure OpenAI deployments
+  including those in an AI Foundry resource; Foundry's wider model catalogue (Azure AI Inference)
+  would need the same thin custom-model shim the probe already exercised.
+
+### The plugin-shadowing defect this work uncovered
+
+While verifying an unrelated skill change, `--plugin-dir` was found **not to override an
+already-installed plugin of the same name** — it only contributes skills that have no installed
+counterpart. A direct probe returned the installed, stale skill text while the edited working-tree
+copy was ignored.
+
+`run-eval` and `score-judge` both pass `--plugin-dir` believing they exercise the working tree, so
+**any measurement of a modified existing skill has been reading the installed copy instead.** This
+is the same family as the S2 contamination in ADR 0014 that produced "skills have neutral impact".
+The spike must run against an isolated Copilot configuration root, or its results inherit the same
+defect. The precedence mechanism (name-based vs load-order) is not yet established.
+
 ## Alternatives considered
 
 **Port the bespoke harness to a single Python implementation.** Delete the `.sh` twins,

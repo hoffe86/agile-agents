@@ -21,3 +21,9 @@ Thumbs.db
 # Waza skill-eval run artifacts (regenerate with scripts/run-trigger-evals.ps1)
 .waza-results/
 .waza-cache/
+
+# DeepEval spike: local virtualenv and Python caches (ADR 0015)
+eval/deepeval/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
