@@ -9,7 +9,7 @@ fallback if this spike fails.
 ADR 0015 adopts DeepEval for the pipeline layer, gated on a spike answering two questions.
 Both are now answered, on real data:
 
-**1. Can a Copilot CLI run be turned into a DeepEval trace?** Yes. `copilot -p … -s` emits
+**1. Can a Copilot CLI run be turned into a DeepEval trace?** Yes. `copilot -p … --output-format json` emits
 newline-delimited JSON carrying `id` / `parentId` / `timestamp` — already a span tree.
 [`adapters/copilot_trace.py`](adapters/copilot_trace.py) reconstructs the ordered tool
 calls from it. DeepEval ships integrations for LangChain, OpenAI, Anthropic and others but
@@ -52,12 +52,20 @@ anecdotes; the first actual measurement contradicts it for this task. Whether th
 because the prompt now names the skill is a separate question, and one this tooling can
 answer by comparing runs.
 
-**The eval session is contaminated by the developer's environment.** Both runs were
-offered **88 skills** while the repository defines **62** — 26 arrived from other globally
-installed plugins. Combined with the finding that `--plugin-dir` does not override an
-already-installed plugin of the same name, this means an eval run does not measure the
-working tree. Isolation is a precondition for trusting any number this produces, not a
-later refinement. See ADR 0015.
+**The eval session was contaminated by the developer's environment — and isolation fixes
+it.** `--plugin-dir` does not override an already-installed plugin of the same name, so runs
+were measuring the installed `agile-agents-core v0.14.0` rather than the working tree at
+`v0.16.0`. Plugins install at **User** scope under the home directory, so pointing
+`USERPROFILE` / `HOME` at a throwaway directory removes them and leaves `--plugin-dir` as the
+only source. Proven by probe: the question that returned stale installed text now returns the
+working-tree text. Auth does not survive isolation, so the run needs `GH_TOKEN` supplied —
+which is how CI would do it anyway. This is a **precondition** for trusting any number here.
+
+**`skills_offered` is not a denominator.** `session.skills_loaded` lists *registered* skills
+(User-scope plugins and builtins), not those supplied via `--plugin-dir`, which resolve on
+demand. An isolated session reports 2 loaded skills while happily invoking a `--plugin-dir`
+one. Use `skills_invoked` to measure bypass; do not compute a rate against `skills_offered`.
+See ADR 0015.
 
 ## Why the schema guard exists
 

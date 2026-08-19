@@ -1,6 +1,6 @@
 """Copilot CLI session log -> DeepEval trace.
 
-`copilot -p ... -s` emits newline-delimited JSON events carrying `id` / `parentId` /
+`copilot -p ... --output-format json` emits newline-delimited JSON events carrying `id` / `parentId` /
 `timestamp`, which is already a span tree. This adapter turns that into the shape
 DeepEval's agentic metrics consume: the ordered tool calls a run actually made.
 

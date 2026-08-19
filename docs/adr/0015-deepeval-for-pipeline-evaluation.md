@@ -32,7 +32,7 @@ scoring cannot answer either, no matter how correct it becomes.
 **Adopt DeepEval for the pipeline layer. Keep Waza for the skills layer.** The two layers stay on
 different tools deliberately, each matched to its unit of evaluation.
 
-The enabling fact was established by inspecting a real run log, not assumed: **Copilot CLI's `-s`
+The enabling fact was established by inspecting a real run log, not assumed: **Copilot CLI's `--output-format json`
 output is already a structured span tree.** One task-04 run emitted 1,420 JSONL events, each
 carrying `id` / `parentId` / `timestamp`, including `tool.execution_start`,
 `tool.execution_complete`, `assistant.turn_start` / `turn_end` and `session.skills_loaded`. Tool
@@ -123,8 +123,25 @@ copy was ignored.
 `run-eval` and `score-judge` both pass `--plugin-dir` believing they exercise the working tree, so
 **any measurement of a modified existing skill has been reading the installed copy instead.** This
 is the same family as the S2 contamination in ADR 0014 that produced "skills have neutral impact".
-The spike must run against an isolated Copilot configuration root, or its results inherit the same
-defect. The precedence mechanism (name-based vs load-order) is not yet established.
+
+**Resolved (2026-08-19): an isolated configuration root fixes it.** Plugins are installed at
+**User** scope under the home directory, so redirecting `USERPROFILE` / `HOME` to a throwaway
+directory removes them from resolution and leaves `--plugin-dir` as the only source. Verified by
+probe: the same question that previously returned the stale installed text (`PHRASE: no`) returns
+the working-tree text (`PHRASE: yes`) under an isolated home. Auth does not survive isolation, so
+the run must be given `GH_TOKEN` — which is how CI would supply it anyway.
+
+This is a **precondition for adoption**, not a refinement: without it the harness measures the
+developer's machine. The installed copy was `agile-agents-core v0.14.0` while the working tree was
+at `v0.16.0` — two minor versions of drift, silently winning.
+
+**Correction to an earlier reading of this data.** The observation "88 skills offered where the
+repo defines 62" was evidence of contamination, but `session.skills_loaded` turns out to list
+**registered** skills (User-scope plugins and builtins) and **not** those supplied via
+`--plugin-dir`, which resolve on demand instead. An isolated session reports only 2 loaded skills
+(both builtin) while still successfully invoking a `--plugin-dir` skill. So `skills_offered` is not
+a measure of what the agent could reach, and must not be used as a denominator for a bypass rate.
+`skills_invoked` — the measurement this decision rests on — is unaffected.
 
 ## Alternatives considered
 
