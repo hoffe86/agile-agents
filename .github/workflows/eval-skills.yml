@@ -29,6 +29,32 @@ permissions:
   contents: read
 
 jobs:
+  runtime-contracts:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      RUNTIME_GATE_REQUIRE_RUNNERS: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the gate's YAML parser
+        shell: pwsh
+        run: Install-Module powershell-yaml -RequiredVersion 0.4.12 -Scope CurrentUser -Force
+
+      - name: Check the Bash gate's YAML parser
+        if: runner.os == 'Linux'
+        shell: bash
+        run: yq --version | grep -E 'mikefarah/yq/.*version v4\.'
+
+      - name: Offline runtime and instruction regressions
+        run: python -m unittest discover -s scripts/tests -p test_runtime_contracts.py -v
+
   skill-quality:
     runs-on: ubuntu-latest
     env:

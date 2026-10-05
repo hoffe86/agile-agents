@@ -23,7 +23,8 @@
       2 = fatal config error
 
 .PARAMETER ProfilePath
-    Path to solution-profile.yaml. Defaults to ./solution-profile.yaml.
+    Explicit profile path. Otherwise resolves .github/solution-profile.yaml first,
+    then the legacy root solution-profile.yaml. Missing or invalid profiles exit 2.
 
 .PARAMETER SkillRoot
     Path to the test-bar-gate skill folder (used to locate references/commands.yaml).
@@ -43,7 +44,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ProfilePath = (Join-Path (Get-Location) 'solution-profile.yaml'),
+    [string]$ProfilePath = '',
     [string]$SkillRoot   = (Split-Path -Parent $PSScriptRoot)
     , [string]$SmokeCommand = ''
     , [string]$SmokeUrl     = ''
@@ -294,10 +295,19 @@ function Invoke-Smoke($profile, [string]$stack) {
 
 # --- main ---
 try {
-    $profile  = Read-Yaml $ProfilePath
+    if (-not $ProfilePath) {
+        $ProfilePath = Join-Path (Get-Location) '.github/solution-profile.yaml'
+        if (-not (Test-Path -LiteralPath $ProfilePath)) {
+            $ProfilePath = Join-Path (Get-Location) 'solution-profile.yaml'
+        }
+    }
+    $profile = Read-Yaml $ProfilePath -Required
+    if ($profile -isnot [System.Collections.IDictionary] -or $profile.Count -eq 0) {
+        throw "Profile must be a non-empty YAML mapping: $ProfilePath"
+    }
     $defaults = Read-Yaml $CommandsYaml -Required
 } catch {
-    Write-Error $_.Exception.Message
+    [Console]::Error.WriteLine("test-bar-gate configuration error: " + $_.Exception.Message)
     exit 2
 }
 

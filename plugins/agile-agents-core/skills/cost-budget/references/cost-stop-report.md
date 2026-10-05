@@ -1,6 +1,9 @@
 # Cost-envelope stop report (template)
 
-Emitted by the `cost-budget` skill when a per-phase or per-run envelope is exceeded by ≥ 10%. The run is **halted**; nothing else runs until the user responds.
+Emitted when measured run or phase usage reaches **110% of its cap** (ADR 0004).
+With `stop_on_breach` true or unset, halt until the user responds. With it false,
+use a warning heading, state that the run continues, and retain the same measured
+breach details in the final report.
 
 Every number here comes from `collect-usage.py`, which reads the runtime's own usage store. Do **not** hand-fill any figure — an agent cannot observe its own consumption, so a hand-written number is a guess dressed as a measurement. If the collector exits 3 (telemetry unavailable) there is no breach to report: that is a tooling failure, and the run continues with a warning.
 
@@ -11,7 +14,7 @@ Every number here comes from `collect-usage.py`, which reads the runtime's own u
 
 **Run ID:** `<run-id>`
 **Envelope breached:** `<per_phase | per_run>`  (`<phase-name>` if per_phase)
-**Metric:** `<aiu | tokens>`
+**Metric:** `<aiu | tokens | usd>`
 **Limit:**   <limit>
 **Actual:**  <actual>
 **Over by:** <percent_over>%  (threshold to halt: ≥ 10%)
@@ -54,8 +57,7 @@ Do **not** auto-retry. The same prompt with the same agents is overwhelmingly li
 | Phase     | Agent              |        AIU | Tokens in | Tokens out |
 |-----------|--------------------|-----------:|----------:|-----------:|
 | architect | architect          |      1,800 |    42,000 |     12,500 |
-| coding    | coding             |      7,100 |   180,000 |     61,000 |
-| coding    | review             |      3,200 |    95,000 |     14,800 |
+| coding    | coding             |     10,300 |   275,000 |     75,800 |
 | coding    | coding (retry x2)  |      1,100 |    28,000 |      9,200 |
 | **Total** |                    | **13,200** |**345,000**| **97,500** |
 

@@ -222,6 +222,15 @@ If the deliverable is missing **section 1, 3, 5, 7 (when cloud-hosted), 9, 10 or
 
 Reach these through `web`, the vendor documentation MCP server, or that vendor's skill plugin when installed. `solution-profile.yaml: infrastructure.cloud` says which provider's documents are the relevant ones — do not cite a framework the project does not target.
 
+## Corrective rounds
+
+When `dev-lead` routes review findings to you, address only the advisory/design
+findings assigned to you. `dev-lead` owns the review-loop budget. Account for
+every id as `fixed`, `disputed`, or `not mine` with evidence or the correct owner.
+Do not edit production code, IaC, or ADRs to close a finding. A new boundary,
+dependency, or unresolved decision goes back to the human approval gate, not
+straight to implementation.
+
 ## Hand-off contract
 
 ```
@@ -242,6 +251,7 @@ ARCHITECTURE DESIGN COMPLETE
 - Data questions to answer before building (else "none"): <feasibility questions that must be settled by analysis rather than by design — "is the signal present at all?", "are the labels reliable enough?". Each becomes a `data-scientist` task sequenced ahead of anything that depends on the answer.>
 - Estimated monthly cost band (if cloud-hosted): <currency><low> – <currency><high>
 - Open questions / risks: <list with owners>
+- Findings addressed: <corrective rounds only — one line per id: "<id>: fixed in <deliverable/location>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit on a first pass.>
 - Recommended next step:
     → human (to settle any reported decision gaps — as ADRs only if the project uses them), then
     → infrastructure (to provision the topology)

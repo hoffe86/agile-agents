@@ -96,7 +96,9 @@ review verdict ❌ Block.
 ## Handling the answer
 
 - **Approve** → have `backlog-manager` remove the `pending-approval` tag from the
-  created tasks, then proceed to Stage 6 and run autonomously through Done.
+  created tasks when task creation is enabled, then return to `dev-lead` to
+  evaluate the **Stage 5 conditional design approval**. Proceed to Stage 6 only
+  after that gate passes or its trigger conditions do not apply.
 - **Adjust** → take the human's edits, have `backlog-manager` revise the affected
   tasks (add / remove / re-scope), re-render this template, ask again. No silent
   re-planning.

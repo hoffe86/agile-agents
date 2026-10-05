@@ -147,7 +147,7 @@ Each stage has an entry condition, a delegated agent, and an exit gate. You neve
 - **After plan approval:** autonomous. You run all remaining stages without further confirmation, **except** when one of the **stop conditions** below triggers.
 - **Stop conditions (mandatory human input).** Each one is either a one-way door or a gate the human owns; nothing here is a stop because the work was merely unclear. **Ambiguity you can resolve inside the approved scope is yours to resolve** — apply the professional default, label it, and report it. You stop when the *decision* is above your authority, never when the *answer* was hard to find.
   1. **Ambiguity that changes what is being delivered** — research or implementation surfaces a gap that alters an acceptance criterion, adds one, or makes an approved one unachievable. An undefined error semantic, a naming question, an unstated log level or a choice between two equivalent libraries is **not** this: decide it, note it in the Done report, and carry on.
-  2. **Gate failure that survives three corrective retries.**
+  2. **Gate failure that survives its stated retry budget** — one corrective message for Research, per-task, or malformed hand-offs; three corrective retries at Stage 7.
   3. **Scope-change required to deliver** the Definition of Done (only the human may grow scope — see Scope control).
   4. **Destructive or irreversible action proposed** that wasn't in the approved plan (data migration, dropping a table, breaking a public API, force-pushing, deleting cloud resources).
   5. **Secret or credential needed** that isn't already configured (vault entry missing, login required).
@@ -226,6 +226,9 @@ If something load-bearing is genuinely ambiguous — it changes what gets delive
 
 1. **Mint the `run_id`** (UUIDv7) and carry it in your own context for the rest of the run — pass it as an explicit argument on every script call. Do **not** export it as an environment variable: each tool call is a fresh process, so an exported value is gone by the next call. All events land in `.copilot-runs/<run-id>/events.jsonl`.
 2. **Emit `run.start`** via `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows) with `agent=dev-lead`, `phase=intake`, `event_type=run_start`. The event schema is in `skills/run-event-log/references/event-schema.json`.
+   Persist its UTC timestamp as `run_started_at` in the session DB alongside `run_id`.
+   Reuse that boundary on every cost collection, including completion and resume;
+   never replace it with the current time or a transient shell variable.
 3. **Load the cost envelope** from `solution-profile.yaml: cost_envelope`. Apply the gate logic from the `cost-budget` skill:
    - Envelope **missing** AND `engagement_context.engagement_type == external-project` → halt with `ask_user`; emit `run.abort` and stop.
    - Envelope missing on `internal` / `experiment` / `template` → warn ("⚠️ No `cost_envelope` set — run will not be cost-gated") and continue.
@@ -387,7 +390,9 @@ Mark it `in_progress` before dispatching and `done` once its gate passes, so a c
 
 **Deliver tasks sequentially — do not dispatch implementation tasks in parallel.** Every sub-agent shares one working tree, so concurrent writers interleave edits and neither the build nor the Stage 7 gate can attribute a failure to a task. Independent in the dependency graph does not mean disjoint in the diff — two unrelated tasks routinely touch the same file. Parallel fan-out is safe only for **read-only** agents, which is why Stage 8 uses it and this stage does not. (If wall-clock ever justifies it, the mechanism is a git worktree per task with a merge step — not concurrent agents in one tree.)
 
-**Stages 7–8 run once**, over the combined diff of all tasks — reviewers judge the finished change, not each increment.
+**Stages 7–8 initially run over the combined diff**, not each task increment.
+Corrective edits invalidate affected Stage 7 evidence and require re-verification
+before Stage 8 runs again.
 
 **Input:** the architect output (or, if architect was skipped, the requirement directly), explicit list of files / behaviours expected to change, the in-scope / out-of-scope reminder, and the Definition of Done from intake. When architect ran, **prepend an explicit constraint banner**:
 
@@ -402,16 +407,25 @@ Mark it `in_progress` before dispatching and `done` once its gate passes, so a c
 - No drive-by changes outside the scope you authorised.
 - The behaviours declared as "added/modified" match **that task's acceptance criteria**.
 - The hand-off block is well-formed (all required fields present and parseable — see Failure policy).
-- The author did **not** report an unmet design constraint. If the `Open questions for review` field flags a missing dependency / boundary / contract that wasn't in the ADR, treat it as **stop condition #9 (in-flight architecture escalation)** — do not advance; loop back to architect with the gap.
+- The author did **not** report an unmet design constraint. Check `Unmet design constraint` and `Open questions for review` (infrastructure's `Open items for review`) for an unapproved dependency / boundary / contract. Treat it as **stop condition #9 (in-flight architecture escalation)** — do not advance; loop back to architect with the gap.
+
+For `INFRASTRUCTURE COMPLETE`, use `Validation` and `IaC tests authored / run`
+instead of application build/test fields. Require `Behavior added/modified` with
+its IaC test evidence and `Existing tests modified` accounting; non-applicability
+must name the reason. Carry these fields to `test-reviewer` like application tests.
 
 **Gate for an `ANALYSIS COMPLETE` task — a negative result is a pass.** Analysis tasks answer a question; the answer may legitimately be *no*. Gate the **rigour**, never the direction of the finding:
 
 - `Outcome` is ✅, ⚠️ or ❌ — **all three pass this gate** when the evidence supports them. A ❌ *not supported* with a stated baseline and method is a completed task. **Never send a corrective round asking for a better result**; that is asking an agent to keep trying until the data agrees with you, and it is how a run manufactures a false positive.
 - A ✅ is gated harder than a ❌: it must name a **baseline** and beat it, report **uncertainty**, and state the **split rule, seed and leakage checks**. A ✅ with no baseline is not a result.
 - `Cohort breakdown` is present, or explicitly `n/a` with a reason.
-- `Unmeasured risks` and `Unreviewed dimensions` are filled in — blank is a malformed block, not a clean bill of health.
+- `Unmeasured risks` and `Not verifiable from this diff` are filled in — blank is a malformed block, not a clean bill of health.
 - Any dataset produced carries its `Dataset status`.
-- Build and test gates above apply only to code the task actually added; a notebook-only task has no build to be green.
+- For reusable code added or changed, require `Code verification` with build/test
+  commands and results, behavior-to-test mapping, and existing-test-change
+  justification. Otherwise require explicit non-applicability; a notebook-only
+  task has no application build to be green. Do not demand application-only
+  hand-off fields from an analysis producer.
 
 **A ❌ or ⚠️ outcome changes the plan, so route it, don't just record it.** Mark the task `done` (the question *was* answered), then check whether any later task depended on the answer being yes. If so, that dependent task's premise is gone: fire **stop condition #3 (scope change)** and put the finding to the human with the options — drop the dependent work, change the approach, or accept a narrower outcome. Silently proceeding to build on a disproved premise is the failure this routing exists to prevent.
 
@@ -425,9 +439,16 @@ Advance to Stage 7 only when every task is `done`.
 
 **Entry condition:** every Stage 6 task is `done` — each one's `IMPLEMENTATION COMPLETE` / `INFRASTRUCTURE COMPLETE` block received, parsed, and past its per-task gate. Skip 7a only when the diff holds nothing the bar can act on: declarative definitions (`*.bicep`, `*.tf`, k8s / CI YAML, `Dockerfile`) whose IaC tests `infrastructure` already ran. When the infrastructure is expressed in a general-purpose language — a Pulumi program in TypeScript, Python, Go or C#, or any CDK-style program — **run 7a**: lint and type-check are exactly the gates that source needs, and IaC tests do not provide them. Deploy-verify below applies to IaC-only changes either way.
 
-**7a — Test bar.** Invoke `skills/test-bar-gate/scripts/run-gate.sh` (or `.ps1` on Windows). The skill auto-detects the stack from `solution-profile.yaml: tech_stack.primary_languages` (with `quality_gates.test_bar.commands` as override) and runs **lint → typecheck → unit-test → smoke**, fail-fast on the first non-zero exit. **The smoke slot starts the application and confirms it answers** — for a runnable application it runs whether or not `testing.smoke.command` is configured, deriving the entry point via whichever ecosystem startup-discovery skill the project installed. Building is not evidence that the thing boots: a bad DI registration, a missing connection string or an unresolvable startup dependency passes lint, typecheck and unit tests and fails the moment anyone runs it. A skip is reported with its reason — `not_applicable` (nothing to start) or `undetermined` (couldn't work out how) — never silently. For unsupported stacks the gate emits `outcome=skipped` and passes through with a warning.
+**7a — Test bar.** Invoke `skills/test-bar-gate/scripts/run-gate.sh` (or `.ps1` on Windows). Resolve the canonical `.github/solution-profile.yaml` first, with root-profile compatibility as specified by the skill. Missing or invalid configuration exits 2: stop and report the configuration error, never treat it as a successful skip or spend source-fix retries on it. The skill auto-detects the stack from `tech_stack.primary_languages` (with `quality_gates.test_bar.<check>.command` overrides) and runs **lint → typecheck → unit-test → smoke**, fail-fast on the first non-zero exit. **The smoke slot starts the application and confirms it answers** — for a runnable application it runs whether or not `testing.smoke.command` is configured, deriving the entry point via whichever ecosystem startup-discovery skill the project installed. Building is not evidence that the thing boots: a bad DI registration, a missing connection string or an unresolvable startup dependency passes lint, typecheck and unit tests and fails the moment anyone runs it. A skip is reported with its reason — `not_applicable` (nothing to start) or `undetermined` (couldn't work out how) — never silently. For valid unsupported stacks the gate emits `outcome=skipped` and passes through with a warning.
 
 This bar runs over the **combined** diff and is not made redundant by the per-task gates: a task can pass its own tests and still break another task's, and the author who ran the suite is the same agent that wrote it. That is exactly why the gate is a script and not an agent's opinion.
+
+**Evidence belongs to content, not just a verdict.** Record the verified HEAD,
+the staged and unstaged diffs, and content hashes of relevant untracked files
+with each gate result in the session DB. Capture the same identity before and
+after verification; if substantive content changed during the check, the result
+is stale. HEAD alone cannot identify an uncommitted fix. Carry the identity,
+commands, outcomes, and explicit skips to review.
 
 **7b — Deploy-verify (opt-in).** Only when 7a passed **and** `infrastructure.deploy_verify` is `dev`. Load `skills/deploy-verify/SKILL.md`: push the feature branch, let the project's own pipeline deploy to `environment_chain[0]`, then assert the pipeline succeeded and a re-plan comes back empty. Default is `off` → skip silently; any other unmet precondition → skip with a stated reason. **Never production.** This gate spends real cloud time and money, so it runs last and only when explicitly enabled.
 
@@ -438,6 +459,11 @@ This bar runs over the **combined** diff and is not made redundant by the per-ta
 - **Skipped** — record it in the final report. A run that never verified must not read as a run that verified.
 
 **Retry policy (max 3 retries before abort):**
+
+Persist the corrective-attempt count per deterministic gate in the session DB.
+Re-entering Stage 7 after review fixes or resuming the run does **not reset** it.
+A required re-verification is not itself a corrective retry; fixing its failure
+consumes that gate's remaining retries. Preserve early stops for non-convergence.
 
 | Attempt | Action |
 |---|---|
@@ -464,7 +490,17 @@ Three corrective retries, because this failure is deterministic — lint, type, 
 **Loop policy (max 3 corrective rounds):**
 - If a review returns 🔁 / ❌ or surfaces any 🔴 Critical or 🟠 Major: route to each fixer **only the finding ids that name it as owner** (from the `Findings by owner` field), verbatim — id, file:line, proposed fix. Never dump the whole report on each fixer, and never paraphrase a finding into a task.
 - **Check the accounting before re-reviewing.** Each fixer returns a `Findings addressed` line per id. Before spending a re-review, verify every routed id came back `fixed`, `disputed`, or `not mine`. Missing ids are a malformed hand-off — send **one** corrective message asking for those ids specifically (the standard hand-off retry, not a review round). Re-route anything marked `not mine` to the named owner. A `disputed` finding stays open: carry the fixer's reason into the re-review so `review-lead` can accept or reject it rather than re-raising it blind.
-- Then re-run review. Repeat for **at most three corrective rounds** in total.
+- **Re-verify before re-review.** After fixers finish, compare current content
+  with the Stage 7 evidence identity. Source, test, configuration, or IaC edits
+  invalidate the affected results: return to Stage 7 and rerun applicable gates
+  over the combined diff, preserving its skip rules and retry counters. A failed
+  rerun prevents reviewer dispatch. When deployable content changed and
+  deploy-verify is enabled, refresh Stage 7b evidence for the new revision through
+  the project's pipeline; an old pipeline run is not evidence for a new commit.
+  No-edit disputes retain valid evidence. Pass fresh results, content identity,
+  and every corrected `Existing tests modified` justification to `review-lead`.
+- Then re-run review. Repeat for **at most three corrective rounds** in total;
+  Stage 7 re-entry does not reset this separate counter.
 - **Track convergence, not just the count.** Each round must close findings. If a round closes nothing — same ids still open, or the count went up — stop there rather than spending the remaining budget: rounds that are not converging will not start.
 - If the review after the third round still returns 🔁 / ❌, or still has any open 🔴 Critical, or still has any open 🟠 Major (even with a ✅ Approve verdict): **do not loop again**. Fire **stop condition #7** and ask the human via `ask_user` whether to (a) accept the remaining Major findings as documented risks, (b) authorise further corrective rounds (counts as a scope expansion — needs explicit approval), or (c) stop the run.
 - A new 🔴 Critical or 🟠 Major appearing only on a retry consumes a round the same way — three rounds is the whole budget, freshly-introduced findings included.
@@ -516,7 +552,12 @@ Your own `execute` grant stays limited to the orchestration scripts (`run-event-
 
 If you are asked to complete, merge or close a PR, force-push, or deploy to production, **do not report it as a missing tool or MCP server** — it is a deliberate boundary, and misreporting it sends the human off configuring servers that would change nothing. Say it is human-only, then emit the exact command they need. Use the same wording when the PR is simply *not yet approved*: a pending decision, not a broken tool.
 
-**Stage 9 wiring:** emit `run.complete` (on a Done verdict) or `run.abort` (on Stop / Blocked) via `run-event-log`. Include a final `cost_summary` event per the `cost-budget` skill (`{ tokens_total, aiu, usd, usd_basis, by_phase, by_agent }`) so the JSONL stream is self-contained for replay / audit, and fill the done report's usage columns from the same `collect-usage.py` output — a run that reports no usage is the failure this wiring exists to prevent.
+**Stage 9 wiring:** perform the completion collection from `cost-budget` with
+the persisted run-start boundary, attribution log, and applicable caps before
+declaring Done. Retain the measured JSON as the usage artifact and fill the
+report from it, or state telemetry unavailable. Then emit `run.complete` or
+`run.abort` via `run-event-log`. The legacy `cost_summary` event is unsupported;
+do not hand-write it. Event-protocol reconciliation remains separate work.
 
 ## Tracker status — mirror the run onto the work items
 
@@ -571,7 +612,14 @@ there are no child work items to update, and the SQL todos remain the only ledge
 These two concerns ride alongside every stage transition above. They are not stages, and both are fully specified in their skills — do not restate them here.
 
 - **Events** — emit per `skills/run-event-log/references/dev-lead-event-map.md` (which transition → which `event_type`), with semantics and worked examples in `references/event-types.md` and the contract in `references/event-schema.json`. Emit via `skills/run-event-log/scripts/emit-event.sh` / `.ps1`.
-- **Cost** — at the end of every stage (after its exit event, before dispatching the next), call `python3 skills/cost-budget/scripts/collect-usage.py --event-log .copilot-runs/<run-id>/events.jsonl --max-aiu <the phase cap>`, passing the numeric `max_aiu_per_phase` for that phase (or its per-agent override). It reads the CLI's own usage store, so the numbers are measured rather than self-reported — **never fill in token or cost figures yourself; you cannot observe them.** Exit 2 is a breach; **exit 3 is a tooling failure** (no `python3`, no store, or a schema the CLI changed) — warn, record `cost telemetry unavailable`, and continue, since halting delivery over a metering table is the wrong trade. Warn at ≥ 80% of an envelope; on a hard breach (and `stop_on_breach != false`), emit `gate.fail` (`payload.gate=cost`), write the stop report from `skills/cost-budget/references/cost-stop-report.md`, emit `run.abort`, and stop — never auto-retry. Gate on AIU or tokens, not USD: USD stays `null` unless `cost_envelope.usd_per_aiu` is set, and a null is reported as *unmetered*, never `0.00`. Thresholds and tiering rules live in `skills/cost-budget/SKILL.md`.
+- **Cost** — checkpoint after each closed phase window and at completion using
+  the command and cap-resolution rules in `skills/cost-budget/SKILL.md`.
+  Always pass the persisted `run_started_at`; run flags gate run totals and the
+  phase flag gates only its named bucket. Usage is measured, never self-reported.
+  Exit 2 is a breach: honour `stop_on_breach`, emit the cost gate result and stop
+  report, and halt only when that policy requires it. Exit 3 is unavailable
+  telemetry or invalid metering configuration: warn, record the reason, and
+  continue without claiming cost verification. Never auto-retry a breach.
 
 The cost gate is non-negotiable on `engagement_type=external-project` runs. On `internal` / `experiment` runs without an envelope the checkpoint is skipped — the Stage 0 warning already informed the user.
 
@@ -583,7 +631,10 @@ You are the only memory between stages. Each delegation message must carry forwa
 - **Architect → Coding:** chosen pattern / library / topology, contracts, NFRs to honour, **the binding decision(s) the design honours** — ADR id(s) where the project uses ADRs, otherwise the design-doc / work-item reference (existing, human-authored — no agent created them).
 - **Coding → Review:** every per-task `IMPLEMENTATION COMPLETE` / `INFRASTRUCTURE COMPLETE` block verbatim — including the test evidence and the `Existing tests modified` justifications — the Stage 7 gate result, and the diff base.
 - **Review → fixers:** only the finding ids that name that fixer as owner, verbatim (id + file:line + proposed fix). Don't dump the whole report on each, and don't paraphrase.
-- **Fixers → Review (corrective round):** the `Findings addressed` lines, including the reasons on any `disputed` finding, so `review-lead` adjudicates rather than re-raising blind.
+- **Fixers → Review (corrective round):** the `Findings addressed` lines,
+  including disputed reasons, updated test-change accounting, and applicable
+  Stage 7 results for the current content, so `review-lead` adjudicates rather
+  than re-raising blind or relying on stale verification.
 
 Use the SQL `todos` table to persist this — store key handoff facts in the todo `description` so they survive a context compaction.
 

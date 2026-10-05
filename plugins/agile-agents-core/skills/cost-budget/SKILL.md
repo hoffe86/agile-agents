@@ -46,37 +46,55 @@ Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuc
    - If `cost_envelope` is missing on `internal` / `experiment` / `template` engagements → **warn** ("⚠️ No cost_envelope set — run will not be cost-gated") and continue.
    - If `cost_envelope` is present → record the limits and continue.
 
-3. **Checkpoints at every phase transition** (called by `dev-lead` between stages — e.g. architect → coding, coding → testing, testing → review):
-   - Run `collect-usage.py` and read `by_phase[<phase>]`. Usage is attributed to a phase by
-     timestamp, from the `phase_start` / `phase_complete` events `dev-lead` already emits — which
-     is why worker agents report nothing themselves: the orchestrator is the only agent that knows
-     the phase structure.
+3. **Checkpoint after each closed phase window**, before dispatching more work.
+   Persist `run_started_at` from the Stage 0 `run_start` timestamp and pass it
+   as `--since` on every call, including completion and resume. `--event-log`
+   attributes usage; it does **not** filter out earlier session usage.
 
-     **Pass the run-level caps as flags.** The script enforces them and exits `2` on breach; if you
-     omit the flags it only reports, and a declared cap is never applied:
+   **Phase identity:** supervisor-only windows use their stage name. Worker
+   windows use the dispatched role (`architect`, `coding`, `infrastructure`,
+   `data-scientist`, `review-lead`, etc.), so agent-name override keys resolve
+   exactly. Only dev-lead emits; close a supervisor window before opening a
+   worker window and reopen it afterward if needed. Never overlap windows.
+   Repeated windows for a role, including corrections, accumulate in one bucket
+   for this run; neither a retry nor resume resets its cap.
+   Parallel review lenses share `review-lead`'s window. Individual lens overrides
+   have no separate window: report them as unapplied, never claim enforcement.
+
+   Resolve the closed window's cap from
+   `max_aiu_per_phase_overrides[<phase>]`, otherwise `max_aiu_per_phase`.
+   Pass run caps to run flags, and the resolved phase cap only to its own flag:
 
      ```
      python scripts/collect-usage.py \
        --event-log .copilot-runs/<run-id>/events.jsonl \
+       --since <persisted-run-start-UTC> \
        --max-tokens <cost_envelope.max_tokens_per_run> \
        --max-aiu    <cost_envelope.max_aiu_per_run> \
        --max-usd    <cost_envelope.max_usd_per_run> \
-       --usd-per-aiu <cost_envelope.usd_per_aiu>
+       --usd-per-aiu <cost_envelope.usd_per_aiu> \
+       --phase <closed-window-label> --max-phase-aiu <resolved-phase-cap>
      ```
 
-     Omit any flag whose key is unset — never substitute a default. `--max-usd` without
-     `--usd-per-aiu` cannot evaluate, so pass both or neither.
-   - Compare `by_phase[<phase>]` to `max_aiu_per_phase` (or the per-agent override).
-   - **Breach** = script exit `2`, or the per-phase figure exceeding its cap by ≥ 10%.
+   Omit unset caps; pass `--phase` and `--max-phase-aiu` together or neither.
+   Pass `--max-usd` only with a rate. A zero cap is explicit, not unset.
+   The collector uses unrounded usage: **warn at ≥80%; breach at ≥110%**
+   for run and phase caps (ADR 0004). Zero usage under a zero cap is allowed;
+   any positive usage breaches it. Read its `warnings` and `breaches` arrays.
+   Missing phase windows, invalid timestamps/caps, or unusable telemetry exit
+   **3**, never a zero-valued substitute. Gating without `--since` also exits 3.
+   - **Breach** = script exit `2`.
    - On breach, honour `stop_on_breach`:
      - `true` (default) → emit the structured stop report from `references/cost-stop-report.md` and **halt the run**.
      - `false` → emit the same report as a **warning**, record it in the final report, and continue. Warn-only is rare and deliberate; never silently downgrade a halt without this key set.
 
-4. **Run completion**: run `collect-usage.py` once more without `--event-log` filtering — keeping the same cap flags, so a run that stayed under every per-phase cap but breached a run-level one is still caught — and write the result as a `cost_summary` event, so the JSONL stream is self-contained for replay:
-
-   ```json
-   {"ts":"2026-04-12T14:03:00Z","type":"cost_summary","run_id":"...","tokens_total":1284310,"aiu":18420.5,"usd":null,"usd_basis":"not-metered","by_phase":{"architect":{"aiu":2100.0},"coding":{"aiu":9800.4}},"by_agent":{}}
-   ```
+4. **Run completion**: collect again with the **same `--since`, `--event-log`,
+   and run caps**, plus the just-closed phase cap when set. Never widen the
+   collection to the whole session or lose phase attribution. Fill the final
+   report from this result. The legacy `cost_summary` event recipe is
+   not accepted by the current event schema/emitter; retain the measured JSON
+   as a run artifact rather than hand-writing an invalid event. Event-protocol
+   reconciliation is separate work.
 
 ## Model tiering convention
 
@@ -102,9 +120,10 @@ When the envelope is exceeded, emit the markdown report defined in `references/c
 ## Helpers
 
 - `scripts/collect-usage.py` — reads the CLI's usage store read-only and emits
-  `{ totals, by_phase, by_agent, usd, usd_basis, unattributed }`. Flags: `--event-log`
-  (per-phase attribution), `--since`, `--usd-per-aiu`, `--max-tokens`, `--max-aiu`,
-  `--max-usd`. Exit **2** on a threshold breach, **3** when usage is unavailable.
+  `{ totals, by_phase, by_agent, usd, usd_basis, unattributed, warnings, breaches }`.
+  Flags: `--event-log`, `--since`, `--usd-per-aiu`, run caps `--max-tokens`,
+  `--max-aiu`, `--max-usd`, and `--phase` / `--max-phase-aiu`. Exit **2** at
+  110% of a cap, **3** for unavailable usage or invalid metering configuration.
 
   **Exit 3 is a tooling failure, not a budget breach** — no `python3`, no store, or a
   schema the CLI changed under us. Warn, record `cost telemetry unavailable`, and let the
