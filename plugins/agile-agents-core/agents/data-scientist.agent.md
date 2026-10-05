@@ -125,6 +125,7 @@ ANALYSIS COMPLETE
 - Dataset status (if you produced one): ai-generated | expert-reviewed | mixed
 - Unmeasured risks: <risks with no detecting metric — never omit; write "none identified" only if you looked>
 - Not verifiable from this diff: <anything a reviewer cannot check from what you committed — an external dashboard, a run in a tracker, a manual inspection — so `data-reviewer` reports it as a gap rather than assuming it was done. "nothing" is a valid answer.>
+- Code verification: <n/a — no reusable code changed, with reason | build/test commands and results; each code behavior → test name; existing tests modified: none or old assertion and why it was invalid>
 - Interface for `coding` (if a model ships): <inputs, outputs, failure modes, latency, and what to do when it abstains>
 - Findings addressed: <corrective rounds only — one line per finding id. Omit on a first pass.>
 - Open questions for review: <if any>

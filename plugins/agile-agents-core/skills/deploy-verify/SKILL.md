@@ -58,6 +58,10 @@ If the strategy or the triggers say this branch will not reach a dev deploy, emi
 1. **Confirm the target.** Resolve `environment_chain[0]`. Re-assert it is not production. This is the one check worth doing twice.
 2. **Push the branch.** Commit any uncommitted work on the feature branch first; push. Never force-push, never push to the default branch. This needs no approval — committing and pushing are ungated — and it authorises nothing beyond itself: this skill opens no PR.
 3. **Find the run.** Locate the pipeline run triggered by that head SHA. If no run appears within ~2 minutes, emit `skipped, reason=no_pipeline_run` — the triggers did not match, which is information, not a failure.
+   Record that SHA with the evidence. After corrective edits to deployable
+   content, repeat verification for the new SHA before re-review; do not reuse
+   an old green run. Recheck all preconditions and retain the existing retry
+   count, non-production boundary, and explicit skip reasons.
 4. **Poll to completion**, bounded by `cost_envelope.max_minutes_per_run` (whatever remains of it). On timeout: `failure, reason=timeout`, and report the run URL so a human can pick it up.
 5. **Read the outcome.** On failure, extract the failing stage/job name and the error tail. A pipeline URL alone is not a report.
 6. **Assert convergence** — the strong check, and the reason this skill is worth more than "the pipeline went green". Re-run `terraform plan` / `az deployment group what-if` against the deployed environment. **An empty diff is the pass condition.** A non-empty diff after a successful apply means the IaC is not idempotent — it will drift on every subsequent run. Report that as a failure even though the pipeline reported success.

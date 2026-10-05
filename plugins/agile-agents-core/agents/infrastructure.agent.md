@@ -163,7 +163,12 @@ When your input is a set of **review findings** (routed by `dev-lead` after a re
 
 - **Fix only the findings you were given.** No unrelated module bumps, no findings owned by another agent, no scope expansion — a surprise `plan` diff on a corrective round is its own review problem.
 - **Dispute in writing rather than silently skipping.** If a finding is wrong, already handled, or not yours, say so with the reason.
-- **Account for every finding** in the hand-off block's `Findings addressed` field — one line per finding id. `dev-lead` re-runs review exactly once and must be able to tell "fixed" from "skipped" first.
+- **Account for every finding** in the hand-off block's `Findings addressed` field — one line per finding id. `dev-lead` owns the review-loop budget and must distinguish "fixed" from "skipped" before re-verification and re-review.
+
+You may fix infrastructure to satisfy valid tests, never weaken assertions to
+make it pass. Account for every changed, deleted, or newly skipped existing test
+in `Existing tests modified`, including what its old assertion claimed and why
+that claim was invalid.
 
 ## Hand-off contract
 
@@ -181,5 +186,7 @@ INFRASTRUCTURE COMPLETE
 - Findings addressed: <corrective rounds only — one line per finding: "<id>: fixed in <file:line>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit the field entirely on a first-pass implementation.>
 - Open items for review: <if any>
 - IaC tests authored / run: <count, framework, ✅ pass | ❌ fail | n/a>
+- Behavior added/modified: <each observable infrastructure/pipeline behavior → IaC test name; n/a only with a reason no executable test applies>
+- Existing tests modified: <none | one line per changed/deleted/newly-skipped test: old assertion and why it was invalid>
 - Recommended next step: hand off to infrastructure-reviewer | review | deploy
 ```

@@ -151,8 +151,8 @@ When your input is a set of **review findings** (routed by `dev-lead` after a
 review), you are in a corrective round, not a fresh implementation:
 
 - **Fix only the findings you were given.** Do not refactor around them, do not
-  fix findings owned by another agent, do not expand scope. The review budget is
-  one round — an unrequested change costs a re-review you don't have.
+  fix findings owned by another agent, do not expand scope. `dev-lead` owns the
+  review-loop budget; an unrequested change spends it without closing findings.
 - **A code finding and a test finding are both yours now.** Findings from
   `test-reviewer` route here alongside those from `review-lead` and `security-reviewer`;
   don't bounce them.
@@ -160,9 +160,8 @@ review), you are in a corrective round, not a fresh implementation:
   already handled, or not yours, say so with the reason. A skipped finding with
   no explanation reads as an oversight and burns the run.
 - **Account for every finding** in the hand-off block's `Findings addressed`
-  field — one line per finding id, no exceptions. `dev-lead` re-runs review
-  exactly once; it must be able to tell "fixed" from "skipped" before spending
-  that.
+  field — one line per finding id, no exceptions. `dev-lead` must distinguish
+  "fixed" from "skipped" before re-verification and re-review.
 
 ## Hand-off contract
 

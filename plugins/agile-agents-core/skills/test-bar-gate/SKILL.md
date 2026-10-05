@@ -30,7 +30,14 @@ clean-code / test-quality /             Up to three corrective retries;
 iac reviews)                            4th failure → halt + ask user.
 ```
 
-The gate **never** runs before every Stage 6 task is `done` — we want the unit-test layer (when applicable) to exist before grading it. It runs over the **combined** diff of all tasks, which is why it is not redundant with the per-task gates: a task can pass its own tests and still break another's, and the agent that ran the suite is the same one that wrote it.
+Run over the **combined** diff after all Stage 6 tasks are `done`, and again after
+corrective edits before re-review. Per-task passes do not prove combined behavior.
+Attach fresh results and their content identity; re-entry never resets the
+supervisor's retry budget.
+
+Resolve `.github/solution-profile.yaml`, then the legacy root profile. Explicit
+`--profile` / `-ProfilePath` never falls back. Missing, unreadable, malformed,
+empty, or non-mapping profiles exit **2 (configuration error)**, not a skip.
 
 ## What runs
 
