@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "provenance": "synthetic working reconciliation implementation and PostgreSQL repository; no requested tests are included",
+  "inputs": [
+    {"source": "baseline/Reconciliation.slnx", "destination": "Reconciliation.slnx", "required": true},
+    {"source": "baseline/src", "destination": "src", "required": true}
+  ]
+}

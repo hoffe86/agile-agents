@@ -1,318 +1,659 @@
 #!/usr/bin/env python3
-"""check-trajectory.py - L0 trajectory / process-conformance eval.
+"""Validate event-log schema and ordered RPI trajectory without model calls."""
 
-Reads a run-event-log JSONL stream (.copilot-runs/<run-id>/events.jsonl) and
-asserts it conforms to the expected RPI pipeline shape:
-
-  - dev-lead bookends the run (run_start first, run_complete last with outcome)
-  - one run_id across the whole stream; required fields + valid enums per event
-  - phase_start / phase_complete are balanced
-  - Research -> Implement -> Testing happened
-  - a test-bar gate_check (emitted by dev-lead) fired BEFORE review
-  - at least one reviewer emitted a gate_check
-  - cost telemetry is present on run_complete (the cost-budget machinery ran)
-
-This is the cheapest eval layer: deterministic, zero-credit, schema-grounded.
-It catches an entire class of silent failures - the pipeline "ran" but its own
-machinery (event log / test-bar gate / cost-budget) never fired - without
-calling any model. See eval/pipeline/trajectory/README.md and docs/adr/0008.
-
-Exit code: 0 if every REQUIRED check passes, 1 otherwise.
-
-Usage:
-  check-trajectory.py <events.jsonl>
-  check-trajectory.py --self-test            # no file needed; verifies the checks
-  check-trajectory.py --emit-fixture <path>  # (re)generate the golden fixture
-"""
 import json
+import math
+import re
 import sys
-from collections import Counter
-
-# Mirror plugins/agile-agents-core/skills/run-event-log/references/event-schema.json (keep in sync).
-AGENTS = {
-    "dev-lead", "architect", "coding", "data-scientist", "infrastructure",
-    "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
-    "infrastructure-reviewer", "test-reviewer", "data-reviewer",
-}
-EVENT_TYPES = {
-    "run_start", "run_complete", "phase_start", "phase_complete",
-    "tool_call", "gate_check", "handoff_received", "error",
-}
-REQUIRED_FIELDS = ("timestamp", "run_id", "agent", "phase", "event_type")
-REVIEWERS = {
-    "review-lead", "code-reviewer", "security-reviewer", "architecture-reviewer",
-    "infrastructure-reviewer", "test-reviewer", "data-reviewer",
-}
-IMPLEMENTERS = {"coding", "data-scientist", "infrastructure"}
+from datetime import datetime
+from pathlib import Path
 
 
-def _first_index(events, pred):
-    for i, e in enumerate(events):
-        if pred(e):
-            return i
-    return None
+SCHEMA_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "plugins"
+    / "agile-agents-core"
+    / "skills"
+    / "run-event-log"
+    / "references"
+    / "event-schema.json"
+)
+SCHEMA = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+V2_CUTOFF_UTC = datetime(2026, 10, 5, 21, 12, 21)
+IMPLEMENTATION_ROLES = {"implement", "coding", "infrastructure", "data-scientist"}
+RESEARCH_ROLES = {"research", "architect"}
+REVIEW_ROLES = {"review", "review-lead"}
+SENSITIVE_PATTERNS = (
+    re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|"
+        r"refresh[_-]?token|client[_-]?secret|authorization|accountkey|"
+        r"sharedaccesssignature|connection[_-]?string)\b\s*[:=]\s*\S+",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bbearer\s+[A-Z0-9._~+/=-]{8,}", re.IGNORECASE),
+    re.compile(
+        r"\b(?:gh[pousr]_[A-Z0-9]{20,}|github_pat_[A-Z0-9_]{20,}|"
+        r"sk-[A-Z0-9_-]{20,}|AKIA[0-9A-Z]{16}|AIza[A-Z0-9_-]{30,}|"
+        r"xox[baprs]-[A-Z0-9-]{10,})\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE),
+    re.compile(r"\b(?:sig|signature)\s*=\s*[^&;\s]+", re.IGNORECASE),
+    re.compile(r"\b(?:https?|ftp)://[^/\s:@]+:[^/@\s]+@", re.IGNORECASE),
+    re.compile(r"(?<!\w)\+?\d[\d .()-]{8,}\d(?!\w)"),
+)
+
+
+def _resolve_ref(reference):
+    if not reference.startswith("#/"):
+        raise ValueError("only local schema references are supported: " + reference)
+    value = SCHEMA
+    for part in reference[2:].split("/"):
+        value = value[part.replace("~1", "/").replace("~0", "~")]
+    return value
+
+
+def _json_type(value):
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    return "unknown"
+
+
+def _finite_number(value):
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def _matches_type(value, expected):
+    actual = _json_type(value)
+    if expected == "number":
+        return actual in ("integer", "number") and _finite_number(value)
+    if expected == "integer":
+        return actual == "integer"
+    return actual == expected
+
+
+def _validate_schema(value, schema, path="$"):
+    errors = []
+    if "$ref" in schema:
+        return _validate_schema(value, _resolve_ref(schema["$ref"]), path)
+
+    expected = schema.get("type")
+    if expected is not None:
+        expected_types = expected if isinstance(expected, list) else [expected]
+        if not any(_matches_type(value, item) for item in expected_types):
+            return [f"{path}: expected {' or '.join(expected_types)}, got {_json_type(value)}"]
+
+    if "const" in schema and value != schema["const"]:
+        errors.append(f"{path}: expected {schema['const']!r}")
+    if "enum" in schema and value not in schema["enum"]:
+        errors.append(f"{path}: value is not in the allowed set")
+
+    if isinstance(value, str):
+        if len(value) < schema.get("minLength", 0):
+            errors.append(f"{path}: shorter than minLength")
+        if len(value) > schema.get("maxLength", math.inf):
+            errors.append(f"{path}: longer than maxLength")
+        if "pattern" in schema and re.search(schema["pattern"], value) is None:
+            errors.append(f"{path}: does not match the required pattern")
+        if schema.get("format") == "date-time":
+            try:
+                datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                errors.append(f"{path}: is not a valid UTC date-time")
+
+    if _json_type(value) in ("integer", "number"):
+        if not _finite_number(value):
+            errors.append(f"{path}: number must be finite")
+        if value < schema.get("minimum", -math.inf):
+            errors.append(f"{path}: below minimum")
+
+    if isinstance(value, dict):
+        missing = [field for field in schema.get("required", ()) if field not in value]
+        if missing:
+            errors.append(f"{path}: missing required properties {missing}")
+        properties = schema.get("properties", {})
+        for key, item in value.items():
+            if key in properties:
+                errors.extend(_validate_schema(item, properties[key], f"{path}.{key}"))
+            elif isinstance(schema.get("additionalProperties"), dict):
+                errors.extend(_validate_schema(
+                    item, schema["additionalProperties"], f"{path}.<value>"))
+            elif schema.get("additionalProperties") is False:
+                errors.append(f"{path}: unexpected property")
+
+    if isinstance(value, list) and "items" in schema:
+        for index, item in enumerate(value):
+            errors.extend(_validate_schema(item, schema["items"], f"{path}[{index}]"))
+
+    for sub_schema in schema.get("allOf", ()):
+        errors.extend(_validate_schema(value, sub_schema, path))
+    if "if" in schema and not _validate_schema(value, schema["if"], path):
+        errors.extend(_validate_schema(value, schema.get("then", {}), path))
+    if "oneOf" in schema:
+        matches = sum(not _validate_schema(value, option, path)
+                      for option in schema["oneOf"])
+        if matches != 1:
+            errors.append(f"{path}: must match exactly one allowed shape")
+    if "not" in schema and not _validate_schema(value, schema["not"], path):
+        errors.append(f"{path}: forbidden shape")
+    return errors
+
+
+def _event_schema_errors(events):
+    errors = []
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            errors.append(f"event {index}: expected an object")
+            continue
+        errors.extend(_validate_schema(event, SCHEMA, f"event[{index}]"))
+        errors.extend(_sensitive_string_errors(event, f"event[{index}]"))
+        if event.get("schema_version") == 2:
+            try:
+                stamp = datetime.strptime(event.get("timestamp", ""), "%Y-%m-%dT%H:%M:%S.%fZ")
+                if stamp < V2_CUTOFF_UTC:
+                    errors.append(f"event[{index}]: v2 schema is not valid before its UTC cutoff")
+            except (TypeError, ValueError):
+                pass
+    return errors
+
+
+def _sensitive_string_errors(value, path):
+    errors = []
+    if isinstance(value, str):
+        if any(pattern.search(value) for pattern in SENSITIVE_PATTERNS[:-1]) or (
+            (match := SENSITIVE_PATTERNS[-1].search(value))
+            and sum(character.isdigit() for character in match.group()) >= 10
+        ):
+            errors.append(f"{path}: string resembles a credential or personal identifier")
+        return errors
+    if isinstance(value, dict):
+        for key, item in value.items():
+            errors.extend(_sensitive_string_errors(key, f"{path}.<key>"))
+            errors.extend(_sensitive_string_errors(item, f"{path}.<value>"))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            errors.extend(_sensitive_string_errors(item, f"{path}[{index}]"))
+    return errors
+
+
+def _historical_or_unsupported_reason(events):
+    unsupported = []
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            continue
+        if event.get("schema_version") != 2:
+            unsupported.append(f"event {index} is unversioned or not schema v2")
+            continue
+        timestamp = event.get("timestamp")
+        try:
+            stamp = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
+        except (TypeError, ValueError):
+            continue
+        if stamp < V2_CUTOFF_UTC:
+            unsupported.append(f"event {index} predates the v2 cutoff")
+    if not unsupported:
+        return None
+    detail = "; ".join(unsupported[:5])
+    return (
+        "UNSUPPORTED historical/unsupported classification — "
+        f"{detail}; not current v2 compliance evidence. "
+        "Timestamps do not authenticate archive provenance."
+    )
+
+
+def _terminal_event(events):
+    if not events or not isinstance(events[-1], dict):
+        return {}
+    return events[-1]
+
+
+def _windows(events):
+    opened = None
+    result = []
+    errors = []
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            continue
+        kind = event.get("event_type")
+        phase = event.get("phase")
+        if kind == "phase_start":
+            if not isinstance(phase, str):
+                errors.append(f"event {index}: phase_start has an invalid phase")
+                continue
+            if opened is not None:
+                errors.append(f"event {index}: a phase starts before the open window closes")
+            else:
+                opened = (phase, index, event.get("timestamp"))
+        elif kind == "phase_complete":
+            if not isinstance(phase, str):
+                errors.append(f"event {index}: phase_complete has an invalid phase")
+                continue
+            if opened is None:
+                errors.append(f"event {index}: a phase closes without an open window")
+            elif phase != opened[0]:
+                errors.append(f"event {index}: a phase closes a different phase's window")
+                opened = None
+            else:
+                result.append({
+                    "phase": phase,
+                    "start_index": opened[1],
+                    "complete_index": index,
+                    "outcome": event.get("outcome"),
+                })
+                opened = None
+    if opened is not None:
+        errors.append("an open phase window never closes")
+    return result, errors
+
+
+def _cost_summary_errors(event):
+    payload = event.get("payload") if isinstance(event, dict) else None
+    summary = payload.get("cost_summary") if isinstance(payload, dict) else None
+    if not isinstance(summary, dict):
+        return ["run_complete is missing payload.cost_summary"]
+    status = summary.get("status")
+    if status not in ("measured", "unmetered"):
+        return []
+    usage = summary.get("usage")
+    if not isinstance(usage, dict):
+        return ["measured cost summary has no usage object"]
+    usd = usage.get("usd")
+    basis = usage.get("usd_basis")
+    if status == "measured":
+        if not isinstance(usd, (int, float)) or isinstance(usd, bool) or not _finite_number(usd):
+            return ["measured cost summary requires numeric USD from the usage collector"]
+        if not isinstance(basis, str) or not basis.startswith("rate:"):
+            return ["measured cost summary requires the collector's USD rate basis"]
+    elif usd is not None or basis != "not-metered":
+        return ["unmetered cost summary must preserve null USD and usd_basis=not-metered"]
+    buckets = [usage.get("totals"), usage.get("unattributed")]
+    for name in ("by_phase", "by_agent"):
+        values = usage.get(name)
+        if isinstance(values, dict):
+            buckets.extend(values.values())
+    for bucket in buckets:
+        if not isinstance(bucket, dict):
+            continue
+        bucket_usd = bucket.get("usd")
+        if status == "measured" and (
+            not isinstance(bucket_usd, (int, float))
+            or isinstance(bucket_usd, bool)
+            or not _finite_number(bucket_usd)
+        ):
+            return ["measured cost summary contains an unrated collector bucket"]
+        if status == "unmetered" and bucket_usd is not None:
+            return ["unmetered cost summary contains a numeric collector bucket USD"]
+    return []
+
+
+def _skip_reason(event):
+    payload = event.get("payload")
+    return payload.get("reason") if isinstance(payload, dict) else None
+
+
+def _is_test_bar_skip(event):
+    payload = event.get("payload")
+    return (
+        event.get("event_type") == "gate_check"
+        and isinstance(payload, dict)
+        and payload.get("gate") == "test_bar"
+        and event.get("outcome") == "partial"
+        and payload.get("applicability") == "not_applicable"
+        and isinstance(payload.get("reason"), str)
+        and bool(payload["reason"].strip())
+    )
+
+
+def _trajectory_errors(events):
+    run = _terminal_event(events)
+    windows, _window_errors = _windows(events)
+    research = [window for window in windows
+                if isinstance(window["phase"], str) and window["phase"] in RESEARCH_ROLES]
+    implementation = [window for window in windows
+                      if isinstance(window["phase"], str)
+                      and window["phase"] in IMPLEMENTATION_ROLES]
+    reviews = [window for window in windows
+               if isinstance(window["phase"], str) and window["phase"] in REVIEW_ROLES]
+    errors = {
+        "research-before-implementation": [],
+        "implementation-before-verification": [],
+        "verification-before-review": [],
+        "unresolved-gate-failure": [],
+    }
+    successful_delivery = run.get("outcome") == "success"
+
+    if successful_delivery and (not research or not implementation):
+        errors["research-before-implementation"].append(
+            "successful delivery requires completed research and implementation windows")
+    if research and implementation and (
+        any(item["start_index"] > implementation[0]["start_index"] for item in research)
+        or not any(
+            item["outcome"] == "success"
+            and item["complete_index"] < implementation[0]["start_index"]
+            for item in research
+        )
+    ):
+        errors["research-before-implementation"].append(
+            "research must complete successfully before implementation starts")
+
+    gate_events = [
+        (index, event)
+        for index, event in enumerate(events)
+        if isinstance(event, dict) and event.get("event_type") == "gate_check"
+    ]
+    test_gates = [
+        (index, event) for index, event in gate_events
+        if isinstance(event.get("payload"), dict)
+        and event["payload"].get("gate") == "test_bar"
+    ]
+    review_gates = [
+        (index, event) for index, event in gate_events
+        if isinstance(event.get("payload"), dict)
+        and event["payload"].get("gate") == "review"
+    ]
+
+    latest_impl_start = max(
+        (item["start_index"] for item in implementation), default=-1)
+    latest_impl_complete = max(
+        (item["complete_index"] for item in implementation), default=-1)
+    final_test_gate = test_gates[-1] if test_gates else None
+    test_gate_follows_implementation = bool(
+        final_test_gate
+        and implementation
+        and latest_impl_complete < final_test_gate[0]
+        and latest_impl_start < final_test_gate[0]
+    )
+    if final_test_gate and not test_gate_follows_implementation:
+        errors["implementation-before-verification"].append(
+            "every test_bar gate must follow a completed implementation window")
+    if successful_delivery and not implementation:
+        errors["implementation-before-verification"].append(
+            "successful delivery requires an implementation window")
+
+    verified = bool(
+        test_gate_follows_implementation
+        and (
+            final_test_gate[1].get("outcome") == "success"
+            or _is_test_bar_skip(final_test_gate[1])
+        )
+    )
+    if successful_delivery and not verified:
+        errors["implementation-before-verification"].append(
+            "successful delivery requires a passing test_bar gate or justified not-applicable skip after implementation")
+
+    review_started_after_verification = bool(
+        verified
+        and final_test_gate
+        and reviews
+        and final_test_gate[0] < reviews[-1]["start_index"]
+    )
+    review_gate_ordered = bool(
+        review_started_after_verification
+        and review_gates
+        and review_gates[-1][0] > reviews[-1]["complete_index"]
+    )
+    if reviews and not review_started_after_verification:
+        errors["verification-before-review"].append(
+            "review must start after successful current verification")
+    if review_gates and not review_gate_ordered:
+        errors["verification-before-review"].append(
+            "a review gate must follow a completed review window that started after current verification")
+    if successful_delivery and (
+        not reviews
+        or reviews[-1]["outcome"] != "success"
+        or not review_gate_ordered
+        or review_gates[-1][1].get("outcome") != "success"
+    ):
+        errors["verification-before-review"].append(
+            "successful delivery requires a successful fresh review gate")
+
+    if successful_delivery and any(
+        role_windows[-1]["outcome"] != "success"
+        for role in IMPLEMENTATION_ROLES
+        if (role_windows := [item for item in implementation if item["phase"] == role])
+    ):
+        errors["implementation-before-verification"].append(
+            "the latest implementation window did not succeed")
+
+    latest_gate_outcomes = {}
+    for _index, gate in gate_events:
+        payload = gate.get("payload")
+        name = payload.get("gate") if isinstance(payload, dict) else None
+        if isinstance(name, str) and name:
+            latest_gate_outcomes[name] = gate
+    if successful_delivery and any(
+        gate.get("outcome") == "fail" or (
+            gate.get("outcome") == "partial" and not _is_test_bar_skip(gate)
+        )
+        for gate in latest_gate_outcomes.values()
+    ):
+        errors["unresolved-gate-failure"].append(
+            "one or more latest gate outcomes remain unresolved")
+    return errors
 
 
 def run_checks(events):
-    """Return list of (check_id, required, ok, detail)."""
+    """Return required checks as (check_id, required, ok, detail)."""
+    if not isinstance(events, list):
+        events = []
+    schema_errors = _event_schema_errors(events)
+    valid_events = [event for event in events if isinstance(event, dict)]
+    timestamps = [
+        datetime.strptime(event["timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ")
+        for event in valid_events
+        if isinstance(event.get("timestamp"), str)
+        and re.fullmatch(SCHEMA["properties"]["timestamp"]["pattern"],
+                         event["timestamp"])
+        and not _validate_schema(event["timestamp"], SCHEMA["properties"]["timestamp"])
+    ]
+    time_order_ok = len(timestamps) == len(valid_events) and all(
+        earlier <= later for earlier, later in zip(timestamps, timestamps[1:]))
+    run_ids = [event.get("run_id") for event in valid_events]
+    single_run = bool(run_ids) and all(
+        isinstance(run_id, str) and run_id == run_ids[0] for run_id in run_ids)
+    starts = [i for i, event in enumerate(valid_events)
+              if event.get("event_type") == "run_start"]
+    completes = [i for i, event in enumerate(valid_events)
+                 if event.get("event_type") == "run_complete"]
+    bookends_ok = (
+        len(valid_events) == len(events)
+        and bool(valid_events)
+        and starts == [0]
+        and completes == [len(valid_events) - 1]
+    )
+    windows, window_errors = _windows(valid_events)
+    cost_errors = (
+        _cost_summary_errors(valid_events[-1]) if bookends_ok else
+        ["run has no terminal event to validate cost_summary"]
+    )
+    trajectory = _trajectory_errors(valid_events)
+
     results = []
 
-    def add(cid, required, ok, detail=""):
-        results.append((cid, required, bool(ok), detail))
+    def add(check_id, ok, detail=""):
+        results.append((check_id, True, bool(ok), detail if not ok else ""))
 
-    # --- Structural ---------------------------------------------------------
-    missing = [
-        i for i, e in enumerate(events)
-        if not all(f in e for f in REQUIRED_FIELDS)
-    ]
-    add("required-fields", True, not missing,
-        "" if not missing else f"events missing required fields at indices {missing[:5]}")
-
-    bad_agent = sorted({e.get("agent") for e in events if e.get("agent") not in AGENTS})
-    add("valid-agents", True, not bad_agent,
-        "" if not bad_agent else f"unknown agents: {bad_agent}")
-
-    bad_type = sorted({e.get("event_type") for e in events if e.get("event_type") not in EVENT_TYPES})
-    add("valid-event-types", True, not bad_type,
-        "" if not bad_type else f"unknown event_types: {bad_type}")
-
-    run_ids = {e.get("run_id") for e in events}
-    add("single-run-id", True, len(run_ids) == 1,
-        "" if len(run_ids) == 1 else f"expected 1 run_id, found {len(run_ids)}")
-
-    starts = bool(events) and events[0].get("event_type") == "run_start" and events[0].get("agent") == "dev-lead"
-    add("starts-with-run-start", True, starts,
-        "" if starts else "first event must be dev-lead run_start")
-
-    last = events[-1] if events else {}
-    ends = last.get("event_type") == "run_complete" and last.get("agent") == "dev-lead" and "outcome" in last
-    add("ends-with-run-complete", True, ends,
-        "" if ends else "last event must be dev-lead run_complete with an outcome")
-
-    # phase_start / phase_complete balance per (agent, phase)
-    opens = Counter((e["agent"], e["phase"]) for e in events
-                    if e.get("event_type") == "phase_start" and "agent" in e and "phase" in e)
-    closes = Counter((e["agent"], e["phase"]) for e in events
-                     if e.get("event_type") == "phase_complete" and "agent" in e and "phase" in e)
-    unbalanced = [k for k in (set(opens) | set(closes)) if opens[k] != closes[k]]
-    add("phases-balanced", True, not unbalanced,
-        "" if not unbalanced else f"unbalanced phase_start/complete for {unbalanced[:5]}")
-
-    # --- RPI trajectory -----------------------------------------------------
-    research_i = _first_index(events, lambda e: e.get("agent") == "architect"
-                              or "research" in str(e.get("phase", "")).lower())
-    add("research-phase", True, research_i is not None,
-        "" if research_i is not None else "no research phase (architect / 'research') found")
-
-    implement_i = _first_index(events, lambda e: e.get("agent") in IMPLEMENTERS)
-    add("implement-phase", True, implement_i is not None,
-        "" if implement_i is not None else "no implement phase (coding / infrastructure) found")
-
-    # Tests are no longer a separate agent: `coding` covers the code it writes,
-    # `infrastructure` covers its IaC. The trajectory signal that verification
-    # happened is therefore the deterministic test bar, not a testing phase --
-    # and it must fire after implementation, or it graded nothing.
-    testbar_i = _first_index(events, lambda e: e.get("event_type") == "gate_check"
-                             and e.get("agent") == "dev-lead"
-                             and e.get("phase") == "test-bar")
-    verified = testbar_i is not None and implement_i is not None and testbar_i > implement_i
-    add("implement-verified", True, verified,
-        "" if verified else "no test-bar gate after the implement phase - nothing verified the change")
-
-    # test-bar gate = a gate_check emitted by dev-lead, before the first review activity.
-    first_review_i = _first_index(events, lambda e: e.get("agent") in REVIEWERS)
-    if testbar_i is None:
-        add("test-bar-gate", True, False, "no dev-lead gate_check (test-bar gate) found")
-    elif first_review_i is not None and testbar_i > first_review_i:
-        add("test-bar-gate", True, False, "test-bar gate_check fired after review started")
-    else:
-        add("test-bar-gate", True, True)
-
-    reviewer_gate = any(e.get("event_type") == "gate_check" and e.get("agent") in REVIEWERS for e in events)
-    add("reviewer-gate-check", True, reviewer_gate,
-        "" if reviewer_gate else "no reviewer emitted a gate_check")
-
-    # review must come after implementation began
-    review_after = (first_review_i is not None and implement_i is not None and first_review_i > implement_i)
-    add("review-after-implement", True, review_after,
-        "" if review_after else "review did not occur after implementation")
-
-    # --- Cost telemetry (cost-budget machinery can attribute usage) ---------
-    # Usage is measured by collect-usage.py from the runtime's own store and
-    # attributed to phases by timestamp window. So what the log must carry is
-    # not token counts (no agent can observe its own) but a closed window per
-    # phase: every phase_start needs a matching phase_complete, or that phase's
-    # usage silently falls into "unattributed".
-    starts = [e for e in events if e.get("event_type") == "phase_start"]
-    completes = {e.get("phase") for e in events if e.get("event_type") == "phase_complete"}
-    unclosed = sorted({e.get("phase") for e in starts} - completes)
-    attributable = bool(starts) and not unclosed
-    add("cost-telemetry", True, attributable,
-        "" if attributable
-        else ("no phase_start events - usage cannot be attributed to any phase"
-              if not starts else
-              "phase(s) never closed, usage would be unattributed: " + ", ".join(map(str, unclosed))))
-
-    # No agent can observe its own token spend, so any such field is invented.
-    invented = sorted({f for e in events for f in ("tokens_in", "tokens_out", "cost_usd") if f in e})
-    add("no-self-reported-cost", True, not invented,
-        "" if not invented else "self-reported cost fields present: " + ", ".join(invented))
-
+    add("schema-valid", not schema_errors, "; ".join(schema_errors[:5]))
+    add("chronological-timestamps", time_order_ok,
+        "timestamps must be valid and non-decreasing in the event stream")
+    add("single-run-id", single_run, "every event must carry the same run_id")
+    add("run-bookends", bookends_ok,
+        "one dev-lead run_start must be first and one run_complete last")
+    add("phase-windows", not window_errors,
+        "; ".join(window_errors[:5]))
+    add("cost-summary", not cost_errors, "; ".join(cost_errors))
+    add("research-before-implementation",
+        not trajectory["research-before-implementation"],
+        "; ".join(trajectory["research-before-implementation"]))
+    add("implementation-before-verification",
+        not trajectory["implementation-before-verification"],
+        "; ".join(trajectory["implementation-before-verification"]))
+    add("verification-before-review",
+        not trajectory["verification-before-review"],
+        "; ".join(trajectory["verification-before-review"]))
+    add("unresolved-gate-failure",
+        not trajectory["unresolved-gate-failure"],
+        "; ".join(trajectory["unresolved-gate-failure"]))
     return results
 
 
+def _reject_duplicate_keys(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON property")
+        value[key] = item
+    return value
+
+
+def _reject_non_json_constant(constant):
+    raise ValueError(f"invalid JSON number: {constant}")
+
+
 def check_file(path):
-    with open(path, encoding="utf-8") as fh:
-        raw = fh.read().splitlines()
     events, parse_errors = [], []
-    for n, line in enumerate(raw, 1):
-        if not line.strip():
-            continue
-        try:
-            events.append(json.loads(line))
-        except json.JSONDecodeError as ex:
-            parse_errors.append(f"line {n}: {ex}")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, 1):
+                if not line.strip():
+                    continue
+                try:
+                    events.append(json.loads(
+                        line,
+                        object_pairs_hook=_reject_duplicate_keys,
+                        parse_constant=_reject_non_json_constant,
+                    ))
+                except (json.JSONDecodeError, ValueError, RecursionError) as error:
+                    parse_errors.append(f"line {line_number}: {error}")
+    except (OSError, UnicodeError) as error:
+        print(f"trajectory check: {path}\n  FAIL  readable-file  - {error}")
+        return 1
 
     print(f"trajectory check: {path}")
     if parse_errors:
         print("  FAIL  valid-json")
-        for pe in parse_errors[:5]:
-            print(f"        {pe}")
+        for error in parse_errors[:5]:
+            print(f"        {error}")
         return 1
     if not events:
         print("  FAIL  non-empty: no events in stream")
         return 1
 
+    classification = _historical_or_unsupported_reason(events)
+    if classification:
+        print(f"  UNSUPPORTED  historical/unsupported — {classification}")
+
     results = run_checks(events)
-    failed_required = 0
-    for cid, required, ok, detail in results:
+    failed = 0
+    for check_id, required, ok, detail in results:
         tag = "PASS" if ok else ("FAIL" if required else "warn")
-        if not ok and required:
-            failed_required += 1
-        line = f"  {tag:4}  {cid}"
+        failed += int(not ok and required)
+        line = f"  {tag:4}  {check_id}"
         if detail and not ok:
             line += f"  - {detail}"
         print(line)
+    print(f"  -> {len(results) - failed}/{len(results)} checks passed")
+    return 0 if failed == 0 else 1
 
-    print(f"  -> {len(results) - failed_required}/{len(results)} checks passed")
-    return 0 if failed_required == 0 else 1
 
-
-# ---------------------------------------------------------------------------
-# Golden fixture (single source of truth for the fixture file AND the self-test)
-# ---------------------------------------------------------------------------
 def build_golden():
-    rid = "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f"
-    t = [0]
-
-    def ev(agent, phase, etype, **kw):
-        t[0] += 1
-        e = {
-            "timestamp": f"2026-04-15T08:{t[0] // 60:02d}:{t[0] % 60:02d}.000Z",
-            "run_id": rid, "agent": agent, "phase": phase, "event_type": etype,
+    events = [
+        {
+            "schema_version": 2,
+            "timestamp": f"2026-10-06T08:00:{second:02d}.000Z",
+            "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
+            "agent": "dev-lead",
+            "phase": phase,
+            "event_type": event_type,
+            **extra,
         }
-        e.update(kw)
-        return e
-
-    return [
-        ev("dev-lead", "bootstrap", "run_start",
-           payload={"user_request_summary": "Add Bicep storage module", "profile_loaded": True}),
-        ev("dev-lead", "research", "phase_start"),
-        ev("architect", "research", "phase_start"),
-        ev("architect", "research", "tool_call", tool_name="grep", args_summary="scan modules/ for storage patterns"),
-        ev("architect", "research", "phase_complete", outcome="success"),
-        ev("dev-lead", "research", "phase_complete", outcome="success"),
-        ev("dev-lead", "plan", "phase_start"),
-        ev("dev-lead", "plan", "phase_complete", outcome="success"),
-        ev("dev-lead", "implement", "phase_start"),
-        ev("coding", "coding", "handoff_received"),
-        ev("coding", "coding", "phase_start"),
-        ev("coding", "coding", "tool_call", tool_name="edit",
-           args_summary="modules/storage.bicep - add hardened account"),
-        ev("coding", "coding", "tool_call", tool_name="edit",
-           args_summary="tests/storage.tests.ps1 - assert hardened defaults"),
-        ev("coding", "coding", "tool_call", tool_name="powershell",
-           args_summary="bicep build modules/storage.bicep; Invoke-Pester tests/"),
-        ev("coding", "coding", "phase_complete", outcome="success"),
-        ev("dev-lead", "implement", "phase_complete", outcome="success"),
-        ev("dev-lead", "test-bar", "gate_check", outcome="success",
-           payload={"gate": "lint+typecheck+unit", "retries": 0}),
-        ev("dev-lead", "review-lead", "phase_start"),
-        ev("review-lead", "review-lead", "phase_start"),
-        ev("code-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("security-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("architecture-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("test-reviewer", "review-lead", "gate_check", outcome="success", payload={"finding_count": 0}),
-        ev("review-lead", "review-lead", "phase_complete", outcome="success"),
-        ev("dev-lead", "review-lead", "phase_complete", outcome="success"),
-        ev("dev-lead", "wrap-up", "run_complete", outcome="success",
-           duration_ms=524000),
+        for second, phase, event_type, extra in [
+            (0, "intake", "run_start", {"payload": {
+                "requirement_summary": "Add a storage module",
+                "profile_loaded": True,
+            }}),
+            (1, "research", "phase_start", {}),
+            (2, "research", "phase_complete", {"outcome": "success"}),
+            (3, "plan", "phase_start", {}),
+            (4, "plan", "phase_complete", {"outcome": "success"}),
+            (5, "coding", "phase_start", {}),
+            (6, "coding", "phase_complete", {"outcome": "success"}),
+            (7, "coding", "handoff_received", {"payload": {
+                "from_agent": "coding", "sentinel": "IMPLEMENTATION COMPLETE",
+            }}),
+            (8, "test-bar", "gate_check", {
+                "outcome": "success", "payload": {"gate": "test_bar"},
+            }),
+            (9, "review-lead", "phase_start", {}),
+            (10, "review-lead", "phase_complete", {"outcome": "success"}),
+            (11, "review-lead", "handoff_received", {"payload": {
+                "from_agent": "review-lead", "sentinel": "REVIEW COMPLETE",
+            }}),
+            (12, "review-lead", "gate_check", {
+                "outcome": "success", "payload": {"gate": "review"},
+            }),
+            (13, "wrap-up", "run_complete", {
+                "outcome": "success",
+                "payload": {"cost_summary": {
+                    "status": "disabled", "reason": "synthetic golden fixture",
+                }},
+            }),
+        ]
     ]
+    return events
 
 
 def self_test():
-    import copy
     golden = build_golden()
 
-    def all_required_pass(events):
-        return all(ok for _cid, req, ok, _d in run_checks(events) if req)
+    def fails(check_id, events):
+        return check_id in {
+            name for name, required, ok, _detail in run_checks(events)
+            if required and not ok
+        }
 
-    def required_fail_ids(events):
-        return {cid for cid, req, ok, _d in run_checks(events) if req and not ok}
-
-    def mutate(fn):
-        e = copy.deepcopy(golden)
-        fn(e)
-        return e
-
-    cases = [("golden passes all required", all_required_pass(golden), True)]
-
-    cases.append(("drop run_start trips starts-with-run-start",
-                  "starts-with-run-start" in required_fail_ids(mutate(lambda e: e.pop(0))), True))
-
-    def break_runid(e):
-        e[5]["run_id"] = "ffffffff-ffff-ffff-ffff-ffffffffffff"
-    cases.append(("mixed run_id trips single-run-id",
-                  "single-run-id" in required_fail_ids(mutate(break_runid)), True))
-
-    def drop_testbar(e):
-        # match on what it is, not where it sits - the fixture's shape changes
-        e[:] = [x for x in e if not (x["event_type"] == "gate_check"
-                                     and x["agent"] == "dev-lead"
-                                     and x["phase"] == "test-bar")]
-    cases.append(("no test-bar gate trips test-bar-gate",
-                  "test-bar-gate" in required_fail_ids(mutate(drop_testbar)), True))
-    cases.append(("no test-bar gate trips implement-verified",
-                  "implement-verified" in required_fail_ids(mutate(drop_testbar)), True))
-
-    def drop_reviewer_gates(e):
-        e[:] = [x for x in e if not (x["event_type"] == "gate_check" and x["agent"] in REVIEWERS)]
-    cases.append(("no reviewer gate trips reviewer-gate-check",
-                  "reviewer-gate-check" in required_fail_ids(mutate(drop_reviewer_gates)), True))
-
-    def orphan_phase(e):
-        # a phase that opens and never closes: its usage would be unattributed
-        e.insert(1, dict(e[1], event_type="phase_start", agent="coding", phase="orphan"))
-    cases.append(("unclosed phase trips cost-telemetry",
-                  "cost-telemetry" in required_fail_ids(mutate(orphan_phase)), True))
-
-    def self_report_cost(e):
-        e[-1]["cost_usd"] = 0.612
-    cases.append(("self-reported cost trips no-self-reported-cost",
-                  "no-self-reported-cost" in required_fail_ids(mutate(self_report_cost)), True))
-
-    def unbalance(e):
-        e.insert(2, dict(e[1], event_type="phase_start", agent="dev-lead", phase="research"))
-    cases.append(("extra phase_start trips phases-balanced",
-                  "phases-balanced" in required_fail_ids(mutate(unbalance)), True))
-
+    cases = [
+        ("canonical golden passes", not any(fails(name, golden) for name, *_ in run_checks(golden))),
+        ("worker-owned event rejected", fails("schema-valid", _mutate(golden, lambda e: e[5].update(agent="coding")))),
+        ("missing test-bar rejected", fails("implementation-before-verification", [
+            event for event in golden if not (
+                event["event_type"] == "gate_check"
+                and event.get("payload", {}).get("gate") == "test_bar"
+            )
+        ])),
+        ("failed gate cannot deliver success", fails("unresolved-gate-failure", [
+            {**event, "outcome": "fail"} if event["event_type"] == "gate_check" else event
+            for event in golden
+        ])),
+    ]
     ok = True
-    for name, got, want in cases:
-        if got != want:
-            ok = False
-        print(f"  {'PASS' if got == want else 'FAIL'}  {name}")
+    for name, passed in cases:
+        ok = ok and passed
+        print(f"  {'PASS' if passed else 'FAIL'}  {name}")
     print("self-test: " + ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
+
+
+def _mutate(events, mutation):
+    result = json.loads(json.dumps(events))
+    mutation(result)
+    return result
 
 
 def main(argv):
@@ -322,14 +663,17 @@ def main(argv):
     if argv[0] == "--self-test":
         return self_test()
     if argv[0] == "--emit-fixture":
-        if len(argv) < 2:
-            print("--emit-fixture needs an output path", file=sys.stderr)
+        if len(argv) != 2:
+            print("--emit-fixture needs one output path", file=sys.stderr)
             return 2
-        with open(argv[1], "w", encoding="utf-8", newline="\n") as f:
-            for e in build_golden():
-                f.write(json.dumps(e) + "\n")
+        with open(argv[1], "w", encoding="utf-8", newline="\n") as handle:
+            for event in build_golden():
+                handle.write(json.dumps(event) + "\n")
         print(f"wrote fixture: {argv[1]}")
         return 0
+    if len(argv) != 1:
+        print("provide one event-log path", file=sys.stderr)
+        return 2
     return check_file(argv[0])
 
 

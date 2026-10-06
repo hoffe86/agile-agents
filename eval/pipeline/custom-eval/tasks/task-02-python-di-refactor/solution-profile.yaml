@@ -1,22 +1,35 @@
-name: invoice-summariser
-language: python
-python_version: "3.12"
-framework: fastapi
-
-testing:
-  framework: pytest
-  e2e:
-    framework: none
-
+identity:
+  project_name: "Synthetic invoice summariser benchmark"
+  lifecycle_stage: poc
+documentation:
+  platform: in-repo
+  location: docs/
+  adr:
+    location: docs/adr/
+    format: madr
+backlog:
+  platform: none
+  create_tasks: false
+tech_stack:
+  primary_languages:
+    - name: python
+      version: "3.11"
+  frameworks: [fastapi]
+  package_managers: [pip]
+  test_discipline: test-after
+  test_frameworks: [pytest]
+  lint_format_tools: [ruff]
+  build_tools: [python]
+infrastructure:
+  deploy_verify: "off"
 quality_gates:
   test_bar:
     enabled: true
     fail_fast: true
-    commands:
-      lint: "ruff check ."
-      type:  "mypy --strict ."
-      test:  "pytest -q"
-
-code_conventions:
-  di_style: constructor
-  interface_pattern: typing.Protocol
+    stacks: [python]
+    lint:
+      command: [python, -m, ruff, check, .]
+    typecheck:
+      command: [python, -m, mypy, --strict, invoice_summariser.py, app.py]
+    unit_test:
+      command: [python, -m, pytest, -q]

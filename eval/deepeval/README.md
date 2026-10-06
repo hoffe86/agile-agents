@@ -1,8 +1,13 @@
 # DeepEval spike — pipeline (agent / E2E) evaluation
 
 Status: **spike**. Decision and risks in [ADR 0015](../../docs/adr/0015-deepeval-for-pipeline-evaluation.md).
-The existing harness in [`../pipeline/`](../pipeline/) is untouched and remains the
-fallback if this spike fails.
+The native harness in [`../pipeline/`](../pipeline/) remains available. Both outcome
+judges now share the strict structured contract in [`../grading.py`](../grading.py).
+
+**Live scoring is currently disabled.** DeepEval is still available for offline parser,
+metric-contract, and fixture tests, but `run_judge` returns `UNVERIFIED` without sending
+workspace content to a model or invoking host tools. Live agent runs are blocked by the
+pipeline runner until a credential-free, network-disabled OS sandbox is available.
 
 ## What this proves
 
@@ -50,8 +55,9 @@ too late. Set it in CI as well — belt and braces.
 implementation, exposed two ways:
 
 ```bash
-# drop-in scorer — same exit contract as score-judge: 0 resolved, 2 partial, 1 failed
-python eval/deepeval/score_workspace.py <workspace> <acceptance.md> --isolated-home <dir>
+# scorer — 0 resolved / 1 failed / 2 partial / 3 unverified / 4 setup or judge error
+python eval/deepeval/score_workspace.py <workspace> <acceptance.md> \
+    --isolated-home <dir> --baseline-dir <immutable-dir> --result-json <result.json>
 
 # contract check, no CLI call and no network
 python eval/deepeval/score_workspace.py --self-test
@@ -62,23 +68,62 @@ DeepEval type-checks with `isinstance` and duck typing is rejected), so it compo
 `evaluate()` and the rest of the framework.
 
 **Parity is tested, not asserted.** The verdict parser is exercised against the exact cases
-`score-judge.sh --self-test` uses — last verdict wins, case-insensitive, unparseable is
-FAILED so an unclear judge never inflates a score. Verified end-to-end as well: on the same
-task-04 workspace, the shell judge and this metric both return `RESOLVED`.
+`score-judge.sh --self-test` uses. Exactly one anchored final verdict and one numbered
+PASS/FAIL/UNVERIFIED line per actual acceptance criterion are required. Missing, duplicate,
+or malformed lines produce `setup_error` (`judge_contract`), not an agent failure.
+Native PowerShell/Bash scorers and runner scoring/summary paths are tested with a local
+fake judge, without paid calls. Historical task-04 agreement does not validate the new contract.
 
 Two deliberate differences from the shell judge:
 
-- **It verifies instead of reading a dump.** The old prompt inlined file contents and told
+- **Its orientation is a file index rather than a dump.** The old prompt inlined file contents and told
   the grader to decide "strictly from those artifacts", so a truncated listing became
   evidence of absence — a task was once failed for missing tests that existed and passed.
-  Here the judge runs *in* the workspace with tools; the file listing is an orientation
-  index, explicitly labelled as not the workspace, and build output is pruned.
+  The intended live judge uses a file index for orientation, but current scorer entry points
+  return `UNVERIFIED` without passing workspace content to a model or invoking tools.
 - **Doctrine lives in the `acceptance-grading` skill**, not in the prompt. The prompt is a
   shim that loads it. Restating grading rules in an eval-private template is the same
   fork-then-drift that caused the MADR mismatch.
 
-`UNVERIFIED` is surfaced separately and never folded into the score: it means the harness
-failed to show the judge evidence, which understates the agent.
+`UNVERIFIED` denies resolved credit: score 0, exit 3, and `metric.success=False` even
+with threshold 0. Verified failures remain in the per-criterion record; FAIL+UNVERIFIED
+with no verified pass normalizes to FAILED, while all-unverified is UNVERIFIED. JSON
+reports `claimed_verdict`, normalized status, criterion ids/statuses, `complete`
+(verification), `contract_valid`, and `error_kind`. CLI nonzero exit, timeout, and missing
+CLI are setup/judge errors (exit 4), not fabricated agent failures.
+
+Regression expectation corrected explicitly: `test_metric_surfaces_unverified_in_the_reason`
+formerly asserted `metric.measure(Case()) == 1.0` for a claimed RESOLVED response with an
+UNVERIFIED criterion. That assertion rewarded unknown evidence as full success. It now
+asserts score `0.0` and `is_successful() is False`; this is a corrected invalid expectation,
+not a weakened test. Bare/duplicate verdict and timeout/missing-CLI tests now assert
+structured judge/setup errors instead of invented agent failures.
+
+Immutable originals are validated against the staged manifest and hashes before and after
+scoring preflight. Pass `--baseline-dir` from the harness; without it, only the canonical sibling
+`<run>/ws/<task>` / `<run>/baseline/<task>` layout is accepted. Agent-editable metadata
+cannot redirect the scorer to arbitrary paths. Originals are integrity-checked comparison
+inputs, not produced answers or baseline credit; mode bits do not provide an OS access
+boundary. Task-10's literal ingress-host equivalence versus
+the six-resource no-Ingress baseline remains unresolved: inability to verify it must be
+UNVERIFIED, as must other native-tool gaps.
+
+Run the complete offline suite (uses the existing `.venv`; PyYAML supports fixture staging):
+
+```bash
+eval/deepeval/.venv/Scripts/python -m pytest eval/deepeval/tests \
+    eval/pipeline/custom-eval/tests eval/pipeline/trajectory/test_check_trajectory.py -q
+```
+
+On Windows the native tests use PowerShell 7 and Git Bash; on Unix they use `pwsh` and
+`bash`. Shells run by absolute executable path (the native `Git/usr/bin/bash.exe`, not
+the PATH-extending wrapper). Utilities are individually exposed in a temporary command
+directory, never by adding a shell's host directory such as `/usr/bin` to PATH.
+Missing-Python tests verify interpreter absence and fake-CLI resolution in the native
+shell before checking the full ten-task setup-error summary.
+Scoring segments run as offline units with a local fake CLI. Live custom-eval is
+blocked by the sandbox hold before the mandatory human plan-approval gate, which remains
+separately required for any future live path.
 
 ## Findings so far
 

@@ -15,20 +15,20 @@ on:
         type: string
         default: '.*'
       pass_threshold:
-        description: 'Resolved%% needed to exit 0 (see note below)'
+        description: 'Resolved percent (0-100) needed to exit 0'
         type: string
         default: '0'
       dry_run:
-        description: 'Render the copilot command per task without executing (no auth/credits)'
+        description: 'Offline fixture preflight/staging only (no agent or judge calls)'
         type: boolean
         default: true
 
-# ponytail: dry_run defaults true — a free wiring check on a bare runner (no copilot, no auth,
-# no credits). For a REAL run set dry_run=false AND add a repo secret COPILOT_CLI_TOKEN
-# (fine-grained PAT with the "Copilot Requests" permission); the job then installs the Copilot
-# CLI and authenticates with it. Both the dev-lead run and the LLM judge call copilot, so a real
-# run consumes credits and is slow (the full multi-agent pipeline per task) — use task_filter to
-# limit scope, and keep threshold 0 until you trust the scores. ubuntu-latest ships bash + jq.
+# Live evaluation is disabled until a credential-free, network-disabled OS sandbox is available.
+# Keep dry_run=true for fixture preflight/staging. False fails closed without installing the CLI
+# or exposing credentials.
+
+permissions:
+  contents: read
 
 jobs:
   pipeline-outcome:
@@ -36,41 +36,33 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        if: ${{ inputs.dry_run == false }}
-        uses: actions/setup-node@v4
         with:
-          node-version: '22'
-
-      - name: Install Copilot CLI
-        if: ${{ inputs.dry_run == false }}
-        run: npm install -g @github/copilot
+          persist-credentials: false
 
       - name: Eval · pipeline outcome (L2) harness
         env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+          EVAL_SUITE: ${{ inputs.suite }}
+          TASK_FILTER: ${{ inputs.task_filter }}
+          PASS_THRESHOLD: ${{ inputs.pass_threshold }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            DRY="--dry-run"
-          else
-            DRY=""
-            if [ -z "${COPILOT_GITHUB_TOKEN:-}" ]; then
-              echo "::error::Real run (dry_run=false) needs Copilot auth. Add a fine-grained PAT with the 'Copilot Requests' permission as the COPILOT_CLI_TOKEN repository secret, or run with dry_run=true."
-              exit 1
-            fi
+          if [[ ! "$PASS_THRESHOLD" =~ ^[0-9]{1,3}$ ]] || (( 10#$PASS_THRESHOLD > 100 )); then
+            echo "::error::pass_threshold must be an integer from 0 through 100"
+            exit 1
           fi
-          bash eval/pipeline/run-eval.sh \
-            --suite "${{ inputs.suite }}" \
-            --task-filter "${{ inputs.task_filter }}" \
-            --pass-threshold "${{ inputs.pass_threshold }}" \
-            $DRY
+          RUN_ARGS=(--suite "$EVAL_SUITE" --task-filter "$TASK_FILTER" --pass-threshold "$PASS_THRESHOLD")
+          if [[ "$DRY_RUN" == "true" ]]; then
+            RUN_ARGS+=(--dry-run)
+          fi
+          bash eval/pipeline/run-eval.sh "${RUN_ARGS[@]}"
 
       - name: Write summary
         if: always()
+        env:
+          EVAL_SUITE: ${{ inputs.suite }}
         run: |
           {
-            echo "## Eval result — ${{ inputs.suite }}"
+            echo "## Eval result — $EVAL_SUITE"
             echo '```json'
             cat eval/pipeline/runs/*/summary.json 2>/dev/null || echo 'no summary.json produced'
             echo '```'
@@ -79,7 +71,9 @@ jobs:
       - name: Upload run artefacts
         if: always()
         uses: actions/upload-artifact@v4
+        env:
+          EVAL_SUITE: ${{ inputs.suite }}
         with:
-          name: eval-${{ inputs.suite }}-${{ github.run_id }}
+          name: eval-${{ env.EVAL_SUITE }}-${{ github.run_id }}
           path: eval/pipeline/runs/
           if-no-files-found: error

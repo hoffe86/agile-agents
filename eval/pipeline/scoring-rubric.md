@@ -1,108 +1,87 @@
 # Scoring rubric
 
-This document defines how the harness (and human reviewers, where automation is not feasible)
-score each task. Status values are deliberately limited to **three** so trends are readable in
-`baselines.md`.
+Outcome evidence and harness execution status are distinct. The contract shared by the
+native shell judge and DeepEval is [`../grading.py`](../grading.py); judge doctrine is
+[`acceptance-grading`](../../plugins/agile-agents-core/skills/acceptance-grading/SKILL.md).
 
-## Status values
+## Status and exit policy
 
-| Status     | Symbol | Meaning                                                                       |
-|------------|--------|-------------------------------------------------------------------------------|
-| `resolved` | ✅     | Every acceptance criterion is met. Build green. Tests green.                  |
-| `partial`  | 🟡     | At least one criterion is met; remaining failures are non-catastrophic.       |
-| `failed`   | ❌     | No criterion met, or build broken, or test regression introduced.             |
+| Task status | Meaning | Scorer exit |
+|---|---|---:|
+| `resolved` | Every actual acceptance criterion verified PASS | 0 |
+| `failed` | Verified failures with no passes, or proven catastrophic breakage | 1 |
+| `partial` | Fully verified; some PASS, non-catastrophic FAIL | 2 |
+| `unverified` | Uncertainty prevents a verified outcome; never resolved credit | 3 |
+| `setup_error` | Fixture/setup, judge CLI/environment/timeout, or malformed judge contract | 4 |
+| `blocked_approval` | Mandatory human plan approval cannot be received unattended | n/a |
+| `skipped` | Dry run: neither agent nor judge executed | n/a |
 
-A "non-catastrophic" failure is one where the produced artefact compiles, runs, and would not
-be rejected outright in human code review — but doesn't fully meet the acceptance bar.
+The **prepare CLI** uses exit **2 for setup_error**, not partial. The **suite runners**
+use 2 for setup_error, 3 for unverified or blocked_approval, 0 for a dry-run wiring check,
+and otherwise 0/1 according to the resolved threshold. The JSON status disambiguates
+these interfaces. Threshold 0 cannot turn an unverified or setup-error run into success.
 
-## SWE-bench scoring
+## Per-criterion contract
 
-For SWE-bench Verified tasks the rubric mirrors the upstream definition so our numbers stay
-comparable to published baselines:
+Read the actual numbered list in `acceptance.md` (not a hardcoded criterion count).
+Require exactly one anchored `N. PASS - evidence`, `N. FAIL - evidence`, or
+`N. UNVERIFIED - reason` line per criterion, and exactly one final anchored
+`VERDICT: RESOLVED|PARTIAL|FAILED|UNVERIFIED` line. Matching is case-insensitive.
+Status words in prose do not count. Missing/malformed/duplicate lines are judge-contract
+errors. A nonzero judge CLI exit invalidates credit even if its stdout claims RESOLVED.
 
-| Status     | Test outcome                                                                            |
-|------------|-----------------------------------------------------------------------------------------|
-| `resolved` | All `FAIL_TO_PASS` tests now pass **and** all `PASS_TO_PASS` tests still pass.          |
-| `partial`  | Some `FAIL_TO_PASS` tests pass; no `PASS_TO_PASS` regression.                           |
-| `failed`   | Patch doesn't apply, build broken, or any `PASS_TO_PASS` test regresses.                |
+The claimed verdict is retained separately from normalization. PASS+FAIL cannot resolve.
+PASS+UNVERIFIED and PASS+FAIL+UNVERIFIED normalize to unverified (score 0); all-unverified
+is explicitly unverified. FAIL+UNVERIFIED without any PASS remains failed, retaining
+uncertainty and every verified failure. Missing tools are not failures of produced work.
+`AcceptanceMetric.success` is false for every uncertain/error result even at threshold 0.
 
-The harness reads the upstream `FAIL_TO_PASS` / `PASS_TO_PASS` lists from the
-`princeton-nlp/SWE-bench_Verified` dataset row keyed by `instance_id`.
+Results contain `claimed_verdict`, `normalized_verdict`, `criteria` with reasons,
+`verified_failures`, `complete` (all criteria verified), `contract_valid`,
+`error_kind`, and `judge_exit`. Default judge consumers recheck the result and actual AC
+count rather than trusting an exit code or a RESOLVED claim alone.
 
-### Why this mirrors upstream
+## Original inputs and custom tasks
 
-- "Resolved" matches the published metric on the SWE-bench leaderboard.
-- "Partial" gives us a smoother signal across commits than the binary upstream metric — useful
-  for spotting near-misses caused by minor agent regressions.
-- "Failed" is a strict superset of upstream's not-resolved (we additionally flag build breaks
-  and PASS_TO_PASS regressions explicitly).
+`prepare_inputs.py` validates profiles and `inputs.json`, stages canonical inputs, and
+creates read-only hashed snapshots outside the produced workspace. Scorers receive the
+trusted snapshot path and validate `.github/eval-inputs.json` against that snapshot's
+manifest. No arbitrary metadata pointer, traversal, or symlink is accepted. Only declared
+originals may be used as READ-ONLY comparison evidence; context and answers are not dumped.
+Unchanged seeded inputs earn no creation credit.
 
-## Custom task scoring
+Originals permit checking unchanged production in test-only tasks and comparing original
+Helm renders after the produced chart is removed. Render/build verification must use native
+tools, not source plausibility. The capped shell artifact dump includes `.github` workflow
+deliverables while excluding profiles, internal input metadata, secret/config paths and
+build output. Neither truncation nor absence from the dump proves a deliverable is missing.
 
-For each task in `custom-eval/tasks/task-NN-*/`:
+**Task-10's literal ingress-host equivalence is unresolved**: the six-resource baseline
+has no Ingress (its `ingress.host` configures `PUBLIC_BASE_URL`). Do not weaken the AC,
+invent an Ingress or assert a pass. If the literal comparison cannot be established,
+mark UNVERIFIED with this reason. Other native tool gaps are equally explicit.
 
-1. Read `acceptance.md` — it contains 3-5 numbered criteria.
-2. Run the task (or, for narrative deliverables like #08 threat-model, have a reviewer read
-   the produced artefact).
-3. Mark each criterion as `pass` / `fail`.
-4. Apply the table:
+Live custom-eval remains **blocked_approval before any model call**; neither scorer nor
+this rubric changes mandatory human gates. SWE-bench preparation is not wired and is
+reported as setup_error, not failed agent work. Upstream SWE-bench outcomes, once wired,
+remain resolved only when FAIL_TO_PASS and PASS_TO_PASS all pass; partial means some
+FAIL_TO_PASS pass without regression, failed means verified patch/build/test breakage.
 
-| All criteria `pass`                                  | → `resolved` |
-| At least one `pass` and no broken build/test         | → `partial`  |
-| All criteria `fail` **or** build/tests broken        | → `failed`   |
+## Aggregates and comparability
 
-### Per-task notes
+`summary.json` retains **every selected task**. Never remove unverified, setup-error,
+blocked, or skipped tasks from the denominator. Counts of resolved + partial + failed +
+unverified + setup_error_count + blocked_approval_count + skipped equal total. Preflight
+failure stops the batch: every selected task is setup_error, with its original preparation
+status (`not_prepared` or `setup_error`) retained as context.
 
-- **task-04 (ADR)**, **task-05 (PR description)**, **task-08 (threat model)** — narrative
-  deliverables. Scoring is by a human reviewer who checks the criteria. The harness logs the
-  criteria checklist + the produced artefact path so the reviewer has everything in one file.
-- **task-01, 02, 06, 07, 09, 10** — code-producing tasks. Acceptance criteria include
-  build/test commands the harness runs automatically (where the synthetic profile permits).
-- **task-03 (Bicep)** — `bicep build` validates syntax; `az deployment group what-if` is
-  out of scope for the harness (would require an actual Azure subscription).
+Resolved percentage is resolved / total, not resolved / verified. A dry-run total of ten
+skipped tasks and a live blocked total of ten tasks are wiring/gate reports, not score 0.
 
-## Aggregate metrics
-
-Per suite the harness computes and writes to `summary.json`:
-
-```jsonc
-{
-  "suite": "custom-eval",
-  "run_id": "20260415-093014-custom-eval",
-  "total": 10,
-  "resolved": 6,
-  "partial": 3,
-  "failed": 1,
-  "resolved_pct": 60.0,
-  "partial_pct": 30.0,
-  "failed_pct": 10.0,
-  "tasks": [
-    { "id": "task-01-csharp-minimal-api-endpoint", "status": "resolved" }
-    // ...
-  ]
-}
-```
-
-The same fields are appended as a row to `baselines.md`.
-
-## Pass threshold (harness exit code)
-
-`run-eval.ps1` / `run-eval.sh` exit `0` when `resolved_pct >= PassThreshold` (default `60`),
-and `1` otherwise. Adopters can tighten or loosen this in their CI pipeline:
-
-```powershell
-./run-eval.ps1 -Suite custom-eval -PassThreshold 75
-```
-
-```bash
-./run-eval.sh --suite custom-eval --pass-threshold 75
-```
-
-## Reviewer guidance — when in doubt
-
-- **Bias toward `failed` over `partial`** if the build is broken. A non-compiling artefact
-  is worse than nothing because it pollutes downstream metrics.
-- **Bias toward `partial` over `resolved`** if any acceptance criterion is unverifiable.
-  Don't credit the agent for criteria you couldn't check.
-- **Add a `Notes` line** in `baselines.md` whenever you down-grade a borderline `resolved` to
-  `partial` — keeps the trend honest across reviewers.
+`scorer=both` retains shell-authoritative **normalized** outcomes for comparability.
+Both judges return structured completeness and are independently validated; disagreement
+is reported with both result records in each task's `grading` object and sidecar JSON.
+A verified shell result can remain authoritative when DeepEval is uncertain, but that
+uncertainty and disagreement stay visible. No judge's own uncertainty can be bypassed.
+Historical results in `eval/baselines.md` are not retroactively recomputed; record new
+measurements manually with the contract version and environment limitations.

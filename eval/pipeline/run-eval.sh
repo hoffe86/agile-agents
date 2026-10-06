@@ -4,16 +4,12 @@
 # Runs the dev-lead self-benchmark harness against one of two suites and
 # captures per-task logs + a summary.json.
 #
-# NOTE: custom-eval invokes dev-lead for real via `copilot --agent agile-agents-core:dev-lead
-# --plugin-dir <repo>/plugins/agile-agents-core` (the plugin folder is loaded locally so the agent resolves
-# without installing). swe-bench-subset task-prep (dataset fetch + repo checkout) is
-# not yet wired; those tasks fail honestly until it lands.
+# NOTE: Non-dry runs fail closed until a credential-free, network-disabled OS sandbox is
+# available. Dry-run performs offline fixture preflight/staging. The mandatory human plan
+# approval gate remains unchanged.
 #
 # Usage:
-#   ./run-eval.sh --suite swe-bench-subset
-#   ./run-eval.sh --suite custom-eval --task-filter 'task-03'
-#   ./run-eval.sh --suite custom-eval --task-filter 'bicep|helm' --pass-threshold 75
-#   ./run-eval.sh --suite custom-eval --dry-run    # print commands, no auth/credits
+#   ./run-eval.sh --suite custom-eval --dry-run
 
 set -euo pipefail
 
@@ -31,15 +27,11 @@ NO_ISOLATION=0
 AGENT_MODEL="${AGENT_MODEL:-claude-opus-4.8}"
 JUDGE_MODEL="${JUDGE_MODEL:-gpt-5.6-sol}"
 # Which default judge grades a task with no deterministic score.sh:
-#   deepeval - runs in the workspace with tools and loads the acceptance-grading skill, so
-#              it verifies rather than infers. Default since the 2026-08-19 A/B (see
-#              eval/baselines.md): the two judges agreed on only 3 of 10 tasks, and on 6 of
-#              the 7 disagreements the shell judge was demonstrably wrong - all 4 of its
-#              "failed" verdicts were its own artifact-collection defects, not agent failures.
-#   shell    - score-judge.sh: reads an inlined artifact dump, loads no skills. Retained for
-#              reproducing pre-cutover numbers, not for new measurement.
-#   both     - run each and record whether they agree.
-# The exit contract (0 resolved / 2 partial / 1 failed) is identical for all of them.
+#   deepeval - intended to load acceptance-grading for verification. Live scoring is
+#              currently disabled and returns UNVERIFIED without model/tool execution.
+#   shell    - score-judge.sh: currently returns UNVERIFIED without model/tool execution.
+#   both     - records matching UNVERIFIED outcomes while the safety hold is active.
+# Default judges: 0 resolved / 1 failed / 2 partial / 3 unverified / 4 setup_error.
 EVAL_SCORER="${EVAL_SCORER:-deepeval}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -68,7 +60,7 @@ Options:
   --agent-model <name>       Model the agent runs on. Default: claude-opus-4.8.
   --judge-model <name>       Model the judge runs on. Must differ from the agent model.
   --scorer <shell|deepeval|both>  Default judge. 'both' records agreement. Default: deepeval.
-  --dry-run                  Print the resolved copilot command per task; don't execute.
+  --dry-run                  Preflight/stage fixtures and print commands; don't invoke CLI.
   --no-isolation             Use your own Copilot config instead of an isolated one.
                              Reinstates plugin shadowing: does NOT measure the working tree.
   -h, --help                 Show this help and exit.
@@ -98,11 +90,19 @@ fi
 if [[ "$SUITE" != "swe-bench-subset" && "$SUITE" != "custom-eval" ]]; then
     echo "ERROR: --suite must be swe-bench-subset or custom-eval" >&2; exit 2
 fi
+if [[ ! "$PASS_THRESHOLD" =~ ^[0-9]{1,3}$ ]] || (( 10#$PASS_THRESHOLD > 100 )); then
+    echo "ERROR: --pass-threshold must be an integer from 0 through 100." >&2
+    exit 2
+fi
+if [[ "$DRY_RUN" != "1" ]]; then
+    echo "ERROR: live evaluation is disabled until an OS sandbox enforces credential-free, network-disabled access for both agent and judge processes. Use --dry-run for offline staging and preflight." >&2
+    exit 2
+fi
 
 SUITE_ROOT="${SCRIPT_DIR}/${SUITE}"
 [[ -d "$SUITE_ROOT" ]] || { echo "ERROR: missing suite folder $SUITE_ROOT" >&2; exit 2; }
 
-if [[ "$DRY_RUN" != "1" ]] && ! command -v copilot >/dev/null 2>&1; then
+if [[ "$DRY_RUN" != "1" && "$SUITE" != "custom-eval" ]] && ! command -v copilot >/dev/null 2>&1; then
     echo "ERROR: copilot CLI not found on PATH. Install it, run 'copilot login', or use --dry-run." >&2
     exit 2
 fi
@@ -139,7 +139,7 @@ fi
 #      `resolved` under isolation.
 ISOLATED_HOME=""
 
-if [[ "$NO_ISOLATION" != "1" && "$DRY_RUN" != "1" ]]; then
+if [[ "$NO_ISOLATION" != "1" && "$DRY_RUN" != "1" && "$SUITE" != "custom-eval" ]]; then
     if [[ -z "${COPILOT_GITHUB_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]]; then
         # Fail rather than fall back. A silent fall-back to the user's config would
         # produce a plausible-looking score for the wrong plugin version — exactly the
@@ -170,15 +170,27 @@ run_isolated() {
     fi
 }
 
+score_status() {
+    local code="$1" result="${2:-}" acceptance="${3:-}"
+    if [[ -n "$result" ]]; then
+        python "${REPO_ROOT}/eval/grading.py" --result-status "$result" --exit-code "$code" --acceptance "$acceptance" || echo setup_error
+    else
+        case "$code" in
+            0) echo resolved ;; 1) echo failed ;; 2) echo partial ;;
+            3) echo unverified ;; *) echo setup_error ;;
+        esac
+    fi
+}
+
 # --- dev-lead invocation -----------------------------------------------------
 # The repo is loaded as a local plugin (name "agile-agents-core") so `--agent
 # agile-agents-core:dev-lead` resolves the in-repo agents/skills without `copilot plugin install`.
 invoke_dev_lead() {
-    local prompt_text="$1" workspace="$2" log="$3"
+    local prompt_text="$1" workspace="$2" baseline="$3" log="$4"
     if [[ "$DRY_RUN" == "1" ]]; then
         {
             echo "[DRY RUN] would invoke dev-lead with:"
-            echo "copilot -p <prompt> --agent $DEV_LEAD_AGENT ${PLUGIN_ARGS[*]} --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\""
+            echo "copilot -p <prompt> --agent $DEV_LEAD_AGENT ${PLUGIN_ARGS[*]} --allow-all-tools --no-ask-user --output-format json -C \"$workspace\" --add-dir \"$workspace\" --add-dir \"$baseline\""
         } > "$log"
         return 0
     fi
@@ -191,6 +203,7 @@ invoke_dev_lead() {
         --output-format json \
         -C "$workspace" \
         --add-dir "$workspace" \
+        --add-dir "$baseline" \
         > "$log" 2>&1
 }
 
@@ -251,6 +264,8 @@ echo "Tasks:     ${#FILTERED_IDS[@]} (filter: '$TASK_FILTER')"
 echo "Output:    $RUN_DIR"
 if [[ "$DRY_RUN" == "1" ]]; then
     echo "Config:    (dry run — the CLI is not invoked)"
+elif [[ "$SUITE" == "custom-eval" ]]; then
+    echo "Config:    noninteractive live evaluation is blocked by the mandatory human plan-approval gate"
 elif [[ -n "$ISOLATED_HOME" ]]; then
     echo "Config:    isolated (${ISOLATED_HOME}) — plugins and MCP servers come only from --plugin-dir"
 else
@@ -258,11 +273,102 @@ else
 fi
 echo ""
 
+# Stage all selected fixtures before any agent invocation. The helper validates every
+# profile and declared source/destination path before creating any task workspace.
+if [[ "$SUITE" == "custom-eval" ]]; then
+    command -v python >/dev/null 2>&1 || {
+        echo "SETUP ERROR: python is required to preflight and stage custom-eval fixtures." >&2
+        # No interpreter is available: serialize the known task ids with Bash
+        # escaping rather than dropping the selected-suite denominator.
+        rows=""
+        for id in "${FILTERED_IDS[@]}"; do
+            escaped="${id//\\/\\\\}"
+            escaped="${escaped//\"/\\\"}"
+            escaped="${escaped//$'\n'/\\n}"
+            escaped="${escaped//$'\r'/\\r}"
+            escaped="${escaped//$'\t'/\\t}"
+            rows+="{\"id\":\"$escaped\",\"status\":\"setup_error\"},"
+        done
+        rows="${rows%,}"
+        printf '{"suite":"custom-eval","run_id":"%s","run_status":"setup_error","total":%s,"setup_error_count":%s,"resolved":0,"partial":0,"failed":0,"unverified":0,"skipped":0,"blocked_approval_count":0,"dry_run":%s,"tasks":[%s],"setup_errors":["python is required"]}\n' \
+            "$RUN_ID" "${#FILTERED_IDS[@]}" "${#FILTERED_IDS[@]}" "$([[ "$DRY_RUN" == 1 ]] && echo true || echo false)" "$rows" > "${RUN_DIR}/summary.json"
+        exit 2
+    }
+    prepare_args=("${SUITE_ROOT}/prepare_inputs.py" --suite-root "$SUITE_ROOT" --run-dir "$RUN_DIR")
+    for id in "${FILTERED_IDS[@]}"; do
+        prepare_args+=(--task-id "$id")
+    done
+    prepare_status=0
+    python "${prepare_args[@]}" > "${RUN_DIR}/preflight.json" || prepare_status=$?
+    if [[ $prepare_status -ne 0 ]] || ! python -c '
+import json,sys
+p=json.load(open(sys.argv[1], encoding="utf-8"))
+rows=p.get("tasks") if isinstance(p,dict) else None
+valid=isinstance(rows,list) and all(isinstance(r,dict) and "task_id" in r and "status" in r for r in rows)
+sys.exit(0 if valid and p.get("status")=="prepared" and sorted(r["task_id"] for r in rows)==sorted(sys.argv[2:]) else 1)
+' "${RUN_DIR}/preflight.json" "${FILTERED_IDS[@]}"; then
+        for id in "${FILTERED_IDS[@]}"; do
+            printf '[setup_error] fixture preparation did not complete; no agent or judge was invoked.\n' > "${RUN_DIR}/${id}.log"
+        done
+        python -c '
+import json,sys
+try:
+    preflight=json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError,ValueError):
+    preflight={"errors":["preparation returned invalid JSON"]}
+if not isinstance(preflight,dict):
+    preflight={"errors":["preparation returned invalid schema"]}
+rows=preflight.get("tasks",[])
+originals={row["task_id"]:row["status"] for row in rows
+           if isinstance(row,dict) and "task_id" in row and "status" in row} if isinstance(rows,list) else {}
+tasks=[{"id": task_id, "status": "setup_error", "preparation_status": originals.get(task_id,"setup_error")}
+       for task_id in sys.argv[5:]]
+summary={"suite": "custom-eval", "run_id": sys.argv[2], "run_status": "setup_error",
+         "total": len(tasks), "setup_error_count": sum(t["status"] == "setup_error" for t in tasks),
+         "resolved": 0, "partial": 0, "failed": 0, "unverified": 0,
+         "blocked_approval_count": 0, "skipped": 0,
+         "dry_run": sys.argv[3] == "1", "tasks": tasks, "setup_errors": preflight.get("errors", [])}
+with open(sys.argv[4], "w", encoding="utf-8") as output:
+    json.dump(summary, output, indent=2)
+    output.write("\n")
+' "${RUN_DIR}/preflight.json" "$RUN_ID" "$DRY_RUN" "${RUN_DIR}/summary.json" "${FILTERED_IDS[@]}"
+        echo "SETUP ERROR — no agent or judge was invoked. See ${RUN_DIR}/preflight.json."
+        exit 2
+    fi
+    echo "Fixture preflight: passed; staged immutable baseline inputs outside each workspace."
+fi
+
+# The runner is noninteractive (`--no-ask-user`) while plan approval is mandatory.
+# Do not infer approval or use a model response to pass this human-owned gate.
+if [[ "$SUITE" == "custom-eval" && "$DRY_RUN" != "1" ]]; then
+    python -c '
+import json,sys
+ids=sys.argv[1:-2]
+run_id=sys.argv[-2]
+output_path=sys.argv[-1]
+summary={"suite":"custom-eval","run_id":run_id,"run_status":"blocked_approval",
+         "blocking_gate":"human_plan_approval",
+         "reason":"The noninteractive runner cannot receive the mandatory plan approval.",
+         "total":len(ids),"blocked_approval_count":len(ids),"setup_error_count":0,
+         "resolved":0,"partial":0,"failed":0,"unverified":0,"skipped":0,"dry_run":False,
+         "tasks":[{"id":task_id,"status":"blocked_approval"} for task_id in ids]}
+with open(output_path, "w", encoding="utf-8") as output:
+    json.dump(summary, output, indent=2)
+    output.write("\n")
+' "${FILTERED_IDS[@]}" "$RUN_ID" "${RUN_DIR}/summary.json"
+    for id in "${FILTERED_IDS[@]}"; do
+        printf '[blocked_approval] mandatory human plan approval cannot be supplied by this noninteractive runner.\n' > "${RUN_DIR}/${id}.log"
+    done
+    echo "BLOCKED — custom-eval requires human plan approval; no agent or judge was invoked."
+    echo "Summary:  ${RUN_DIR}/summary.json"
+    exit 3
+fi
+
 # --- Execute each task -------------------------------------------------------
 SCORER_ROWS=()
 SCORER_AGREED=0
 SCORER_TOTAL=0
-RESOLVED=0; PARTIAL=0; FAILED=0; SKIPPED=0
+RESOLVED=0; PARTIAL=0; FAILED=0; SKIPPED=0; UNVERIFIED=0; SETUP_ERROR=0
 TASK_RESULTS_JSON=""
 
 for i in "${!FILTERED_IDS[@]}"; do
@@ -276,25 +382,21 @@ for i in "${!FILTERED_IDS[@]}"; do
         # ponytail: SWE-bench task-prep (fetch issue text from the HF dataset +
         # checkout the repo at the base commit + extract FAIL_TO_PASS) is a separate
         # integration, not yet wired. invoke_dev_lead is ready for it once prep
-        # produces a prompt + workspace. Until then, fail honestly.
+        # produces a prompt + workspace. Until then, report a setup error.
         {
             echo "SWE-bench task-prep not wired."
             echo "Task: $id  Ref: $ref"
             echo "Needs: dataset fetch + repo checkout at base commit before dev-lead can run."
         } > "$log"
-        status="failed"
+        status="setup_error"
     else
         folder="$(dirname "$ref")"
         ws="${RUN_DIR}/ws/${id}"
-        mkdir -p "${ws}/.github"
-        if [[ -f "${folder}/solution-profile.yaml" ]]; then
-            cp "${folder}/solution-profile.yaml" "${ws}/solution-profile.yaml"
-            cp "${folder}/solution-profile.yaml" "${ws}/.github/solution-profile.yaml"
-        fi
+        baseline="${RUN_DIR}/baseline/${id}"
         prompt_text="$(cat "$ref")"
 
         rc=0
-        invoke_dev_lead "$prompt_text" "$ws" "$log" || rc=$?
+        invoke_dev_lead "$prompt_text" "$ws" "$baseline" "$log" || rc=$?
 
         if [[ "$DRY_RUN" == "1" ]]; then
             # A dry run never invoked the agent, so there is nothing to grade. Marking
@@ -303,40 +405,48 @@ for i in "${!FILTERED_IDS[@]}"; do
             # set low, so a wiring check and a total collapse look identical.
             status="skipped"
         elif [[ $rc -ne 0 || ! -s "$log" ]]; then
-            status="failed"
+            status="setup_error"
         elif [[ -f "${folder}/score.sh" ]]; then
-            # Per-task deterministic override: exit 0 = resolved, 2 = partial, else failed.
+            # Deterministic override: 0 resolved / 1 failed / 2 partial / 3 unverified;
+            # other exits are setup errors.
             sc=0
             bash "${folder}/score.sh" "$ws" >> "$log" 2>&1 || sc=$?
-            case "$sc" in 0) status="resolved" ;; 2) status="partial" ;; *) status="failed" ;; esac
+            status="$(score_status "$sc")"
         else
             # Default: LLM judge grades the workspace against acceptance.md. Both judges run
             # under the same isolation — one loading a different plugin set than the agent
             # would grade against conventions the agent never saw.
             shell_status=""
             deep_status=""
+            shell_result="${RUN_DIR}/${id}.shell.json"
+            deep_result="${RUN_DIR}/${id}.deepeval.json"
 
             if [[ "$EVAL_SCORER" == "shell" || "$EVAL_SCORER" == "both" ]]; then
                 sc=0
-                JUDGE_MODEL="$JUDGE_MODEL" run_isolated bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" >> "$log" 2>&1 || sc=$?
-                case "$sc" in 0) shell_status="resolved" ;; 2) shell_status="partial" ;; *) shell_status="failed" ;; esac
+                JUDGE_MODEL="$JUDGE_MODEL" run_isolated bash "${SCRIPT_DIR}/score-judge.sh" "$ws" "${folder}/acceptance.md" --baseline-dir "$baseline" --result-json "$shell_result" >> "$log" 2>&1 || sc=$?
+                shell_status="$(score_status "$sc" "$shell_result" "${folder}/acceptance.md")"
             fi
 
             if [[ "$EVAL_SCORER" == "deepeval" || "$EVAL_SCORER" == "both" ]]; then
                 sc=0
-                deep_args=("${REPO_ROOT}/eval/deepeval/score_workspace.py" "$ws" "${folder}/acceptance.md" --model "$JUDGE_MODEL")
+                deep_args=("${REPO_ROOT}/eval/deepeval/score_workspace.py" "$ws" "${folder}/acceptance.md" --model "$JUDGE_MODEL"
+                           --baseline-dir "$baseline" --result-json "$deep_result")
                 # No run_isolated here: the scorer takes the isolated home as an argument and
                 # sets it on the child itself, so the redirect cannot leak.
                 [[ -n "$ISOLATED_HOME" ]] && deep_args+=(--isolated-home "$ISOLATED_HOME")
                 python "${deep_args[@]}" >> "$log" 2>&1 || sc=$?
-                case "$sc" in 0) deep_status="resolved" ;; 2) deep_status="partial" ;; *) deep_status="failed" ;; esac
+                deep_status="$(score_status "$sc" "$deep_result" "${folder}/acceptance.md")"
             fi
 
             if [[ "$EVAL_SCORER" == "both" ]]; then
                 if [[ "$shell_status" == "$deep_status" ]]; then agree="true"; else agree="false"; fi
                 echo "[scorer] shell=${shell_status} deepeval=${deep_status} agree=${agree}" >> "$log"
                 echo "     [scorer] shell=${shell_status} deepeval=${deep_status} agree=${agree}"
-                SCORER_ROWS+=("    {\"task\": \"${id}\", \"shell\": \"${shell_status}\", \"deepeval\": \"${deep_status}\", \"agree\": ${agree}}")
+                SCORER_ROWS+=("$(python -c '
+import json,sys
+print(json.dumps(dict(task=sys.argv[1],shell=sys.argv[2],deepeval=sys.argv[3],
+                     agree=sys.argv[4]=="true",shell_result=sys.argv[5],deepeval_result=sys.argv[6])))
+' "$id" "$shell_status" "$deep_status" "$agree" "$shell_result" "$deep_result")")
                 [[ "$agree" == "true" ]] && SCORER_AGREED=$((SCORER_AGREED+1))
                 SCORER_TOTAL=$((SCORER_TOTAL+1))
                 # The shell judge stays authoritative while comparing, so a disagreement
@@ -354,10 +464,24 @@ for i in "${!FILTERED_IDS[@]}"; do
         resolved) RESOLVED=$((RESOLVED+1)) ;;
         partial)  PARTIAL=$((PARTIAL+1)) ;;
         skipped)  SKIPPED=$((SKIPPED+1)) ;;
-        *)        FAILED=$((FAILED+1)) ;;
+        failed)   FAILED=$((FAILED+1)) ;;
+        unverified) UNVERIFIED=$((UNVERIFIED+1)) ;;
+        *)        SETUP_ERROR=$((SETUP_ERROR+1)) ;;
     esac
 
-    TASK_RESULTS_JSON+="    {\"id\": \"${id}\", \"status\": \"${status}\"},"$'\n'
+    TASK_RESULTS_JSON+="$(python -c '
+import json,sys
+from pathlib import Path
+root=Path(sys.argv[3])
+grading={}
+for scorer in ("shell","deepeval"):
+    path=root / (sys.argv[1]+"."+scorer+".json")
+    try:
+        grading[scorer]=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,ValueError):
+        grading[scorer]=None
+print(json.dumps(dict(id=sys.argv[1],status=sys.argv[2],grading=grading)))
+' "$id" "$status" "$RUN_DIR"),"$'\n'
     echo "$status"
 done
 
@@ -376,13 +500,18 @@ cat > "${RUN_DIR}/summary.json" <<EOF
 {
   "suite": "${SUITE}",
   "run_id": "${RUN_ID}",
+  "run_status": "$([[ "$DRY_RUN" == 1 ]] && echo skipped || { [[ "$SETUP_ERROR" -gt 0 ]] && echo setup_error || { [[ "$UNVERIFIED" -gt 0 ]] && echo unverified || echo scored; }; })",
   "total": ${TOTAL},
   "resolved": ${RESOLVED},
   "partial": ${PARTIAL},
   "failed": ${FAILED},
   "skipped": ${SKIPPED},
+  "unverified": ${UNVERIFIED},
+  "setup_error_count": ${SETUP_ERROR},
+  "blocked_approval_count": 0,
   "dry_run": $([[ "$DRY_RUN" == "1" ]] && echo true || echo false),
   "scorer": "${EVAL_SCORER}",
+  "live_run_status": $([[ "$SUITE" == "custom-eval" && "$DRY_RUN" == "1" ]] && echo '"blocked_approval: live runs also require the unavailable OS sandbox"' || echo null),
   "agent_model": "${AGENT_MODEL}",
   "judge_model": "${JUDGE_MODEL}",
   "isolated": $([[ -n "$ISOLATED_HOME" ]] && echo true || echo false),
@@ -414,17 +543,22 @@ echo ""
 if [[ "$DRY_RUN" == "1" ]]; then
     # Wiring check only — say so plainly rather than reporting a score nobody computed.
     echo "DRY RUN — wiring validated for ${TOTAL} task(s); none executed, none scored."
+    [[ "$SUITE" == "custom-eval" ]] && echo "Live run blocked: OS sandbox unavailable; mandatory plan approval also requires a human response."
     echo "Summary:  ${RUN_DIR}/summary.json"
-    echo "Re-run without --dry-run to produce an actual score."
+    echo "Live scoring remains disabled until OS sandbox isolation and human plan approval are available."
     exit 0
 fi
 
 echo "Resolved: ${RESOLVED}/${TOTAL} (${PCT}%)"
 echo "Partial:  ${PARTIAL}/${TOTAL}"
 echo "Failed:   ${FAILED}/${TOTAL}"
+echo "Unverified: ${UNVERIFIED}/${TOTAL}"
+echo "Setup error: ${SETUP_ERROR}/${TOTAL}"
 echo "Summary:  ${RUN_DIR}/summary.json"
 
 # --- Exit code ---------------------------------------------------------------
+[[ "$SETUP_ERROR" -gt 0 ]] && exit 2
+[[ "$UNVERIFIED" -gt 0 ]] && exit 3
 PASS=$(awk "BEGIN { print (${PCT} >= ${PASS_THRESHOLD}) ? 1 : 0 }")
 if [[ "$PASS" == "1" ]]; then
     echo "PASS (>= ${PASS_THRESHOLD}%)"

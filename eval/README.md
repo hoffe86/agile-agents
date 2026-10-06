@@ -108,28 +108,31 @@ Two evaluation suites, both runnable through the same harness:
 
 For each task the harness:
 
-1. Loads the task prompt + (for custom-eval) `solution-profile.yaml` context.
-2. Invokes `dev-lead` once with the prompt (TODO — see *Limitations* below).
-3. Captures stdout/stderr + any produced artefacts.
-4. Scores the run against the rubric in [`scoring-rubric.md`](pipeline/scoring-rubric.md):
+1. Validates/stages custom-eval profiles and declared immutable original inputs.
+2. Runs only in offline dry-run mode today; live execution fails closed because no verified OS sandbox is available.
+3. When live execution is restored, the existing mandatory human plan-approval gate remains a separate requirement.
+4. The intended scoring contract follows [`scoring-rubric.md`](pipeline/scoring-rubric.md):
    - **resolved** — all acceptance criteria pass
    - **partial** — some criteria pass, none failed catastrophically (no broken build)
    - **failed** — nothing meaningful produced or build broken
-5. Appends the run to `baselines.md`.
+5. Writes `summary.json`; measured baselines are recorded manually in `baselines.md`.
 
 ## Choosing a scorer
 
-A task with no deterministic `score.ps1` / `score.sh` is graded by an LLM judge. Which one
-is selected by `--scorer` / `-Scorer` (or `EVAL_SCORER`):
+When live evaluation is restored, tasks without a deterministic `score.ps1` / `score.sh`
+will use the selected LLM judge. While the safety hold is active, every scorer returns
+`UNVERIFIED` without a model call. Select the scorer with `--scorer` / `-Scorer` (or
+`EVAL_SCORER`):
 
 | Value | Judge | Behaviour |
 |---|---|---|
-| `deepeval` (default) | `eval/deepeval` | Runs **in** the workspace with tools, and loads the `acceptance-grading` skill — so it verifies rather than infers. |
-| `shell` | `score-judge.{ps1,sh}` | Reads an inlined artifact dump. Loads no skills. Retained for reproducing pre-cutover numbers, not for new measurement. |
-| `both` | both | Runs each and records whether they agree. Two gradings per task. |
+| `deepeval` (default) | `eval/deepeval` | Returns `UNVERIFIED` without invoking a model or host tool. |
+| `shell` | `score-judge.{ps1,sh}` | Returns `UNVERIFIED` without invoking a model or host tool. |
+| `both` | both | Records matching `UNVERIFIED` outcomes; neither scorer executes workspace content. |
 
-All three share the same exit contract (`0` resolved / `2` partial / `1` failed), so the
-choice cannot silently change what a status means.
+All three share a strict structured contract (`0` resolved / `1` failed / `2` partial /
+`3` unverified / `4` setup or judge error). Both native twins delegate parsing and safe
+artifact collection to Python; they no longer infer builds from source plausibility.
 
 `deepeval` became the default on 2026-08-19 after an A/B over all 10 custom tasks: the judges
 agreed on only 3, and on 6 of the 7 disagreements the shell judge was demonstrably wrong — **all
@@ -144,102 +147,51 @@ the very run that is measuring disagreement. Agreement is written to `summary.js
 individually in the console output, because an aggregate rate hides the one task worth
 looking at.
 
-## Isolation — why a run needs a token
+Each task's `grading` contains claimed and normalized verdicts, criterion statuses, and
+completeness; sidecar JSON retains only bounded structural fields and sanitized diagnostics.
+Raw judge responses and free-form criterion reasons are not persisted or printed. Neither judge
+can award resolved credit for its own UNVERIFIED criteria, even when it claims RESOLVED.
+A verified shell outcome remains authoritative when the other judge is uncertain, with
+that disagreement explicitly recorded. Historical baselines are not recomputed.
 
-Runs execute against an **isolated Copilot configuration root** (`runs/<run-id>/.copilot-home`).
-This is not a nicety: plugins install at **User** scope under the home directory, and
-`--plugin-dir` does **not** override an installed plugin of the same name — the installed copy
-wins silently. A harness that passed `--plugin-dir` believing it exercised the working tree was
-reading whatever version happened to be installed. When this was found, that was
-`agile-agents-core v0.14.0` against a working tree at `v0.16.0`.
+## Live evaluation safety hold
 
-Two consequences:
-
-- **Stored auth does not survive isolation**, so a token must be in the environment —
-  `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`. Without one the run **exits 2** rather
-  than falling back to your own configuration: a silent fall-back would produce a
-  plausible-looking score for the wrong plugin version, which is the exact defect isolation
-  exists to remove.
-- **Your personal MCP servers are dropped; the harness's own are kept.** Servers declared in
-  `plugins/agile-agents-core/.mcp.json` (context7, microsoft-docs, playwright) arrive through
-  `--plugin-dir` and still load. That is the right line — the harness keeps the tools it ships
-  and loses the ones that merely happened to be on one machine. Verified: task-04 depends on
-  `microsoft-docs` for its primary-sources criterion and still scores `resolved` isolated.
-
-**Models are pinned, not inherited** (`--agent-model` / `--judge-model`, default
-`claude-opus-4.8` and `gpt-5.6-sol`). The CLI default comes from user config, which an
-isolated run does not have — leaving it unset silently changed the model under test from
-`claude-opus-4.8` to `claude-sonnet-5`, so isolation and model moved together and neither
-could be attributed. The two must differ: a model grading its own output is not an
-independent measurement, and the run **exits 2** if they match. Both are recorded in
-`summary.json`, because a score is only comparable to another score from the same pair.
-
-`--no-isolation` / `-NoIsolation` restores the old behaviour for comparing against historical
-numbers. The banner and `summary.json` both record which mode ran (`isolated`, `mcp_servers`),
-because a score means something different in each.
+Live evaluation is **disabled** until a verified OS sandbox provides credential-free,
+network-disabled process isolation for both the agent and judge. The prior isolated Copilot
+configuration only controlled plugin resolution; it did not isolate host credentials,
+network access, or filesystem permissions. `run-eval.*` exits before staging or invoking a
+model unless `--dry-run` / `-DryRun` is selected. Dry runs remain available for local fixture
+preflight and staging. Do not remove this hold by relying on chmod, environment variables,
+prompt instructions, or an executable allowlist.
 
 ## How to run
 
 ### PowerShell (Windows / cross-platform PowerShell 7+)
 
 ```powershell
-# Full SWE-bench subset
-./pipeline/run-eval.ps1 -Suite swe-bench-subset
-
-# Single custom-eval task
-./pipeline/run-eval.ps1 -Suite custom-eval -TaskFilter 'task-03'
-
-# All custom-eval tasks matching a regex
-./pipeline/run-eval.ps1 -Suite custom-eval -TaskFilter 'bicep|helm'
+# Offline custom-eval preflight/staging
+./pipeline/run-eval.ps1 -Suite custom-eval -DryRun
 ```
 
 ### Bash (Linux / macOS)
 
 ```bash
-./pipeline/run-eval.sh --suite custom-eval --task-filter 'task-03'
-./pipeline/run-eval.sh --suite custom-eval --dry-run     # print the copilot command per task; no auth/credits
+./pipeline/run-eval.sh --suite custom-eval --dry-run
 ```
 
-`custom-eval` invokes `dev-lead` for real: it reads each task's `prompt.md`, seeds a fresh
-workspace with the task's `solution-profile.yaml`, and runs
-
-```
-copilot -p <prompt> --agent agile-agents-core:dev-lead --plugin-dir <repo>/plugins/agile-agents-core --allow-all-tools \
-        --no-ask-user --output-format json -C <workspace> --add-dir <workspace>
-```
-
-`--plugin-dir <repo>/plugins/agile-agents-core` loads the plugin folder as a local plugin (named
-`agile-agents-core` from its `.github/plugin/plugin.json`), so the supervisor agent is addressed
-**plugin-namespaced** as
-`agile-agents-core:dev-lead` — bare `dev-lead` errors `No such agent`. No prior
-`copilot plugin install` is needed. The CLI must be installed and authenticated (`copilot
-login`); use `--dry-run` to validate the wiring without either.
+Non-dry-run commands fail closed before model invocation. The mandatory human plan-approval
+gate remains in force as a separate gate; the current sandbox hold blocks earlier.
 
 ### CI (on demand)
 
 The [`Eval · pipeline outcome`](../.github/workflows/eval-pipeline-outcome.yml) workflow runs the harness on GitHub Actions via
-`workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold, and a
-`dry_run` toggle (**default on** — renders the per-task command without auth/credits, so the
-default dispatch is a free wiring check). It posts `summary.json` to the run summary and uploads
+`workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold (0-100), and a
+`dry_run` toggle (**default on** — performs offline fixture preflight/staging). It posts `summary.json` to the run summary and uploads
 `runs/` as an artifact.
 
-**To actually execute the agents in CI (`dry_run: false`):**
-
-1. Create a **fine-grained personal access token** with the **Copilot Requests** account
-   permission (user-owned — see
-   [Authenticating Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli#authenticating-with-a-personal-access-token)).
-2. Add it as the repository secret **`COPILOT_CLI_TOKEN`**.
-3. Dispatch with `dry_run` **unchecked**. The job then installs the Copilot CLI
-   (`npm install -g @github/copilot`) and authenticates with the token.
-
-A real run **consumes Copilot credits and is slow** — it executes the full multi-agent pipeline
-per task, and both the `dev-lead` run *and* the LLM judge call `copilot`. Use `task_filter` to
-limit scope (the job has a 180-minute timeout). If `dry_run: false` is selected without the
-secret, the job fails fast with a clear message rather than silently skipping. The eval is
-designed as a **local/manual measurement tool first** — running `run-eval.*` on your own
-authenticated machine is the cheaper primary path; CI real-runs are for shared, reproducible
-checkpoints. It stays **non-gating**; add `push` / `pull_request` triggers and raise the
-threshold once you trust the scores.
+Selecting `dry_run: false` fails closed before staging or invoking a CLI. No Copilot secret is
+needed or exposed, and the workflow does not install Copilot. Live execution remains disabled
+until a verified OS sandbox exists; human plan approval remains a separate mandatory gate.
 
 Outputs land in `runs/<run-id>/` where `<run-id>` is `YYYYMMDD-HHMMSS-<suite>`:
 
@@ -261,6 +213,10 @@ The `runs/` folder is gitignored in the distribution; only `baselines.md` is com
 | `resolved` | All acceptance criteria pass; tests green; no broken build |
 | `partial` | At least one criterion passes; remaining criteria fail non-catastrophically |
 | `failed` | No meaningful output, build broken, or all criteria fail |
+| `unverified` | Cannot verify a criterion; no resolved credit; reasons and verified failures retained |
+| `setup_error` | Fixture/setup or judge CLI/environment/contract error, not a failed agent |
+| `blocked_approval` | Mandatory human plan approval cannot be received unattended |
+| `skipped` | Dry-run wiring only: no agent/judge executed |
 
 Aggregate scores reported in `summary.json` and `baselines.md`:
 
@@ -268,17 +224,21 @@ Aggregate scores reported in `summary.json` and `baselines.md`:
 - **Partial %** = partial / total
 - **Failed %** = failed / total
 
-The harness exits **0** when resolved % ≥ 60% on the suite, **1** otherwise (configurable via
-`-PassThreshold` in `run-eval.ps1`).
+Every selected task stays in the denominator. Resolved + partial + failed + unverified +
+setup_error_count + blocked_approval_count + skipped must equal total.
+Suite runners exit **2** for setup_error, **3** for unverified or blocked_approval,
+and otherwise **0** when resolved % ≥ 60%, **1** below the threshold. Dry runs exit 0
+without a score. A permissive threshold cannot make an uncertain/error run successful.
 
 ## Adding a custom task
 
 1. `mkdir custom-eval/tasks/task-NN-<slug>`
-2. Add three files following the pattern of existing tasks:
+2. Add files following the pattern of existing tasks:
    - `prompt.md` — the user-story prompt to give `dev-lead` (10-30 lines)
    - `acceptance.md` — 3-5 explicit, machine- or human-verifiable pass criteria
    - `solution-profile.yaml` — the synthetic profile context (tech stack, quality gates, etc.)
-3. The default LLM judge scores it against `acceptance.md` automatically — no scorer to write.
+   - `inputs.json` — every pre-existing input (or an empty list), with versioned baseline files
+3. After a verified sandbox is available, the default LLM judge is intended to score it against `acceptance.md`; today it returns `UNVERIFIED` without a model call.
    Add an optional `score.ps1`/`score.sh` only if the task needs a deterministic build/test.
 4. Re-run with `-TaskFilter task-NN`.
 5. Once stable, append a row to `baselines.md`.
@@ -290,53 +250,58 @@ This harness is intentionally minimal so a downstream fork can:
 - **Replace `swe-bench-subset/`** with their own external benchmark (a slice of their bug-tracker,
   internal coding interview tasks, etc.). The `tasks.json` schema is two required fields:
   `instance_id` and `repo`. `difficulty` is optional metadata.
-- **Replace `custom-eval/`** entirely with project-representative tasks. The folder convention
-  (`task-NN-<slug>/{prompt.md, acceptance.md, solution-profile.yaml}`) is the only contract.
+- **Replace `custom-eval/`** with project-representative tasks, retaining valid profiles,
+  declared inputs, prompts and actual numbered acceptance criteria.
 - **Keep `run-eval.ps1` / `run-eval.sh`** unchanged — they are profile-agnostic.
 - **Customise `scoring-rubric.md`** for stricter or laxer pass criteria (e.g., a regulated
   project may want `resolved` to require ADR + threat model on every task).
 - **Track `baselines.md` per project** — this is where the value compounds; every commit's
   delta is visible.
 
-For air-gapped projects, the harness has **no network dependencies** at runtime. The only
-network-dependent step is the initial download of SWE-bench Verified test data, which adopters
-can mirror internally.
+Offline contract tests call no models. Live agents and judges are currently blocked until
+a credential-free, network-disabled OS sandbox exists; workspace commands are not run on
+the host. The benchmark's native builds may also need dependencies already provisioned
+once safe isolation is available.
 
 ## Scoring
 
-After a successful `dev-lead` run the harness scores the produced workspace against the task's
-`acceptance.md` and maps the result to `resolved` / `partial` / `failed` (exit `0` / `2` / else):
+After a successful `dev-lead` run, a sandboxed harness would score the produced workspace
+against `acceptance.md`. Until that sandbox exists, both current judge entry points return
+`UNVERIFIED` without invoking Copilot or passing workspace content to an external model.
+Their offline parsers and result contracts remain testable:
 
 1. **Default — LLM judge.** Two are available; see *Choosing a scorer* above.
-   - `shell` (current default): [`score-judge.ps1`](pipeline/score-judge.ps1) /
-     [`score-judge.sh`](pipeline/score-judge.sh) collect the files the agent produced
-     (excluding the seeded `solution-profile.yaml`), fill the grading prompt in
-     [`references/judge-prompt.md`](pipeline/references/judge-prompt.md) with the acceptance
-     criteria + those artifacts, and ask `copilot` for a verdict.
-   - `deepeval`: [`score_workspace.py`](deepeval/score_workspace.py) instead runs the judge
-     **in** the workspace with tools and loads the `acceptance-grading` skill, so a criterion
-     about behaviour is decided by running it rather than by reading a dump of the source.
-
-   Either way an unparseable or empty verdict, or no produced files, scores `failed` — the
-   judge never inflates the score.
+   - `shell` and `deepeval` remain compatibility entry points, but neither executes a judge.
+     Both report each criterion as `UNVERIFIED` until a real OS sandbox is supplied.
+     The parser contract still rejects malformed or incomplete verdicts and persists only
+     bounded structural results; raw model responses are never printed or written.
 2. **Override — deterministic per-task scorer.** Drop a `score.ps1` (pwsh) or `score.sh` (bash) in
    the task folder and it takes precedence over both judges. Use this when acceptance needs a real
    build/test rather than a judgement (e.g. `dotnet build` / `dotnet test`, `bicep build`). It runs
-   in the task workspace and uses the same `0 / 2 / else` exit-code contract.
+   in the task workspace and retains `0 / 1 / 2` resolved/failed/partial, plus explicit
+   `3` unverified; other errors map to setup_error. Default judges additionally require
+   structured completeness, rechecked by the runners.
 
-The judge needs `copilot` installed and authenticated, same as the run itself. Self-check the
+`prepare_inputs.py` stages declared originals in a sibling baseline directory. Workspace
+metadata pointers and file mode bits are not trusted; the evaluator checks manifests against
+canonical fixture hashes. This integrity check is not an OS access boundary, so the live
+runner and scorers remain blocked. Task-10's ingress-host ambiguity and native toolchain gaps
+remain `UNVERIFIED`; no static proxy is treated as a pass.
+
+Self-check the
 verdict parser with `pipeline/score-judge.ps1 -SelfTest`, `pipeline/score-judge.sh --self-test`,
 or `python deepeval/score_workspace.py --self-test` (none call copilot).
 
 ## Status & limitations (be honest)
 
-`run-eval.ps1` / `run-eval.sh` **invoke `dev-lead` for real** on the `custom-eval` suite
-(`copilot --agent agile-agents-core:dev-lead --plugin-dir <repo>/plugins/agile-agents-core`) and score it (above). One piece is
-still open:
+`run-eval.ps1` / `run-eval.sh` reject every non-dry-run evaluation before staging or CLI
+invocation (exit 2), because no credential-free, network-disabled OS sandbox is available.
+This safety hold does not waive or replace the mandatory human plan-approval gate. Dry runs
+stage inputs and report ten skipped tasks, not failed work; no model or judge is invoked.
 
 - **SWE-bench task-prep is not wired.** Running a SWE-bench instance needs the issue text from
   the `princeton-nlp/SWE-bench_Verified` dataset plus a checkout of the target repo at the base
-  commit. Until that prep exists, `swe-bench-subset` tasks fail with a clear note. The
+  commit. Until that prep exists, `swe-bench-subset` tasks report setup_error with a clear note. The
   invocation helper is shared, so wiring prep is the only remaining work for that suite.
 
 For air-gapped projects the harness has no runtime network dependency beyond the SWE-bench data

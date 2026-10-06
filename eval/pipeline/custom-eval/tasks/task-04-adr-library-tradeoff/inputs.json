@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "provenance": "synthetic prior decision required by this task; not a statement about this repository's ADR-0007",
+  "inputs": [
+    {"source": "baseline/docs/adr/0007-http-resilience-library.md", "destination": "docs/adr/0007-http-resilience-library.md", "required": true}
+  ]
+}

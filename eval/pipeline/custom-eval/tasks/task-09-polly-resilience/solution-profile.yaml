@@ -1,24 +1,35 @@
-name: pricing-client
-language: csharp
-target_framework: net9.0
-
-resilience:
-  library: microsoft-extensions-http-resilience
-  strategies:
-    - timeout
-    - retry
-    - circuit-breaker
-    - concurrency-limiter
-  configurable: true
-
-testing:
-  framework: xunit
-  mocking_library: nsubstitute
-
+identity:
+  project_name: "Synthetic pricing client resilience benchmark"
+  lifecycle_stage: poc
+documentation:
+  platform: in-repo
+  location: docs/
+  adr:
+    location: docs/adr/
+    format: madr
+backlog:
+  platform: none
+  create_tasks: false
+tech_stack:
+  primary_languages:
+    - name: csharp
+      version: net9.0
+  frameworks: [aspnetcore, microsoft-extensions-http-resilience]
+  package_managers: [nuget]
+  test_discipline: test-after
+  test_frameworks: [xunit]
+  lint_format_tools: [dotnet-format]
+  build_tools: [dotnet]
+infrastructure:
+  deploy_verify: "off"
 quality_gates:
   test_bar:
     enabled: true
     fail_fast: true
-    commands:
-      build: "dotnet build -warnaserror"
-      test:  "dotnet test --no-build"
+    stacks: [csharp]
+    lint:
+      command: [dotnet, format, Pricing.slnx, --verify-no-changes]
+    typecheck:
+      command: [dotnet, build, Pricing.slnx, --no-restore, -warnaserror]
+    unit_test:
+      command: [dotnet, test, Pricing.slnx, --no-build]
