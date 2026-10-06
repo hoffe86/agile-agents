@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "provenance": "synthetic existing typed client and AddHttpClient registration; resilience behavior and requested tests are absent",
+  "inputs": [
+    {"source": "baseline/Pricing.slnx", "destination": "Pricing.slnx", "required": true},
+    {"source": "baseline/src", "destination": "src", "required": true},
+    {"source": "baseline/tests", "destination": "tests", "required": true}
+  ]
+}

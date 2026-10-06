@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "provenance": "synthetic minimal Orders service baseline; endpoint requested by the prompt is absent",
+  "inputs": [
+    {"source": "baseline/Orders.slnx", "destination": "Orders.slnx", "required": true},
+    {"source": "baseline/src", "destination": "src", "required": true},
+    {"source": "baseline/tests", "destination": "tests", "required": true}
+  ]
+}

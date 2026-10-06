@@ -1,0 +1,6 @@
+apiVersion: v2
+name: orders-api
+description: Synthetic orders API chart used by custom evaluation task 10
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

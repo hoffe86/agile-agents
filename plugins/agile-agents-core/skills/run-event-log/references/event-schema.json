@@ -1,51 +1,33 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/hoffe86/agile-agents/skills/run-event-log/event-schema.json",
+  "$id": "https://github.com/hoffe86/agile-agents/skills/run-event-log/event-schema-v2.json",
   "title": "Coding-suite run event",
-  "description": "One structured JSON Lines event emitted by a coding-suite agent (dev-lead, architect, coding, infrastructure, or any reviewer) at a phase boundary, on a non-trivial tool call, on a quality-gate decision, or on completion. Append-only \u2014 see SKILL.md. Sentinel blocks remain canonical hand-off; this event log is additive telemetry.",
+  "description": "Version 2 applies only to events emitted at or after 2026-10-05T21:12:21.000Z UTC. Historical append-only logs remain archived under their original bytes and are not evidence of current v2 compliance.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "timestamp",
-    "run_id",
-    "agent",
-    "phase",
-    "event_type"
-  ],
+  "required": ["schema_version", "timestamp", "run_id", "agent", "phase", "event_type"],
   "properties": {
+    "schema_version": {"const": 2},
     "timestamp": {
       "type": "string",
       "format": "date-time",
-      "description": "ISO 8601 UTC with millisecond precision and Z suffix, e.g. '2026-04-15T08:42:17.123Z'."
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "description": "UTC timestamp with millisecond precision and Z suffix. A timestamp does not authenticate historical archive provenance."
     },
     "run_id": {
       "type": "string",
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-      "description": "UUID (UUIDv7 recommended) minted by dev-lead at run start. Same value for every event in a run."
+      "description": "UUID minted once by dev-lead for the run."
     },
     "agent": {
-      "type": "string",
-      "enum": [
-        "dev-lead",
-        "architect",
-        "coding",
-        "data-scientist",
-        "infrastructure",
-        "review-lead",
-        "code-reviewer",
-        "security-reviewer",
-        "architecture-reviewer",
-        "infrastructure-reviewer",
-        "test-reviewer",
-        "data-reviewer"
-      ],
-      "description": "Which coding-suite agent emitted the event."
+      "const": "dev-lead",
+      "description": "The supervisor is the sole event writer."
     },
     "phase": {
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
-      "description": "Free-form phase name, e.g. 'architecture', 'coding', 'infrastructure', 'review-lead', 'wrap-up'."
+      "description": "Supervisor stage or delegated role window, such as research, coding, or review-lead."
     },
     "event_type": {
       "type": "string",
@@ -58,101 +40,383 @@
         "gate_check",
         "handoff_received",
         "error"
-      ],
-      "description": "Discriminator. See references/event-types.md for required-field rules per event_type."
+      ]
     },
-    "correlation_id": {
-      "type": "string",
-      "description": "Optional grouping key \u2014 typically the parent task or work-item id. Lets analysis tooling group events that belong to the same logical user request across multiple runs."
-    },
-    "parent_event_id": {
-      "type": "string",
-      "description": "Optional id of the event that caused this one (e.g. the phase_start that this phase_complete closes)."
-    },
+    "correlation_id": {"type": "string", "minLength": 1},
+    "parent_event_id": {"type": "string", "minLength": 1},
     "outcome": {
       "type": "string",
-      "enum": [
-        "success",
-        "fail",
-        "partial"
-      ],
-      "description": "Required for phase_complete, run_complete, gate_check. Forbidden for phase_start / run_start."
+      "enum": ["success", "fail", "partial"],
+      "description": "Required for phase_complete, run_complete, and gate_check. A not-applicable test-bar uses partial plus payload.applicability=not_applicable and a reason."
     },
-    "duration_ms": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Wall-clock duration in milliseconds for the action this event describes."
-    },
-    "tool_name": {
-      "type": "string",
-      "description": "Required for event_type=tool_call. Name of the tool invoked, e.g. 'view', 'edit', 'powershell', 'github-create_pull_request'."
-    },
-    "args_summary": {
-      "type": "string",
-      "maxLength": 200,
-      "description": "Redacted \u2264200-char summary of tool arguments. NEVER include secrets, full file contents, or PII. For restricted projects, hash file paths (SHA-256 first 12 hex chars) before including them."
-    },
-    "error_kind": {
-      "type": "string",
-      "description": "Required for event_type=error. Short machine-readable category, e.g. 'tool_timeout', 'validation_failed', 'gate_blocked', 'rate_limited'."
-    },
-    "payload": {
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "tool_name": {"type": "string", "minLength": 1},
+    "args_summary": {"type": "string", "maxLength": 200},
+    "error_kind": {"type": "string", "minLength": 1},
+    "payload": {"type": "object"}
+  },
+  "$defs": {
+    "metrics": {
       "type": "object",
-      "additionalProperties": true,
-      "description": "Free-form structured detail. Same redaction rules apply (no secrets, no full file contents, no unredacted PII)."
+      "required": [
+        "calls", "tokens_in", "tokens_out", "tokens_reasoning",
+        "tokens_cache_read", "tokens_total", "aiu", "duration_ms",
+        "models", "usd"
+      ],
+      "properties": {
+        "calls": {"type": "integer", "minimum": 0},
+        "tokens_in": {"type": "integer", "minimum": 0},
+        "tokens_out": {"type": "integer", "minimum": 0},
+        "tokens_reasoning": {"type": "integer", "minimum": 0},
+        "tokens_cache_read": {"type": "integer", "minimum": 0},
+        "tokens_total": {"type": "integer", "minimum": 0},
+        "aiu": {"type": "number", "minimum": 0},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "models": {"type": "array", "items": {"type": "string"}},
+        "usd": {"type": ["number", "null"], "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "cap_diagnostic": {
+      "type": "object",
+      "required": ["scope", "metric", "actual", "limit"],
+      "properties": {
+        "scope": {"type": "string", "enum": ["per_run", "per_phase"]},
+        "metric": {"type": "string", "enum": ["tokens", "aiu", "usd"]},
+        "actual": {"type": "number", "minimum": 0},
+        "limit": {"type": "number", "minimum": 0},
+        "phase": {"type": "string", "minLength": 1, "maxLength": 64}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"scope": {"const": "per_phase"}}, "required": ["scope"]},
+          "then": {"required": ["phase"]}
+        },
+        {
+          "if": {"properties": {"scope": {"const": "per_run"}}, "required": ["scope"]},
+          "then": {"not": {"required": ["phase"]}}
+        }
+      ],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "required": [
+        "session_id", "totals", "by_phase", "by_agent", "usd",
+        "usd_basis", "unattributed", "warnings", "breaches"
+      ],
+      "properties": {
+        "session_id": {"type": "string", "minLength": 1},
+        "totals": {"$ref": "#/$defs/metrics"},
+        "by_phase": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/metrics"}
+        },
+        "by_agent": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/metrics"}
+        },
+        "usd": {"type": ["number", "null"], "minimum": 0},
+        "usd_basis": {"type": "string", "minLength": 1},
+        "unattributed": {"$ref": "#/$defs/metrics"},
+        "warnings": {"type": "array", "items": {"$ref": "#/$defs/cap_diagnostic"}},
+        "breaches": {"type": "array", "items": {"$ref": "#/$defs/cap_diagnostic"}}
+      },
+      "additionalProperties": false
+    },
+    "rated_metrics": {
+      "allOf": [
+        {"$ref": "#/$defs/metrics"},
+        {
+          "type": "object",
+          "properties": {"usd": {"type": "number", "minimum": 0}}
+        }
+      ]
+    },
+    "unmetered_metrics": {
+      "allOf": [
+        {"$ref": "#/$defs/metrics"},
+        {
+          "type": "object",
+          "properties": {"usd": {"type": "null", "const": null}}
+        }
+      ]
+    },
+    "rated_usage": {
+      "allOf": [
+        {"$ref": "#/$defs/usage"},
+        {
+          "type": "object",
+          "properties": {
+            "usd": {"type": "number", "minimum": 0},
+            "usd_basis": {"type": "string", "pattern": "^rate:"},
+            "totals": {"$ref": "#/$defs/rated_metrics"},
+            "unattributed": {"$ref": "#/$defs/rated_metrics"},
+            "by_phase": {
+              "type": "object",
+              "additionalProperties": {"$ref": "#/$defs/rated_metrics"}
+            },
+            "by_agent": {
+              "type": "object",
+              "additionalProperties": {"$ref": "#/$defs/rated_metrics"}
+            }
+          }
+        }
+      ]
+    },
+    "unmetered_usage": {
+      "allOf": [
+        {"$ref": "#/$defs/usage"},
+        {
+          "type": "object",
+          "properties": {
+            "usd": {"type": "null", "const": null},
+            "usd_basis": {"type": "string", "const": "not-metered"},
+            "totals": {"$ref": "#/$defs/unmetered_metrics"},
+            "unattributed": {"$ref": "#/$defs/unmetered_metrics"},
+            "by_phase": {
+              "type": "object",
+              "additionalProperties": {"$ref": "#/$defs/unmetered_metrics"}
+            },
+            "by_agent": {
+              "type": "object",
+              "additionalProperties": {"$ref": "#/$defs/unmetered_metrics"}
+            }
+          }
+        }
+      ]
+    },
+    "cost_summary": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status", "source", "usage"],
+          "properties": {
+            "status": {"const": "measured"},
+            "source": {"const": "collect-usage.py"},
+            "usage": {"$ref": "#/$defs/rated_usage"}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["status", "source", "usage"],
+          "properties": {
+            "status": {"const": "unmetered"},
+            "source": {"const": "collect-usage.py"},
+            "usage": {"$ref": "#/$defs/unmetered_usage"}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["status", "reason", "source"],
+          "properties": {
+            "status": {"const": "unavailable"},
+            "reason": {"type": "string", "minLength": 1},
+            "source": {"const": "collect-usage.py"}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["status", "reason"],
+          "properties": {
+            "status": {"const": "disabled"},
+            "reason": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        }
+      ]
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"event_type": {"const": "run_start"}},
+        "required": ["event_type"]
+      },
+      "then": {
+        "required": ["payload"],
+        "properties": {
+          "payload": {
+            "required": ["requirement_summary", "profile_loaded"],
+            "properties": {
+              "requirement_summary": {"type": "string", "minLength": 1, "maxLength": 200},
+              "profile_loaded": {"type": "boolean"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "not": {"required": ["outcome"]}
+      }
+    },
+    {
+      "if": {
+        "properties": {"event_type": {"const": "run_complete"}},
+        "required": ["event_type"]
+      },
+      "then": {
+        "required": ["outcome", "payload"],
+        "properties": {
+          "payload": {
+            "required": ["cost_summary"],
+            "properties": {
+              "cost_summary": {"$ref": "#/$defs/cost_summary"},
+              "termination_reason": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {"outcome": {"enum": ["fail", "partial"]}},
+              "required": ["outcome"]
+            },
+            "then": {
+              "properties": {
+                "payload": {
+                  "required": ["termination_reason"],
+                  "properties": {"termination_reason": {"type": "string", "minLength": 1}}
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"event_type": {"enum": ["phase_start", "phase_complete", "tool_call"]}},
+        "required": ["event_type"]
+      },
+      "then": {"not": {"required": ["payload"]}}
+    },
+    {
+      "if": {
+        "properties": {"event_type": {"const": "phase_start"}},
+        "required": ["event_type"]
+      },
+      "then": {"not": {"required": ["outcome"]}}
+    },
+    {
+      "if": {
+        "properties": {"event_type": {"const": "phase_complete"}},
+        "required": ["event_type"]
+      },
+      "then": {"required": ["outcome"]}
+    },
+    {
+      "if": {
+        "properties": {"event_type": {"const": "tool_call"}},
+        "required": ["event_type"]
+      },
+      "then": {"required": ["tool_name"]}
+    },
+    {
+      "if": {
+        "properties": {"event_type": {"const": "gate_check"}},
+        "required": ["event_type"]
+      },
+      "then": {
+        "required": ["outcome", "payload"],
+        "properties": {
+          "payload": {
+            "required": ["gate"],
+            "properties": {
+              "gate": {"type": "string", "minLength": 1},
+              "applicability": {"type": "string", "enum": ["not_applicable"]},
+              "reason": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"event_type": {"const": "handoff_received"}},
+        "required": ["event_type"]
+      },
+      "then": {
+        "required": ["payload"],
+        "properties": {
+          "payload": {
+            "required": ["from_agent", "sentinel"],
+            "properties": {
+              "from_agent": {
+                "type": "string",
+                "enum": [
+                  "architect", "backlog-manager", "bootstrapper", "capability-scout",
+                  "coding", "data-scientist", "infrastructure", "review-lead",
+                  "code-reviewer", "security-reviewer", "architecture-reviewer",
+                  "infrastructure-reviewer", "test-reviewer", "data-reviewer"
+                ]
+              },
+              "sentinel": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"event_type": {"const": "error"}},
+        "required": ["event_type"]
+      },
+      "then": {
+        "required": ["error_kind", "payload"],
+        "properties": {
+          "payload": {
+            "required": ["message"],
+            "properties": {"message": {"type": "string", "minLength": 1, "maxLength": 200}},
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
   "examples": [
     {
-      "timestamp": "2026-04-15T08:42:17.123Z",
+      "schema_version": 2,
+      "timestamp": "2026-10-06T08:42:17.123Z",
       "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
       "agent": "dev-lead",
-      "phase": "bootstrap",
+      "phase": "intake",
       "event_type": "run_start",
-      "payload": {
-        "user_request_summary": "Add Bicep module for Storage Account with private endpoint",
-        "profile_loaded": true
-      }
+      "payload": {"requirement_summary": "Add a private storage module", "profile_loaded": true}
     },
     {
-      "timestamp": "2026-04-15T08:42:18.001Z",
+      "schema_version": 2,
+      "timestamp": "2026-10-06T08:45:01.001Z",
       "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
-      "agent": "architect",
-      "phase": "architecture",
-      "event_type": "phase_start",
-      "parent_event_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e60"
-    },
-    {
-      "timestamp": "2026-04-15T08:43:09.872Z",
-      "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
-      "agent": "coding",
+      "agent": "dev-lead",
       "phase": "coding",
-      "event_type": "tool_call",
-      "tool_name": "edit",
-      "args_summary": "infra/modules/storage.bicep \u2014 add privateEndpoint resource (lines 42-78)",
-      "duration_ms": 2300
+      "event_type": "phase_start"
     },
     {
-      "timestamp": "2026-04-15T08:46:55.410Z",
+      "schema_version": 2,
+      "timestamp": "2026-10-06T08:46:30.111Z",
       "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
-      "agent": "security-reviewer",
-      "phase": "review-lead",
-      "event_type": "gate_check",
-      "outcome": "fail",
-      "payload": {
-        "gate": "no-public-network-access",
-        "finding_count": 1,
-        "severity": "high"
-      }
+      "agent": "dev-lead",
+      "phase": "coding",
+      "event_type": "handoff_received",
+      "payload": {"from_agent": "coding", "sentinel": "IMPLEMENTATION COMPLETE"}
     },
     {
-      "timestamp": "2026-04-15T08:51:02.998Z",
+      "schema_version": 2,
+      "timestamp": "2026-10-06T08:51:02.998Z",
       "run_id": "01914e2a-9b1c-7c3d-8e4f-1a2b3c4d5e6f",
       "agent": "dev-lead",
       "phase": "wrap-up",
       "event_type": "run_complete",
-      "outcome": "success",
-      "duration_ms": 524000
+      "outcome": "fail",
+      "payload": {
+        "termination_reason": "A required verification gate did not pass",
+        "cost_summary": {"status": "disabled", "reason": "cost_envelope.enabled=false"}
+      }
     }
   ]
 }

@@ -1,26 +1,38 @@
-name: orders-api
-deliverable_type: infrastructure
-target_platform: kubernetes
-
+identity:
+  project_name: "Synthetic orders Helm-to-Kustomize migration benchmark"
+  lifecycle_stage: poc
+documentation:
+  platform: in-repo
+  location: docs/
+  adr:
+    location: docs/adr/
+    format: madr
+backlog:
+  platform: none
+  create_tasks: false
+tech_stack:
+  primary_languages:
+    - name: yaml
+      version: "1.2"
+  frameworks: [helm, kustomize, kubernetes]
+  package_managers: [helm]
+  test_discipline: test-after
+  test_frameworks: [kubectl-kustomize]
+  lint_format_tools: [kubectl]
+  build_tools: [kubectl]
 infrastructure:
-  iac: kustomize
-  migration_from: helm
-  environments:
-    - dev
-    - staging
-    - prod
-  resources:
-    - deployment
-    - service
-    - configmap
-    - hpa
-    - serviceaccount
-    - networkpolicy
-
+  deploy_verify: "off"
 quality_gates:
   test_bar:
     enabled: true
     fail_fast: true
-    commands:
-      lint:  "kubectl kustomize deploy/kustomize/orders-api/overlays/dev > /dev/null"
-      build: "kubectl kustomize deploy/kustomize/orders-api/overlays/prod > /dev/null"
+    stacks: [yaml]
+    lint:
+      command: [kubectl, kustomize, deploy/kustomize/orders-api/overlays/dev]
+    typecheck:
+      command: [kubectl, kustomize, deploy/kustomize/orders-api/overlays/staging]
+    unit_test:
+      enabled: false
+    integration_test:
+      enabled: true
+      command: [kubectl, kustomize, deploy/kustomize/orders-api/overlays/prod]

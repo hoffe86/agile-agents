@@ -1,0 +1,15 @@
+replicaCount: 2
+image:
+  tag: "rc-7"
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 400m
+    memory: 384Mi
+ingress:
+  host: orders.staging.example.invalid
+config:
+  ASPNETCORE_ENVIRONMENT: Staging
+  LOG_LEVEL: Information

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "provenance": "synthetic four-file patch supplied as task context; it does not contain a proposed PR description",
+  "inputs": [
+    {"source": "baseline/diff.patch", "destination": "diff.patch", "required": true}
+  ]
+}

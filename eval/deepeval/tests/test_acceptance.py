@@ -10,6 +10,7 @@ Run:  python -m pytest eval/deepeval/tests -q
 from __future__ import annotations
 
 import sys
+import json
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ from metrics.acceptance import (  # noqa: E402
     discover_plugin_dirs,
     has_unverified,
     parse_verdict,
+    parse_result,
     workspace_index,
 )
 
@@ -34,15 +36,16 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # --- Parity with the shell judges -------------------------------------------------
 # Lifted verbatim from score-judge.sh --self-test (and its .ps1 twin). Exit codes are
-# the contract run-eval reads: 0 resolved, 2 partial, 1 failed.
+# the contract run-eval reads: 0 resolved, 2 partial, 1 failed, 3 unverified, 4 setup_error.
 
 SHELL_SELF_TEST_CASES = [
     (0, "1. PASS - ok\nVERDICT: RESOLVED"),
-    (2, "VERDICT: PARTIAL\n"),
-    (1, "VERDICT: FAILED"),
-    (1, "no verdict here"),
-    (1, "VERDICT: RESOLVED\nVERDICT: FAILED"),   # last wins
-    (0, "verdict: resolved"),                     # case-insensitive
+    (2, "1. PASS - ok\n2. FAIL - missing\nVERDICT: PARTIAL\n"),
+    (1, "1. FAIL - broken\nVERDICT: FAILED"),
+    (4, "no verdict here"),
+    (4, "1. PASS - ok\nVERDICT: RESOLVED\nVERDICT: FAILED"),
+    (0, "1. pass - ok\nverdict: resolved"),
+    (3, "1. UNVERIFIED - missing tool\nVERDICT: RESOLVED"),
 ]
 
 
@@ -51,10 +54,10 @@ def test_parity_with_shell_judge_self_test(want_exit, text):
     assert VERDICT_EXIT[parse_verdict(text)] == want_exit
 
 
-def test_unparseable_is_failed_not_an_error():
-    """An unclear judge must never inflate a score, and must not crash the run."""
+def test_unparseable_is_judge_contract_error_not_agent_failure():
+    """An unclear judge is an error, never an invented agent result."""
     for text in ["", "   ", "the agent did well", "VERDICT: MAYBE"]:
-        assert parse_verdict(text) is Verdict.FAILED
+        assert parse_verdict(text) is Verdict.SETUP_ERROR
 
 
 def test_score_mapping_is_stable():
@@ -71,11 +74,10 @@ def test_verdict_embedded_in_prose_is_found():
 # --- UNVERIFIED ------------------------------------------------------------------
 
 
-def test_unverified_is_detected_and_does_not_change_the_score():
+def test_unverified_is_detected_and_denies_resolved_credit():
     text = "1. UNVERIFIED - no dotnet on PATH\n2. PASS - file exists\nVERDICT: PARTIAL"
     assert has_unverified(text)
-    # It is a harness limitation, so it is reported but must not silently alter the score.
-    assert parse_verdict(text) is Verdict.PARTIAL
+    assert parse_verdict(text) is Verdict.UNVERIFIED
 
 
 def test_unverified_absent_when_not_mentioned():
@@ -190,7 +192,7 @@ def test_metric_reports_score_and_reason_without_calling_a_model(tmp_path, monke
 
     monkeypatch.setattr(
         mod, "run_judge",
-        lambda *a, **k: JudgeResult(Verdict.PARTIAL, "VERDICT: PARTIAL", False),
+        lambda *a, **k: parse_result("1. PASS - ok\n2. FAIL - missing\nVERDICT: PARTIAL", 2),
     )
 
     metric = mod.AcceptanceMetric(acceptance)
@@ -203,83 +205,65 @@ def test_metric_reports_score_and_reason_without_calling_a_model(tmp_path, monke
     assert "PARTIAL" in metric.reason
 
 
-def test_metric_surfaces_unverified_in_the_reason(tmp_path, monkeypatch):
+def test_metric_surfaces_unverified_in_the_reason_without_persisting_sensitive_diagnostics(
+        tmp_path, monkeypatch, capsys):
     acceptance = tmp_path / "acceptance.md"
     acceptance.write_text("1. Something.")
 
     import metrics.acceptance as mod
+    secret = "ghp_fixtureNotARealCredential_1234567890"
 
     monkeypatch.setattr(
         mod, "run_judge",
-        lambda *a, **k: JudgeResult(Verdict.RESOLVED, "1. UNVERIFIED - x\nVERDICT: RESOLVED", True),
+        lambda *a, **k: parse_result(
+            f"1. UNVERIFIED - {secret}\nVERDICT: RESOLVED", 1,
+        ),
     )
     metric = mod.AcceptanceMetric(acceptance)
 
     class Case:
         actual_output = str(tmp_path)
 
-    assert metric.measure(Case()) == 1.0
+    # Original 1.0 assertion was invalid: uncertainty cannot award resolved credit.
+    assert metric.measure(Case()) == 0.0
+    assert metric.is_successful() is False
     assert "UNVERIFIED" in metric.reason
+    assert secret not in metric.reason
+    result_path = tmp_path / "unverified-result.json"
+    from grading import write_result
+    write_result(metric.result, result_path)
+    persisted = result_path.read_text(encoding="utf-8") + capsys.readouterr().out
+    assert secret not in persisted
+    assert json.loads(result_path.read_text(encoding="utf-8"))["status"] == "unverified"
 
 
-def test_missing_copilot_fails_closed(tmp_path, monkeypatch):
-    """No judge means no grade — it must not read as a passing agent."""
+def test_live_judge_is_disabled_before_process_execution_even_with_sensitive_inputs(tmp_path, monkeypatch):
     import metrics.acceptance as mod
+    from prepare_inputs import prepare
 
-    acceptance = tmp_path / "acceptance.md"
-    acceptance.write_text("1. Something.")
-
-    def boom(*a, **k):
-        raise FileNotFoundError("copilot")
-
-    monkeypatch.setattr(mod.subprocess, "run", boom)
-    result = mod.run_judge(tmp_path, acceptance)
-    assert result.verdict is Verdict.FAILED
-    assert "not on PATH" in result.response
-
-
-def test_judge_timeout_is_failed_with_a_stated_reason(tmp_path, monkeypatch):
-    import metrics.acceptance as mod
-
-    acceptance = tmp_path / "acceptance.md"
-    acceptance.write_text("1. Something.")
-
-    def timeout(*a, **k):
-        raise mod.subprocess.TimeoutExpired(cmd="copilot", timeout=1)
-
-    monkeypatch.setattr(mod.subprocess, "run", timeout)
-    result = mod.run_judge(tmp_path, acceptance, timeout=1)
-    assert result.verdict is Verdict.FAILED
-    assert "timed out" in result.response
-
-
-def test_isolated_home_is_passed_to_the_child(tmp_path, monkeypatch):
-    """Without isolation the judge grades against a different plugin version."""
-    import metrics.acceptance as mod
-
-    acceptance = tmp_path / "acceptance.md"
-    acceptance.write_text("1. Something.")
-    seen = {}
-
-    class Proc:
-        stdout = "VERDICT: RESOLVED"
-        stderr = ""
-
-    def capture(argv, **kwargs):
-        seen["env"] = kwargs.get("env") or {}
-        seen["argv"] = argv
-        return Proc()
-
-    monkeypatch.setattr(mod.subprocess, "run", capture)
-    mod.run_judge(
-        tmp_path, acceptance,
-        plugin_dirs=["/p/one"], model="gpt-5.6-sol", isolated_home="/iso",
+    sys.path.insert(0, str(REPO_ROOT / "eval/pipeline/custom-eval"))
+    task = REPO_ROOT / "eval/pipeline/custom-eval/tasks/task-10-helm-to-kustomize"
+    workspace = tmp_path / "run/ws" / task.name
+    baseline = tmp_path / "run/baseline" / task.name
+    prepare(task, workspace, baseline)
+    secret = "ghp_fixtureNotARealCredential_1234567890"
+    (workspace / "Source.cs").write_text(
+        f'class C {{ const string Secret = "{secret}"; }}', encoding="utf-8",
     )
+    (workspace / "settings.yaml").write_text(f'password: "{secret}"', encoding="utf-8")
+    acceptance = tmp_path / "acceptance.md"
+    acceptance.write_text(f"1. Verify the output; fixture note {secret}.", encoding="utf-8")
+    calls = []
 
-    assert seen["env"].get("HOME") == "/iso"
-    assert seen["env"].get("USERPROFILE") == "/iso"
-    assert "--plugin-dir" in seen["argv"] and "/p/one" in seen["argv"]
-    assert "--model" in seen["argv"] and "gpt-5.6-sol" in seen["argv"]
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("live judge process must not run")
+
+    monkeypatch.setattr(mod.subprocess, "run", forbidden)
+    result = mod.run_judge(workspace, acceptance, baseline_dir=baseline, timeout=1)
+    assert result.verdict is Verdict.UNVERIFIED
+    assert result.exit_code == 3 and result.error_kind is None
+    assert not calls
 
 
 def test_metric_is_a_real_deepeval_metric_when_available():

@@ -1,22 +1,42 @@
-name: reconciliation-service
-language: csharp
-target_framework: net9.0
-
-testing:
-  framework: xunit
-  mocking_library: nsubstitute
-  integration:
-    enabled: true
-    container_runtime: testcontainers
-    backing_services:
-      - postgres
-  coverage_tool: coverlet
-  coverage_target: 90
-
+identity:
+  project_name: "Synthetic payment reconciliation test benchmark"
+  lifecycle_stage: poc
+documentation:
+  platform: in-repo
+  location: docs/
+  adr:
+    location: docs/adr/
+    format: madr
+backlog:
+  platform: none
+  create_tasks: false
+tech_stack:
+  primary_languages:
+    - name: csharp
+      version: net9.0
+  frameworks: [aspnetcore]
+  package_managers: [nuget]
+  test_discipline: test-after
+  test_frameworks: [xunit, nsubstitute, testcontainers]
+  coverage_threshold: 90
+  lint_format_tools: [dotnet-format]
+  build_tools: [dotnet]
+infrastructure:
+  deploy_verify: "off"
 quality_gates:
   test_bar:
     enabled: true
     fail_fast: true
-    commands:
-      build: "dotnet build"
-      test:  "dotnet test --collect:'XPlat Code Coverage'"
+    stacks: [csharp]
+    lint:
+      command: [dotnet, format, Reconciliation.slnx, --verify-no-changes]
+    typecheck:
+      command: [dotnet, build, Reconciliation.slnx, --no-restore, -warnaserror]
+    unit_test:
+      command: [dotnet, test, tests/Reconciliation.Tests/Reconciliation.Tests.csproj, --no-build]
+    integration_test:
+      enabled: true
+      command: [dotnet, test, tests/Reconciliation.IntegrationTests/Reconciliation.IntegrationTests.csproj, --no-build]
+    coverage:
+      enabled: true
+      command: [dotnet, test, tests/Reconciliation.Tests/Reconciliation.Tests.csproj, --no-build, /p:CollectCoverage=true, /p:Threshold=90, /p:ThresholdType=line]

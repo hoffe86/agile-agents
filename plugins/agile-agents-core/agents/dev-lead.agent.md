@@ -137,7 +137,7 @@ A `cost-budget` checkpoint runs **after every stage** (Stage 0 loads the envelop
 | 6 | Implement | Coding, data & infrastructure | Deliver the approved tracker tasks **one at a time in dependency order** — each task's production code **and the tests that cover it**; IaC and its own tests, or analysis and its evidence, where needed | `coding`, `data-scientist`, `infrastructure` |
 | 7 | Implement | Automated gates | Deterministic lint → typecheck → unit-test → smoke gate, then opt-in deploy-verify to dev; loop to the author on fail (max 3 retries) | — (skills: `test-bar-gate`, `deploy-verify`) |
 | 8 | Review | Review | Reviewer fan-out (quality / security / architecture / infra / test) merged by `review-lead` | `review-lead` |
-| 9 | — | Done | **Verify every requirement acceptance criterion is covered by a delivered task + evidence**; consolidate trade-offs, summarise outcome vs DoD; **emit `run.complete` (or `run.abort`)** | — |
+| 9 | — | Done | **Verify every requirement acceptance criterion is covered by a delivered task + evidence**; consolidate trade-offs, summarise outcome vs DoD; **emit `run_complete`** | — |
 
 Each stage has an entry condition, a delegated agent, and an exit gate. You never advance past a failed gate without either (a) corrective retries with explicit feedback, up to the budget for that gate, or (b) stopping and asking the human.
 
@@ -225,12 +225,12 @@ If something load-bearing is genuinely ambiguous — it changes what gets delive
 **Stage 0 wiring (run start, cost envelope, event log):**
 
 1. **Mint the `run_id`** (UUIDv7) and carry it in your own context for the rest of the run — pass it as an explicit argument on every script call. Do **not** export it as an environment variable: each tool call is a fresh process, so an exported value is gone by the next call. All events land in `.copilot-runs/<run-id>/events.jsonl`.
-2. **Emit `run.start`** via `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows) with `agent=dev-lead`, `phase=intake`, `event_type=run_start`. The event schema is in `skills/run-event-log/references/event-schema.json`.
+2. **Emit `run_start`** via `skills/run-event-log/scripts/emit-event.sh` (or `.ps1` on Windows) with `agent=dev-lead`, `phase=intake`, `event_type=run_start`, and `payload.requirement_summary` plus boolean `payload.profile_loaded`. The event schema is in `skills/run-event-log/references/event-schema.json`.
    Persist its UTC timestamp as `run_started_at` in the session DB alongside `run_id`.
    Reuse that boundary on every cost collection, including completion and resume;
    never replace it with the current time or a transient shell variable.
 3. **Load the cost envelope** from `solution-profile.yaml: cost_envelope`. Apply the gate logic from the `cost-budget` skill:
-   - Envelope **missing** AND `engagement_context.engagement_type == external-project` → halt with `ask_user`; emit `run.abort` and stop.
+   - Envelope **missing** AND `engagement_context.engagement_type == external-project` → halt with `ask_user`; emit `run_complete` with `outcome=fail`, termination reason, and explicit cost-summary state.
    - Envelope missing on `internal` / `experiment` / `template` → warn ("⚠️ No `cost_envelope` set — run will not be cost-gated") and continue.
    - Envelope present → record `max_aiu_per_run`, `max_aiu_per_phase`, `max_tokens_per_run` and any per-phase overrides into a budget tracker for use at every stage transition. Gate on AIU or tokens; `max_usd_*` is inert unless `usd_per_aiu` supplies a rate, and an unrated run must report USD as *unmetered*, never `0.00`.
 
@@ -470,7 +470,7 @@ consumes that gate's remaining retries. Preserve early stops for non-convergence
 | 1st fail | Send the structured failure report back to the agent that authored the failing area — `coding` for application code and its tests, `infrastructure` for IaC and for a deploy-verify failure (see the retry tables in the two gate skills). One corrective message naming the failed check + offending file/line. |
 | 2nd fail | Same — a second corrective retry, naming what the first attempt failed to fix. |
 | 3rd fail | Same — third and final corrective retry. Say explicitly that this is the last attempt before the run halts. |
-| 4th fail | **Halt the run.** Emit `run.abort` with reason `test_bar_unrecoverable`. Do not call reviewers. Use `ask_user` to surface the persistent failure and let the human decide. |
+| 4th fail | **Halt the run.** Emit `run_complete` with `outcome=fail`, `payload.termination_reason=test_bar_unrecoverable`, and cost-summary state. Do not call reviewers. Use `ask_user` to surface the persistent failure and let the human decide. |
 
 Three corrective retries, because this failure is deterministic — lint, type, test, deploy, not LLM judgement — so each round has a concrete error to work from and genuinely converges. **But never more:** a check still failing on the fourth attempt is not converging, and further rounds burn the envelope on a defect that needs a human. **Exception:** a deploy-verify failure attributed to quota, policy denial, or a missing role assignment halts immediately with no retry — no agent can resolve those, and retrying burns the envelope on a deterministic failure.
 
@@ -554,10 +554,13 @@ If you are asked to complete, merge or close a PR, force-push, or deploy to prod
 
 **Stage 9 wiring:** perform the completion collection from `cost-budget` with
 the persisted run-start boundary, attribution log, and applicable caps before
-declaring Done. Retain the measured JSON as the usage artifact and fill the
-report from it, or state telemetry unavailable. Then emit `run.complete` or
-`run.abort` via `run-event-log`. The legacy `cost_summary` event is unsupported;
-do not hand-write it. Event-protocol reconciliation remains separate work.
+declaring Done. Emit the final `run_complete` with
+`payload.cost_summary`: copy the collector JSON unchanged into `usage`, name
+`collect-usage.py` as its source, and use the explicit measured, unmetered,
+unavailable, or disabled status described by `cost-budget`. Never invent zero
+usage. A failed or partial termination includes a non-empty
+`payload.termination_reason`; only a fully verified delivery may use
+`outcome=success`.
 
 ## Tracker status — mirror the run onto the work items
 
@@ -611,7 +614,7 @@ there are no child work items to update, and the SQL todos remain the only ledge
 
 These two concerns ride alongside every stage transition above. They are not stages, and both are fully specified in their skills — do not restate them here.
 
-- **Events** — emit per `skills/run-event-log/references/dev-lead-event-map.md` (which transition → which `event_type`), with semantics and worked examples in `references/event-types.md` and the contract in `references/event-schema.json`. Emit via `skills/run-event-log/scripts/emit-event.sh` / `.ps1`.
+- **Events** — emit every event as `agent=dev-lead` per `skills/run-event-log/references/dev-lead-event-map.md` (which transition → which `event_type`), with semantics and worked examples in `references/event-types.md` and the contract in `references/event-schema.json`. Put worker identity in the role-valued `phase` window and `handoff_received.payload.from_agent`; emit via `skills/run-event-log/scripts/emit-event.sh` / `.ps1`.
 - **Cost** — checkpoint after each closed phase window and at completion using
   the command and cap-resolution rules in `skills/cost-budget/SKILL.md`.
   Always pass the persisted `run_started_at`; run flags gate run totals and the

@@ -6,6 +6,9 @@ eval/**/runs/
 eval/**/results/
 eval/**/.runs/
 
+# Local/ephemeral runtime artifacts
+.copilot-runs/
+
 # macOS
 .DS_Store
 ._*

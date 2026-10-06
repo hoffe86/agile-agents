@@ -1,23 +1,36 @@
-name: platform-modules
-language: bicep
-target_cloud: azure
-
+identity:
+  project_name: "Synthetic Azure storage module benchmark"
+  lifecycle_stage: poc
+documentation:
+  platform: in-repo
+  location: docs/
+  adr:
+    location: docs/adr/
+    format: madr
+backlog:
+  platform: none
+  create_tasks: false
+tech_stack:
+  primary_languages:
+    - name: bicep
+      version: "0.38"
+  frameworks: []
+  test_discipline: test-after
+  test_frameworks: []
+  lint_format_tools: [bicep]
+  build_tools: [bicep]
 infrastructure:
-  iac: bicep
-  module_pattern: parameterised-reusable
-  baseline: azure-waf-security
-
-compliance:
-  framework: cis-azure
-  controls:
-    - "3.1 Secure transfer required"
-    - "3.7 Public access level set to private"
-    - "3.8 Default network access denied"
-
+  cloud: azure
+  iac_tool: bicep
+  deploy_verify: "off"
 quality_gates:
   test_bar:
     enabled: true
     fail_fast: true
-    commands:
-      lint:  "bicep lint modules/"
-      build: "bicep build modules/storage-account.bicep && bicep build examples/storage-account-consumer.bicep"
+    stacks: [bicep]
+    lint:
+      command: [bicep, lint, modules/storage-account.bicep]
+    typecheck:
+      command: [bicep, build, modules/storage-account.bicep]
+    unit_test:
+      enabled: false

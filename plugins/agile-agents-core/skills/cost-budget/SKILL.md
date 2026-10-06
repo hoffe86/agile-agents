@@ -91,10 +91,22 @@ Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuc
 4. **Run completion**: collect again with the **same `--since`, `--event-log`,
    and run caps**, plus the just-closed phase cap when set. Never widen the
    collection to the whole session or lose phase attribution. Fill the final
-   report from this result. The legacy `cost_summary` event recipe is
-   not accepted by the current event schema/emitter; retain the measured JSON
-   as a run artifact rather than hand-writing an invalid event. Event-protocol
-   reconciliation is separate work.
+   report from this result and copy the collector's JSON unchanged into
+   `run_complete.payload.cost_summary.usage`, with
+   `run_complete.payload.cost_summary.source=collect-usage.py`. The event
+   contract accepts only the collector's declared usage and metric fields,
+   plus structured cap diagnostics; do not attach extra notes or arbitrary
+   text. Each warning and breach has `scope`, `metric`, `actual`, `limit`, and
+   optional `phase`.
+
+   Use `status=measured` when the collector returned rated USD, even when exit
+   code `2` reports a budget breach. Use `status=unmetered` when usage was
+   collected but `usd` is `null` and `usd_basis=not-metered`; preserve those
+   exact values and never write `$0.00`. For exit `3`, use
+   `status=unavailable` with the collector source and its failure reason. When
+   the profile disabled cost gating, use `status=disabled` with that reason.
+   Failed or partial runs also include `payload.termination_reason`. These are
+   fields of the supported `run_complete` event, not a separate event type.
 
 ## Model tiering convention
 

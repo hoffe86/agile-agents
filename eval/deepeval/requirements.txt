@@ -4,3 +4,5 @@
 # free metric into one that silently needs an LLM.
 deepeval==4.1.8
 pytest>=8.0
+# Fixture staging and immutable-input verification tests (not a model dependency).
+PyYAML==6.0.3

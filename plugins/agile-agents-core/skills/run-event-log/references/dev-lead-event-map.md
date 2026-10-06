@@ -16,7 +16,7 @@ aggregate within the same run, including corrective rounds. Only dev-lead emits.
 
 | When | `event_type` | Required extras |
 |---|---|---|
-| Stage 0 start | `run_start` | `phase=intake`, `payload.requirement_summary` |
+| Stage 0 start | `run_start` | `phase=intake`, `payload.requirement_summary`, `payload.profile_loaded` |
 | Opening a work window | `phase_start` | `phase=<stage-name or worker-role>` |
 | Closing that window | `phase_complete` | same `phase`, `outcome=success\|fail\|partial` |
 | Dispatching a worker | `tool_call` | `tool_name=agent`, `args_summary="<agent-name>: <task one-liner>"` |
@@ -24,8 +24,15 @@ aggregate within the same run, including corrective rounds. Only dev-lead emits.
 | Worker malformed / failed | `error` | `error_kind=malformed_handoff\|build_fail\|...` |
 | Test-bar / cost / review gate pass | `gate_check` | `payload.gate=test_bar\|cost\|review`, `outcome=success` |
 | Test-bar / cost / review gate fail | `gate_check` | same, `outcome=fail`, `payload.reason` |
-| Stage 9 normal close | `run_complete` | `outcome=success`; retain measured usage JSON per `cost-budget` (the legacy `cost_summary` event is unsupported) |
-| Stop-condition abort | `run_complete` | `outcome=fail`, `payload.stop_condition=<n>` |
+| Test-bar not applicable | `gate_check` | `payload.gate=test_bar`, `outcome=partial`, `payload.applicability=not_applicable`, non-empty `payload.reason` |
+| Stage 9 normal close | `run_complete` | `outcome=success`, `payload.cost_summary` with collector provenance and measured/unmetered usage, or explicit unavailable/disabled state |
+| Stop-condition abort | `run_complete` | `outcome=fail\|partial`, non-empty `payload.termination_reason`, and explicit cost-summary state |
+
+`cost_summary` is a field in the terminal payload, not an event type. For
+`measured` / `unmetered` results, copy the JSON from `collect-usage.py`
+unchanged into `payload.cost_summary.usage` and set
+`payload.cost_summary.source=collect-usage.py`. For a failed collection or a
+disabled envelope, record the explicit status and reason; never substitute zero.
 
 ## Aliases
 

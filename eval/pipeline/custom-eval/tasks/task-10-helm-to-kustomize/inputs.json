@@ -1,0 +1,7 @@
+{
+  "version":  1,
+  "provenance": "synthetic six-resource Helm chart and environment values; no Kustomize output is included",
+  "inputs": [
+    {"source": "baseline/deploy/helm/orders-api", "destination": "deploy/helm/orders-api", "required": true}
+  ]
+}
