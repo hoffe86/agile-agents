@@ -20,8 +20,11 @@ ROOT = Path(__file__).resolve().parents[3]
 PIPELINE = ROOT / "eval/pipeline"
 BASH = shutil.which("bash")
 if os.name == "nt":
-    BASH = str(Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe")
+    # Git/bin/bash.exe is a wrapper that prepends host directories to PATH.
+    BASH = str(Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/usr/bin/bash.exe")
 PWSH = shutil.which("pwsh")
+if PWSH:
+    PWSH = str(Path(PWSH).resolve())
 
 
 def execute(argv, env):
@@ -29,8 +32,38 @@ def execute(argv, env):
                           encoding="utf-8", errors="replace", timeout=90)
 
 
+def isolated_command_path(bin_dir, commands_dir, command_paths):
+    """Expose individual utilities, never their Python/Copilot-bearing parents."""
+    commands_dir.mkdir()
+    for name, source in command_paths.items():
+        source = Path(source).resolve(strict=True)
+        target = commands_dir / (name + (".exe" if os.name == "nt" else ""))
+        if os.name == "nt":
+            shutil.copy2(source, target)
+            # MSYS utilities need their runtime DLLs beside the executable.
+            # Copy only libraries, not other commands from Git's usr/bin.
+            for library in source.parent.glob("*.dll"):
+                if not (commands_dir / library.name).exists():
+                    shutil.copy2(library, commands_dir)
+        else:
+            target.symlink_to(source)
+    return os.pathsep.join([str(bin_dir), str(commands_dir)])
+
+
+@pytest.fixture(scope="session")
+def shell_commands(tmp_path_factory):
+    commands = tmp_path_factory.mktemp("native-utilities") / "commands"
+    names = ("bash", "find", "sort", "date", "mkdir", "dirname", "basename", "cat", "awk")
+    if os.name == "nt":
+        sources = {name: Path(BASH).parent / f"{name}.exe" for name in names}
+    else:
+        sources = {name: shutil.which(name) for name in names}
+    isolated_command_path(commands.parent, commands, sources)
+    return commands
+
+
 @pytest.fixture
-def fake_cli(tmp_path):
+def fake_cli(tmp_path, shell_commands):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     script = bin_dir / "copilot.py"
@@ -56,15 +89,7 @@ def fake_cli(tmp_path):
         executable.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}"\n', encoding="utf-8")
         executable.chmod(0o700)
     env = os.environ.copy()
-    safe_dirs = [str(Path(sys.executable).parent)]
-    if PWSH:
-        safe_dirs.append(str(Path(PWSH).parent))
-    if BASH:
-        safe_dirs.append(str(Path(BASH).parent))
-        if os.name == "nt":
-            safe_dirs.append(str(Path(BASH).parent.parent / "usr/bin"))
-    if os.name == "nt":
-        safe_dirs.extend([os.environ["SystemRoot"] + "/System32", os.environ["SystemRoot"]])
+    safe_dirs = [str(Path(sys.executable).resolve().parent), str(shell_commands)]
     real_copilot = shutil.which("copilot")
     if real_copilot:
         real_dir = Path(real_copilot).resolve().parent
@@ -80,8 +105,34 @@ def fake_cli(tmp_path):
     # No real credentials are available to these subprocesses.
     for name in ("GH_TOKEN", "GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN", "OPENAI_API_KEY"):
         env.pop(name, None)
+    for name in ("BASH_ENV", "ENV"):
+        env.pop(name, None)
     assert Path(shutil.which("copilot", path=env["PATH"])).resolve() == executable.resolve()
     return env
+
+
+def test_missing_python_path_excludes_shared_host_command_directories(tmp_path):
+    # Model /usr/bin (including a pwsh entry) or a Windows tools directory
+    # containing utilities alongside interpreters and a real CLI.
+    host = tmp_path / "usr/bin"
+    host.mkdir(parents=True)
+    suffix = ".exe" if os.name == "nt" else ""
+    for name in ("dirname", "pwsh", "python", "python3", "copilot"):
+        executable = host / (name + suffix)
+        executable.write_bytes(b"host executable")
+        executable.chmod(0o700)
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    commands = tmp_path / "commands"
+
+    path = isolated_command_path(fake_bin, commands, {"dirname": host / ("dirname" + suffix)})
+
+    assert path.split(os.pathsep) == [str(fake_bin), str(commands)]
+    assert shutil.which("dirname", path=path) is not None
+    assert shutil.which("python", path=path) is None
+    assert shutil.which("python3", path=path) is None
+    assert shutil.which("copilot", path=path) is None
+    assert shutil.which("pwsh", path=path) is None
 
 
 @pytest.fixture
@@ -361,22 +412,30 @@ def test_native_preparation_exit_two_is_setup_error_not_partial_and_keeps_all_ta
 
 
 @pytest.mark.parametrize("native", ["powershell", "bash"])
-def test_native_missing_python_setup_preserves_full_suite_denominator(native, tmp_path, fake_cli):
-    # Retain native shells/system utilities and the local fake copilot, but remove
-    # every Python directory and application-alias directory from executable search.
-    directories = [str(Path(fake_cli["FAKE_COUNTER"]).parent / "bin"), str(Path(PWSH).parent)]
-    if os.name == "nt":
-        directories += [os.environ["SystemRoot"] + "/System32", os.environ["SystemRoot"]]
+def test_native_missing_python_setup_preserves_full_suite_denominator(
+        native, tmp_path, fake_cli, shell_commands):
+    # Shells run by absolute argv; no shell, system or application-alias directory
+    # belongs on PATH, even when pwsh is a symlink under /usr/bin.
+    bin_dir = Path(fake_cli["FAKE_COUNTER"]).parent / "bin"
+    fake_cli["PATH"] = os.pathsep.join([str(bin_dir), str(shell_commands)])
+    assert shutil.which("python", path=fake_cli["PATH"]) is None
+    assert shutil.which("python3", path=fake_cli["PATH"]) is None
+    assert Path(shutil.which("copilot", path=fake_cli["PATH"])).parent == bin_dir
+    # Verify the native shell's actual search too (Windows wrappers can extend it).
+    if native == "powershell":
+        copilot_name = "copilot.exe" if os.name == "nt" else "copilot"
+        probe = [PWSH, "-NoProfile", "-Command",
+                 "if (Get-Command python,python3 -CommandType Application -ErrorAction SilentlyContinue) "
+                 "{ exit 1 }; "
+                 f"$expected = Join-Path (Split-Path $env:FAKE_COUNTER) 'bin/{copilot_name}'; "
+                 "if ((Get-Command copilot -CommandType Application).Source -ne $expected) { exit 1 }"]
     else:
-        # Portable Unix hosts often put Python in /usr/bin alongside core tools;
-        # build an isolated command directory instead of relying on that layout.
-        commands = tmp_path / "commands"
-        commands.mkdir()
-        for name in ("bash", "find", "sort", "date", "mkdir", "dirname", "basename"):
-            path = shutil.which(name)
-            (commands / name).symlink_to(path)
-        directories = [directories[0], str(commands), str(Path(PWSH).parent)]
-    fake_cli["PATH"] = os.pathsep.join(directories)
+        probe = [BASH, "--noprofile", "--norc", "-c",
+                 "if command -v python || command -v python3; then exit 1; fi; "
+                 '[[ "$(command -v copilot)" -ef "$1" ]]', "probe",
+                 (bin_dir / ("copilot.exe" if os.name == "nt" else "copilot")).as_posix()]
+    precondition = execute(probe, fake_cli)
+    assert precondition.returncode == 0, precondition.stdout + precondition.stderr
     output = tmp_path / "output"
     if native == "powershell":
         argv = [PWSH, "-NoProfile", "-File", PIPELINE / "run-eval.ps1",
@@ -389,6 +448,8 @@ def test_native_missing_python_setup_preserves_full_suite_denominator(native, tm
     summary = json.loads(next(output.glob("*/summary.json")).read_text(encoding="utf-8-sig"))
     assert summary["total"] == summary["setup_error_count"] == 10
     assert len(summary["tasks"]) == 10
+    assert summary["run_status"] == "setup_error"
+    assert {task["status"] for task in summary["tasks"]} == {"setup_error"}
     assert summary["partial"] == summary["failed"] == summary["unverified"] == 0
     assert not Path(fake_cli["FAKE_COUNTER"]).exists()
 

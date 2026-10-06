@@ -116,7 +116,12 @@ eval/deepeval/.venv/Scripts/python -m pytest eval/deepeval/tests \
 ```
 
 On Windows the native tests use PowerShell 7 and Git Bash; on Unix they use `pwsh` and
-`bash`. Scoring segments run as offline units with a local fake CLI. Live custom-eval is
+`bash`. Shells run by absolute executable path (the native `Git/usr/bin/bash.exe`, not
+the PATH-extending wrapper). Utilities are individually exposed in a temporary command
+directory, never by adding a shell's host directory such as `/usr/bin` to PATH.
+Missing-Python tests verify interpreter absence and fake-CLI resolution in the native
+shell before checking the full ten-task setup-error summary.
+Scoring segments run as offline units with a local fake CLI. Live custom-eval is
 blocked by the sandbox hold before the mandatory human plan-approval gate, which remains
 separately required for any future live path.
 
