@@ -1,12 +1,26 @@
 ---
 name: terraform-azure-implementation
-description: Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides. USE FOR any request to write, add, modify, or refactor `.tf` files, Terraform modules, `terraform.tfvars`, or to migrate ARM/Bicep to Terraform on Azure. Triggered by "Terraform", "azurerm", "AzAPI", "tfvars", "terraform module", "AVM Terraform".
+description: Implement Azure-targeted Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) and HashiCorp + Microsoft style guides. USE FOR writing, modifying or migrating Terraform for a declared Azure target, with this capability installed. DO NOT USE for generic `.tf` files or non-Azure Terraform; Terraform syntax alone does not establish Azure applicability.
 applies_to: azure, terraform
 ---
 
 # Terraform (Azure) Implementation
 
-You are implementing or modifying Terraform code that targets Azure.
+## Applicability — check before using any guidance below
+
+This Azure-only skill requires an **installed** capability and
+`infrastructure.cloud: azure`. For a multi-cloud/hybrid declaration, require explicit
+repo evidence of an Azure resource subset (for example, the target module's Azure
+provider/resources) and document that scope in the hand-off; hybrid alone is not Azure
+evidence. Apply this skill only to that subset, never the other providers in the repo.
+
+`.tf`, `.tfvars`, a Terraform request, or an Azure state backend alone does not establish
+Azure resource applicability. Missing or conflicting cloud declarations need clarification.
+If this gate is not met, do not apply AVM/CAF/Azure tooling: use repo/provider conventions
+and the provider's own documentation, reporting the fallback in the hand-off. An unavailable
+skill also takes that fallback; no new plugin or dependency is implied.
+
+You are now implementing or modifying Terraform code for the evidenced Azure scope.
 
 ## 1. Understand the existing state first
 

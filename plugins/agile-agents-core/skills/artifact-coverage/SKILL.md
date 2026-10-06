@@ -43,6 +43,17 @@ nothing names is reachable only by description match, which is the weakest form 
 `applies_to` does **not** filter anything (see `.github/copilot-instructions.md` § Skill format),
 so presence in a plugin is what decides availability, not the declared scope.
 
+Availability is necessary, not sufficient for coverage. Azure-only depth requires an
+**installed** capability and `infrastructure.cloud: azure`. For a multi-cloud/hybrid
+declaration, require explicit repo evidence of an Azure resource subset and document that
+scope; hybrid alone is not Azure evidence. Count coverage only for that subset.
+Terraform syntax is provider-neutral: the Terraform plugin's Azure implementation skill
+does not cover non-Azure authoring. Its bundled import and AzureRM diff helpers are also
+Azure-only. Assess any generic import/provider tooling separately for actual provider
+relevance; otherwise report a gap and repo/provider conventions plus the
+provider's documentation as the hand-off fallback. Missing cloud declarations need
+clarification, not an Azure assumption.
+
 ## 3. Classify every cell honestly
 
 `covered` / `gap` / `n/a` / `built-in` — and **never leave `n/a` unexplained**. An unexplained

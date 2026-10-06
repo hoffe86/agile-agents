@@ -90,11 +90,27 @@ standing up a harness someone else will rely on:
 |---|---|---|
 | `tech_stack.primary_languages[].name` | `csharp` / `dotnet` / `fsharp` | `agile-agents-dotnet` |
 | `tech_stack.primary_languages[].name` | `python` | `agile-agents-python` |
-| `infrastructure.iac_tool` | `bicep` | `agile-agents-bicep` |
-| `infrastructure.iac_tool` | `terraform` | `agile-agents-terraform` |
+| `infrastructure.iac_tool` + `infrastructure.cloud` | `bicep` + Azure applicability below | `agile-agents-bicep` |
+| `infrastructure.iac_tool` + provider needs | `terraform` + a matching capability below | `agile-agents-terraform` |
 | `infrastructure.cloud` | `azure` | `agile-agents-azure` |
 | `backlog.platform` | `ado-boards` | `agile-agents-ado` |
 | `backlog.platform` | `github-issues` | `agile-agents-github` |
+
+**Azure applicability:** recommend Azure-only depth for `infrastructure.cloud: azure`.
+For a multi-cloud/hybrid declaration, require explicit repo evidence of an Azure resource
+subset and document that scope; hybrid alone is not Azure evidence.
+Recommend Azure-only depth only for that subset. Missing or conflicting
+cloud declarations need clarification. An Azure-only route requires an **installed**
+capability as well as this applicability — a recommendation is not availability.
+
+**Terraform is provider-neutral; `.tf` does not imply Azure.** The Terraform plugin's
+implementation skill is Azure-only. Recommend it for that depth only under the Azure
+applicability gate above; for other providers recommend the plugin only if a specific
+provider-relevant capability actually matches. The bundled import workflow and AzureRM
+diff helper are also Azure-only; neither supplies generic Terraform coverage.
+Do not count generic import support as non-Azure implementation coverage. If no installed
+skill matches, agents use repo/provider conventions and the provider's documentation and
+report that fallback in their hand-off. Do not install extra plugins to hide that gap.
 
 ```bash
 copilot plugin marketplace add hoffe86/agile-agents

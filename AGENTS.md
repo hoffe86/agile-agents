@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-10-05.
+> Generated from `solution-profile.yaml` on 2026-10-06.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
 This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
@@ -203,7 +203,7 @@ natural-language workflow.
 - **import-infrastructure-as-code** (`agile-agents-terraform`) — Import existing Azure resources into Terraform using Azure CLI discovery and Azure Verified Modules (AVM).
 - **multi-stage-dockerfile** (`agile-agents-core`) — Create optimized multi-stage Dockerfiles for any language or framework
 - **playwright-generate-test** (`agile-agents-core`) — Generate a Playwright test based on a scenario using Playwright MCP
-- **polyglot-test-agent** (`agile-agents-core`) — Generates comprehensive, workable unit tests for any programming language using a multi-agent pipeline.
+- **polyglot-test-agent** (`agile-agents-core`) — Cross-language testing fallback for the current author when no matching language testing skill is installed.
 - **pr-description** (`agile-agents-core`) — Generate a high-signal pull-request description from a diff and the run's hand-off context.
 - **pytest-coverage** (`agile-agents-python`) — Run pytest tests with coverage, discover lines missing coverage, and increase coverage to 100%.
 - **python-implementation** (`agile-agents-python`) — Implement Python features end-to-end using current best practices (type hints, src layout, ruff-clean, modern stdlib, async where appropriate).
@@ -217,7 +217,7 @@ natural-language workflow.
 - **run-event-log** (`agile-agents-core`) — Emit one JSON Lines event per phase boundary, tool call, and completion to `.copilot-runs/<run-id>/events.jsonl` for audit, cost tracking, and post-hoc analysis.
 - **security-review** (`agile-agents-core`) — AI-powered codebase security scanner that reasons about code like a security researcher — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matchin...
 - **solution-profile-interview** (`agile-agents-core`) — Bootstrap or repair `.github/solution-profile.yaml` by discovering what the repo already tells you and interviewing the human only for what it can't.
-- **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides.
+- **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure-targeted Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) and HashiCorp + Microsoft style guides.
 - **terraform-azurerm-set-diff-analyzer** (`agile-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
 - **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after the implementation stage finishes and before the reviewer fan...
 - **testing-practices** (`agile-agents-core`) — The verification half of the build-and-verify craft — test-behaviour-not- implementation bias, coverage of the changed behaviour, mocking discipline, determinism rules, framework routing, interacti...

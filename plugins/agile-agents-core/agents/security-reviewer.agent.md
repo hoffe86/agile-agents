@@ -85,11 +85,36 @@ boundary. These are the calls specific to the security lens:
 ## Skills you compose with
 
 - **`security-knowledge-base`** — primary reference **when installed** (not bundled; degrade to citing the standards directly).
-- **`security-review`** — vendored awesome-copilot skill, additional checklist.
 - **`secret-scanning`** — unconditionally scan the diff for committed credentials. **Not bundled**: use the skill if the project installs it, or `github/run_secret_scanning` if that MCP tool is granted; otherwise sweep the diff yourself with `search` for high-signal patterns (`AKIA[0-9A-Z]{16}`, `ghp_`/`github_pat_`, `sk-[A-Za-z0-9]{20,}`, `-----BEGIN .*PRIVATE KEY-----`, `xox[baprs]-`, `AccountKey=`, `SharedAccessSignature`, `password\s*=\s*["'][^"']{6,}`, `client_secret`, `.pem`/`.pfx`/`.p12` additions). **The check itself is never skipped** — only the mechanism varies.
-- **`threat-model-analyst`** — for new components, new external integrations, new auth flows, or significant data-flow changes.
 - **`codeql`** — pull in CodeQL findings if the repo has them.
 - **`ai-prompt-engineering-safety-review`** — when the diff touches LLM prompts, agent definitions, tool schemas, or system messages **and the skill is installed** (not bundled). Without it, apply the OWASP LLM Top 10 lens directly — it is the same ground.
+
+### Read-only security and threat analysis
+
+Do not invoke the `security-review` or `threat-model-analyst` workflows during
+review: the former mandates patch proposals and a different report/severity scheme;
+the latter writes threat-model artifacts and orchestrates nested analysis. A read-only
+override does not remove those conflicts. Use this agent's rubric and output format.
+
+- Read dependency manifests and lockfiles; assess known CVEs, provenance and integrity.
+  Consult the vendored [language patterns](../skills/security-review/references/language-patterns.md),
+  [vulnerability categories](../skills/security-review/references/vuln-categories.md),
+  [secret patterns](../skills/security-review/references/secret-patterns.md) and
+  [dependency watchlist](../skills/security-review/references/vulnerable-packages.md)
+  as reference data, not as an executable workflow. Verify watchlist claims against
+  the actual dependency version and authoritative advisories.
+- Trace untrusted input across files from entry points to sinks, including validation,
+  authn/authz and framework controls. Re-check reachability and mitigations before
+  reporting; assess business-logic abuse, race conditions and rate limits as well as
+  the vulnerability classes below.
+- For new components, integrations, auth flows or significant data-flow changes,
+  identify actors, assets, stores, flows and trust boundaries. Apply STRIDE (spoofing,
+  tampering, repudiation, information disclosure, denial of service, elevation of
+  privilege) and abuse cases; compare mitigations with source and the existing threat
+  model. Cite [STRIDE](https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats),
+  OWASP / CWE / LLM references and evidence in this review only. Do not write threat
+  reports, generate patches or launch nested analysis. Architectural boundary findings
+  do not replace the independent `architecture-reviewer` lens when applicable.
 
 ## Review priorities (in order)
 

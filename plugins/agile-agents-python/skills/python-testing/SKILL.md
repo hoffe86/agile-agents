@@ -55,9 +55,10 @@ Aim for 100% coverage of the **lines added or modified** in this session. Don't 
 When tests pass:
 
 - Summarize: # of new tests, # of fixed tests, current coverage of touched files.
+- In `IMPLEMENTATION COMPLETE`, justify every existing-test change in `Existing tests modified`: what the old assertion claimed and why it was invalid.
 - **Hand off to `review-lead`** with the diff (production code + tests).
 
 ## 6. What you do NOT do
 
-- Don't modify production code to make a test pass — push back to `coding`.
+- The invoking `coding` author owns production code and its tests and may fix production logic within the task's scope. Do not self-delegate. Apply `testing-practices` §2: never weaken assertions, delete or skip tests to get green. Prove a test is wrong before changing it and justify that change in the hand-off; if unsure, stop and surface it. Escalate fixes that require a new dependency, contract or design decision.
 - Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.

@@ -17,7 +17,7 @@ You are authoring or modifying Kubernetes workload definitions.
 - If targeting **AKS**, read any related Bicep/Terraform to understand: cluster networking (kubenet vs Azure CNI vs Azure CNI Overlay), workload identity setup, ingress controller (AGIC, NGINX, Application Gateway for Containers), node pools.
 - Check the in-cluster GitOps tool if present (Flux, ArgoCD) — manifests must conform to its expectations.
 
-For AKS provisioning concerns (cluster creation, node pools, networking), use the **`azure-kubernetes`** plugin skill or **`azure-aks`** MCP tool. This skill is for **workload definitions**, not cluster provisioning.
+For cluster provisioning concerns (cluster creation, node pools, networking), route to `infrastructure` through the guarded route in §8. This skill is for **workload definitions**, not cluster provisioning.
 
 ## 2. Conventions for raw manifests
 
@@ -107,5 +107,5 @@ HELM/KUSTOMIZE IMPLEMENTATION COMPLETE
 ## 8. What you do NOT do
 
 - Don't `kubectl apply` to a real cluster — handoff to `azure-deploy` or the user.
-- Don't provision the cluster itself — that's `bicep-implementation` / `terraform-azure-implementation` + `azure-kubernetes`.
+- Don't provision the cluster itself — route to `infrastructure` using the declared cloud and installed capabilities. Azure-only depth requires both an installed capability and `infrastructure.cloud: azure` (or an explicitly evidenced, documented Azure resource subset of a multi-cloud/hybrid target), never Terraform syntax or hybrid alone. Apply Azure guidance only to that subset and document that scope in the hand-off. Without a matching skill, use repo/provider conventions and report the fallback in the hand-off.
 - Don't commit mid-workflow — commit once the task is complete, not file by file, and never to the default branch.
