@@ -274,25 +274,931 @@ class ProfileRunnerTests(unittest.TestCase):
                 self.assertIn("no_stack_match", output)
 
 
+# Independent oracle: never derive expected names from the contracts under test.
+# Parenthetical applicability and the backlog's table columns are part of the shape.
+HANDOFF_FIELDS = {
+    "architect": ("ARCHITECTURE DESIGN COMPLETE", (
+        "Topic", "Deliverables", "Framework used", "Recommendation", "Key tradeoffs",
+        "NFRs to honour", "Decisions honoured",
+        "Decision gaps (need a human decision before coding)", "Facts verified",
+        "Assumptions (unverified)", "Well-architected assessment (cloud designs)",
+        'Data findings (when the change touches data, else "n/a — no data surface")',
+        'Data questions to answer before building (else "none")',
+        "Estimated monthly cost band (if cloud-hosted)", "Open questions / risks",
+        "Findings addressed", "Recommended next step",
+    )),
+    "coding": ("IMPLEMENTATION COMPLETE", (
+        "Files changed", "Test files changed", "ADRs honoured", "Docs updated",
+        "Behavior added/modified", "Public surface added/changed", "Internal-only changes",
+        "Build status", "Test run", "Coverage on touched files", "Existing tests modified",
+        "Startup verified", "Findings addressed", "Unmet design constraint (if any)",
+        "Open questions for review",
+    )),
+    "infrastructure": ("INFRASTRUCTURE COMPLETE", (
+        "Technology", "Files changed", "ADRs honoured", "Docs updated", "Scope",
+        "Plan / what-if summary", "Verified modules used (with versions)", "Validation",
+        "Secrets touched", "Findings addressed", "Open items for review",
+        "IaC tests authored / run", "Behavior added/modified", "Existing tests modified",
+        "Recommended next step",
+    )),
+    "data-scientist": ("ANALYSIS COMPLETE", (
+        "Question", "Outcome", "Files changed", "Data used", "Method", "Baseline", "Result",
+        "Split & leakage", "Cohort breakdown", "Reproducibility",
+        "Dataset status (if you produced one)", "Unmeasured risks",
+        "Not verifiable from this diff", "Code verification",
+        "Interface for `coding` (if a model ships)", "Findings addressed",
+        "Open questions for review",
+    )),
+    "review-lead": ("REVIEW COMPLETE", (
+        "Verdict", "Specialists invoked", "Open findings", "Findings by owner",
+        "Files changed", "Recommended next step",
+    )),
+    "backlog-manager": ("TASKS PLANNED", (
+        "Tracker platform", "Parent work item", "Link pattern",
+        "Tasks created (provisional, tag `pending-approval`)",
+        "Approach comment posted on parent", "Open items / could not link",
+    )),
+    "bootstrapper": ("BOOTSTRAP COMPLETE", (
+        "Profile", "Required fields", "Plugins installed this run", "Plugins already present",
+        "Declared but unsupported", "Gaps for the user", "Ready for delivery",
+    )),
+}
+CORRECTIVE_AUTHORS = ("architect", "coding", "infrastructure", "data-scientist")
+SCHEMA_CLAUSES = {
+    "architect": (
+        "Research/design evidence, not permission to invent a decision",
+        "Never promote an assumption to a verified fact",
+        "**State blockers first**",
+        "Each becomes a `data-scientist` task sequenced ahead",
+        "Omit on a first pass.",
+    ),
+    "coding": (
+        "Application code and its tests are one hand-off",
+        '"none" only when the change is genuinely untestable, with the reason',
+        '"<behaviour> → <test name>"', "why you stopped rather than weakening them",
+        "what the old assertion claimed and why it was invalid",
+        "n/a — change doesn't touch startup",
+        "⚠️ couldn't determine — <reason>",
+        "Omit the field entirely on a first pass.",
+    ),
+    "infrastructure": (
+        "IaC validation and IaC tests, not application build/test fields",
+        "n/a only with a reason no executable test applies",
+        "changed/deleted/newly-skipped test: old assertion and why it was invalid",
+        "Omit the field entirely on a first-pass implementation.",
+    ),
+    "data-scientist": (
+        "✅ supported", "⚠️ inconclusive", "❌ not supported",
+        "⚠️ and ❌ are legitimate completed outcomes, not failures",
+        "Do not retry to manufacture a ✅",
+        "reports it as a gap rather than assuming it was done",
+        '"nothing" is a valid answer',
+        "n/a — no reusable code changed, with reason",
+        "build/test commands and results; each code behavior → test name",
+        "existing tests modified: none or old assertion and why it was invalid",
+        "Omit on a first pass.",
+    ),
+    "review-lead": (
+        "keep the full specialist reports and the role's merging rubric",
+        "✅ Approve | 🔁 Request changes | ❌ Block", "with skip reasons",
+    ),
+    "backlog-manager": (
+        "on the Plan workflow only", "provisional, tag `pending-approval`",
+        "yes — <comment link or id>",
+    ),
+    "bootstrapper": (
+        "`Ready for delivery: no` blocks entry to Stage 1",
+        '<created | repaired | already valid>', "yes | no — <what blocks it>",
+    ),
+}
+HANDOFF_PATHS = {
+    name: Path("agents") / (name + ".agent.md")
+    for name in (*HANDOFF_FIELDS, "dev-lead")
+}
+HANDOFF_PATHS.update({
+    "read-repo-context": Path("skills/read-repo-context/SKILL.md"),
+    "handoff-contracts": Path("skills/read-repo-context/references/handoff-contracts.md"),
+})
+
+
+def load_handoff_files(core=CORE):
+    return {name: (core / path).read_text(encoding="utf-8")
+            for name, path in HANDOFF_PATHS.items()}
+
+
+def named_contract_section(body, heading):
+    """Only our level-two sections, ignoring headings inside fenced examples."""
+    sections = []
+    current = None
+    fenced = False
+    for line in body.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        if not fenced and line.startswith("## "):
+            current = (line[3:].strip(), [])
+            sections.append(current)
+        elif current:
+            current[1].append(line)
+    matches = [lines for title, lines in sections if title == heading]
+    if len(matches) != 1:
+        raise ValueError("missing or duplicate section " + heading)
+    return "\n".join(matches[0])
+
+
+def resolve_handoff_section(files, source, heading, core=CORE):
+    """Test-only bounded file/heading resolver, not a runtime schema parser."""
+    anchor = heading.lower().replace(" ", "-")
+    links = re.findall(r"\]\(([^)]+\.md)#([^)]+)\)", files[source])
+    matches = [path for path, fragment in links if fragment == anchor]
+    if source == "read-repo-context" and heading != "Corrective accounting":
+        # The always-loaded receiver uses one file link plus an exact-heading
+        # rule instead of preloading a seven-link routing table.
+        rule = "level-two section whose heading equals the received sentinel"
+        matches = re.findall(r"\[handoff-contracts\.md\]\(([^)#]+\.md)\)", files[source]) if (
+            rule in " ".join(files[source].split())) else []
+    if len(matches) != 1:
+        raise ValueError(source + " missing or duplicate reference " + heading)
+    # Loaded artifact location, not cwd. Even an existing different file is wrong.
+    target = (core / HANDOFF_PATHS[source]).parent / matches[0]
+    if target.resolve() != (core / HANDOFF_PATHS["handoff-contracts"]).resolve():
+        raise ValueError(source + " wrong contract file " + heading)
+    if "handoff-contracts" not in files:
+        raise ValueError("missing contract file")
+    return named_contract_section(files["handoff-contracts"], heading)
+
+
+def schema_block(section, sentinel):
+    blocks = re.findall(r"^```[^\n]*\n(.*?)^```", section, re.M | re.S)
+    matches = [block for block in blocks
+               if block.splitlines()[0].removeprefix("## ") == sentinel]
+    if len(matches) != 1:
+        raise ValueError("missing or duplicate definition " + sentinel)
+    return matches[0]
+
+
+def handoff_contract_errors(files, core=CORE):
+    """Offline field, routing and accounting regressions; no model execution."""
+    errors = []
+    if any(re.search(r"^(?:## )?TESTS COMPLETE\s*\n\s*-\s+", body, re.M)
+           for body in files.values()):
+        errors.append("retired TESTS COMPLETE definition")
+    for author, (sentinel, expected) in HANDOFF_FIELDS.items():
+        for source in (author, "dev-lead", "read-repo-context"):
+            try:
+                section = resolve_handoff_section(files, source, sentinel, core)
+                block = schema_block(section, sentinel)
+            except ValueError as error:
+                errors.append(str(error))
+                continue
+            pattern = r"^\*\*([^:]+):\*\*" if author == "backlog-manager" else r"^-\s+([^:]+):"
+            fields = tuple(" ".join(field.split())
+                           for field in re.findall(pattern, block, re.M))
+            if fields != expected:
+                errors.append(sentinel + " field shape drift")
+            for clause in SCHEMA_CLAUSES[author]:
+                if clause not in " ".join(section.split()):
+                    errors.append(sentinel + " missing semantics " + clause)
+            if author == "backlog-manager" and "| Task id | Title | ACs | State |" not in (
+                    " ".join(block.split())):
+                errors.append("TASKS PLANNED table shape drift")
+        # A sentinel mention is fine; a second field definition anywhere in the
+        # routed artifacts is not (even if its fence was removed).
+        definition = re.compile(
+            r"^(?:## )?" + re.escape(sentinel) + r"\s*\n\s*(?:-\s+|\*\*)", re.M)
+        count = sum(len(definition.findall(body)) for body in files.values())
+        if count != 1:
+            errors.append(sentinel + " duplicate or missing definition")
+        inline = re.findall(r"^-\s+([^:\n]+):", files[author], re.M)
+        if set(inline) & set(expected):
+            errors.append(author + " inline field definition")
+
+    for source in (*CORRECTIVE_AUTHORS, "review-lead", "dev-lead", "read-repo-context"):
+        try:
+            resolve_handoff_section(files, source, "Corrective accounting", core)
+        except ValueError as error:
+            errors.append(str(error))
+
+    for source in HANDOFF_PATHS.keys() - {"handoff-contracts"}:
+        text = " ".join(files[source].split())
+        for clause in ("read only", "loaded core", "not the consumer repository's working directory",
+                       "malformed contract/context", "do not reconstruct the schema"):
+            if clause not in text:
+                errors.append(source + " missing loading guard " + clause)
+        timing = ("At the beginning of a Plan task" if source == "backlog-manager"
+                  else "At the beginning of each task")
+        if source == "dev-lead":
+            timing = "Before dispatch and on receipt"
+        elif source == "read-repo-context":
+            timing = "On receipt"
+        if timing not in text:
+            errors.append(source + " missing loading timing")
+
+    try:
+        accounting = " ".join(named_contract_section(
+            files.get("handoff-contracts", ""), "Corrective accounting").split())
+        for clause in (
+            "`Findings addressed` is omitted on a first pass",
+            "**every routed finding id**, one line per id",
+            "`fixed` — evidence at the changed file:line or deliverable/location",
+            "analysis fixes identify the changed artifact and evidence",
+            "`disputed` — the reason the finding is wrong or already handled",
+            "`not mine` — the named owner to whom it must be routed",
+            "A fixer's claim does not close a finding",
+            "Missing ids are a malformed hand-off",
+            "Preserve original finding ids across re-review",
+            "`review-lead` adjudicates with the independent specialists",
+            "The supervisor alone owns the findings ledger, retry budgets and corrective re-verification",
+        ):
+            if clause not in accounting:
+                errors.append("corrective accounting missing " + clause)
+        for author in CORRECTIVE_AUTHORS:
+            section = named_contract_section(files["handoff-contracts"], HANDOFF_FIELDS[author][0])
+            field = re.search(r"^-\s+Findings\s+addressed:\s*(.*?)(?=^-\s|\Z)",
+                              section, re.M | re.S)
+            if not field or not all(part in " ".join(field[1].split())
+                                    for part in ("corrective rounds only", "Omit")):
+                errors.append(author + " lost corrective applicability")
+    except ValueError as error:
+        errors.append(str(error))
+    return errors
+
+
+class SharedHandoffTests(unittest.TestCase):
+    def setUp(self):
+        self.files = load_handoff_files()
+
+    def test_seven_schemas_and_bounded_loading_match(self):
+        self.assertEqual(handoff_contract_errors(self.files), [])
+
+    def test_missing_or_renamed_field_fails_independent_oracle(self):
+        for author, (sentinel, fields) in HANDOFF_FIELDS.items():
+            section = named_contract_section(self.files["handoff-contracts"], sentinel)
+            for field in fields:
+                prefix = ("**" + field + ":**" if author == "backlog-manager"
+                          else "- " + field + ":")
+                for replacement in ("", prefix.replace(field, "Renamed field")):
+                    with self.subTest(author=author, field=field, replacement=replacement):
+                        self.assertIn(prefix, section)
+                        changed = dict(self.files)
+                        changed["handoff-contracts"] = changed["handoff-contracts"].replace(
+                            section, section.replace(prefix, replacement))
+                        self.assertIn(sentinel + " field shape drift",
+                                      handoff_contract_errors(changed))
+
+    def test_backlog_table_columns_are_part_of_schema(self):
+        changed = dict(self.files)
+        changed["handoff-contracts"] = changed["handoff-contracts"].replace(
+            "| Task id | Title | ACs | State |", "| Task id | Title | ACs |")
+        self.assertIn("TASKS PLANNED table shape drift", handoff_contract_errors(changed))
+
+    def test_missing_file_and_heading_fail_explicitly(self):
+        changed = dict(self.files)
+        del changed["handoff-contracts"]
+        self.assertIn("missing contract file", handoff_contract_errors(changed))
+        for sentinel, _ in HANDOFF_FIELDS.values():
+            with self.subTest(sentinel=sentinel):
+                changed = dict(self.files)
+                changed["handoff-contracts"] = changed["handoff-contracts"].replace(
+                    "## " + sentinel + "\n", "## Renamed section\n", 1)
+                self.assertIn("missing or duplicate section " + sentinel,
+                              handoff_contract_errors(changed))
+
+    def test_wrong_section_missing_link_and_wrong_file_fail_at_each_route(self):
+        for author, (sentinel, _) in HANDOFF_FIELDS.items():
+            anchor = sentinel.lower().replace(" ", "-")
+            for source in (author, "dev-lead", "read-repo-context"):
+                for replacement in (
+                    "handoff-contracts.md#corrective-accounting",
+                    "missing.md#" + anchor,
+                    "SKILL.md#" + anchor,
+                    "unlinked",
+                ):
+                    with self.subTest(source=source, sentinel=sentinel, replacement=replacement):
+                        changed = dict(self.files)
+                        old = ("handoff-contracts.md)" if source == "read-repo-context"
+                               else "handoff-contracts.md#" + anchor)
+                        new = replacement + ")" if source == "read-repo-context" else replacement
+                        self.assertIn(old, changed[source])
+                        changed[source] = changed[source].replace(old, new)
+                        self.assertTrue(handoff_contract_errors(changed))
+
+    def test_duplicate_definitions_fail_in_reference_and_inline(self):
+        for author, (sentinel, _) in HANDOFF_FIELDS.items():
+            block = schema_block(named_contract_section(
+                self.files["handoff-contracts"], sentinel), sentinel)
+            for destination in ("handoff-contracts", author, "dev-lead", "read-repo-context"):
+                with self.subTest(author=author, destination=destination):
+                    changed = dict(self.files)
+                    changed[destination] += "\n```\n" + block + "```\n"
+                    self.assertIn(sentinel + " duplicate or missing definition",
+                                  handoff_contract_errors(changed))
+
+    def test_duplicate_heading_is_not_resolved_arbitrarily(self):
+        changed = dict(self.files)
+        changed["handoff-contracts"] += "\n## IMPLEMENTATION COMPLETE\nWrong section.\n"
+        self.assertIn("missing or duplicate section IMPLEMENTATION COMPLETE",
+                      handoff_contract_errors(changed))
+
+    def test_inline_fields_without_sentinel_are_still_duplicates(self):
+        changed = dict(self.files)
+        changed["coding"] += "\n- Test run: <result>\n"
+        self.assertIn("coding inline field definition", handoff_contract_errors(changed))
+
+    def test_retired_test_only_handoff_cannot_return(self):
+        changed = dict(self.files)
+        changed["coding"] += "\n```\nTESTS COMPLETE\n- Test run: <result>\n```\n"
+        self.assertIn("retired TESTS COMPLETE definition", handoff_contract_errors(changed))
+
+    def test_receiver_requires_exact_sentinel_heading_rule(self):
+        changed = dict(self.files)
+        changed["read-repo-context"] = changed["read-repo-context"].replace(
+            "equals the received sentinel", "looks relevant")
+        self.assertIn("read-repo-context missing or duplicate reference IMPLEMENTATION COMPLETE",
+                      handoff_contract_errors(changed))
+
+    def test_role_specific_semantics_cannot_be_lost(self):
+        for author, clauses in SCHEMA_CLAUSES.items():
+            sentinel = HANDOFF_FIELDS[author][0]
+            section = named_contract_section(self.files["handoff-contracts"], sentinel)
+            for clause in clauses:
+                with self.subTest(author=author, clause=clause):
+                    pattern = re.escape(clause).replace(r"\ ", r"\s+")
+                    self.assertRegex(section, pattern)
+                    changed = dict(self.files)
+                    changed["handoff-contracts"] = changed["handoff-contracts"].replace(
+                        section, re.sub(pattern, "removed", section))
+                    self.assertIn(sentinel + " missing semantics " + clause,
+                                  handoff_contract_errors(changed))
+
+    def test_corrective_accounting_loss_is_rejected(self):
+        for clause in (
+            "`Findings addressed` is omitted on a first pass",
+            "**every routed finding id**, one line per id",
+            "`fixed` — evidence at the changed file:line or deliverable/location",
+            "analysis fixes identify the changed artifact and evidence",
+            "`disputed` — the reason the finding is wrong or already handled",
+            "`not mine` — the named owner to whom it must be routed",
+            "A fixer's claim does not close a finding",
+            "Missing ids are a malformed hand-off",
+            "Preserve original finding ids across re-review",
+            "`review-lead` adjudicates with the independent specialists",
+            "The supervisor alone owns the findings ledger, retry budgets and corrective re-verification",
+        ):
+            with self.subTest(clause=clause):
+                pattern = re.escape(clause).replace(r"\ ", r"\s+")
+                changed = dict(self.files)
+                self.assertRegex(changed["handoff-contracts"], pattern)
+                changed["handoff-contracts"] = re.sub(pattern, "removed", changed["handoff-contracts"])
+                self.assertIn("corrective accounting missing " + clause,
+                              handoff_contract_errors(changed))
+
+    def test_corrective_routes_are_required_for_fixers_and_receivers(self):
+        for source in (*CORRECTIVE_AUTHORS, "review-lead", "dev-lead", "read-repo-context"):
+            with self.subTest(source=source):
+                changed = dict(self.files)
+                changed[source] = changed[source].replace("#corrective-accounting", "#missing")
+                self.assertIn(source + " missing or duplicate reference Corrective accounting",
+                              handoff_contract_errors(changed))
+
+    def test_loading_timing_and_fail_closed_policy_cannot_be_removed(self):
+        for source in HANDOFF_PATHS.keys() - {"handoff-contracts"}:
+            for clause in ("read only", "loaded core",
+                           "not the consumer repository's working directory",
+                           "malformed contract/context", "do not reconstruct the schema"):
+                with self.subTest(source=source, clause=clause):
+                    changed = dict(self.files)
+                    pattern = re.escape(clause).replace(r"\ ", r"\s+")
+                    changed[source] = re.sub(pattern, "removed", changed[source])
+                    self.assertIn(source + " missing loading guard " + clause,
+                                  handoff_contract_errors(changed))
+            with self.subTest(source=source, timing=True):
+                changed = dict(self.files)
+                changed[source] = re.sub(
+                    r"At the beginning|Before dispatch and on receipt|On receipt",
+                    "Whenever convenient", changed[source])
+                self.assertIn(source + " missing loading timing", handoff_contract_errors(changed))
+
+    def test_prose_and_field_value_reflow_is_not_contract_drift(self):
+        # Preserve Markdown structural lines and link targets; wrap prose and
+        # field values, including spaces within labels, without changing words.
+        changed = dict(self.files)
+        original = changed["handoff-contracts"]
+        changed["handoff-contracts"] = "\n".join(
+            line.replace(" ", " \n\t ") if (
+                line and not line.startswith(("#", "```", "|"))
+                and line not in {sentinel for sentinel, _ in HANDOFF_FIELDS.values()}
+            ) else line
+            for line in original.splitlines()
+        )
+        self.assertEqual(handoff_contract_errors(changed), [])
+
+    def test_installed_layout_resolves_from_loaded_artifact_not_consumer(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installed = Path(temp) / "installed/plugins/agile-agents-core"
+            consumer = Path(temp) / "consumer"
+            # A contradictory consumer-local file must never supply the schema.
+            decoy = consumer / HANDOFF_PATHS["handoff-contracts"]
+            decoy.parent.mkdir(parents=True)
+            decoy.write_text("## IMPLEMENTATION COMPLETE\nWrong schema.", encoding="utf-8")
+            for name, path in HANDOFF_PATHS.items():
+                target = installed / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(self.files[name], encoding="utf-8")
+            loaded = load_handoff_files(installed)
+            self.assertEqual(handoff_contract_errors(loaded, installed), [])
+            section = resolve_handoff_section(
+                loaded, "coding", "IMPLEMENTATION COMPLETE", installed)
+            self.assertIn("- Test run:", section)
+            self.assertNotIn("Wrong schema", section)
+
+
+# Independent routing oracle: never derive the expected destination from the
+# production pointer under test. These helpers are offline test code only.
+TEMPLATE_HOME = Path("skills/dev-lead-templates")
+STAGE_RECIPES = {
+    0: ("intake-plan", "Stage 0"),
+    1: ("intake-plan", "Stage 1"),
+    2: ("intake-plan", "Stage 2"),
+    3: ("intake-plan", "Stage 3"),
+    4: ("plan-approval", "Prompt"),
+    5: ("design-approval", "Prompt"),
+    6: ("implementation-review", "Stage 6"),
+    7: ("implementation-review", "Stage 7"),
+    8: ("implementation-review", "Stage 8"),
+    9: ("completion", "Stage 9"),
+}
+TEMPLATE_PATHS = {
+    name: TEMPLATE_HOME / "references" / (name + ".md")
+    for name in ("intake-plan", "implementation-review", "completion",
+                 "plan-approval", "design-approval", "done-report")
+}
+TEMPLATE_PATHS["dev-lead-templates"] = TEMPLATE_HOME / "SKILL.md"
+
+# Location matters: these controls must remain resident in their owning stage.
+# Recipe prose cannot satisfy this oracle by copying a lost gate into a reference.
+STAGE_CONTROLS = {
+    0: ("delegate to `bootstrapper`", "`Ready for delivery`",
+        "**You may not enter Stage 1 until all six are populated.**",
+        "derived list reach Stage 9 unconfirmed", "stop condition #10",
+        "stop condition #12", "run_started_at", "never replace it",
+        "external-project", "halt with `ask_user`", "USD as *unmetered*, never `0.00`"),
+    1: ("**Entry:** Stage 0 passed", "Read-only", "Lightweight",
+        "Delegate to `architect`", "Stage 1 blocker", "does not analyse data",
+        "decision gap", "NFRs and security posture", "verified with a source",
+        "one** corrective message", "stop and ask the human"),
+    2: ("independently-implementable tasks", "feasibility goes first",
+        "never bundled with a model task", "stop condition #3",
+        "every requirement AC maps", "out-of-scope", "every step in the source plan",
+        "never skip Review", "todo_deps", "tracker wins on conflict"),
+    3: ("delegate to `backlog-manager`", "`TASKS PLANNED`",
+        "`pending-approval`", "every task linked to the parent",
+        "stop condition #11", "never silently fall back to file-only planning",
+        "`backlog.create_tasks` is false", "`backlog.platform: none`"),
+    4: ("**Entry:** Stage 3 passed", "**Approve**", "**Adjust**", "**Cancel**",
+        "Stage 5 conditional design approval", "only after that gate passes",
+        "No silent re-planning", "user cancelled at plan gate",
+        "List ids that could not be cleaned up", "derived acceptance criteria"),
+    5: ("after** the mandatory plan approval", "**before** coding",
+        "Read this prompt only when the conditional gate triggers",
+        "only when ALL apply", "`architect` actually ran",
+        "new external dependency", "non-trivial", "decision gap",
+        "**Approve**", "**Adjust**", "**Stop**",
+        "architect stage's one corrective retry", "one Adjust round per run",
+        "persisted across resume", "second Adjust is not allowed",
+        "user stopped at design gate"),
+    6: ("Stage 4 approved and Stage 5 passed", "`coding`", "`infrastructure`",
+        "`data-scientist`", "scope question for the human",
+        "no separate testing agent", "must never weaken a test",
+        "all dependencies are `done`", "dependency cycle",
+        "Deliver tasks sequentially", "do not dispatch implementation tasks in parallel",
+        "safe only for **read-only** agents", "Existing tests modified",
+        "deleted test", "newly-skipped test", "stop condition #9",
+        "all three pass this gate", "Never send a corrective round asking for a better result",
+        "baseline", "uncertainty", "split rule, seed and leakage checks",
+        "Cohort breakdown", "Unmeasured risks", "Not verifiable from this diff",
+        "Dataset status", "Code verification", "stop condition #3",
+        "one** corrective message", "never start the next task",
+        "Advance to Stage 7 only when every task is `done`"),
+    7: ("every Stage 6 task is `done`", "Skip 7a only", "**run 7a**",
+        "Missing or invalid configuration exits 2", "not a successful skip",
+        "lint → typecheck → unit-test → smoke", "not_applicable", "undetermined",
+        "staged and unstaged diffs", "content hashes of relevant untracked files",
+        "before and after verification", "result is stale",
+        "Only when 7a passed **and**", "`infrastructure.deploy_verify` is `dev`",
+        "Never production", "per deterministic gate", "does **not reset**",
+        "not itself a corrective retry", "3rd fail", "4th fail",
+        "Halt the run", "Do not call reviewers", "quota, policy denial",
+        "halts immediately with no retry"),
+    8: ("**Delegate to:** `review-lead`", "quality and security unconditionally",
+        "`review-lead` always invokes `security-reviewer`",
+        "owns mandatory secret scanning", "all other applicable review lenses remain independent",
+        "Existing tests modified", "Verdict is **✅ Approve**",
+        "Zero 🔴 Critical", "Zero 🟠 Major",
+        "only the finding ids that name it as owner", "Missing ids are a malformed hand-off",
+        "Re-route anything marked `not mine`", "A `disputed` finding stays open",
+        "Re-verify before re-review", "failed rerun prevents reviewer dispatch",
+        "No-edit disputes retain valid evidence",
+        "at most three corrective rounds", "does not reset this separate counter",
+        "If a round closes nothing", "stop condition #7",
+        "Only you write the session ledger", "a fixer's claim cannot close a finding",
+        "separate review-round counter", "session DB",
+        "spent Research/per-task/malformed hand-off corrective attempts"),
+    9: ("Verify requirement coverage first", "delivered", "evidence",
+        "Set `status = 'covered'` only with both", "task marked `done` is not evidence",
+        "covered only by a task that ended `blocked`", "do not report ✅ Done",
+        "out-of-scope", "never counted as covered", "only now",
+        "explicit user approval", "human-only, always",
+        "PR-open approval is per-run and explicit", "never infer it from silence",
+        "except the last", "contains `prod`", "run_started_at",
+        "payload.cost_summary", "collector JSON unchanged",
+        "Never invent zero usage", "payload.termination_reason",
+        "only a fully verified delivery may use `outcome=success`"),
+}
+RECIPE_CONTENT = {
+    0: ("CREATE TABLE IF NOT EXISTS requirement_acs", "ac_id TEXT PRIMARY KEY",
+        "covered_by TEXT", "evidence TEXT", "status TEXT DEFAULT 'uncovered'",
+        "content, not its filename", "mark each **derived**", "UUIDv7",
+        "payload.requirement_summary", "payload.profile_loaded",
+        "max_aiu_per_run", "max_aiu_per_phase", "max_tokens_per_run"),
+    1: ("context7/*", "read-repo-context", "facts verified with sources",
+        "assumptions with impacts", "Key tradeoffs", "Open questions / risks",
+        "Data questions to answer before building", "approach summary"),
+    2: ("Clear title", "Acceptance criteria", "Approach note",
+        "tech_stack.test_discipline == bdd", "assumes `<fact>`; unverified",
+        "grain, keys, schema and freshness", "every step",
+        "INSERT INTO todos", "INSERT INTO todo_deps", "tracker child items"),
+    3: ("parent work-item id", "title + ACs + approach note",
+        "team_communication.code_language", "entry state", "pending-approval",
+        "comment on the parent", "does not progress state"),
+    4: ("Approve and run autonomously", "Adjust plan", "Cancel",
+        "Acceptance criteria I derived", "Changes I made to your plan",
+        "What dies if a feasibility task returns ❌", "Return the selected choice"),
+    5: ("Approve and continue", "Adjust design", "Stop",
+        "Decision gaps", "explicitly waive each gap", "Return the selected choice"),
+    6: ("SELECT t.* FROM todos t", "t.status = 'pending'",
+        "td.depends_on = dep.id", "dep.status != 'done'",
+        "Design constraints (locked by Stage 1)", "allowed dependencies",
+        "Interface for coding", "that task's"),
+    7: ("scripts/run-gate.sh", "quality_gates.test_bar.<check>.command",
+        "testing.smoke.command", "content hashes of relevant untracked files",
+        "before **and** after verification", "structured failure report"),
+    8: ("git diff <base>...HEAD", "Existing tests modified",
+        "CREATE TABLE IF NOT EXISTS findings", "id TEXT PRIMARY KEY",
+        "severity TEXT", "owner TEXT", "summary TEXT", "status TEXT DEFAULT 'open'",
+        "note TEXT", "SELECT id, owner FROM findings WHERE status = 'open'"),
+    9: ("SELECT ac_id, text, covered_by, evidence, status FROM requirement_acs",
+        "WHERE status = 'uncovered'", "every** criterion", "previously covered rows",
+        "backlog.branch_naming", "backlog.commit_convention", "required_commit_trailers",
+        "identity.repo_url", "az repos pr create", "gh pr create",
+        "backlog.pr_link_pattern", "pr-description", "release-notes"),
+}
+
+
+def load_stage_files(core=CORE):
+    return {name: (core / path).read_text(encoding="utf-8")
+            for name, path in TEMPLATE_PATHS.items()}
+
+
+def lead_stage_section(lead, stage):
+    matches = re.findall(
+        r"^### Stage " + str(stage) + r" — [^\n]+\n(.*?)(?=^#{1,3} |\Z)",
+        lead, re.M | re.S)
+    if len(matches) != 1:
+        raise ValueError("missing or duplicate resident stage " + str(stage))
+    return matches[0]
+
+
+def resolve_stage_recipe(files, stage, core=CORE):
+    resident = lead_stage_section(files["dev-lead"], stage)
+    pointers = re.findall(
+        r"\*\*Required read:\*\*\s+`([^`]+)`\s+→\s+\*\*([^*]+)\*\*", resident)
+    name, heading = STAGE_RECIPES[stage]
+    expected_path = "references/" + name + ".md"
+    if pointers != [(expected_path, heading)]:
+        raise ValueError("wrong or missing required read at Stage " + str(stage))
+    # Resolve from the loaded skill, never from the agent or consumer cwd.
+    home = (core / TEMPLATE_PATHS["dev-lead-templates"]).parent
+    if (home / pointers[0][0]).resolve() != (core / TEMPLATE_PATHS[name]).resolve():
+        raise ValueError("wrong stage file")
+    if name not in files:
+        raise ValueError("missing recipe file " + name)
+    anchor = heading.lower().replace(" ", "-")
+    link = "](" + expected_path + "#" + anchor + ")"
+    if files["dev-lead-templates"].count(link) != 1:
+        raise ValueError("missing or duplicate skill route at Stage " + str(stage))
+    return named_contract_section(files[name], heading)
+
+
+def stage_contract_errors(files, core=CORE):
+    errors = []
+    lead = " ".join(files["dev-lead"].split())
+    for clause in ("at each stage entry or resume", "load `dev-lead-templates`",
+                   "relative to the loaded skill's home",
+                   "not the consumer repository's working directory",
+                   "missing/mismatched section", "stop and surface it",
+                   "do not reconstruct", "never override the transitions"):
+        if clause not in lead:
+            errors.append("stage loading guard missing " + clause)
+    skill = " ".join(files["dev-lead-templates"].split())
+    for clause in ("exact named level-two section", "do not preload all sections",
+                   "Missing file", "stop and surface malformed contract/context"):
+        if clause not in skill:
+            errors.append("skill loading guard missing " + clause)
+    for stage in STAGE_RECIPES:
+        try:
+            resident = " ".join(lead_stage_section(files["dev-lead"], stage).split())
+            recipe = " ".join(resolve_stage_recipe(files, stage, core).split())
+        except ValueError as error:
+            errors.append(str(error))
+            continue
+        for clause in STAGE_CONTROLS[stage]:
+            if clause not in resident:
+                errors.append("Stage %s resident control missing %s" % (stage, clause))
+        for clause in RECIPE_CONTENT[stage]:
+            if clause not in recipe:
+                errors.append("Stage %s recipe missing %s" % (stage, clause))
+    # All thirteen stops must remain in the autonomy contract, not in a recipe
+    # or a similarly worded entry condition elsewhere.
+    autonomy = files["dev-lead"].split("### Autonomy contract", 1)[-1].split("### Stage 0", 1)[0]
+    stops = [(number, " ".join(title.split())) for number, title in
+             re.findall(r"^\s+(\d+)\.\s+\*\*([^*]+)\*\*", autonomy, re.M)]
+    expected_stops = (
+        "Ambiguity that changes what is being delivered",
+        "Gate failure that survives its stated retry budget",
+        "Scope-change required to deliver", "Destructive or irreversible action proposed",
+        "Secret or credential needed", "Specialist review verdict ❌ Block",
+        "Open 🟠 Major review findings after the review-loop budget is spent",
+        "Malformed or missing hand-off block", "In-flight architecture escalation",
+        "Missing parent work-item id", "Tracker-write failure",
+        "Required profile field still empty after the Stage 0 interview",
+        "PR not yet approved",
+    )
+    if stops != [(str(i), title) for i, title in enumerate(expected_stops, 1)]:
+        errors.append("resident stop conditions drift")
+    if "auto-loop **once**" not in " ".join(autonomy.split()):
+        errors.append("Block stop budget hidden")
+    if "```sql" in files["dev-lead"]:
+        errors.append("SQL recipe still resident")
+    for name in ("plan-approval", "design-approval"):
+        template = files.get(name, "")
+        if "## Handling the answer" in template or re.search(r"^- \*\*(Approve|Adjust|Cancel|Stop)\*\* →", template, re.M):
+            errors.append(name + " owns transitions")
+    for name in ("intake-plan", "implementation-review", "completion"):
+        if re.search(r"(?:max \d+ retries|at most three corrective rounds|Cap: one Adjust)",
+                     files.get(name, "")):
+            errors.append(name + " owns retry budget")
+    for name, heading, owner in (
+        ("intake-plan", "Tracker mechanics", "## Tracker status"),
+        ("done-report", "Report", "### Stage 9"),
+        ("completion", "Stage 9", "## Output format"),
+        ("done-report", "Report", "## Output format"),
+    ):
+        region = files["dev-lead"].split(owner, 1)[-1]
+        region = " ".join(re.split(r"\n#{1,3} ", region, maxsplit=1)[0].split())
+        pointer = "`references/%s.md` → **%s**" % (name, heading)
+        if pointer not in region:
+            errors.append(owner + " missing auxiliary read " + heading)
+        link = "](references/%s.md#%s)" % (name, heading.lower().replace(" ", "-"))
+        if files["dev-lead-templates"].count(link) != 1:
+            errors.append("missing auxiliary skill route " + heading)
+    try:
+        report = " ".join(named_contract_section(files.get("done-report", ""), "Report").split())
+        for phrase in ("Implementation + tests | coding", "Infrastructure + IaC tests | infrastructure",
+                       "Analysis + evidence | data-scientist", "Review | review-lead",
+                       "Evidence is a test name or a review finding", "collect-usage.py"):
+            if phrase not in report:
+                errors.append("report missing " + phrase)
+        if re.search(r"\|\s*(?:Testing|testing)\s*\|", report):
+            errors.append("retired testing agent in report")
+        named_contract_section(files.get("intake-plan", ""), "Tracker mechanics")
+    except ValueError as error:
+        errors.append(str(error))
+    return errors
+
+
+class StageRecipeTests(unittest.TestCase):
+    def setUp(self):
+        self.files = {**load_handoff_files(), **load_stage_files()}
+
+    def test_stage_routes_controls_and_recipes_match_independent_oracle(self):
+        self.assertEqual(stage_contract_errors(self.files), [])
+        self.assertEqual(handoff_contract_errors(self.files), [])
+
+    def test_missing_recipe_file_fails_closed(self):
+        for name in {name for name, _ in STAGE_RECIPES.values()}:
+            with self.subTest(name=name):
+                changed = dict(self.files)
+                del changed[name]
+                self.assertIn("missing recipe file " + name, stage_contract_errors(changed))
+
+    def test_missing_wrong_or_duplicate_required_pointer_is_rejected(self):
+        for stage, (name, heading) in STAGE_RECIPES.items():
+            old = "**Required read:** `references/%s.md` → **%s**" % (name, heading)
+            for replacement in ("", old + "\n" + old, old.replace(name, "missing"),
+                                old.replace("**" + heading + "**", "**Wrong stage**")):
+                with self.subTest(stage=stage, replacement=replacement):
+                    changed = dict(self.files)
+                    self.assertIn(old, changed["dev-lead"])
+                    changed["dev-lead"] = changed["dev-lead"].replace(old, replacement, 1)
+                    self.assertIn("wrong or missing required read at Stage " + str(stage),
+                                  stage_contract_errors(changed))
+
+    def test_valid_section_for_wrong_stage_is_rejected(self):
+        changed = dict(self.files)
+        changed["dev-lead"] = changed["dev-lead"].replace(
+            "`references/intake-plan.md` → **Stage 0**",
+            "`references/intake-plan.md` → **Stage 1**")
+        self.assertIn("wrong or missing required read at Stage 0", stage_contract_errors(changed))
+
+    def test_missing_duplicate_or_renamed_section_fails(self):
+        for stage, (name, heading) in STAGE_RECIPES.items():
+            for replacement in ("## Renamed", "## " + heading + "\n\n## " + heading):
+                with self.subTest(stage=stage, replacement=replacement):
+                    changed = dict(self.files)
+                    changed[name] = changed[name].replace("## " + heading + "\n", replacement + "\n", 1)
+                    self.assertIn("missing or duplicate section " + heading,
+                                  stage_contract_errors(changed))
+
+    def test_skill_link_must_resolve_to_the_expected_file_and_section(self):
+        for stage, (name, heading) in STAGE_RECIPES.items():
+            link = "](references/%s.md#%s)" % (name, heading.lower().replace(" ", "-"))
+            for replacement in ("", link.replace(name, "missing"), link.replace("#", "#wrong-")):
+                with self.subTest(stage=stage, replacement=replacement):
+                    changed = dict(self.files)
+                    changed["dev-lead-templates"] = changed["dev-lead-templates"].replace(link, replacement)
+                    self.assertIn("missing or duplicate skill route at Stage " + str(stage),
+                                  stage_contract_errors(changed))
+
+    def test_each_resident_control_cannot_be_hidden_in_a_recipe(self):
+        for stage, clauses in STAGE_CONTROLS.items():
+            for clause in clauses:
+                with self.subTest(stage=stage, clause=clause):
+                    changed = dict(self.files)
+                    section = lead_stage_section(changed["dev-lead"], stage)
+                    pattern = re.escape(clause).replace(r"\ ", r"\s+")
+                    self.assertRegex(section, pattern)
+                    changed["dev-lead"] = changed["dev-lead"].replace(
+                        section, re.sub(pattern, "removed control", section))
+                    name, _ = STAGE_RECIPES[stage]
+                    changed[name] += "\n" + clause
+                    self.assertIn("Stage %s resident control missing %s" % (stage, clause),
+                                  stage_contract_errors(changed))
+
+    def test_each_recipe_obligation_must_stay_in_its_required_section(self):
+        for stage, clauses in RECIPE_CONTENT.items():
+            name, heading = STAGE_RECIPES[stage]
+            for clause in clauses:
+                with self.subTest(stage=stage, clause=clause):
+                    changed = dict(self.files)
+                    section = named_contract_section(changed[name], heading)
+                    pattern = re.escape(clause).replace(r"\ ", r"\s+")
+                    self.assertRegex(section, pattern)
+                    changed[name] = changed[name].replace(
+                        section, re.sub(pattern, "removed recipe", section))
+                    changed[name] += "\n## Unloaded section\n" + clause
+                    self.assertIn("Stage %s recipe missing %s" % (stage, clause),
+                                  stage_contract_errors(changed))
+
+    def test_every_stop_stays_in_resident_autonomy_contract(self):
+        autonomy = self.files["dev-lead"].split("### Autonomy contract")[1].split("### Stage 0")[0]
+        for line in re.findall(r"^  \d+\. .+$", autonomy, re.M):
+            with self.subTest(stop=line[:100]):
+                changed = dict(self.files)
+                changed["dev-lead"] = changed["dev-lead"].replace(line, "")
+                changed["completion"] += "\n" + line
+                self.assertIn("resident stop conditions drift", stage_contract_errors(changed))
+
+    def test_rendering_templates_cannot_take_over_transitions_or_budgets(self):
+        for name in ("plan-approval", "design-approval"):
+            changed = dict(self.files)
+            changed[name] += "\n- **Approve** → proceed to Stage 6"
+            with self.subTest(name=name):
+                self.assertIn(name + " owns transitions", stage_contract_errors(changed))
+        for name in ("intake-plan", "implementation-review", "completion"):
+            changed = dict(self.files)
+            changed[name] += "\nCap: one Adjust round per run"
+            with self.subTest(name=name):
+                self.assertIn(name + " owns retry budget", stage_contract_errors(changed))
+
+    def test_loading_guards_cannot_be_removed(self):
+        for source, clause in (
+            ("dev-lead", "at each stage entry or resume"),
+            ("dev-lead", "relative to the loaded skill's home"),
+            ("dev-lead", "stop and surface it"),
+            ("dev-lead-templates", "exact named level-two section"),
+            ("dev-lead-templates", "do not preload all sections"),
+        ):
+            with self.subTest(source=source, clause=clause):
+                changed = dict(self.files)
+                pattern = re.escape(clause).replace(r"\ ", r"\s+")
+                self.assertRegex(changed[source], pattern)
+                changed[source] = re.sub(pattern, "removed", changed[source])
+                self.assertTrue(stage_contract_errors(changed))
+
+    def test_duplicate_shared_schema_in_recipe_is_rejected(self):
+        for author, (sentinel, _) in HANDOFF_FIELDS.items():
+            with self.subTest(author=author):
+                changed = dict(self.files)
+                changed["completion"] += "\n" + schema_block(
+                    named_contract_section(changed["handoff-contracts"], sentinel), sentinel)
+                self.assertIn(sentinel + " duplicate or missing definition",
+                              handoff_contract_errors(changed))
+
+    def test_obsolete_separate_testing_author_is_rejected(self):
+        changed = dict(self.files)
+        changed["done-report"] += "\n| Testing | testing | done |\n"
+        self.assertIn("retired testing agent in report", stage_contract_errors(changed))
+
+    def test_report_and_tracker_reads_are_explicit_in_their_callers(self):
+        for name, heading, owner in (
+            ("intake-plan", "Tracker mechanics", "## Tracker status"),
+            ("done-report", "Report", "### Stage 9"),
+            ("completion", "Stage 9", "## Output format"),
+            ("done-report", "Report", "## Output format"),
+        ):
+            with self.subTest(owner=owner, heading=heading):
+                changed = dict(self.files)
+                before, region = changed["dev-lead"].split(owner, 1)
+                pointer = "`references/%s.md` → **%s**" % (name, heading)
+                self.assertIn(pointer, region)
+                changed["dev-lead"] = before + owner + region.replace(pointer, "missing", 1)
+                self.assertIn(owner + " missing auxiliary read " + heading,
+                              stage_contract_errors(changed))
+
+    def test_report_and_tracker_skill_links_cannot_be_broken(self):
+        for name, heading in (("done-report", "Report"), ("intake-plan", "Tracker mechanics")):
+            with self.subTest(heading=heading):
+                changed = dict(self.files)
+                link = "](references/%s.md#%s)" % (name, heading.lower().replace(" ", "-"))
+                self.assertIn(link, changed["dev-lead-templates"])
+                changed["dev-lead-templates"] = changed["dev-lead-templates"].replace(link, "")
+                self.assertIn("missing auxiliary skill route " + heading, stage_contract_errors(changed))
+
+    def test_prose_reflow_preserves_stage_contracts(self):
+        changed = dict(self.files)
+        for name in (*TEMPLATE_PATHS, "dev-lead"):
+            # Preserve headings, pointers, tables, code and link destinations;
+            # wrap ordinary prose without changing the contract's words.
+            fenced = False
+            lines = []
+            for line in changed[name].splitlines():
+                if line.startswith("```"):
+                    fenced = not fenced
+                if (not fenced and line and not line.startswith(("#", "|", "```"))
+                        and "](references/" not in line and "**Required read:**" not in line):
+                    line = line.replace(" ", " \n\t ")
+                lines.append(line)
+            changed[name] = "\n".join(lines)
+        self.assertEqual(stage_contract_errors(changed), [])
+
+    def test_installed_skill_home_not_consumer_controls_resolution(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installed = Path(temp) / "installed/core"
+            consumer = Path(temp) / "consumer"
+            decoy = consumer / "references/intake-plan.md"
+            decoy.parent.mkdir(parents=True)
+            decoy.write_text("## Stage 0\nWrong recipe", encoding="utf-8")
+            for name, path in TEMPLATE_PATHS.items():
+                target = installed / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(self.files[name], encoding="utf-8")
+            loaded = {**self.files, **load_stage_files(installed)}
+            self.assertEqual(stage_contract_errors(loaded, installed), [])
+            self.assertIn("requirement_acs", resolve_stage_recipe(loaded, 0, installed))
+            self.assertNotIn("Wrong recipe", resolve_stage_recipe(loaded, 0, installed))
+
+    def test_whole_resident_file_is_smaller_than_pre_extraction(self):
+        # Whole UTF-8 source, not tokens, selected sections or a savings claim
+        # about required references. 85,942 is task 1's measured working tree.
+        self.assertLess(len((CORE / HANDOFF_PATHS["dev-lead"]).read_bytes()), 85942)
+
+
 def contract_errors(files):
     """Bounded textual invariants, not a general Markdown or agent parser."""
-    errors = []
+    errors = handoff_contract_errors(files)
     lead = files["dev-lead"]
+    schemas = {}
+    for author, (sentinel, _) in HANDOFF_FIELDS.items():
+        try:
+            schemas[author] = resolve_handoff_section(files, author, sentinel)
+        except ValueError:
+            schemas[author] = ""
     for field in ("Behavior added/modified", "Existing tests modified"):
-        if "- %s:" % field not in files["infrastructure"]:
+        if "- %s:" % field not in schemas["infrastructure"]:
             errors.append("infrastructure missing " + field)
     if "Unreviewed dimensions" in lead or "Not verifiable from this diff" not in lead:
         errors.append("analysis consumer field drift")
-    if "- Not verifiable from this diff:" not in files["data-scientist"]:
+    if "- Not verifiable from this diff:" not in schemas["data-scientist"]:
         errors.append("analysis producer field drift")
-    if "- Code verification:" not in files["data-scientist"] or "`Code verification`" not in lead:
+    if "- Code verification:" not in schemas["data-scientist"] or "`Code verification`" not in lead:
         errors.append("analysis code evidence drift")
     for author in ("coding", "infrastructure", "architect", "data-scientist"):
-        if "- Findings addressed:" not in files[author]:
+        if "- Findings addressed:" not in schemas[author]:
             errors.append(author + " missing corrective accounting")
         if "exactly once" in files[author] or "one round —" in files[author]:
             errors.append(author + " stale retry count")
-    approve = files["plan-approval"].split("## Handling the answer")[1].split("- **Adjust**")[0]
+    # Answer handling now belongs to the resident supervisor, not its renderer.
+    approve = " ".join(lead_stage_section(lead, 4).split()).split("- **Adjust**")[0]
     if "Stage 5 conditional design approval" not in approve:
         errors.append("approval bypasses design gate")
     for required in ("Re-verify before re-review", "failed\n  rerun prevents reviewer dispatch",
@@ -309,12 +1215,8 @@ def contract_errors(files):
 
 class InstructionTests(unittest.TestCase):
     def setUp(self):
-        self.files = {name: (CORE / "agents" / (name + ".agent.md")).read_text(encoding="utf-8")
-                      for name in ("dev-lead", "coding", "infrastructure",
-                                   "architect", "data-scientist")}
-        self.files["plan-approval"] = (
-            CORE / "skills/dev-lead-templates/references/plan-approval.md"
-        ).read_text(encoding="utf-8")
+        self.files = load_handoff_files()
+        self.files.update(load_stage_files())
         self.files["cost-budget"] = (CORE / "skills/cost-budget/SKILL.md").read_text(encoding="utf-8")
 
     def test_contracts_match(self):
@@ -322,13 +1224,13 @@ class InstructionTests(unittest.TestCase):
 
     def test_known_contradictions_are_detected(self):
         mutations = [
-            ("infrastructure", "- Existing tests modified:", "- Removed test field:"),
-            ("infrastructure", "- Behavior added/modified:", "- Removed behavior field:"),
+            ("handoff-contracts", "- Existing tests modified:", "- Removed test field:"),
+            ("handoff-contracts", "- Behavior added/modified:", "- Removed behavior field:"),
             ("dev-lead", "Not verifiable from this diff", "Unreviewed dimensions"),
-            ("data-scientist", "- Code verification:", "- Removed code field:"),
-            ("architect", "- Findings addressed:", "- Removed corrective field:"),
+            ("handoff-contracts", "- Code verification:", "- Removed code field:"),
+            ("handoff-contracts", "- Findings addressed:", "- Removed corrective field:"),
             ("coding", "`dev-lead` owns the", "one round — `dev-lead` owns the"),
-            ("plan-approval", "Stage 5 conditional design approval", "Stage 6"),
+            ("dev-lead", "Stage 5 conditional", "Stage 6 unconditional"),
             ("dev-lead", "Re-verify before re-review", "Then re-run review"),
             ("dev-lead", "does **not reset**", "resets"),
             ("cost-budget", "--since", "--no-run-bound"),

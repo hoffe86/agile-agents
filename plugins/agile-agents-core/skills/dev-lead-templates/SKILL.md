@@ -1,24 +1,41 @@
 ---
 name: dev-lead-templates
-description: Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 4), the conditional design-approval gate prompt (Stage 5), and the final Done/Stop report (Stage 9). Load only at the moment a template is needed; the dev-lead agent definition carries the decision logic, this skill carries the markdown shapes. Not used by any other agent.
+description: Stage-local preparation, SQL/tracker bookkeeping and reporting recipes for dev-lead, plus plan/design approval prompts and the final Done/Stop report. Read only the named section on stage entry or resume; load other references only as needed. The supervisor owns transitions, gates, stop conditions, retry budgets and event/cost semantics; these recipes supply inputs and output shapes, not alternate control flow. Not used by other agents.
 applies_to: all
 ---
 
 # dev-lead-templates
 
-The `dev-lead` agent owns *when* to render these and *what* the choices mean. This
-skill owns only the **shape of the output**, so the agent definition stays about
-decisions rather than markdown.
+The `dev-lead` agent owns **all control flow**: delegates, entry/exit gates, stops,
+approval handling, persistent retry counters, permissions and event/cost semantics.
+This skill supplies stage-local recipes and output shapes. Prompts return the
+human's answer to the supervisor; they do not decide the next stage.
 
 ## When to load
 
-| Template | Load at | Reference |
+| Section | Read at entry/resume | Reference |
 |---|---|---|
-| Plan approval (`ask_user`) | Stage 4 — after `backlog-manager` emitted `TASKS PLANNED` | [`references/plan-approval.md`](references/plan-approval.md) |
-| Design approval (`ask_user`) | Stage 5 — only when the conditional trigger fires | [`references/design-approval.md`](references/design-approval.md) |
-| Final report | Stage 9 — Done, Blocked, or Stopped | [`references/done-report.md`](references/done-report.md) |
+| Stage 0 | Intake preparation | [Stage 0](references/intake-plan.md#stage-0) |
+| Stage 1 | Research preparation/reporting | [Stage 1](references/intake-plan.md#stage-1) |
+| Stage 2 | Decomposition and SQL cache | [Stage 2](references/intake-plan.md#stage-2) |
+| Stage 3 | Tracker creation payload | [Stage 3](references/intake-plan.md#stage-3) |
+| Prompt | Stage 4 — plan approval | [Prompt](references/plan-approval.md#prompt) |
+| Prompt | Stage 5 — conditional design approval | [Prompt](references/design-approval.md#prompt) |
+| Stage 6 | Task dispatch preparation | [Stage 6](references/implementation-review.md#stage-6) |
+| Stage 7 | Deterministic gate preparation | [Stage 7](references/implementation-review.md#stage-7) |
+| Stage 8 | Review payload and ledger SQL | [Stage 8](references/implementation-review.md#stage-8) |
+| Stage 9 | Completion evidence and artifacts | [Stage 9](references/completion.md#stage-9) |
 
-Do not load all three up-front. Each is a leaf template with no cross-dependency.
+When rendering a final report (including an early stop), also read
+[Report](references/done-report.md#report). For tracker transitions or provisional
+cleanup, read [Tracker mechanics](references/intake-plan.md#tracker-mechanics).
+Other skill references (such as cost or gate commands) are loaded only as needed.
+
+Resolve all paths relative to **this loaded skill's home**, not the consumer
+repository's working directory. Read only the exact named level-two section,
+including its subheadings; do not preload all sections or files. Missing file or
+missing/mismatched section: stop and surface malformed contract/context, never
+reconstruct a recipe or bypass the supervisor's gate.
 
 ## Rules that apply to every template
 
