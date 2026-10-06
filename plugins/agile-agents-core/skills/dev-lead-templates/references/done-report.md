@@ -1,5 +1,7 @@
 # Final Done / Stop report (dev-lead Stage 9)
 
+## Report
+
 Return **only** this report. Do not paste the full intermediate output of each
 stage — link or summarise. The reader's question is "is this done, and if not
 why" — answer that first.
@@ -13,10 +15,11 @@ why" — answer that first.
 ## Stages run
 | Stage | Agent | Outcome | Tokens (in/out) | AIU |
 |---|---|---|---|---|
-| Architect | architect | ✅ <chose X, honours ADR-NNN> | ⏭ skipped (<reason>) | <in>/<out> | <aiu> |
-| Coding | coding | ✅ <N files, build green> | <in>/<out> | <aiu> |
-| Testing | testing | ✅ <M tests added, all pass> | <in>/<out> | <aiu> |
-| Review | review | ✅ Approve | 🔁 Request changes (looped once) | <in>/<out> | <aiu> |
+| Research | architect (or dev-lead lightweight) | <verified design / explicit skip reason> | <in>/<out> | <aiu> |
+| Implementation + tests | coding | <N files, build and tests result> | <in>/<out> | <aiu> |
+| Infrastructure + IaC tests | infrastructure | <validation and IaC tests / inapplicable> | <in>/<out> | <aiu> |
+| Analysis + evidence | data-scientist | <supported / inconclusive / not supported / inapplicable> | <in>/<out> | <aiu> |
+| Review | review-lead | <verdict and corrective rounds actually used> | <in>/<out> | <aiu> |
 | **Run total** | | | **<in>/<out>** | **<aiu>** |
 
 Usage columns come from `collect-usage.py` (`by_phase`). Report `<n/a — telemetry
@@ -56,7 +59,7 @@ than a blank, because it looks like a measurement.
 - Recommended next action: <concrete>
 ```
 
-## Rules
+### Rules
 
 - **Every acceptance criterion captured at Intake appears in the Requirement coverage
   table** — including the ones that ended uncovered or out of scope. A criterion
@@ -74,3 +77,7 @@ than a blank, because it looks like a measurement.
   ✅ Done** run.
 - Status is ✅ Done only when every Definition-of-Done item in the agent
   definition is true. If any is false, say so plainly.
+- Implementation and tests share their actual author and usage bucket; there
+  is no separate testing agent. Use actual invoked roles (including additional
+  roles when used) and explicit skips; do not invent phase usage for a role that
+  did not run.

@@ -233,28 +233,11 @@ straight to implementation.
 
 ## Hand-off contract
 
-```
-ARCHITECTURE DESIGN COMPLETE
-- Topic: <one-line>
-- Deliverables: <the artifacts you produced and where they landed, resolved from `documentation.platform` + `location` (or `ai_documentation_dir`) — or, when the platform is not writable from the workspace, "content in this hand-off → publish to <platform> → <location>">
-- Framework used: <what `documentation.framework` declared, or "arc42 + C4 — profile silent, defaulted">
-
-- Recommendation: <chosen approach, one line>
-- Key tradeoffs: <2-3 bullets>
-- NFRs to honour: <bulleted list of concrete, measurable NFRs the implementer must meet — e.g. P95 latency < 200 ms, RTO ≤ 4 h, RPO ≤ 15 min, data residency = EU, throughput ≥ 100 RPS, availability SLO ≥ 99.9%, monthly cost band ≤ €X. Pulls from arc42 §10. "None additional" only if the requirement was already explicit.>
-- Decisions honoured: <binding ADR ids the design respects; or the design-doc / work-item decisions it conforms to when the project does not use ADRs; or "none found / none applicable">
-- Decision gaps (need a human decision before coding): <list — for each: decision needed · why it matters · candidate options · recommendation. "none" if every materially-shaping decision is already captured *somewhere* — an accepted ADR, the framework's decision section, or the work item.>
-- Facts verified: <the load-bearing facts you checked rather than recalled — for each: fact · source · the version / region / date it applies to. E.g. "Container Apps supports scale-to-zero on the Consumption plan · Microsoft Learn · retrieved <date>". "none needed — design rests on no external fact" is a valid answer on a purely internal design, but it is a claim, not a default.>
-- Assumptions (unverified): <every load-bearing fact you could NOT confirm — for each: assumption · why verification failed (no such doc, tooling unavailable and which cause, ambiguous source) · what breaks if it is wrong. "none" only when every load-bearing fact is in the list above. Never promote an assumption to a verified fact to empty this field.>
-- Well-architected assessment (cloud designs): ✅ aligned / ⚠️ trade-offs called out per pillar / n/a — not cloud-hosted
-- Data findings (when the change touches data, else "n/a — no data surface"): <for each dataset or source: does it exist · may we use it, under what agreement · fit for purpose (volume / history / freshness / quality / do the required labels exist) · contract (grain, keys, schema, existing consumers) · where it physically lands and any residency, retention or deletion obligation. **State blockers first** — a required source that does not exist, or personal data with no permitting policy, outranks every other finding in this hand-off.>
-- Data questions to answer before building (else "none"): <feasibility questions that must be settled by analysis rather than by design — "is the signal present at all?", "are the labels reliable enough?". Each becomes a `data-scientist` task sequenced ahead of anything that depends on the answer.>
-- Estimated monthly cost band (if cloud-hosted): <currency><low> – <currency><high>
-- Open questions / risks: <list with owners>
-- Findings addressed: <corrective rounds only — one line per id: "<id>: fixed in <deliverable/location>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit on a first pass.>
-- Recommended next step:
-    → human (to settle any reported decision gaps — as ADRs only if the project uses them), then
-    → infrastructure (to provision the topology)
-    → coding (to scaffold the application)
-    → review (to audit the design against existing code)
-```
+At the beginning of each task, read only
+[ARCHITECTURE DESIGN COMPLETE](../skills/read-repo-context/references/handoff-contracts.md#architecture-design-complete)
+and emit that exact schema on completion. For a corrective round, also read
+[Corrective accounting](../skills/read-repo-context/references/handoff-contracts.md#corrective-accounting)
+before fixing findings. Resolve these links relative to this loaded core agent
+file, not the consumer repository's working directory. If the file or named
+section is missing or mismatched, stop and report a malformed contract/context;
+do not reconstruct the schema.
