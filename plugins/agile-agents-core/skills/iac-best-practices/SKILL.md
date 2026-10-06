@@ -10,18 +10,21 @@ This skill is **technology-agnostic**. It encodes the rules that the language-sp
 
 ## 1. Naming
 
-Use the **Microsoft Cloud Adoption Framework abbreviations** + this pattern:
+`infrastructure.naming_convention` takes precedence, followed by existing repo conventions
+and the target provider's published naming guidance (including per-service constraints).
+Do not impose another provider's abbreviations, environment labels or region codes.
 
-```
-<resource-type-abbrev>-<workload>-<env>-<region-abbrev>[-<instance>]
-```
+**Azure applicability gate:** load **`azure-platform-grounding`** only when **installed**
+and `infrastructure.cloud: azure`. For a multi-cloud/hybrid declaration, require explicit
+repo evidence of an Azure resource subset and document that scope; hybrid alone is not
+Azure evidence. Apply Azure guidance only to that subset. Missing or conflicting cloud
+declarations need clarification, not an inferred Azure default.
 
-- Examples: `rg-payments-prod-weu`, `kv-payments-prod-weu`, `stpaymentsprodweu` (storage: no hyphens, ≤ 24 chars, lowercase).
-- `<env>` ∈ `{dev, test, stg, prod}` (use `stg`, not `staging`).
-- `<region-abbrev>`: `weu` (West Europe), `neu` (North Europe), `eus` (East US), etc.
-- Globally-unique resources: append a 4-char hash from `uniqueString()` / `random_id` to avoid collisions.
-
-The abbreviations and per-service name rules are platform-specific — take them from the target platform's conventions skill when installed (`azure-platform-conventions` on Azure), otherwise from that provider's published naming guidance. `infrastructure.naming_convention` overrides all of it.
+**Azure-only default:** Microsoft Cloud Adoption Framework (CAF) abbreviations and the
+`<resource-type-abbrev>-<workload>-<env>-<region-abbrev>[-<instance>]` pattern apply only
+within that gate and absent a repo/profile convention. If the skill is unavailable, use
+the declared provider's documentation and report the fallback in the hand-off.
+Non-Azure targets use repo/provider conventions, not CAF.
 
 ## 2. Tagging — required tags on every resource
 
@@ -36,7 +39,7 @@ The abbreviations and per-service name rules are platform-specific — take them
 
 Optional but recommended: `gitRepo`, `gitCommit` (for traceability of what deployed what).
 
-Implement tag inheritance from RG to children where the platform supports it; otherwise pass a `tags` parameter/variable through every module.
+Implement tag inheritance from the platform's parent scope where supported; otherwise pass a `tags` parameter/variable through every module. An Azure resource group (RG) is one such scope, not a universal requirement.
 
 ## 3. Module composition
 
@@ -49,15 +52,15 @@ Implement tag inheritance from RG to children where the platform supports it; ot
 ## 4. Secret handling
 
 - **No secrets in source.** Not in `.bicepparam`, not in `terraform.tfvars`, not in `values.yaml`, not in environment YAML files.
-- **Reference, don't embed.** Use Key Vault references (`@Microsoft.KeyVault(...)` for App Settings, `azurerm_key_vault_secret` data source, Secrets Store CSI Driver in K8s).
+- **Reference, don't embed.** Use the declared platform's secrets store and supported reference/injection mechanism. Azure-only examples: Key Vault references for App Settings or `azurerm_key_vault_secret`; other platforms use their own equivalents.
 - **Rotate by reference change** — your IaC should never need a re-deploy to rotate a secret.
 - **Pipeline secrets** scoped to environments with required reviewers; never store as repo-level secrets if they grant prod access.
 
 ## 5. State & idempotency
 
 - **Idempotent by construction.** Running the same template twice must produce the same result. No hidden timestamps, no random names without a stable seed, no `local-exec` that mutates external state.
-- **Remote state** mandatory for any non-trivial Terraform deployment. Backend in azurerm with state locking (blob lease).
-- **State is canonical.** Don't edit state files manually. Use `terraform state` subcommands or `az resource` imports.
+- **Remote state** mandatory for any non-trivial Terraform deployment. Preserve the repo's selected backend and use its supported locking/access controls; do not infer the backend from the resource provider. Azure-only example: an explicitly selected azurerm backend uses blob-lease locking.
+- **State is canonical.** Don't edit state files manually. Use the IaC tool's supported state/import operations for the declared provider.
 - **Some tools keep no state file** — the platform's own resource manager is the state (Bicep/ARM). There is still a preview command (`what-if`) that is the equivalent of `plan`, and you must run it before every deploy.
 
 ## 6. Environment promotion
@@ -68,7 +71,7 @@ Implement tag inheritance from RG to children where the platform supports it; ot
 
 ## 7. Drift management
 
-- **Detect** drift on a schedule: `terraform plan` weekly with no apply; `az deployment sub what-if` against the last-known parameter file. Surface non-empty diffs as alerts.
+- **Detect** drift on a schedule using the tool/provider's preview: for example, `terraform plan` with no apply; for Azure Bicep/ARM only, `az deployment sub what-if` against the last-known parameter file. Surface non-empty diffs as alerts.
 - **Reconcile** drift through the IaC tool, not by hand-editing in the Portal. If a hotfix was applied in the Portal during an incident, capture it in IaC the same week.
 - **Forbid console/portal mutations** of IaC-managed resources through the platform's policy engine where possible (or at least via documented team agreement).
 

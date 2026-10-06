@@ -480,7 +480,7 @@ Three corrective retries, because this failure is deterministic — lint, type, 
 **Input:** the diff (`git diff <base>...HEAD`) and the original requirement, plus the **Stage 7 gate result** — which checks ran, and whether the application actually started (or why that was `not_applicable` / `undetermined`). Reviewers judge a change differently when they know the host boots than when nobody established it, and a smoke slot that came back `undetermined` is a gap a reviewer should see rather than assume away. Carry the `Existing tests modified` lines from every Stage 6 hand-off into the payload as well: `test-reviewer` is the independent judgement on whether an assertion change was legitimate, and it cannot make that call on evidence it never sees.
 **Expected output:** the merged review report with a single verdict (✅ Approve / 🔁 Request changes / ❌ Block).
 
-**Docs-only carve-out:** if `git diff --name-only <base>...HEAD` returns **only** files matching `*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, or `.editorconfig` (i.e. no code, no config, no IaC, no workflow, no schema), `review-lead` may skip the full `security-reviewer` fan-out — but secret scanning still runs unconditionally on the diff. The skip and its justification must appear in the merged report. Any non-docs file in the diff disables the carve-out.
+**Unconditional security ownership:** `review-lead` always invokes `security-reviewer`, including docs-only diffs. That specialist owns mandatory secret scanning and sizes the rest of its analysis to the diff. Documentation paths and build/dependency manifests are not exemptions; all other applicable review lenses remain independent.
 
 **Gate (must pass for Done):**
 - Verdict is **✅ Approve**.

@@ -39,14 +39,14 @@ Append a single section at the end of your response (or per file/component if yo
 
 Keep each entry to **one line** (or two if the trigger needs a clause). If you have more than ~5 trade-offs in one response, you are probably narrating — re-read the rules and cut.
 
-For decisions that warrant longer reasoning (multi-paragraph, multiple options compared, durable architectural impact) → **promote to an ADR** (via the `architecture-decision-records` skill, which resolves the project's format) instead of inline notes, and link to it:
+For longer reasoning or durable architectural impact, link to **existing decision capture** (an accepted ADR, design-doc decision section, or work item). If none exists, report a **decision gap**: decision needed · why it matters · candidate options · recommendation. Leave resolution to a human; do not create an ADR:
 
 ```markdown
 ### Trade-offs made
 - **<Decision name>** — See ADR-NNNN: <title> (<path/to/adr-NNNN-slug.md>).
 ```
 
-**Rule of thumb:** inline note for reversible / local decisions; ADR for irreversible / cross-cutting ones.
+**Rule of thumb:** inline note for reversible / local decisions; existing reference or decision gap for irreversible / cross-cutting ones.
 
 ## Quality bar for each entry
 
@@ -76,9 +76,9 @@ Good: *"**HTTP client** — Chose **`HttpClient` with `IHttpClientFactory`** ove
 
 ## Interaction with ADRs
 
-- One-line inline notes are **not** a replacement for ADRs.
-- If a trade-off is architectural (cross-component, hard to reverse, affects multiple teams) → write an ADR (via `architecture-decision-records`), put it in the project's ADR location, and the inline note becomes a pointer.
-- If the project has no ADR folder yet and the decision deserves one, **say so** in the trade-off note: *"Recommend creating ADR-0001 for this."*
+- Honour and cite accepted ADRs; never author or modify them autonomously.
+- Judge decision capture, not format. Projects without ADRs need no new ADR folder; a design-doc decision section or work item is valid.
+- Only an **explicit human request** to write an ADR invokes `architecture-decision-records` in a write-capable authoring context. Reviewers remain read-only; report decision gaps for human resolution.
 
 ## Scoping under a supervisor agent
 
@@ -96,5 +96,5 @@ Authoring agents (architect / coding / infrastructure / testing) keep the full r
 - **No narration.** "I chose X" without a rejected Y and a cost is not a trade-off — it's a log entry. Cut it.
 - **Be specific.** Cite the rejected option by name. "Other approaches" is not specific.
 - **Be honest about the cost.** Every real choice has one. If you can't name it, you haven't thought about it.
-- **Stay short.** Inline notes are one line. Long reasoning belongs in an ADR.
+- **Stay short.** Inline notes are one line. Link to existing rationale or surface a decision gap.
 - **Don't gold-plate.** Three sharp trade-offs beat ten weak ones.
