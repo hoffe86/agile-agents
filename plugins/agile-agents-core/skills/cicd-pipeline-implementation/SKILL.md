@@ -1,7 +1,8 @@
 ---
 name: cicd-pipeline-implementation
 description: Implement CI/CD pipelines for infrastructure and application code using GitHub Actions or Azure Pipelines (YAML). Covers build, test, security scanning, container image build/push, IaC plan/apply gating, environment promotion, and OIDC-based passwordless auth to Azure. USE FOR any request to write, add, or modify files under `.github/workflows/`, `azure-pipelines.yml`, `.azuredevops/`, or any "set up CI", "add a pipeline", "deploy on merge" task. Triggered by "GitHub Actions", "Azure Pipelines", "ADO pipeline", "workflow", "OIDC", "federated credential".
-applies_to: github-actions, azure-pipelines
+metadata:
+  applies_to: github-actions, azure-pipelines
 ---
 
 # CI/CD Pipeline Implementation

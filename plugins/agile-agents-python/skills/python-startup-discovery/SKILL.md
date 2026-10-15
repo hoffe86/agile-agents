@@ -1,7 +1,8 @@
 ---
 name: python-startup-discovery
 description: Work out how to start a Python application and which URL proves it came up — console scripts, FastAPI/Starlette, Flask, Django, `python -m <package>` — by reading what the project already declares (pyproject scripts, app objects, Procfile, Dockerfile CMD, compose command) and running it through the project's own environment manager. USE FOR the smoke slot of `test-bar-gate` when `testing.smoke.command` is not configured, or any request to "run the app", "start the server", "check it boots", "how do I run this" in a Python repo. Also detects when there is nothing to start (a library with no entry point).
-applies_to: python
+metadata:
+  applies_to: python
 ---
 
 # Python startup discovery

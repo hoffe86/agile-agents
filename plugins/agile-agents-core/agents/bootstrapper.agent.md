@@ -81,7 +81,15 @@ standing up a harness someone else will rely on:
 5. **Present and get approval** (below). One consolidated proposal, not one prompt per plugin.
 6. **Install what was approved**, then **verify** — re-read the installed set and confirm each
    declared technology now has a matching skill.
-7. **Report the gaps** and emit `BOOTSTRAP COMPLETE`.
+7. **Offer optional model setup**, proposal-only. First read
+   [Manual native setup](../skills/cost-budget/references/tier-defaults.md#manual-native-setup)
+   and **Preference is not governance** in that reference. Propose only profile-map
+   choices; the user explicitly approves and manually configures preferred models
+   through `/subagents`. Preserve existing choices/overrides; no map means no settings
+   change. Never write user/global settings or set task models from the profile.
+   Report unavailable models for the user to choose, never silently substitute.
+8. **Report the gaps**, including proposed/configured/skipped/unavailable model setup
+   (not runtime verification), and emit `BOOTSTRAP COMPLETE`.
 
 ## Deriving the plugin set
 

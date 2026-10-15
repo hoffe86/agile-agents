@@ -2,7 +2,8 @@
 name: e2e-testing
 description: >-
   End-to-end testing playbook for full-stack work — Playwright (TypeScript/Python) or Selenium (Python) backend selected via `solution-profile.yaml: testing.e2e.framework` (or `none` to skip). Loaded by the `coding` agent (via `testing-practices`) after unit tests pass when the change includes a UI surface or HTTP/API surface that warrants browser-level verification.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # E2E Testing Playbook

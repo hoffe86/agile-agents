@@ -2,7 +2,8 @@
 name: cost-budget
 description: >-
   Read the per-run / per-phase cost envelope from `solution-profile.yaml: cost_envelope`, gate run start (refuse if envelope is missing on production-tier engagements), checkpoint at every phase transition, and abort with a clear stop reason if the envelope is exceeded. Loaded by `dev-lead` at run start and at every stage transition. Reads real per-phase / per-agent token + AI-unit usage from the CLI's own usage store via `scripts/collect-usage.py` -- agents cannot observe their own token spend, so nothing is self-reported.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # cost-budget
@@ -30,15 +31,20 @@ Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuc
                                      # 0.00 is a rate, not an absence - it makes every
                                      # USD figure compute as 0.00 and pass silently.
      max_usd_per_run: 25.00          # inert until usd_per_aiu is set
-     model_tiers:           # advisory preferences only; no runtime consumer
-       heavy: gpt-5.4
-       mid:   gpt-5-mini
-       light: gpt-4.1
+     model_tiers: {}        # optional advisory choices; no runtime resolver
    ```
 
    **Gate on AIU or tokens, not USD.** The runtime meters AI units; currency is a rate-card
    conversion it does not perform. A USD cap with no `usd_per_aiu` is inert — report it as
    inert rather than as `0.00`, which is what let the old gate pass every run silently.
+
+   **Minutes are informational.** `max_minutes_per_run` is a planning value,
+   not an enforced deadline. The collector gates tokens, AIU, and rated USD;
+   it has no minutes gate or watchdog. Elapsed wall-clock time is the difference
+   between run start and the current/end timestamp. Summed call `duration_ms`
+   is not elapsed runtime: calls can overlap, and idle time is not counted.
+   Do not derive a remaining run deadline from either value. Bound waits with
+   an explicitly established operation timeout instead.
 
 2. **Gates run start** (called by `dev-lead` before the first author runs):
    - If `cost_envelope.enabled` is **false** → ⚠️ warn ("cost gating disabled by profile") and skip every check below for the whole run. Record it in the final report so a run that was never gated cannot be mistaken for one that passed.
@@ -116,10 +122,14 @@ neither selects a model nor establishes its suitability or savings.
 
 `cost_envelope.model_tiers{}` records optional preferences only: no runtime code
 consumes it. This skill does not override native selection or automatically enforce
-`ai_copilot.approved_models`. Configure actual models through the runtime's native
-controls. This is not a cross-harness contract.
+`ai_copilot.approved_models`. Never set task models from the profile or pin shipped
+agents. This is not a cross-harness contract.
 
-See `references/tier-defaults.md` for historical recommendations, not executable defaults.
+For setup, first read **Manual native setup** and **Preference is not governance**
+in [tier-defaults.md](references/tier-defaults.md): consumer-owned `/subagents`
+preferred choices, proposal-only, with explicit user approval and manual configuration.
+Preserve overrides; no map leaves settings untouched. Preferred fallback may leave
+the approved list; CI checks static consistency only, not governance enforcement.
 
 ## Stop-report
 

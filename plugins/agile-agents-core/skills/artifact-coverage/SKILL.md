@@ -8,7 +8,8 @@ description: >-
   X", "where should this new skill live", auditing coverage after a stack change, or
   assessing an artifact found upstream. Demand-first — derive what the phases need
   before looking at what any source offers.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Artifact coverage

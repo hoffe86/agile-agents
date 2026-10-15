@@ -14,7 +14,8 @@ description: >-
   (that is `testing-practices`), Infrastructure-as-Code (that is
   `iac-best-practices` and the infrastructure agent), or reviewing someone
   else's diff (that is `code-review-checklist`).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Development practices

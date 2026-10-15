@@ -4,7 +4,8 @@ description: >-
   Cross-language testing fallback for the current author when no matching language testing skill is installed.
   Use for scoped test authoring, failure repair or coverage work using the repo's existing tools and conventions.
   Not a separate agent pipeline, a replacement for installed stack skills, or a review workflow.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Cross-language testing fallback

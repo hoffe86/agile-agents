@@ -44,6 +44,22 @@ required fields are populated, so bootstrapping first saves a stopped run later.
 
 Re-run it any time to repair or update the profile — it handles both.
 
+### Optional model preferences — you configure them
+
+`bootstrapper` can propose choices from your profile's advisory
+`cost_envelope.model_tiers` map. You explicitly approve and configure preferred
+models manually in the native `/subagents` UI; the harness never writes user/global
+settings or derives per-call task models from that map. Existing explicit choices
+and per-agent overrides win. A missing map leaves settings untouched, not forced
+inheritance. If a model is unavailable, bootstrapper reports it for you to choose;
+it never silently substitutes another approved model.
+
+**Preference is not governance:** profile order is not a native ordered-fallback
+guarantee, and preferred fallback may leave `ai_copilot.approved_models`. CI checks
+static consistency only, not runtime authorization. Required-policy and Auto
+interactions are unverified on CLI 1.0.98; no enforcement guarantee is claimed.
+See the [manual setup procedure and version caveats](plugins/agile-agents-core/skills/cost-budget/references/tier-defaults.md#manual-native-setup).
+
 ### Installing companions yourself
 
 `bootstrapper` derives these from your profile, so you rarely need to. To do it by hand:
@@ -288,7 +304,9 @@ Native fields such as `model`, `tools`, and `description` stay at the top level.
 Runtime-native settings govern actual model selection; no tier resolver or automatic
 `ai_copilot.approved_models` enforcement exists here. The optional
 `cost_envelope.model_tiers` profile map records preferences only: no runtime code
-consumes it. This annotation convention is Copilot-specific, not a cross-harness contract.
+consumes it. Use the [consumer-owned setup](#optional-model-preferences--you-configure-them)
+above; shipped agents have no `model` / `models` pins. This annotation convention is
+Copilot-specific, not a cross-harness contract.
 Tier values accept ordered nonempty lists of model IDs or legacy single strings.
 The existing frontmatter checker validates the root profile and shipped template:
 only `heavy` / `mid` / `light`, no duplicates, and each listed model must be in
@@ -330,8 +348,16 @@ offline: this does not enable live evaluation or change budget caps.
 `scripts/check-skill-frontmatter.py` requires string-to-string agent metadata, restricts
 the tier to `light` / `mid` / `heavy`, rejects legacy top-level tiers and nested native
 fields, and checks the core inventory and assignments. It does **not** apply the agent
-schema to `SKILL.md`; skill `applies_to` is unchanged. Its inline self-test fixtures
-cover invalid shapes/types and misplaced fields. `AgentMetadataTests` covers inventory
+string-map schema to `SKILL.md`: skill scope is now the nonempty string
+`metadata.applies_to`. Missing/non-mapping metadata, invalid scope, legacy top-level
+scope, duplicate YAML keys, and nested native skill fields fail validation. Unknown
+inherited metadata is preserved, including upstream `acquire-codebase-knowledge`'s
+version string and enhancements list; this is deliberately not full AgentSkills
+string-map conformance. Vendored drift ignores only this annotation within frontmatter
+(and a wrapper introduced solely for it), never body text or upstream scope collisions.
+Its inline self-test fixtures cover invalid shapes/types and misplaced fields.
+`SkillMetadataTests` and `VendoredNormalizationTests` cover scope validation and lossless
+comparison; `AgentMetadataTests` covers inventory
 mutations, native-model independence, and both generators' description handling:
 
 ```shell

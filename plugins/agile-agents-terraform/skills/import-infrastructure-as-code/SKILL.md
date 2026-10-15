@@ -1,7 +1,8 @@
 ---
 name: import-infrastructure-as-code
 description: 'Import existing Azure resources into Terraform using Azure CLI discovery and Azure Verified Modules (AVM). Use when asked to reverse-engineer live Azure infrastructure, generate Infrastructure as Code from existing subscriptions/resource groups/resource IDs, map dependencies, derive exact import addresses from downloaded module source, prevent configuration drift, and produce AVM-based Terraform files ready for validation and planning across any Azure resource type.'
-applies_to: azure, terraform
+metadata:
+  applies_to: azure, terraform
 ---
 
 # Import Infrastructure as Code (Azure -> Terraform with AVM)

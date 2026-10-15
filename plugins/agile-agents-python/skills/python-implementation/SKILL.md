@@ -1,7 +1,8 @@
 ---
 name: python-implementation
 description: Implement Python features end-to-end using current best practices (type hints, src layout, ruff-clean, modern stdlib, async where appropriate). USE FOR any request to write, add, modify, or refactor Python code, FastAPI/Flask endpoints, data scripts, CLI tools, async I/O, packaging (`pyproject.toml`), or any task that involves changing `.py` files, `pyproject.toml`, `requirements*.txt`, or `setup.cfg`.
-applies_to: python
+metadata:
+  applies_to: python
 ---
 
 # Python Implementation

@@ -1,7 +1,8 @@
 ---
 name: architecture-design
 description: Author or update a software/solution architecture design document. Produces a structured markdown deliverable with problem statement, NFRs, C4-style diagrams (Mermaid), component responsibilities, data flows, identity/network topology, failure modes, alternatives considered, and links to ADRs. Spans both application architecture and Azure solution architecture. USE FOR any request to "design", "architect", "propose", "evaluate", "compare", "decompose", or "review the architecture of" a system, feature, or service. Triggered by "architecture", "design doc", "high-level design", "HLD", "C4", "system design", "solution architecture".
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Architecture Design

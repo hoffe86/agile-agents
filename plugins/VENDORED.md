@@ -8,16 +8,31 @@ or contribute upstream.
 Vendored skills are spread across plugins — the **Plugin** column below is the
 one to check before re-syncing.
 
-**One sanctioned exception:** the `applies_to` frontmatter line. It is required on every
+**One sanctioned local modification:** the `metadata.applies_to` frontmatter annotation. It is required on every
 skill in this harness (see `.github/copilot-instructions.md` § Skill format) and upstream
 has no equivalent field, so it is added locally and must be re-applied after any re-sync.
-It is a one-line addition to frontmatter — nothing in the skill body is touched.
+Add it to the existing metadata mapping, or introduce a bare `metadata:` wrapper if
+none exists. Native fields and the skill body remain unchanged. The migration from
+top-level `applies_to` is authorized only for this annotation, not other vendor edits.
 
-**That is the only exception, and it stays that way on purpose.** `scripts/check-vendored-drift.ps1`
-compares each local copy with upstream and ignores exactly that line, so the check is meaningful
+**That is the only local modification, and it stays that way on purpose.** `scripts/check-vendored-drift.ps1`
+compares each local copy with upstream and ignores exactly that frontmatter annotation
+and a bare annotation-only wrapper absent upstream. It normalizes CRLF/LF only;
+other formatting, comments, native fields, upstream metadata and body differences remain
+drift. Upstream `applies_to` at either placement is a collision requiring manual triage,
+not something to strip. Malformed YAML and duplicate keys fail comparison.
+Write scope as a standalone, two-space-indented scalar line. The comparator fails
+closed on flow/block-scalar annotations or merged/aliased placements rather than
+reserializing YAML and concealing unrelated formatting changes.
+The check is meaningful
 only while the list of exceptions stays at one — a growing set of "documented local edits" turns a
 red result into noise people learn to skip. If a vendored skill needs improving, raise it upstream
 and record it below; do not edit it here.
+
+**Inherited metadata exception:** `acquire-codebase-knowledge` retains upstream's
+`metadata.version` string and `metadata.enhancements` list. Our narrow scope validator
+does not enforce full AgentSkills string-map conformance or rewrite unknown metadata.
+Preserving this inherited list is not an additional sanctioned local modification.
 
 ## Skill → Upstream
 

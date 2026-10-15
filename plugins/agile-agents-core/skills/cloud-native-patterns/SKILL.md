@@ -8,7 +8,8 @@ description: >-
   and IETF RFC 9457 (Problem Details) into agent-actionable defaults and
   anti-patterns. Loaded by coding (apply), review and
   architecture-reviewer (check).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Cloud-native patterns

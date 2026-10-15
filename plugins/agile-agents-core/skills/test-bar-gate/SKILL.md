@@ -2,7 +2,8 @@
 name: test-bar-gate
 description: >-
   Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after the implementation stage finishes and before the reviewer fan-out. The smoke slot runs by default for any runnable application, deriving the start command via whichever ecosystem startup-discovery skill is installed when the profile doesn't declare one. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 6 (Implement) and Stage 8 (Review).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Test-Bar Gate

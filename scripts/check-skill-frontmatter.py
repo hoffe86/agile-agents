@@ -25,8 +25,8 @@ Checks (all fatal):
   3. It is a mapping with non-empty `name` and `description`.
   4. Skills: `name` matches the containing directory (the CLI addresses skills
      by directory name; a mismatch makes the skill unaddressable).
-  5. Skills: `applies_to` is present — repo convention states a missing value
-     is a defect, not a default.
+  5. Skills: `metadata.applies_to` is a nonempty string; legacy placement,
+     duplicate keys, and nested native fields fail.
   6. Agents: `metadata` is a string-to-string mapping containing `model_tier`
      (light / mid / heavy). Legacy top-level tiers and nested native fields fail.
   7. Core agents: the ADR 0007 inventory and tier assignments are preserved.
@@ -34,7 +34,9 @@ Checks (all fatal):
      reference only declared approved models (not runtime model enforcement).
 
 Agent annotations are advisory. These checks neither select a runtime model nor
-enforce runtime approved-model selection. Skill metadata is not subject to the agent convention.
+enforce runtime approved-model selection. Skill metadata validation covers only
+the locally owned scope annotation, not full AgentSkills string-map conformance:
+inherited metadata (including upstream enhancement lists) is preserved.
 
 Usage:
   check-skill-frontmatter.py [repo-root]
@@ -78,6 +80,27 @@ NATIVE_AGENT_FIELDS = {
     "handoffs", "target", "infer", "user-invocable", "disable-model-invocation",
     "mcp-servers",
 }
+NATIVE_SKILL_FIELDS = {
+    "name", "description", "license", "compatibility", "allowed-tools",
+    "argument-hint", "user-invocable", "disable-model-invocation",
+}
+
+
+def inspect_skill_scope(data: dict) -> list[str]:
+    """Validate our annotation without imposing a schema on inherited metadata."""
+    defects = []
+    if "applies_to" in data:
+        defects.append("legacy top-level `applies_to`; use `metadata.applies_to`")
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        defects.append("missing or non-mapping `metadata`")
+    else:
+        scope = metadata.get("applies_to")
+        if not isinstance(scope, str) or not scope.strip():
+            defects.append("missing or invalid `metadata.applies_to` (expected a nonempty string)")
+        for field in sorted(NATIVE_SKILL_FIELDS.intersection(metadata)):
+            defects.append("native `%s` must remain top-level, not in `metadata`" % field)
+    return defects
 
 
 def inspect(path: str, kind: str, dirname: str | None = None,
@@ -91,7 +114,10 @@ def inspect(path: str, kind: str, dirname: str | None = None,
         return ["no `---` frontmatter block"]
 
     try:
-        data = yaml.safe_load(match.group(1))
+        if kind == "skill":
+            data = yaml.load(match.group(1), Loader=ProfileLoader)
+        else:
+            data = yaml.safe_load(match.group(1))
     except yaml.YAMLError as exc:
         detail = str(exc).replace("\n", " ")[:160]
         hint = ""
@@ -114,8 +140,7 @@ def inspect(path: str, kind: str, dirname: str | None = None,
         if isinstance(name, str) and dirname and name.strip() != dirname:
             defects.append("`name: %s` does not match its directory `%s`"
                            % (name.strip(), dirname))
-        if not data.get("applies_to"):
-            defects.append("missing `applies_to` (required on every skill)")
+        defects.extend(inspect_skill_scope(data))
 
     if kind == "agent":
         if "model_tier" in data:
@@ -302,14 +327,17 @@ def run(repo_root: str) -> int:
 # Each case plants one defect and asserts it is caught.
 
 SELF_TEST_CASES = [
-    ("valid", "---\nname: demo\ndescription: A fine description.\napplies_to: all\n---\n\nbody\n", 0),
+    ("valid", "---\nname: demo\ndescription: A fine description.\nmetadata:\n  applies_to: all\n---\n\nbody\n", 0),
     ("colon-space in plain scalar",
-     "---\nname: demo\ndescription: Load when `profile.yaml: key == x`.\napplies_to: all\n---\n\nbody\n", 1),
+     "---\nname: demo\ndescription: Load when `profile.yaml: key == x`.\nmetadata:\n  applies_to: all\n---\n\nbody\n", 1),
     ("no frontmatter", "# just a heading\n", 1),
-    ("empty description", "---\nname: demo\ndescription: ''\napplies_to: all\n---\n\nbody\n", 1),
-    ("missing applies_to", "---\nname: demo\ndescription: Fine.\n---\n\nbody\n", 1),
+    ("empty description", "---\nname: demo\ndescription: ''\nmetadata:\n  applies_to: all\n---\n\nbody\n", 1),
+    ("missing metadata", "---\nname: demo\ndescription: Fine.\n---\n\nbody\n", 1),
+    ("missing scope", "---\nname: demo\ndescription: Fine.\nmetadata: {}\n---\n\nbody\n", 1),
+    ("legacy scope", "---\nname: demo\ndescription: Fine.\napplies_to: all\n---\n\nbody\n", 1),
+    ("duplicate scope", "---\nname: demo\ndescription: Fine.\nmetadata:\n  applies_to: all\n  applies_to: python\n---\n", 1),
     ("name/dir mismatch",
-     "---\nname: other\ndescription: Fine.\napplies_to: all\n---\n\nbody\n", 1),
+     "---\nname: other\ndescription: Fine.\nmetadata:\n  applies_to: all\n---\n\nbody\n", 1),
     ("not a mapping", "---\n- just\n- a list\n---\n\nbody\n", 1),
 ]
 
@@ -401,8 +429,9 @@ def self_test() -> int:
                                       "; ".join(defects) if defects else "(clean)"))
         # Skill-standard metadata is not an agent schema; no model tier is required.
         with open(path, "w", encoding="utf-8") as handle:
-            handle.write("---\nname: demo\ndescription: Fine.\napplies_to: all\n"
-                         "metadata:\n  author: team\n---\n\nbody\n")
+            handle.write("---\nname: demo\ndescription: Fine.\n"
+                         "metadata:\n  applies_to: all\n  author: team\n"
+                         "  version: '1.3'\n  enhancements: [inherited]\n---\n\nbody\n")
         defects = inspect(path, "skill", "demo")
         ok = ok and not defects
         print("  %s  skill metadata without tier" % ("FAIL" if defects else "PASS"))

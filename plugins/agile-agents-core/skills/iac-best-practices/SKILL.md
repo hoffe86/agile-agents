@@ -1,7 +1,8 @@
 ---
 name: iac-best-practices
 description: Cross-cutting Infrastructure-as-Code best practices that apply regardless of tool (Bicep, Terraform, Helm, Kustomize, ARM, Pulumi) or cloud. Covers naming conventions, tagging, module composition, state/secret handling, idempotency, environment promotion, drift management, and well-architected alignment. USE FOR any IaC request to enforce or audit general best practices, or to decide on naming/tagging/structure. Platform-specific conventions and control ids come from that platform's own skill.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # IaC Best Practices (cross-cutting)

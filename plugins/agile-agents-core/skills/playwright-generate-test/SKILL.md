@@ -1,7 +1,8 @@
 ---
 name: playwright-generate-test
 description: 'Generate a Playwright test based on a scenario using Playwright MCP'
-applies_to: playwright
+metadata:
+  applies_to: playwright
 ---
 
 # Test Generation with Playwright MCP

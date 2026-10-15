@@ -14,7 +14,8 @@ description: >-
   the `test-reviewer` agent), IaC tests like Terratest / Pester (those belong to
   the infrastructure agent), or the pre-reviewer automated gate (that is
   `test-bar-gate`).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Testing practices

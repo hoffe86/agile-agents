@@ -8,7 +8,8 @@ description: >-
   framework, or platform. USE ON EVERY task that writes, reviews, or designs anything —
   code changes, reviews, architecture decisions, refactoring, IaC, CI/CD, documentation,
   naming. Load it silently and apply it; do not echo it back to the user.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Engineering Standards

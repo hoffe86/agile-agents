@@ -1,7 +1,8 @@
 ---
 name: architecture-decision-records
 description: Author Architecture Decision Records (ADRs) in whichever format the project declares — the `documentation.adr.format` key in solution-profile.yaml selects Nygard (Context / Decision / Consequences / Alternatives considered / References), MADR, a custom house shape, or none. Captures a single architecturally-significant decision with the forces behind it, what was chosen, what becomes true as a result (including the costs), which alternatives were rejected and why, and links to related decisions. USE FOR any request to "write an ADR", "document this decision", "capture the rationale for choosing X", or "we picked X over Y — record it". Triggered by "ADR", "decision record", "MADR", "architecture decision".
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Architecture Decision Records (ADRs)

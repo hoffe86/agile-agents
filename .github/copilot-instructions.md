@@ -295,7 +295,8 @@ Consequences worth preserving:
 20 of the 62 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
-them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
+them in place** — except for the sanctioned scope annotation below; extend via a wrapper
+skill, or contribute upstream and re-sync. The other
 42 are hand-written or adopted and are the ones to edit — 39 repo-scope
 (csharp/python-implementation, csharp/python-testing, dotnet/python-startup-discovery,
 development-practices, testing-practices, data-science-practices, data-engineering-practices, code-review-checklist, artifact-coverage,
@@ -314,14 +315,16 @@ re-sync will not supply them. What upstream does cover — and what is vendored 
 deployment preflight and Playwright test generation.
 
 `scripts/check-vendored-drift.ps1` fetches each entry and diffs it against the local copy,
-ignoring only the `applies_to` line. Run it before a re-sync; hand the result to
+ignoring only frontmatter `metadata.applies_to` and an annotation-only wrapper absent
+upstream. Other metadata, comments, native fields and body differences remain drift;
+upstream scope collisions require manual triage. Run it before a re-sync; hand the result to
 `capability-scout` to decide what is worth taking.
 
 ### Personal preferences are not shipped
 `trade-off-reporting`, `code-reviewer` and `cloud-native-patterns` once lived under a separate
 `user/skills/` folder, because that is where they were first written — a person's own
-`~/.copilot/skills/`. They now sit in `skills/` with everything else: all three are `applies_to:
-all` engineering skills that the agents rely on, none is a personal preference, and both paths were
+`~/.copilot/skills/`. They now sit in `skills/` with everything else: all three have
+`metadata.applies_to: all` and are engineering skills that the agents rely on, none is a personal preference, and both paths were
 bundled identically anyway. **Do not re-split them** — a second skills folder needs its own
 manifest entry, which is exactly the silent-drop failure the flat-layout rule above exists to
 prevent, and it left contributors with no rule for which folder a new skill belongs in.
@@ -400,13 +403,23 @@ The checker also validates advisory policy in the root profile and shipped templ
 single strings, without duplicates, and all listed IDs must be in the approved list.
 This static consistency check does not enforce runtime selection or automatic fallback.
 Keep this repo's seven IDs in its own profile; keep the shipped template generic.
+For optional setup, bootstrapper and the profile interview must read **Manual native
+setup** and **Preference is not governance** in
+`plugins/agile-agents-core/skills/cost-budget/references/tier-defaults.md`.
+Proposals come only from the consumer's map; the user approves and configures preferred
+models manually in `/subagents`. Preserve explicit choices and per-agent overrides;
+no map leaves settings untouched. No user/global settings writes, profile-derived task
+model overrides, or shipped `model` / `models` pins. Unavailable models are reported
+for the user to choose, never silently substituted. Preferred fallback may leave the
+approved list; static CI is not governance enforcement. Required-policy and Auto
+interactions remain unverified on CLI 1.0.98.
 The dogfood test bar uses `scripts/run-repo-checks.py lint|unit` with the active Python
 environment (`eval/deepeval/requirements.txt`) and `pwsh`; failures propagate immediately.
 Preserve the unittest/pytest split from CI, not blanket pytest discovery.
 
 ### Skill format
 Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`,
-`applies_to`). **`description` is what drives skill-invocation matching** — `applies_to` does
+`metadata.applies_to`). **`description` is what drives skill-invocation matching** — the scope annotation does
 not (see below). The frontmatter is followed by the workflow in natural language; reference
 files live in `<skill-name>/references/`, scripts in `<skill-name>/scripts/`.
 
@@ -437,13 +450,19 @@ regression, not to bless the current size. Raising one to make CI pass is metric
 (`engineering-judgement` §7) — trim the skill, or move detail into `references/`, which
 loads on demand rather than on trigger. See ADR 0014.
 
-`applies_to` declares the technology scope — `all` for a technique that holds in any
+`metadata.applies_to` declares the technology scope — `all` for a technique that holds in any
 ecosystem, otherwise a comma-separated list of the ecosystems it actually assumes
 (`dotnet`, `python`, `azure, terraform`, `kubernetes, helm, kustomize`, `docker`,
 `github-actions`, …). It is **required on every skill**; a missing value is a defect, not
-a default. The split today is 34 `all` / 26 scoped.
+a default. The split today is 36 `all` / 26 scoped.
 
-**Validation checks its presence; it does not control loading.** Like the agents'
+**Validation requires a nonempty string in a metadata mapping; it does not control loading.**
+Legacy top-level scope, duplicate YAML keys, and native skill fields nested in metadata
+are rejected. Native fields stay top-level. Only the locally owned scope annotation is
+validated: inherited metadata is not blanket-converted or subject to the agents'
+string-map rule. In particular, upstream `acquire-codebase-knowledge` retains its
+`metadata.version` string and `metadata.enhancements` list; this is not a claim of full
+AgentSkills string-map conformance. Like the agents'
 `metadata.model_tier`, it records intent rather than runtime selection policy.
 It is a local field that upstream has no equivalent
 for (which is why `plugins/VENDORED.md` lists it as the one sanctioned modification to a
@@ -456,7 +475,7 @@ The mechanism that genuinely limits what a project carries is therefore **the pl
 this field**: a Python project installs no `agile-agents-dotnet`, so those skills are not in its
 pool at all. That is why anything tied to one ecosystem belongs in a companion. Within a plugin,
 a scoped skill is still a live candidate for every task — so keep descriptions specific enough
-that a wrong match is unlikely, rather than relying on `applies_to` to prevent it.
+that a wrong match is unlikely, rather than relying on `metadata.applies_to` to prevent it.
 (Same reasoning as `microsoft/hve-core`'s `coding-standards` skills and
 `obra/superpowers-skills`' `languages:` field.)
 

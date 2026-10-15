@@ -1,7 +1,8 @@
 ---
 name: azure-platform-grounding
 description: Azure grounding for authoring and reviewing — Cloud Adoption Framework (CAF) resource naming abbreviations and required tags, Azure Verified Module (AVM) selection and pinning, secure-by-default resource settings, the five Well-Architected pillars as concrete Azure review checks, and the MCSB / CIS Azure control ids reviewers cite findings against. USE FOR naming or tagging an Azure resource, picking or pinning an AVM module, setting managed identity / Key Vault / private endpoint defaults, assessing an Azure design or diff against reliability / security / cost / operational excellence / performance, or citing a control id on an Azure finding. Triggered by "CAF naming", "resource abbreviation", "AVM", "Azure Verified Module", "Well-Architected", "WAF pillar", "MCSB", "CIS Azure", "landing zone".
-applies_to: azure
+metadata:
+  applies_to: azure
 ---
 
 # Azure platform grounding

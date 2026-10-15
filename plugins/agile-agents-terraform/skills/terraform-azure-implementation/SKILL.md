@@ -1,7 +1,8 @@
 ---
 name: terraform-azure-implementation
 description: Implement Azure-targeted Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) and HashiCorp + Microsoft style guides. USE FOR writing, modifying or migrating Terraform for a declared Azure target, with this capability installed. DO NOT USE for generic `.tf` files or non-Azure Terraform; Terraform syntax alone does not establish Azure applicability.
-applies_to: azure, terraform
+metadata:
+  applies_to: azure, terraform
 ---
 
 # Terraform (Azure) Implementation

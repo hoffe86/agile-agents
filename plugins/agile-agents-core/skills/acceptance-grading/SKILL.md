@@ -11,7 +11,8 @@ description: >-
   criteria, scoring an eval task, or any "did this work meet the stated bar" judgement.
   DO NOT USE FOR reviewing a diff destined for a real repository — that is the review
   agents and `reviewer-read-only-rules`.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Acceptance grading

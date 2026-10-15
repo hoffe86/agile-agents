@@ -1,7 +1,8 @@
 ---
 name: read-repo-context
 description: Canonical preamble every coding-suite agent loads at the start of a turn. Reads `.github/copilot-instructions.md` and equivalents, loads `.github/solution-profile.yaml`, applies `engineering-standards` + `engineering-judgement` + `trade-off-reporting`, and enforces the decision-record + decision-capture rules. Use as the first action in every coding, testing, infrastructure, architect, review, and reviewer agent. After loading, the agent applies its own role-tailored profile-field-honour list and conditional skills.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Read Repo Context
