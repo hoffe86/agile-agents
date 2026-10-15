@@ -327,7 +327,8 @@ the other 14 assignments are unchanged:
 The roster has 0 light, 4 mid, and 11 heavy agents; `light` remains a supported tier.
 
 **Dogfood test bar.** At repository root, activate a Python environment with
-`eval/deepeval/requirements.txt` installed and put `pwsh` on `PATH`. The profile's
+`eval/deepeval/requirements.lock.txt` hash-installed
+([setup and supported Python versions](eval/deepeval/README.md#run-it)) and put `pwsh` on `PATH`. The profile's
 `lint.command` and `unit_test.command` call `python scripts/run-repo-checks.py lint`
 and `python scripts/run-repo-checks.py unit`. The helper stops on any failed command
 or missing prerequisite. Unit checks use unittest for script, pipeline-workflow,

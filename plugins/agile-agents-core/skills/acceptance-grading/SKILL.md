@@ -21,8 +21,9 @@ You are deciding whether produced work meets a stated bar. Your output is a verd
 the evidence behind it — never a repair.
 
 Load **`reviewer-read-only-rules`** alongside this skill. This skill never authorizes
-unrestricted host execution. Live judging is disabled until an OS sandbox enforces
-credential-free, network-disabled access for both agent and judge processes.
+unrestricted host execution. Live judging remains disabled. Untrusted artifact workers
+require an OS sandbox without host credentials or external/host/control-plane networking;
+the separate model API control plane necessarily uses network and authentication.
 
 ## 1. Verify — do not infer
 
@@ -44,11 +45,14 @@ in the listing — look.
 
 An evaluation workspace being disposable does **not** make its files safe to execute.
 Do not run build, test, lint, render, or other workspace-provided commands on the host.
-Until a separately verified OS boundary denies credentials and network access, report
+HOME redirection, temporary directories and PATH filters are configuration hygiene, not
+OS isolation. Until a separately verified worker boundary exists, report
 behavioral criteria as `UNVERIFIED`; source inspection alone cannot establish execution.
 The current evaluation runners and judges fail closed without invoking a model or host
-tool. A future sandbox must also prohibit source edits, repair, dependency installation,
-and snapshot regeneration.
+tool. Dry staging certifies no execution readiness. Human plan approval remains a separate
+mandatory gate, not permission to bypass the hold. Task-local loopback/database policy is
+not yet approved. A future grading worker must also prohibit source edits, repair,
+dependency installation, and snapshot regeneration.
 
 If a build fails for an environmental reason (no toolchain, no network), that is
 `UNVERIFIED` (§5). It is not licence to fix the environment and try again.

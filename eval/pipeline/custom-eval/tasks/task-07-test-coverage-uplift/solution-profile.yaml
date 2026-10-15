@@ -33,10 +33,11 @@ quality_gates:
     typecheck:
       command: [dotnet, build, Reconciliation.slnx, --no-restore, -warnaserror]
     unit_test:
-      command: [dotnet, test, tests/Reconciliation.Tests/Reconciliation.Tests.csproj, --no-build]
+      # The solution builds production only; newly authored test projects need restore/build.
+      command: [dotnet, test, tests/Reconciliation.Tests/Reconciliation.Tests.csproj]
     integration_test:
       enabled: true
-      command: [dotnet, test, tests/Reconciliation.IntegrationTests/Reconciliation.IntegrationTests.csproj, --no-build]
+      command: [dotnet, test, tests/Reconciliation.IntegrationTests/Reconciliation.IntegrationTests.csproj]
     coverage:
       enabled: true
-      command: [dotnet, test, tests/Reconciliation.Tests/Reconciliation.Tests.csproj, --no-build, /p:CollectCoverage=true, /p:Threshold=90, /p:ThresholdType=line]
+      command: [dotnet, test, tests/Reconciliation.Tests/Reconciliation.Tests.csproj, /p:CollectCoverage=true, /p:Threshold=90, /p:ThresholdType=line]

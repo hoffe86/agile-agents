@@ -1,8 +1,9 @@
 """Exercise native scorers and runner scoring/summary segments with a local fake CLI.
 
 The production runners' human-approval block is tested separately, unmodified.
-Post-approval segments are executed as units with a fake dev-lead; no approval
-is fabricated, and no real model executable is reachable through the test PATH.
+Post-approval scoring segments are executed as units with a fake dev-lead; no approval
+is fabricated. PATH filtering and an empty HOME are configuration hygiene, not OS
+isolation. Only known test fakes run; generated artifacts must never execute here.
 """
 
 from __future__ import annotations
@@ -26,10 +27,51 @@ PWSH = shutil.which("pwsh")
 if PWSH:
     PWSH = str(Path(PWSH).resolve())
 
+FAKE_ARGUMENTS = ["--prompt", "two words", "Grüße 東京", """'"; & | < > $HOME `echo` * ?"""]
+
 
 def execute(argv, env):
     return subprocess.run([str(a) for a in argv], env=env, text=True, capture_output=True,
                           encoding="utf-8", errors="replace", timeout=90)
+
+
+def write_unix_launcher(executable, script):
+    executable.write_text(
+        f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" "{script.as_posix()}" "$@"\n',
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+
+
+def verify_fake_cli(native, env, executable, counter):
+    """Fail setup before any runner test if the known fake cannot round-trip argv."""
+    resolved = shutil.which("copilot", path=env["PATH"])
+    assert resolved and Path(resolved).resolve() == executable.resolve(), (
+        "fake CLI missing or shadowed; refusing ambient Copilot fallback"
+    )
+    probe_env = dict(env, FAKE_EXPECTED=str(executable), FAKE_COUNTER=str(counter),
+                     FAKE_ARGUMENTS=json.dumps(FAKE_ARGUMENTS))
+    if native == "powershell":
+        command = [
+            PWSH, "-NoProfile", "-Command",
+            "$ErrorActionPreference = 'Stop'; "
+            "$resolved = (Get-Command copilot -CommandType Application).Source; "
+            "if ($resolved -ne $env:FAKE_EXPECTED) { exit 98 }; "
+            "$fakeArgs = @(ConvertFrom-Json $env:FAKE_ARGUMENTS); "
+            "& $resolved @fakeArgs; exit $LASTEXITCODE",
+        ]
+    else:
+        command = [
+            BASH, "--noprofile", "--norc", "-c",
+            'resolved="$(command -v copilot)" || exit 98; '
+            '[[ "$resolved" -ef "$1" ]] || exit 98; shift; exec "$resolved" "$@"',
+            "fake-probe", executable.as_posix(), *FAKE_ARGUMENTS,
+        ]
+    proc = execute(command, probe_env)
+    assert proc.returncode == 99, f"fake CLI sentinel missing: {proc.stdout}{proc.stderr}"
+    assert counter.is_file(), "fake CLI did not record arguments"
+    calls = [json.loads(line) for line in counter.read_text(encoding="utf-8").splitlines()]
+    assert calls == [FAKE_ARGUMENTS], f"fake CLI changed arguments: {calls!r}"
 
 
 def isolated_command_path(bin_dir, commands_dir, command_paths):
@@ -86,8 +128,7 @@ def fake_cli(tmp_path, shell_commands):
         assert executable.is_file()
     else:
         executable = bin_dir / "copilot"
-        executable.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}"\n', encoding="utf-8")
-        executable.chmod(0o700)
+        write_unix_launcher(executable, script)
     env = os.environ.copy()
     safe_dirs = [str(Path(sys.executable).resolve().parent), str(shell_commands)]
     real_copilot = shutil.which("copilot")
@@ -99,16 +140,61 @@ def fake_cli(tmp_path, shell_commands):
     env["FAKE_COUNTER"] = str(tmp_path / "calls.txt")
     env["FAKE_RESPONSES"] = "[]"
     env["DEEPEVAL_TELEMETRY_OPT_OUT"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     home = tmp_path / "empty-home"
     home.mkdir()
     env["HOME"] = env["USERPROFILE"] = str(home)
-    # No real credentials are available to these subprocesses.
+    # Remove common credential variables; this is not a credential/OS sandbox.
     for name in ("GH_TOKEN", "GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN", "OPENAI_API_KEY"):
         env.pop(name, None)
     for name in ("BASH_ENV", "ENV"):
         env.pop(name, None)
-    assert Path(shutil.which("copilot", path=env["PATH"])).resolve() == executable.resolve()
+    for native in ("powershell", "bash"):
+        verify_fake_cli(native, env, executable, tmp_path / f"preflight-{native}.jsonl")
     return env
+
+
+@pytest.mark.parametrize("native", ["powershell", "bash"])
+def test_fake_cli_native_invocation_preserves_exact_arguments(native, fake_cli, tmp_path):
+    executable = Path(shutil.which("copilot", path=fake_cli["PATH"]))
+    verify_fake_cli(native, fake_cli, executable, tmp_path / "positive.jsonl")
+
+
+def test_unix_fake_launcher_preserves_arguments_even_on_windows(fake_cli, tmp_path):
+    # Exercise the Unix wrapper under Git Bash too, not only on Linux CI.
+    bin_dir = tmp_path / "unix-bin"
+    bin_dir.mkdir()
+    executable = bin_dir / "copilot"
+    write_unix_launcher(executable, tmp_path / "bin/copilot.py")
+    counter = tmp_path / "unix.jsonl"
+    env = dict(fake_cli, FAKE_COUNTER=str(counter))
+    # Windows command discovery deliberately requires the real .exe; invoke only
+    # this known Unix wrapper explicitly, without relaxing the fixture's preflight.
+    proc = execute([BASH, executable.as_posix(), *FAKE_ARGUMENTS], env)
+    assert proc.returncode == 99, proc.stdout + proc.stderr
+    assert [json.loads(line) for line in counter.read_text(encoding="utf-8").splitlines()] == [
+        FAKE_ARGUMENTS,
+    ]
+
+
+@pytest.mark.parametrize("native", ["powershell", "bash"])
+@pytest.mark.parametrize("failure", ["missing", "broken", "shadowed"])
+def test_unusable_fake_fails_setup_without_ambient_fallback(native, failure, fake_cli, tmp_path):
+    executable = Path(shutil.which("copilot", path=fake_cli["PATH"]))
+    if failure == "missing":
+        executable.rename(executable.with_suffix(".disabled"))
+    elif failure == "broken":
+        executable.write_bytes(b"not-a-valid-fake-cli\n")
+    else:
+        # A resolvable command is insufficient: it must be this fixture's fake.
+        executable = tmp_path / "other-bin" / executable.name
+    counter = tmp_path / "unusable.jsonl"
+
+    with pytest.raises(AssertionError, match="fake CLI"):
+        verify_fake_cli(native, fake_cli, executable, counter)
+
+    assert not counter.exists(), "setup invoked a different CLI"
+    assert not Path(fake_cli["FAKE_COUNTER"]).exists()
 
 
 def test_missing_python_path_excludes_shared_host_command_directories(tmp_path):
@@ -181,6 +267,8 @@ def test_live_runner_fails_closed_before_staging_or_cli(native, fake_cli, tmp_pa
     proc = execute(command, fake_cli)
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "OS sandbox" in proc.stderr
+    assert "untrusted artifact workers" in proc.stderr
+    assert "not execution-readiness certification" in proc.stderr
     assert not output_root.exists(), "live runner staged files before failing closed"
     assert not Path(fake_cli["FAKE_COUNTER"]).exists(), "live runner invoked the fake CLI"
 
@@ -206,6 +294,18 @@ def test_dry_run_stages_offline_without_invoking_cli(native, fake_cli, tmp_path)
     run_dirs = list(output_root.iterdir())
     assert len(run_dirs) == 1
     summary = json.loads((run_dirs[0] / "summary.json").read_text(encoding="utf-8-sig"))
+    from provenance import read_json, identity, binding
+
+    manifest = read_json(run_dirs[0] / "run-provenance.json")
+    context = manifest["context"]
+    assert context["run_id"] == summary["run_id"]
+    assert context["selected_task_ids"] == [task["id"] for task in summary["tasks"]]
+    assert manifest["context_sha256"] == identity(context)
+    assert manifest["result_bindings"] == [binding(run_dirs[0] / "summary.json", context, None)]
+    assert context["toolchain"]["native_version"]
+    assert context["toolchain"]["copilot_cli"] is None
+    assert context["models"]["observed"] == {}
+    assert context["execution"]["execution_ready"] is False
     assert summary["dry_run"] is True
     assert summary["tasks"][0]["status"] == "skipped"
     assert "unavailable OS sandbox" in summary["live_run_status"]
@@ -220,10 +320,13 @@ def test_native_scorers_disable_host_judging_and_emit_unverified(
     command = scorer_command(native, ws, acceptance, result)
     if native == "powershell":
         command += ["-BaselineDirectory", baseline]
+        command += ["-JudgeModel", "offline-requested-judge"]
     elif native == "bash":
         command += ["--baseline-dir", baseline]
+        command += ["--model", "offline-requested-judge"]
     else:
         command += ["--baseline-dir", baseline]
+        command += ["--model", "offline-requested-judge"]
     (ws / "src").mkdir(exist_ok=True)
     (ws / "src" / "Credential.cs").write_text(
         'class C { const string Token = "ghp_fixtureNotARealCredential_1234567890"; }',
@@ -241,6 +344,11 @@ def test_native_scorers_disable_host_judging_and_emit_unverified(
     assert row["claimed_verdict"] == "UNVERIFIED"
     assert row["criteria"] == [{"id": 1, "status": "UNVERIFIED"}]
     assert row["raw_response_persisted"] is False
+    provenance = json.loads(result.with_name(result.name + ".provenance.json").read_text())
+    assert provenance["context"]["models"]["requested"]["judge"] == "offline-requested-judge"
+    assert provenance["context"]["models"]["observed"] == {}
+    assert provenance["result_bindings"][0]["task_id"] == ws.name
+    assert provenance["result_bindings"][0]["run_id"] == ws.parent.parent.name
 
 
 @pytest.mark.parametrize("native", ["powershell", "bash", "deepeval"])
@@ -281,10 +389,15 @@ def scoring_unit(native, tmp_path, env, statuses):
     sys.path.insert(0, str(PIPELINE / "custom-eval"))
     from prepare_inputs import prepare
 
-    run = tmp_path / "run"
+    run = tmp_path / "offline-unit"
     run.mkdir()
     task = PIPELINE / "custom-eval/tasks/task-10-helm-to-kustomize"
     prepared = prepare(task, run / "ws" / task.name, run / "baseline" / task.name)
+    from provenance import build_context, identity, manifest, write_json
+
+    context = build_context(ROOT, run.name, [task.name], agent="offline-agent",
+                            judge="offline-judge", scorer="both")
+    write_json(run / "run-provenance.json", manifest(context))
     Path(prepared["workspace"], "README.md").write_text("produced", encoding="utf-8")
     env["FAKE_RESPONSES"] = json.dumps([{"text": response} for response in statuses])
     if native == "powershell":
@@ -300,6 +413,7 @@ $repoRoot = '{ROOT}'
 $scoringScriptRoot = '{PIPELINE}'
 $runDir = '{run}'
 $runId = 'offline-unit'
+$provenanceContext = '{identity(context)}'
 $Suite = 'custom-eval'
 $Scorer = 'both'
 $DryRun = $false
@@ -332,6 +446,7 @@ REPO_ROOT='{ROOT.as_posix()}'
 SCRIPT_DIR='{PIPELINE.as_posix()}'
 RUN_DIR='{run.as_posix()}'
 RUN_ID='offline-unit'
+PROVENANCE_CONTEXT='{identity(context)}'
 SUITE='custom-eval'
 EVAL_SCORER='both'
 DRY_RUN=0
@@ -383,6 +498,8 @@ def test_native_preparation_exit_two_is_setup_error_not_partial_and_keeps_all_ta
     suite.mkdir(parents=True)
     for name in ("run-eval.ps1", "run-eval.sh"):
         shutil.copy2(PIPELINE / name, pipeline / name)
+    for name in ("provenance.py", "grading.py"):
+        shutil.copy2(ROOT / "eval" / name, root / "eval" / name)
     if invalid_json:
         (suite / "prepare_inputs.py").write_text(
             "print('not json')\nraise SystemExit(2)\n", encoding="utf-8",
@@ -404,6 +521,9 @@ def test_native_preparation_exit_two_is_setup_error_not_partial_and_keeps_all_ta
     assert proc.returncode == 2, proc.stdout + proc.stderr
     summary = json.loads(next(output.glob("*/summary.json")).read_text(encoding="utf-8-sig"))
     assert summary["total"] == summary["setup_error_count"] == 2
+    manifest = json.loads(next(output.glob("*/run-provenance.json")).read_text(encoding="utf-8-sig"))
+    assert manifest["context"]["selected_task_ids"] == ["task-bad", "task-good"]
+    assert manifest["result_bindings"][-1]["reference"] == "summary.json"
     assert summary["partial"] == summary["failed"] == summary["unverified"] == 0
     assert {t["status"] for t in summary["tasks"]} == {"setup_error"}
     if not invalid_json:
@@ -447,6 +567,10 @@ def test_native_missing_python_setup_preserves_full_suite_denominator(
     assert proc.returncode == 2, proc.stdout + proc.stderr
     summary = json.loads(next(output.glob("*/summary.json")).read_text(encoding="utf-8-sig"))
     assert summary["total"] == summary["setup_error_count"] == 10
+    manifest = json.loads(next(output.glob("*/run-provenance.json")).read_text(encoding="utf-8-sig"))
+    assert manifest["attribution"] == "unavailable"
+    assert manifest["reason"] == "python_unavailable"
+    assert manifest["result_bindings"] == []
     assert len(summary["tasks"]) == 10
     assert summary["run_status"] == "setup_error"
     assert {task["status"] for task in summary["tasks"]} == {"setup_error"}
@@ -468,6 +592,9 @@ def test_full_native_runner_dry_run_stages_all_tasks_without_model_calls(native,
     summary_path = next(output.glob("*/summary.json"))
     summary = json.loads(summary_path.read_text(encoding="utf-8-sig"))
     assert summary["total"] == 10
+    manifest = json.loads((summary_path.parent / "run-provenance.json").read_text(encoding="utf-8-sig"))
+    assert len(manifest["context"]["selected_task_ids"]) == 10
+    assert manifest["context"]["selected_task_ids"] == sorted(t["id"] for t in summary["tasks"])
     assert summary["skipped"] == 10
     assert summary["resolved"] == summary["partial"] == summary["failed"] == summary["unverified"] == 0
     assert not Path(fake_cli["FAKE_COUNTER"]).exists(), "dry-run called a model"
@@ -488,4 +615,72 @@ def test_full_native_runner_blocks_live_evaluation_before_cli_or_staging(native,
     assert proc.returncode == 2
     assert "live evaluation is disabled" in (proc.stdout + proc.stderr).lower()
     assert not output.exists()
+    assert not Path(fake_cli["FAKE_COUNTER"]).exists()
+
+
+@pytest.mark.parametrize("native", ["powershell", "bash"])
+def test_two_native_dry_runs_have_independent_bindings(native, tmp_path, fake_cli):
+    from provenance import read_json, finalize
+
+    output = tmp_path / "output"
+    if native == "powershell":
+        argv = [PWSH, "-NoProfile", "-File", PIPELINE / "run-eval.ps1",
+                "-Suite", "custom-eval", "-TaskFilter", "task-01", "-DryRun", "-OutputRoot", output]
+    else:
+        argv = [BASH, (PIPELINE / "run-eval.sh").as_posix(), "--suite", "custom-eval",
+                "--task-filter", "task-01", "--dry-run", "--output-root", output.as_posix()]
+    first = execute(argv, fake_cli)
+    assert first.returncode == 0, first.stdout + first.stderr
+    second = execute(argv, fake_cli)
+    assert second.returncode == 0, second.stdout + second.stderr
+    runs = sorted(output.iterdir())
+    assert len(runs) == 2
+    first_context = read_json(runs[0] / "run-provenance.json")["context"]
+    second_context = read_json(runs[1] / "run-provenance.json")["context"]
+    assert first_context["run_id"] != second_context["run_id"]
+    assert first_context["tasks"] == second_context["tasks"]
+    shutil.copyfile(runs[0] / "summary.json", runs[1] / "summary.json")
+    with pytest.raises(ValueError, match="inventory mismatch"):
+        finalize(runs[1], second_context)
+    assert not Path(fake_cli["FAKE_COUNTER"]).exists()
+
+
+@pytest.mark.parametrize("native", ["powershell", "bash"])
+def test_native_custom_output_siblings_do_not_contaminate_source_identity(native, tmp_path, fake_cli):
+    from provenance import read_json
+
+    # Copy only known harness inputs, never retained runs/environments/research.
+    repo = tmp_path / "repo"
+    files = [
+        "eval/provenance.py", "eval/grading.py", "eval/pipeline/run-eval.ps1",
+        "eval/pipeline/run-eval.sh", "eval/pipeline/custom-eval/prepare_inputs.py",
+        "eval/deepeval/requirements.lock.txt", "eval/deepeval/requirements-yaml.lock.txt",
+        "plugins/agile-agents-core/skills/acceptance-grading/SKILL.md",
+    ]
+    for name in files:
+        target = repo / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / name, target)
+    task_id = "task-01-csharp-minimal-api-endpoint"
+    shutil.copytree(PIPELINE / "custom-eval/tasks" / task_id,
+                    repo / "eval/pipeline/custom-eval/tasks" / task_id)
+    output = repo / "eval/custom-output"
+    if native == "powershell":
+        argv = [PWSH, "-NoProfile", "-File", repo / "eval/pipeline/run-eval.ps1",
+                "-Suite", "custom-eval", "-TaskFilter", "task-01", "-DryRun", "-OutputRoot", output]
+    else:
+        argv = [BASH, (repo / "eval/pipeline/run-eval.sh").as_posix(), "--suite", "custom-eval",
+                "--task-filter", "task-01", "--dry-run", "--output-root", output.as_posix()]
+    first = execute(argv, fake_cli)
+    assert first.returncode == 0, first.stdout + first.stderr
+    first_run, = output.iterdir()
+    before = read_json(first_run / "run-provenance.json")["context"]["harness"]
+    (first_run / "summary.json").write_text('{"retained":"changed"}', encoding="utf-8")
+    second = execute(argv, fake_cli)
+    assert second.returncode == 0, second.stdout + second.stderr
+    second_run, = [path for path in output.iterdir() if path != first_run]
+    after = read_json(second_run / "run-provenance.json")["context"]["harness"]
+    assert before["files"] == after["files"]
+    assert before["source_fingerprint"] == after["source_fingerprint"]
+    assert not any(name.startswith("eval/custom-output/") for name in after["files"])
     assert not Path(fake_cli["FAKE_COUNTER"]).exists()

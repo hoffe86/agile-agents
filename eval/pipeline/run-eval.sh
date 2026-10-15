@@ -95,7 +95,7 @@ if [[ ! "$PASS_THRESHOLD" =~ ^[0-9]{1,3}$ ]] || (( 10#$PASS_THRESHOLD > 100 )); 
     exit 2
 fi
 if [[ "$DRY_RUN" != "1" ]]; then
-    echo "ERROR: live evaluation is disabled until an OS sandbox enforces credential-free, network-disabled access for both agent and judge processes. Use --dry-run for offline staging and preflight." >&2
+    echo "ERROR: live evaluation is disabled: no verified OS sandbox for untrusted artifact workers (no host credentials or external/host/control-plane network). Use --dry-run for offline staging and preflight, not execution-readiness certification." >&2
     exit 2
 fi
 
@@ -173,13 +173,17 @@ run_isolated() {
 score_status() {
     local code="$1" result="${2:-}" acceptance="${3:-}"
     if [[ -n "$result" ]]; then
-        python "${REPO_ROOT}/eval/grading.py" --result-status "$result" --exit-code "$code" --acceptance "$acceptance" || echo setup_error
+        python "${REPO_ROOT}/eval/grading.py" --result-status "$result" --exit-code "$code" --acceptance "$acceptance" --run-dir "$RUN_DIR" --expected-context "$PROVENANCE_CONTEXT" --task-id "$id" || echo setup_error
     else
         case "$code" in
-            0) echo resolved ;; 1) echo failed ;; 2) echo partial ;;
+            1) echo failed ;;
             3) echo unverified ;; *) echo setup_error ;;
         esac
     fi
+}
+
+complete_provenance() {
+    python "${REPO_ROOT}/eval/provenance.py" finish --run-dir "$RUN_DIR" --expected-context "$PROVENANCE_CONTEXT"
 }
 
 # --- dev-lead invocation -----------------------------------------------------
@@ -247,9 +251,10 @@ if [[ ${#FILTERED_IDS[@]} -eq 0 ]]; then
 fi
 
 # --- Set up run folder -------------------------------------------------------
-RUN_ID="$(date +%Y%m%d-%H%M%S)-${SUITE}"
+RUN_ID="$(date +%Y%m%d-%H%M%S)-${SUITE}-${BASHPID}-${RANDOM}-${RANDOM}"
 RUN_DIR="${OUTPUT_ROOT}/${RUN_ID}"
-mkdir -p "$RUN_DIR"
+mkdir -p "$OUTPUT_ROOT"
+mkdir "$RUN_DIR"
 
 if [[ "$NO_ISOLATION" != "1" && "$DRY_RUN" != "1" ]]; then
     ISOLATED_HOME="${RUN_DIR}/.copilot-home"
@@ -275,12 +280,11 @@ echo ""
 
 # Stage all selected fixtures before any agent invocation. The helper validates every
 # profile and declared source/destination path before creating any task workspace.
-if [[ "$SUITE" == "custom-eval" ]]; then
-    command -v python >/dev/null 2>&1 || {
+command -v python >/dev/null 2>&1 || {
         echo "SETUP ERROR: python is required to preflight and stage custom-eval fixtures." >&2
         # No interpreter is available: serialize the known task ids with Bash
         # escaping rather than dropping the selected-suite denominator.
-        rows=""
+        rows=""; selected=""
         for id in "${FILTERED_IDS[@]}"; do
             escaped="${id//\\/\\\\}"
             escaped="${escaped//\"/\\\"}"
@@ -288,12 +292,26 @@ if [[ "$SUITE" == "custom-eval" ]]; then
             escaped="${escaped//$'\r'/\\r}"
             escaped="${escaped//$'\t'/\\t}"
             rows+="{\"id\":\"$escaped\",\"status\":\"setup_error\"},"
+            selected+="\"$escaped\","
         done
         rows="${rows%,}"
-        printf '{"suite":"custom-eval","run_id":"%s","run_status":"setup_error","total":%s,"setup_error_count":%s,"resolved":0,"partial":0,"failed":0,"unverified":0,"skipped":0,"blocked_approval_count":0,"dry_run":%s,"tasks":[%s],"setup_errors":["python is required"]}\n' \
-            "$RUN_ID" "${#FILTERED_IDS[@]}" "${#FILTERED_IDS[@]}" "$([[ "$DRY_RUN" == 1 ]] && echo true || echo false)" "$rows" > "${RUN_DIR}/summary.json"
+        selected="${selected%,}"
+        printf '{"suite":"%s","run_id":"%s","run_status":"setup_error","total":%s,"setup_error_count":%s,"resolved":0,"partial":0,"failed":0,"unverified":0,"skipped":0,"blocked_approval_count":0,"dry_run":%s,"tasks":[%s],"setup_errors":["python is required"]}\n' \
+            "$SUITE" "$RUN_ID" "${#FILTERED_IDS[@]}" "${#FILTERED_IDS[@]}" "$([[ "$DRY_RUN" == 1 ]] && echo true || echo false)" "$rows" > "${RUN_DIR}/summary.json"
+        printf '{"schema_version":1,"attribution":"unavailable","reason":"python_unavailable","run_id":"%s","selected_task_ids":[%s],"result_bindings":[]}\n' \
+            "$RUN_ID" "$selected" > "${RUN_DIR}/run-provenance.json"
         exit 2
-    }
+}
+provenance_args=("${REPO_ROOT}/eval/provenance.py" start --run-dir "$RUN_DIR" --run-id "$RUN_ID"
+    --output-root "$OUTPUT_ROOT"
+    --suite "$SUITE" --agent "$AGENT_MODEL" --judge "$JUDGE_MODEL" --scorer "$EVAL_SCORER"
+    --native bash --native-version "$BASH_VERSION")
+for id in "${FILTERED_IDS[@]}"; do provenance_args+=(--task-id "$id"); done
+PROVENANCE_CONTEXT="$(python "${provenance_args[@]}")" || {
+    echo "Cannot capture run provenance; no staging or execution." >&2
+    exit 2
+}
+if [[ "$SUITE" == "custom-eval" ]]; then
     prepare_args=("${SUITE_ROOT}/prepare_inputs.py" --suite-root "$SUITE_ROOT" --run-dir "$RUN_DIR")
     for id in "${FILTERED_IDS[@]}"; do
         prepare_args+=(--task-id "$id")
@@ -332,6 +350,7 @@ with open(sys.argv[4], "w", encoding="utf-8") as output:
     json.dump(summary, output, indent=2)
     output.write("\n")
 ' "${RUN_DIR}/preflight.json" "$RUN_ID" "$DRY_RUN" "${RUN_DIR}/summary.json" "${FILTERED_IDS[@]}"
+        complete_provenance
         echo "SETUP ERROR — no agent or judge was invoked. See ${RUN_DIR}/preflight.json."
         exit 2
     fi
@@ -356,6 +375,7 @@ with open(output_path, "w", encoding="utf-8") as output:
     json.dump(summary, output, indent=2)
     output.write("\n")
 ' "${FILTERED_IDS[@]}" "$RUN_ID" "${RUN_DIR}/summary.json"
+    complete_provenance
     for id in "${FILTERED_IDS[@]}"; do
         printf '[blocked_approval] mandatory human plan approval cannot be supplied by this noninteractive runner.\n' > "${RUN_DIR}/${id}.log"
     done
@@ -473,15 +493,17 @@ print(json.dumps(dict(task=sys.argv[1],shell=sys.argv[2],deepeval=sys.argv[3],
 import json,sys
 from pathlib import Path
 root=Path(sys.argv[3])
+sys.path.insert(0, str(Path(sys.argv[4]) / "eval"))
+from provenance import load_expected
+from grading import retained_result
+context=load_expected(root, sys.argv[5])
+acceptance=Path(sys.argv[4]) / "eval/pipeline/custom-eval/tasks" / sys.argv[1] / "acceptance.md"
 grading={}
 for scorer in ("shell","deepeval"):
     path=root / (sys.argv[1]+"."+scorer+".json")
-    try:
-        grading[scorer]=json.loads(path.read_text(encoding="utf-8"))
-    except (OSError,ValueError):
-        grading[scorer]=None
+    grading[scorer]=retained_result(path, context, sys.argv[1], acceptance)
 print(json.dumps(dict(id=sys.argv[1],status=sys.argv[2],grading=grading)))
-' "$id" "$status" "$RUN_DIR"),"$'\n'
+' "$id" "$status" "$RUN_DIR" "$REPO_ROOT" "$PROVENANCE_CONTEXT"),"$'\n'
     echo "$status"
 done
 
@@ -515,7 +537,7 @@ cat > "${RUN_DIR}/summary.json" <<EOF
   "agent_model": "${AGENT_MODEL}",
   "judge_model": "${JUDGE_MODEL}",
   "isolated": $([[ -n "$ISOLATED_HOME" ]] && echo true || echo false),
-  "mcp_servers": "$([[ -n "$ISOLATED_HOME" ]] && echo "plugin-declared only" || echo "plugin-declared + user config")",
+  "mcp_servers": "$([[ "$DRY_RUN" == 1 ]] && echo "not invoked" || { [[ -n "$ISOLATED_HOME" ]] && echo "plugin-declared only" || echo "plugin-declared + user config"; })",
   "resolved_pct": ${PCT},
   "partial_pct": ${PARTIAL_PCT},
   "failed_pct": ${FAILED_PCT},
@@ -528,6 +550,8 @@ ${TASK_RESULTS_JSON}
   ]
 }
 EOF
+
+complete_provenance
 
 if [[ $SCORER_TOTAL -gt 0 ]]; then
     echo ""

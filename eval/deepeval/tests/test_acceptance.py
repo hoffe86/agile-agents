@@ -266,9 +266,8 @@ def test_live_judge_is_disabled_before_process_execution_even_with_sensitive_inp
     assert not calls
 
 
-def test_metric_is_a_real_deepeval_metric_when_available():
+def test_metric_is_a_real_deepeval_metric_when_available(deepeval_module):
     """DeepEval type-checks with isinstance, so duck typing is not enough."""
-    deepeval = pytest.importorskip("deepeval", reason="DeepEval not installed")
     from deepeval.metrics import BaseMetric
 
     assert issubclass(AcceptanceMetric, BaseMetric)

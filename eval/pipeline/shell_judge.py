@@ -12,9 +12,21 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from grading import (  # noqa: E402
-    GradingArgumentParser, acceptance_count, environment_error, immutable_inputs,
+    GradingArgumentParser, acceptance_count, build_grading_prompt, environment_error, immutable_inputs,
     self_test, verification_disabled, write_result,
 )
+
+
+def build_judge_prompt(
+    acceptance_text: str, artifacts: str, originals: str = "", *,
+    plugin_dirs: list[str | Path] | None = None,
+    prompt_template: Path | None = None,
+) -> str:
+    """Offline composition only; the live CLI below remains fail-closed."""
+    return build_grading_prompt(
+        acceptance_text, artifacts, originals,
+        plugin_dirs=plugin_dirs, prompt_template=prompt_template,
+    )
 
 
 def main() -> int:
@@ -45,7 +57,12 @@ def main() -> int:
         result = verification_disabled(expected)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         result = environment_error("evaluation inputs failed trusted-origin validation", "setup")
-    write_result(result, args.result_json)
+    try:
+        write_result(result, args.result_json, workspace=args.workspace,
+                     acceptance=args.acceptance, scorer="shell", judge_model=args.model)
+    except (OSError, ValueError, KeyError, TypeError):
+        print("provenance retention failed; result is unattributed", file=sys.stderr)
+        return 4
     return result.exit_code
 
 

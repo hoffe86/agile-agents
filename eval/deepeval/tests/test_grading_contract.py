@@ -132,6 +132,46 @@ def test_metric_never_succeeds_for_unverified_even_at_permissive_threshold(tmp_p
     assert metric.measure(case) == 0 and not metric.is_successful()
 
 
+@pytest.mark.parametrize("threshold", [0, 1])
+def test_task10_ingress_uncertainty_denies_resolved_and_metric_credit(tmp_path, monkeypatch, threshold):
+    from metrics import acceptance
+
+    acceptance_path = Path(__file__).resolve().parents[2] / (
+        "pipeline/custom-eval/tasks/task-10-helm-to-kustomize/acceptance.md"
+    )
+    expected = acceptance_count(acceptance_path.read_text(encoding="utf-8"))
+    assert expected == 5
+    response = (
+        "1. PASS - fixture evidence\n"
+        "2. UNVERIFIED - Six-resource original has no Ingress; PUBLIC_BASE_URL cannot prove ingress-host equivalence.\n"
+        "3. PASS - fixture evidence\n"
+        "4. PASS - fixture evidence\n"
+        "5. PASS - fixture evidence\n"
+        "VERDICT: RESOLVED"
+    )
+    result = parse_result(response, expected)
+    assert result.claimed_verdict == "RESOLVED"
+    assert result.verdict is Verdict.UNVERIFIED and result.exit_code == 3
+    assert len(result.criteria) == expected and not result.complete
+    assert result.criteria[1]["status"] == "UNVERIFIED"
+    assert "PUBLIC_BASE_URL" in result.criteria[1]["reason"]
+    assert result.unverified and result.score == 0
+    monkeypatch.setattr(acceptance, "run_judge", lambda *a, **kw: result)
+    metric = acceptance.AcceptanceMetric(acceptance_path, threshold=threshold)
+    case = type("Case", (), {"actual_output": str(tmp_path)})()
+    assert metric.measure(case) == 0 and not metric.is_successful()
+    assert "UNVERIFIED" in metric.reason
+    path = tmp_path / "result.json"
+    write_result(result, path)
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert persisted["unverified"] is True and persisted["complete"] is False
+    assert persisted["criteria"][1] == {"id": 2, "status": "UNVERIFIED"}
+    assert persisted["claimed_verdict"] == "RESOLVED"
+    assert persisted["reasons"] and persisted["raw_response_persisted"] is False
+    assert "PUBLIC_BASE_URL" not in path.read_text(encoding="utf-8")
+    assert result_status(path, 3, acceptance_path) == "unverified"
+
+
 @pytest.fixture
 def staged(tmp_path):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pipeline/custom-eval"))

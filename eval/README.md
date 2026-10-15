@@ -115,7 +115,81 @@ For each task the harness:
    - **resolved** — all acceptance criteria pass
    - **partial** — some criteria pass, none failed catastrophically (no broken build)
    - **failed** — nothing meaningful produced or build broken
-5. Writes `summary.json`; measured baselines are recorded manually in `baselines.md`.
+5. Writes `summary.json` and separate `run-provenance.json`; measured baselines are
+   recorded manually in `baselines.md`.
+
+## Retained run provenance
+
+Both native runners capture **provenance schema 1** using `eval/provenance.py`.
+Grading results stay at **schema 2**; criterion reasons and raw judge responses
+remain excluded. A fresh scorer result additionally gets
+`<result-filename>.provenance.json`. Standalone scorer output is not automatically
+trusted by an aggregator.
+
+The manifest contains:
+
+- `context`: run ID, all selected task IDs, harness revision and dirty status
+  (null means unavailable, never clean), source fingerprint/inventory, per-task
+  prompt/acceptance/profile/fixture-declaration and canonical-original hashes,
+  grading-doctrine hash, dependency-lock hashes, available Python/package/native
+  shell versions, requested model IDs, scorer and contract version.
+- `models.observed` is empty in this offline mode. Copilot CLI version is explicitly
+  unavailable: collection never invokes Copilot to discover a version or model.
+  Package versions identify what is installed, not proof that locks were enforced;
+  `check_environment.py` and `pip check` remain separate mandatory checks.
+- `execution`: dry, admission blocked, sandbox not verified, no approval reference,
+  execution not ready. Provenance does not grant permission to execute or score.
+- `context_sha256`: SHA-256 of sorted-key, compact, ASCII JSON of `context`.
+- `result_bindings`: caller-selected filename, byte SHA-256, run ID, task ID,
+  canonical input identity and acceptance hash. The summary binding uses a null
+  task ID and the full selected-input identity. Task skips/setup errors retain the
+  full denominator. Missing Python emits an explicitly **unavailable** manifest
+  and complete setup-error summary, not invented hashes.
+
+**Trust boundary.** The runner holds the context digest returned at initialization.
+Native credit consumption loads context against that independent digest and validates
+the result sidecar against the expected run/task/acceptance, not merely against its
+own adjacent manifest. `grading.result_status` is a format-only API;
+`grading.credited_status` is the credit boundary. Missing/unknown provenance cannot
+award credit. Version 1 is dry/blocked: even a correctly bound synthetic RESOLVED
+payload cannot authorize positive credit. Summary finalization verifies the selected
+inventory/counts and refuses unbound credits. Canonical fixture-original validation
+remains repository-authoritative. Changing acceptance while retaining its criterion
+count is still a different input.
+
+SHA-256 provides integrity **against independently trusted expected context**, not
+authentication against an actor rewriting that context and every file. These records
+are not signed, an approval controller, proof of model observation, or an OS sandbox.
+Identical result bytes have identical hashes; the provenance binding supplies the
+run/task attribution, not an embedded identity in schema-2 bytes. A future verified
+worker and human controller remain separate, unimplemented requirements.
+
+**Hash scope (`harness-source-v1`).** Allowlisted source extensions
+`.py/.ps1/.sh/.md/.json/.yaml/.yml/.txt` under `eval/`, `plugins/`, `scripts/`, plus
+root `AGENTS.md` and explicit repository profile/instruction/marketplace files.
+Text files are limited to `requirements*.txt`. Relevant untracked source is included.
+Run/result directories, research, transcripts, secret/credential directories, environments,
+caches, build output, known credential filenames and `.env*` are excluded; no home
+directory or environment dump is read. Selected canonical fixture inputs additionally
+include their declared files regardless of extension. The fingerprint is scoped
+source identity, not a whole-repository archive or an assertion that ignored files
+cannot affect arbitrary future tools.
+
+The declared parent output root is pruned before traversal, including retained sibling
+runs. Dedicated output trees such as `eval/custom-output` and external output roots
+are supported; repository/source roots and authoritative source component trees cannot
+be used as output exclusions. Standalone capture requires the validated
+`<output-root>/<run-id>/ws/<task-id>` layout with canonical immutable inputs; its exact
+result and sidecar paths are also excluded when saved elsewhere, without excluding
+their parent directory. Capture precedes writing the result or native run manifest.
+This does not discover historical output trees outside the declared output root.
+
+Reads are bounded to 4 MiB per file with a 20,000-source-file inventory cap.
+Traversal, symlinks/reparse points, malformed versions/hashes/statuses and unsafe
+export paths fail explicitly. References from a manifest are compared, never used
+to discover arbitrary files. Hashes and sanitized result metadata are retained;
+arbitrary judge diagnostics are not. Existing legacy runs stay **legacy/unattributed**:
+no backfill, no transcript inspection, no reproducibility claim.
 
 ## Choosing a scorer
 
@@ -156,13 +230,24 @@ that disagreement explicitly recorded. Historical baselines are not recomputed.
 
 ## Live evaluation safety hold
 
-Live evaluation is **disabled** until a verified OS sandbox provides credential-free,
-network-disabled process isolation for both the agent and judge. The prior isolated Copilot
-configuration only controlled plugin resolution; it did not isolate host credentials,
-network access, or filesystem permissions. `run-eval.*` exits before staging or invoking a
-model unless `--dry-run` / `-DryRun` is selected. Dry runs remain available for local fixture
-preflight and staging. Do not remove this hold by relying on chmod, environment variables,
-prompt instructions, or an executable allowlist.
+Live evaluation remains **disabled**. The credential-free, network-disabled requirement
+applies to **untrusted artifact execution workers**, not to the separate model API control
+plane, which necessarily needs network access and authentication. A future worker must
+not access host credentials, the host filesystem or Docker socket, or external/host/control-plane
+networks. Task-local loopback and database networking policy is not yet approved.
+
+HOME redirection, temporary directories and PATH filters are **configuration hygiene,
+not OS isolation**. The prior isolated Copilot configuration controlled plugin resolution;
+it did not isolate host credentials, networking or filesystem access. `run-eval.*` exits
+before staging or invoking a model unless `--dry-run` / `-DryRun` is selected. Dry runs
+only preflight and stage fixtures; they execute no generated artifacts and certify no
+worker readiness. Scorers validate workspace/canonical-baseline inputs, then return
+`UNVERIFIED` without model or tool execution.
+
+Human plan approval remains a separate mandatory gate, currently unreachable behind this
+hold. Neither approval nor the dormant allow-all/direct-host invocation code is permission
+to resume live execution. Do not remove the hold using chmod, environment variables,
+prompt instructions, executable allowlists, or the offline fake-CLI tests.
 
 ## How to run
 
@@ -193,14 +278,16 @@ Selecting `dry_run: false` fails closed before staging or invoking a CLI. No Cop
 needed or exposed, and the workflow does not install Copilot. Live execution remains disabled
 until a verified OS sandbox exists; human plan approval remains a separate mandatory gate.
 
-Outputs land in `runs/<run-id>/` where `<run-id>` is `YYYYMMDD-HHMMSS-<suite>`:
+Outputs land in `runs/<run-id>/` where `<run-id>` is
+`YYYYMMDD-HHMMSS-<suite>-<unique-suffix>`. Treat the uniqueness suffix as opaque:
 
 ```
 runs/
-└── 20260415-093014-custom-eval/
+└── 20260415-093014-custom-eval-<unique-suffix>/
     ├── task-01-csharp-minimal-api-endpoint.log
     ├── task-02-python-di-refactor.log
     ├── ...
+    ├── run-provenance.json
     └── summary.json
 ```
 

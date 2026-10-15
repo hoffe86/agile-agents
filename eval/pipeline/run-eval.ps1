@@ -122,7 +122,7 @@ $pluginDir = $pluginDirs[0]  # retained for messages that name a single represen
 $devLeadAgent = 'agile-agents-core:dev-lead'
 
 if (-not $DryRun) {
-    Write-FatalError 'Live evaluation is disabled until an OS sandbox enforces credential-free, network-disabled access for both agent and judge processes. Use -DryRun for offline staging and preflight.'
+    Write-FatalError 'Live evaluation is disabled: no verified OS sandbox for untrusted artifact workers (no host credentials or external/host/control-plane network). Use -DryRun for offline staging and preflight, not execution-readiness certification.'
 }
 
 if (-not $DryRun -and $Suite -ne 'custom-eval' -and -not (Get-Command copilot -ErrorAction SilentlyContinue)) {
@@ -184,16 +184,28 @@ the working tree.
 function Get-ScoreStatus {
     param([int]$Code, [string]$ResultPath, [string]$Acceptance)
     if ($ResultPath) {
-        $value = & python (Join-Path $repoRoot 'eval/grading.py') --result-status $ResultPath --exit-code $Code --acceptance $Acceptance
+        $value = & python (Join-Path $repoRoot 'eval/grading.py') --result-status $ResultPath --exit-code $Code --acceptance $Acceptance --run-dir $runDir --expected-context $provenanceContext --task-id $task.Id
         if ($LASTEXITCODE -ne 0 -or $value -notin @('resolved', 'partial', 'failed', 'unverified', 'setup_error')) {
             return 'setup_error'
         }
         return $value
     }
-    # Deterministic task scorers retain their legacy codes, plus explicit uncertainty.
+    # An exit code alone cannot bind positive credit to a task/input/run.
     switch ($Code) {
-        0 { 'resolved' } 1 { 'failed' } 2 { 'partial' } 3 { 'unverified' } default { 'setup_error' }
+        1 { 'failed' } 3 { 'unverified' } default { 'setup_error' }
     }
+}
+
+function Complete-Provenance {
+    & python (Join-Path $repoRoot 'eval/provenance.py') finish --run-dir $runDir --expected-context $provenanceContext
+    if ($LASTEXITCODE -ne 0) { Write-FatalError 'Provenance validation failed; no credit claim.' }
+}
+
+function Get-RetainedGrading {
+    param([string]$Path, [string]$Acceptance)
+    $json = & python (Join-Path $repoRoot 'eval/grading.py') --retained-result $Path --acceptance $Acceptance --run-dir $runDir --expected-context $provenanceContext --task-id $task.Id
+    if ($LASTEXITCODE -ne 0) { throw 'Retained grading validation failed.' }
+    return ($json | ConvertFrom-Json)
 }
 
 function Invoke-WithIsolation {
@@ -304,7 +316,7 @@ if (-not $tasks -or $tasks.Count -eq 0) {
 }
 
 # --- Set up run folder --------------------------------------------------------
-$runId   = '{0:yyyyMMdd-HHmmss}-{1}' -f (Get-Date), $Suite
+$runId   = '{0:yyyyMMdd-HHmmss}-{1}-{2}' -f (Get-Date), $Suite, ([guid]::NewGuid().ToString('N'))
 $runDir  = Join-Path $OutputRoot $runId
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
@@ -333,9 +345,7 @@ Write-Host ''
 # Stage every selected custom-eval task before any agent invocation. The shared helper
 # validates profiles and declared paths first, and exposes the immutable baseline path.
 $preparedTasks = @{}
-if ($Suite -eq 'custom-eval') {
-    $prepareScript = Join-Path $suiteRoot 'prepare_inputs.py'
-    if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
         $missingPythonSummary = [ordered]@{
             suite = $Suite; run_id = $runId; run_status = 'setup_error'
             total = $tasks.Count; setup_error_count = $tasks.Count
@@ -345,8 +355,20 @@ if ($Suite -eq 'custom-eval') {
             setup_errors = @('python is required to preflight and stage custom-eval fixtures')
         }
         $missingPythonSummary | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $runDir 'summary.json') -Encoding utf8
+        @{ schema_version = 1; attribution = 'unavailable'; reason = 'python_unavailable'
+           run_id = $runId; selected_task_ids = @($tasks.Id); result_bindings = @() } |
+            ConvertTo-Json -Depth 8 | Set-Content (Join-Path $runDir 'run-provenance.json') -Encoding utf8
         Write-FatalError "python is required to preflight and stage custom-eval fixtures."
-    }
+}
+$provenanceArgs = @((Join-Path $repoRoot 'eval/provenance.py'), 'start',
+    '--run-dir', $runDir, '--output-root', $OutputRoot, '--run-id', $runId, '--suite', $Suite,
+    '--agent', $AgentModel, '--judge', $JudgeModel, '--scorer', $Scorer,
+    '--native', 'powershell', '--native-version', $PSVersionTable.PSVersion.ToString())
+foreach ($task in $tasks) { $provenanceArgs += @('--task-id', $task.Id) }
+$provenanceContext = & python @provenanceArgs
+if ($LASTEXITCODE -ne 0) { Write-FatalError 'Cannot capture run provenance; no staging or execution.' }
+if ($Suite -eq 'custom-eval') {
+    $prepareScript = Join-Path $suiteRoot 'prepare_inputs.py'
     $prepareArgs = @($prepareScript, '--suite-root', $suiteRoot, '--run-dir', $runDir)
     foreach ($task in $tasks) { $prepareArgs += @('--task-id', $task.Id) }
     $prepareOutput = (& python @prepareArgs 2>&1 | Out-String).Trim()
@@ -374,7 +396,7 @@ if ($Suite -eq 'custom-eval') {
         $prepareResult = @{
             status = 'setup_error'
             tasks = @($tasks | ForEach-Object { @{task_id = $_.Id; status = 'setup_error'} })
-            errors = @("preparation returned invalid JSON/schema (exit $prepareExit): $prepareOutput")
+            errors = @("preparation returned invalid JSON/schema; diagnostic withheld")
         }
     }
 
@@ -407,6 +429,7 @@ if ($Suite -eq 'custom-eval') {
             setup_errors = $setupErrors
         }
         $setupSummary | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $runDir 'summary.json') -Encoding utf8
+        Complete-Provenance
         Write-Host "SETUP ERROR — no agent or judge was invoked. See $(Join-Path $runDir 'preflight.json')."
         exit 2
     }
@@ -438,6 +461,7 @@ if ($Suite -eq 'custom-eval' -and -not $DryRun) {
         tasks = $blockedTasks
     }
     $blockedSummary | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $runDir 'summary.json') -Encoding utf8
+    Complete-Provenance
     Write-Host "BLOCKED — custom-eval requires human plan approval; no agent or judge was invoked."
     Write-Host ('Summary:  {0}' -f (Join-Path $runDir 'summary.json'))
     exit 3
@@ -553,8 +577,8 @@ foreach ($task in $tasks) {
                     $status = if ($Scorer -eq 'deepeval') { $deepStatus } else { $shellStatus }
                 }
                 $grading = [ordered]@{
-                    shell = if (Test-Path $shellResult) { Get-Content $shellResult -Raw | ConvertFrom-Json } else { $null }
-                    deepeval = if (Test-Path $deepResult) { Get-Content $deepResult -Raw | ConvertFrom-Json } else { $null }
+                    shell = Get-RetainedGrading -Path $shellResult -Acceptance $acceptance
+                    deepeval = Get-RetainedGrading -Path $deepResult -Acceptance $acceptance
                 }
             }
         }
@@ -600,8 +624,8 @@ $summary = [ordered]@{
     judge_model  = $JudgeModel
     # Whether the run measured the working tree or the developer's installed plugins.
     # A score carries a different meaning in each case, so it travels with the score.
-    isolated     = [bool]$isolate
-    mcp_servers  = if ($isolate) { 'plugin-declared only' } else { 'plugin-declared + user config' }
+    isolated     = [bool]$isolatedHome
+    mcp_servers  = if ($DryRun) { 'not invoked' } elseif ($isolatedHome) { 'plugin-declared only' } else { 'plugin-declared + user config' }
     resolved_pct = $pct
     partial_pct  = if ($total) { [math]::Round(100.0 * $partial / $total, 1) } else { 0 }
     failed_pct   = if ($total) { [math]::Round(100.0 * $failed  / $total, 1) } else { 0 }
@@ -614,6 +638,7 @@ $summary = [ordered]@{
     tasks        = $results
 }
 $summary | ConvertTo-Json -Depth 12 | Set-Content -Path (Join-Path $runDir 'summary.json') -Encoding utf8
+Complete-Provenance
 
 if ($scorerComparison.Count) {
     $agreed = @($scorerComparison | Where-Object { $_.agree }).Count

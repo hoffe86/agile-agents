@@ -7,7 +7,11 @@ judges now share the strict structured contract in [`../grading.py`](../grading.
 **Live scoring is currently disabled.** DeepEval is still available for offline parser,
 metric-contract, and fixture tests, but `run_judge` returns `UNVERIFIED` without sending
 workspace content to a model or invoking host tools. Live agent runs are blocked by the
-pipeline runner until a credential-free, network-disabled OS sandbox is available.
+pipeline runner. The future credential-free worker boundary denies external/host/control-plane
+networking for untrusted artifact execution; it does not describe the model API caller,
+which needs network and authentication. HOME/tempdir/PATH hygiene is not OS isolation,
+and dry staging is not execution-readiness certification. Task-local loopback/database
+policy is still unapproved. See the [safety hold](../README.md#live-evaluation-safety-hold).
 
 ## What this proves
 
@@ -33,12 +37,32 @@ The measurement that matters falls out of it: **invoking a skill is a tool call 
 
 ## Run it
 
-```bash
-python -m venv eval/deepeval/.venv
-eval/deepeval/.venv/Scripts/python -m pip install -r eval/deepeval/requirements.txt
+Use **CPython 3.12 x64** for the reproducibility target (native Windows and Ubuntu
+CI lanes). The same lock also includes CPython **3.11 x64** wheels for developer
+checks; the profile's `python scripts/run-repo-checks.py lint|unit` does not require
+3.12. ARM, PyPy, Alpine/musl and other Python versions are not locked targets.
+Create a fresh venv rather than changing an existing workspace environment:
 
-# tests (the parsing half needs no DeepEval and no network)
-eval/deepeval/.venv/Scripts/python -m pytest eval/deepeval/tests -q
+```bash
+# Windows: py -3.12 -m venv <new-venv>, then <new-venv>/Scripts/Activate.ps1
+# Ubuntu: python3.12 -m venv <new-venv>, then source <new-venv>/bin/activate
+# For developer compatibility checks, use an installed CPython 3.11 instead.
+
+# Trusted provisioning: only this download step needs PyPI.
+python -m pip --isolated download --index-url https://pypi.org/simple \
+    --require-hashes --only-binary=:all: \
+    --dest <wheelhouse> -r eval/deepeval/requirements.lock.txt
+# Offline install from those exact wheels; no source builds or index fallback.
+python -m pip --isolated install --no-index --find-links <wheelhouse> \
+    --require-hashes --only-binary=:all: -r eval/deepeval/requirements.lock.txt
+python -m pip check
+python eval/deepeval/check_environment.py
+
+# Offline tests (PowerShell: $env:EVAL_REQUIRE_DEEPEVAL = '1').
+export EVAL_REQUIRE_DEEPEVAL=1
+export DEEPEVAL_TELEMETRY_OPT_OUT=1
+python -m unittest discover -s eval/pipeline/tests -p test_dependency_environment.py -v
+python -m pytest eval/deepeval/tests -q
 
 # measure skill usage across existing run logs — no credentials, no new runs
 python eval/deepeval/report_skill_usage.py eval/pipeline/runs \
@@ -49,7 +73,68 @@ python eval/deepeval/report_skill_usage.py eval/pipeline/runs \
 ([`metrics/local_model.py`](metrics/local_model.py)), because opting out after import is
 too late. Set it in CI as well — belt and braces.
 
+### Dependency lock and maintenance
+
+`requirements.txt` is the **maintainer input**, not an installation command.
+`requirements.lock.txt` is the complete transitive pip requirements closure:
+DeepEval **4.1.8**, pytest **9.1.1**, PyYAML **6.0.3**, and exact dependency versions.
+Versions were retained from the working evaluation venv, not broadly upgraded.
+The exception is setuptools **84.0.0**, already present in the developer environment;
+the old venv's **65.5.0** predates Python 3.12 and references removed
+`pkgutil.ImpImporter`. No new manager, resolver, runtime dependency or pip upgrade
+is introduced. The interpreter's bundled pip bootstraps installation.
+
+The lock uses ordinary pip SHA-256 hashes of **downloaded wheel bytes**, not hashes
+of source text or invented integrity values. Pure-Python wheels share one hash;
+native wheels have hashes for CPython 3.11/3.12 Windows `win_amd64` and Ubuntu
+`manylinux` x86_64. `colorama` has the Windows-only marker required by pytest,
+Click, Typer and tqdm. Pip selects compatible wheels and fails closed otherwise.
+`requirements-yaml.lock.txt` owns the PyYAML hashes and is included by the full lock;
+the skill-quality lane uses only that lightweight file.
+
+CI creates a fresh venv, downloads with `--require-hashes --only-binary=:all:`,
+installs with `--no-index`, runs `pip check`, then requires the real DeepEval import,
+real `BaseMetric` inheritance, and deterministic `ToolCorrectnessMetric` score with
+the fail-on-call stub. `EVAL_REQUIRE_DEEPEVAL=1` makes both dependency-dependent
+pytest tests fail on a missing/broken import instead of skipping. The isolated
+dependency-free parser regression remains valid. Telemetry opt-out and offline test
+design **are not OS network isolation** and do not release the live-evaluation hold.
+
+To update deliberately:
+
+1. Review the requested version changes in `requirements.txt` and the existing
+   pinned closure; retain unchanged versions. ADR 0015's DeepEval pin is binding.
+2. Use pip's `install --dry-run --ignore-installed --report <report.json>` with
+   reviewed constraints to inspect any necessary resolution changes. Do not
+   replace the closure with a blanket latest-version resolution.
+3. Download the candidate exact closure on each native supported Python/platform
+   with `pip download --only-binary=:all:`; use `python -m pip hash <wheel>` for
+   each approved artifact and review the lock diff. No source distributions.
+   For preliminary cross-target checks, use `--python-version 311` / `312`,
+   `--implementation cp`, `--abi cp311` / `cp312`, and `--platform win_amd64`, or
+   `--platform manylinux_2_28_x86_64 --platform manylinux_2_17_x86_64
+   --platform manylinux2014_x86_64`. Cross-target pip options choose wheel tags;
+   **they do not prove native execution or target environment-marker evaluation**.
+   Inspect wheel `METADATA` for both target marker environments as well.
+4. In clean native environments, repeat the hash-verified install, `pip check`,
+   required-import gate and offline tests above. The dependency tests verify
+   the complete installed metadata closure and mutate a local metadata-only fake
+   wheel to prove tampered hashes, missing hashes and missing artifacts fail.
+   No package code is executed by that fake-wheel test.
+
+Initial validation: all four target wheel sets downloaded and were hash-checked;
+native clean-environment execution was performed on Windows Python 3.11.9.
+Python 3.12 was not installed locally. **Native Windows/Ubuntu Python 3.12 CI is
+still required**; cross-target downloads are not a substitute.
+
 ## Outcome grading
+
+Fresh retained results keep schema 2 and sanitized criteria, with a separate
+version-1 provenance sidecar. Native runner consumers require the runner-held
+expected context digest; parsing a plausible verdict alone cannot award credit.
+See [retained run provenance](../README.md#retained-run-provenance) for hash scope,
+legacy handling, unavailable tool/model identities and the unsigned integrity boundary.
+This does not lift the live-verification hold.
 
 `metrics/acceptance.py` replaces the `score-judge.{sh,ps1}` twin pair with one Python
 implementation, exposed two ways:
@@ -65,7 +150,10 @@ python eval/deepeval/score_workspace.py --self-test
 
 `AcceptanceMetric` is a real DeepEval `BaseMetric` (checked with `issubclass`, because
 DeepEval type-checks with `isinstance` and duck typing is rejected), so it composes with
-`evaluate()` and the rest of the framework.
+`evaluate()` and the rest of the framework. Pure parsing remains importable when the
+DeepEval root package is genuinely absent. An installed package with missing internal or
+transitive modules, incompatible imports, or initialization errors fails loudly; these
+are not dependency-free environments and must not silently fall back to `object`.
 
 **Parity is tested, not asserted.** The verdict parser is exercised against the exact cases
 `score-judge.sh --self-test` uses. Exactly one anchored final verdict and one numbered
@@ -73,6 +161,10 @@ PASS/FAIL/UNVERIFIED line per actual acceptance criterion are required. Missing,
 or malformed lines produce `setup_error` (`judge_contract`), not an agent failure.
 Native PowerShell/Bash scorers and runner scoring/summary paths are tested with a local
 fake judge, without paid calls. Historical task-04 agreement does not validate the new contract.
+Fake setup proves both native shells resolve the expected launcher, preserve exact arguments
+(including spaces, Unicode and shell metacharacters), and return sentinel exit 99. A missing,
+shadowed or broken fake fails setup instead of falling back to an ambient Copilot executable.
+These are known test fakes, not sandbox probes or authorization to execute generated artifacts.
 
 Two deliberate differences from the shell judge:
 
@@ -108,11 +200,11 @@ boundary. Task-10's literal ingress-host equivalence versus
 the six-resource no-Ingress baseline remains unresolved: inability to verify it must be
 UNVERIFIED, as must other native-tool gaps.
 
-Run the complete offline suite (uses the existing `.venv`; PyYAML supports fixture staging):
+Run the complete offline suite from the active locked environment (unittest for
+script/workflow/trajectory checks, pytest for custom-eval and DeepEval):
 
 ```bash
-eval/deepeval/.venv/Scripts/python -m pytest eval/deepeval/tests \
-    eval/pipeline/custom-eval/tests eval/pipeline/trajectory/test_check_trajectory.py -q
+python scripts/run-repo-checks.py unit
 ```
 
 On Windows the native tests use PowerShell 7 and Git Bash; on Unix they use `pwsh` and
@@ -142,13 +234,21 @@ shape shows it cleanly:
 | contaminated ×2 | yes (v0.14.0 skill → MADR) | `Context and Problem Statement / Decision Drivers / …` | partial |
 | isolated ×2 | no | `Status / Context / Decision / Consequences / Alternatives / Related decisions` | resolved |
 
-Task-04's criterion 2 demands "all six MADR sections in order: Status, Context, Decision,
+Historically, task-04's criterion 2 demanded "all six MADR sections in order: Status, Context, Decision,
 Consequences, Alternatives, Related decisions" — a list that is neither upstream MADR nor
 this repo's Nygard house style. The runs that consulted a skill produced something the
 criterion rejected; the runs that consulted nothing produced what the criterion happened to
 describe. **A criterion that restates a convention it does not own can invert the incentive
 it was meant to create.** This is the concrete case behind the `acceptance-grading` rule
 that the skill wins and the judge reports the drift as an eval defect.
+
+The current fixture repairs that contract: it selects the core skill's MADR template,
+allows exactly the new ADR and working-copy predecessor, and requires bidirectional
+supersession links without changing the canonical sibling original. No answer ADR is
+seeded. Both shell and DeepEval offline prompt builders now include the authoritative
+`acceptance-grading` content through the shared renderer, including the no-host-execution
+hold. This repair is deterministic contract work, not a new live outcome measurement;
+the historical scores above are not regraded.
 
 **Task-04 did *not* bypass its skill.** Both real runs invoked
 `architecture-decision-records`. The earlier skill-bypass hypothesis rested on three

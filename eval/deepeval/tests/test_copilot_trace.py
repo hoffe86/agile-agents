@@ -133,9 +133,8 @@ def test_renamed_tool_event_silently_empties_the_trace():
 # --- DeepEval integration ---------------------------------------------------------
 
 
-def test_tool_correctness_measures_skill_bypass():
+def test_tool_correctness_measures_skill_bypass(deepeval_module):
     """End-to-end: trace -> DeepEval -> a score that discriminates bypass."""
-    deepeval = pytest.importorskip("deepeval", reason="DeepEval not installed")
     from deepeval.metrics import ToolCorrectnessMetric
     from deepeval.test_case import LLMTestCase, ToolCall
 

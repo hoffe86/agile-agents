@@ -19,14 +19,18 @@ recommended Polly directly, so this decision **supersedes** ADR-0007.
 
 ## Requested deliverable
 
-A single Markdown file `docs/adr/0014-http-resilience-library.md` that:
+Exactly two working-copy ADR files are in scope:
 
-1. Follows our MADR-style ADR template (we use the lightweight one — Status / Context /
-   Decision / Consequences / Alternatives / Related decisions).
-2. Numbers the ADR as `0014` and supersedes `0007`.
+1. Add `docs/adr/0014-http-resilience-library.md` following the **MADR** template selected
+   by `documentation.adr.format` in the task profile and defined by the
+   `architecture-decision-records` skill (not Nygard or a custom six-section template).
+2. Record that ADR-0014 supersedes ADR-0007 with a relative Markdown link in **Links**.
+   Update only `docs/adr/0007-http-resilience-library.md` to status **superseded** with a
+   relative Markdown link forward to ADR-0014; preserve its historical rationale.
 3. Explains the **trade-off**, not just the conclusion. For each rejected option, state
    what we lose by not picking it.
 4. Lists at least two consequences (one positive, one negative).
 5. References the relevant Microsoft Learn / GitHub URLs for the chosen library.
 
-No code changes required for this task — it is a documentation deliverable.
+No other file changes are permitted. The canonical sibling baseline is immutable:
+update only the working-copy predecessor, never the original comparison input.

@@ -85,9 +85,21 @@ manual scoring fast (`runs/<run-id>/<task-id>.log` includes the criteria checkli
   provide the complete inputs.
 - Task 04's ADR-0007 is a **synthetic task fixture** about Polly. It is not this repository's
   actual ADR-0007 and does not authorize authoring or superseding an ADR in this source repo.
+  The task selects the core skill's **MADR** template, not Nygard or the former custom
+  six-section shape. Exactly two working-copy paths may change: add
+  `docs/adr/0014-http-resilience-library.md` and update
+  `docs/adr/0007-http-resilience-library.md` for bidirectional supersession. The new
+  ADR links back in Links; the predecessor's superseded status links forward, preserving
+  its historical rationale. The canonical sibling baseline remains unchanged.
 - Task 05's four-file `diff.patch` is synthetic context; it is not a PR description.
 - Task 07's implementation and PostgreSQL repository are working pre-existing code. No
-  requested unit or integration tests are seeded.
+  requested unit or integration tests or coverage results are seeded. Its input declaration
+  lists the seven production/solution files individually, excluding local build output.
+  Offline inventory/mutation tests protect those exact inputs and staging hashes.
+  The solution contains only the production project, so test and coverage commands allow
+  restore/build of newly authored test projects rather than using `--no-build`.
+  This command correction does not establish runtime readiness: no generated code,
+  Testcontainers database, restore, or test command is executed by these contract checks.
 - Task 10's chart has the six named resources and no `Ingress` resource. Environment-specific
   `ingress.host` values are copied into the application's `PUBLIC_BASE_URL` ConfigMap setting.
   The prompt's equivalence criterion mentioning ingress hosts therefore remains ambiguous for

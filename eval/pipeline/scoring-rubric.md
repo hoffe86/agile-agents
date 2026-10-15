@@ -36,17 +36,22 @@ is explicitly unverified. FAIL+UNVERIFIED without any PASS remains failed, retai
 uncertainty and every verified failure. Missing tools are not failures of produced work.
 `AcceptanceMetric.success` is false for every uncertain/error result even at threshold 0.
 
-Results contain `claimed_verdict`, `normalized_verdict`, `criteria` with reasons,
+Schema-v2 results contain `claimed_verdict`, `normalized_verdict`, `criteria` with only
+`id` and `status` (criterion reasons are stripped before persistence),
 `verified_failures`, `complete` (all criteria verified), `contract_valid`,
 `error_kind`, and `judge_exit`. Default judge consumers recheck the result and actual AC
-count rather than trusting an exit code or a RESOLVED claim alone.
+count rather than trusting an exit code or a RESOLVED claim alone. Raw judge responses
+are never persisted; aggregate `reasons` are bounded, sanitized diagnostics, not copied
+judge prose. Detailed evidence/reasons exist only in the in-memory grading result.
 
 ## Original inputs and custom tasks
 
 `prepare_inputs.py` validates profiles and `inputs.json`, stages canonical inputs, and
-creates read-only hashed snapshots outside the produced workspace. Scorers receive the
-trusted snapshot path and validate `.github/eval-inputs.json` against that snapshot's
-manifest. No arbitrary metadata pointer, traversal, or symlink is accepted. Only declared
+creates hashed snapshots in the canonical sibling `baseline/<task-id>/`, outside
+`ws/<task-id>/`. Scorers validate both the snapshot inventory and manifest hashes against
+the repository fixture, not a workspace claim of authority. Workspace-local
+`.github/eval-inputs.json` is rejected, not trusted. File modes are not an OS access
+boundary. No arbitrary metadata pointer, traversal, or symlink is accepted. Only declared
 originals may be used as READ-ONLY comparison evidence; context and answers are not dumped.
 Unchanged seeded inputs earn no creation credit.
 
@@ -60,6 +65,13 @@ build output. Neither truncation nor absence from the dump proves a deliverable 
 has no Ingress (its `ingress.host` configures `PUBLIC_BASE_URL`). Do not weaken the AC,
 invent an Ingress or assert a pass. If the literal comparison cannot be established,
 mark UNVERIFIED with this reason. Other native tool gaps are equally explicit.
+
+Both offline prompt builders include the same `acceptance-grading` skill content from
+the selected core plugin using the shared renderer in `grading.py`; the shell template
+does not duplicate its doctrine. Missing doctrine is an error, not a fallback to priors.
+No prompt authorizes host execution. Live verification remains disabled until a
+separately verified credential-free OS worker boundary is available; a disposable
+directory does not supply that boundary.
 
 Live custom-eval remains **blocked_approval before any model call**; neither scorer nor
 this rubric changes mandatory human gates. SWE-bench preparation is not wired and is

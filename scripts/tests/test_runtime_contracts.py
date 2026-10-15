@@ -2812,11 +2812,21 @@ runpy.run_path(sys.argv[0], run_name="__main__")
         self.assertFalse(gate["typecheck"]["enabled"])
         self.assertEqual(profile["testing"]["smoke"]["command"], [])
         commands = self.runner.commands_for("unit")
-        self.assertEqual([command[1:4] for command in commands[:3]],
+        # Dependency-present checks now precede, but do not replace, the existing
+        # unittest/pytest split. An absent DeepEval must fail before tests can skip.
+        self.assertEqual(len(commands), 7)
+        self.assertEqual([command[1:] for command in commands[:3]], [
+            ["-m", "pip", "check"],
+            ["eval/deepeval/check_environment.py"],
+            ["-m", "unittest", "discover", "-s", "eval/pipeline/tests",
+             "-p", "test_dependency_environment.py", "-v"],
+        ])
+        suite_commands = commands[3:]
+        self.assertEqual([command[1:4] for command in suite_commands[:3]],
                          [["-m", "unittest", "discover"]] * 3)
-        self.assertEqual([command[5] for command in commands[:3]],
+        self.assertEqual([command[5] for command in suite_commands[:3]],
                          ["scripts/tests", "eval/pipeline/tests", "eval/pipeline/trajectory"])
-        self.assertEqual(commands[3][1:], [
+        self.assertEqual(suite_commands[3][1:], [
             "-m", "pytest", "-q", "eval/pipeline/custom-eval/tests", "eval/deepeval/tests"])
         self.assertTrue(all(command[0] == sys.executable for command in commands))
 

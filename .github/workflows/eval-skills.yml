@@ -36,6 +36,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       RUNTIME_GATE_REQUIRE_RUNNERS: '1'
+      EVAL_REQUIRE_DEEPEVAL: '1'
+      DEEPEVAL_TELEMETRY_OPT_OUT: '1'
+      DEEPEVAL_DISABLE_PROGRESS_BAR: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -52,14 +56,44 @@ jobs:
         shell: bash
         run: yq --version | grep -E 'mikefarah/yq/.*version v4\.'
 
-      - name: Install offline evaluation test dependencies
-        run: python -m pip install --requirement eval/deepeval/requirements.txt
+      - name: Create a clean evaluation environment
+        shell: pwsh
+        run: |
+          python -m venv "${{ runner.temp }}/eval-venv"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $bin = if ($IsWindows) { 'Scripts' } else { 'bin' }
+          Add-Content $env:GITHUB_PATH "${{ runner.temp }}/eval-venv/$bin"
+
+      # Trusted provisioning may contact PyPI. Tests below do not provision packages.
+      - name: Download hash-verified evaluation wheels
+        run: >-
+          python -m pip --isolated download --index-url https://pypi.org/simple
+          --require-hashes --only-binary=:all: --dest "${{ runner.temp }}/eval-wheels"
+          --requirement eval/deepeval/requirements.lock.txt
+
+      - name: Install evaluation wheels without an index
+        run: >-
+          python -m pip --isolated install --no-index --find-links "${{ runner.temp }}/eval-wheels"
+          --require-hashes --only-binary=:all: --requirement eval/deepeval/requirements.lock.txt
+
+      - name: Check the installed dependency closure
+        run: python -m pip check
+
+      - name: Require real DeepEval and its deterministic contract
+        run: python eval/deepeval/check_environment.py
+
+      # Separate steps propagate every native-command failure on both shells.
+      - name: Offline dependency regressions
+        run: python -m unittest discover -s eval/pipeline/tests -p test_dependency_environment.py -v
+
+      - name: Offline pipeline workflow regressions
+        run: python -m unittest discover -s eval/pipeline/tests -p test_eval_pipeline_workflow.py -v
+
+      - name: Offline trajectory regressions
+        run: python -m unittest discover -s eval/pipeline/trajectory -p test_check_trajectory.py -v
 
       - name: Offline evaluation contract regressions
-        run: |
-          python -m unittest discover -s eval/pipeline/tests -p test_eval_pipeline_workflow.py -v
-          python -m unittest discover -s eval/pipeline/trajectory -p test_check_trajectory.py -v
-          python -m pytest -q eval/pipeline/custom-eval/tests eval/deepeval/tests
+        run: python -m pytest -q eval/pipeline/custom-eval/tests eval/deepeval/tests
 
       - name: Offline runtime and instruction regressions
         run: python -m unittest discover -s scripts/tests -p test_runtime_contracts.py -v
@@ -76,8 +110,16 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyYAML
-        run: pip install --quiet pyyaml
+      - name: Download hash-verified YAML wheel
+        run: >-
+          python -m pip --isolated download --index-url https://pypi.org/simple
+          --require-hashes --only-binary=:all: --dest "${{ runner.temp }}/yaml-wheels"
+          --requirement eval/deepeval/requirements-yaml.lock.txt
+
+      - name: Install PyYAML without an index
+        run: >-
+          python -m pip --isolated install --force-reinstall --no-index --find-links "${{ runner.temp }}/yaml-wheels"
+          --require-hashes --only-binary=:all: --requirement eval/deepeval/requirements-yaml.lock.txt
 
       # Proves each assertion trips before trusting a green result.
       - name: Self-test the frontmatter checker

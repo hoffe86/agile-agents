@@ -414,7 +414,8 @@ for the user to choose, never silently substituted. Preferred fallback may leave
 approved list; static CI is not governance enforcement. Required-policy and Auto
 interactions remain unverified on CLI 1.0.98.
 The dogfood test bar uses `scripts/run-repo-checks.py lint|unit` with the active Python
-environment (`eval/deepeval/requirements.txt`) and `pwsh`; failures propagate immediately.
+environment (`eval/deepeval/requirements.lock.txt`, installed with `--require-hashes`;
+see `eval/deepeval/README.md`) and `pwsh`; failures propagate immediately.
 Preserve the unittest/pytest split from CI, not blanket pytest discovery.
 
 ### Skill format

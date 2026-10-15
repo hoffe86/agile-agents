@@ -6,7 +6,7 @@ documentation:
   location: docs/
   adr:
     location: docs/adr/
-    format: madr
+    format: madr  # Core architecture-decision-records MADR template and lifecycle.
 backlog:
   platform: none
   create_tasks: false
@@ -20,4 +20,4 @@ infrastructure:
 quality_gates:
   test_bar:
     enabled: false
-    skip_reason: "Documentation-only ADR deliverable; no build or test command applies."
+    skip_reason: "Documentation-only new ADR and predecessor supersession links; no build or test command applies."

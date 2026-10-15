@@ -68,7 +68,12 @@ def main() -> int:
         )
 
     print(f"[judge] status: {result.verdict.value}")
-    write_result(result, args.result_json)
+    try:
+        write_result(result, args.result_json, workspace=Path(args.workspace),
+                     acceptance=acceptance, scorer="deepeval", judge_model=args.model)
+    except (OSError, ValueError, KeyError, TypeError):
+        print("provenance retention failed; result is unattributed", file=sys.stderr)
+        return 4
     return result.exit_code
 
 

@@ -33,6 +33,46 @@ VERDICT = re.compile(r"^\s*VERDICT:\s*(RESOLVED|PARTIAL|FAILED|UNVERIFIED)\s*$",
 NUMBERED = re.compile(r"^\s*(\d+)\.\s+\S")
 
 
+def load_grading_doctrine(plugin_dirs: list[str | Path] | None = None) -> str:
+    """Read the authoritative skill from explicit plugin roots, never ambient installs."""
+    roots = plugin_dirs if plugin_dirs is not None else [
+        Path(__file__).resolve().parents[1] / "plugins/agile-agents-core"
+    ]
+    skills = [
+        Path(root) / "skills/acceptance-grading/SKILL.md" for root in roots
+        if (Path(root) / "skills/acceptance-grading/SKILL.md").is_file()
+    ]
+    if len(skills) != 1:
+        raise ValueError("exactly one acceptance-grading skill is required")
+    return skills[0].read_text(encoding="utf-8")
+
+
+def build_grading_prompt(
+    acceptance_text: str, artifacts: str, originals: str = "", *,
+    plugin_dirs: list[str | Path] | None = None,
+    prompt_template: Path | None = None,
+) -> str:
+    """Compose both offline prompt paths; this does not authorize live execution.
+
+    Include doctrine rather than assuming a Markdown path will be auto-loaded.
+    Substitute once so placeholders in untrusted evidence are not interpreted.
+    """
+    template_path = prompt_template or (
+        Path(__file__).resolve().parent / "pipeline/references/judge-prompt.md"
+    )
+    template = template_path.read_text(encoding="utf-8")
+    values = {
+        "GRADING_DOCTRINE": load_grading_doctrine(plugin_dirs),
+        "ACCEPTANCE": acceptance_text,
+        "ARTIFACTS": artifacts,
+        "ORIGINALS": originals or "(no declared immutable inputs)",
+    }
+    placeholders = re.findall(r"\{\{([A-Z_]+)\}\}", template)
+    if sorted(placeholders) != sorted(values):
+        raise ValueError("judge prompt requires doctrine and each evidence placeholder exactly once")
+    return re.sub(r"\{\{([A-Z_]+)\}\}", lambda match: values[match[1]], template)
+
+
 @dataclass
 class JudgeResult:
     verdict: Verdict
@@ -217,8 +257,11 @@ def safe_relative(value: str) -> PurePosixPath:
 
 
 def safe_file(root: Path, value: str) -> Path:
+    from provenance import checked_path
+
     rel = safe_relative(value)
     path = root.joinpath(*rel.parts)
+    checked_path(path)
     path.resolve(strict=True).relative_to(root.resolve(strict=True))
     if any(p.is_symlink() for p in [path, *path.parents] if p != root.parent):
         raise ValueError("symlinked judge input is forbidden")
@@ -227,41 +270,49 @@ def safe_file(root: Path, value: str) -> Path:
     return path
 
 
-def _canonical_baseline_files(task_id: str) -> tuple[dict[str, str], dict]:
-    task_root = Path(__file__).resolve().parent / "pipeline" / "custom-eval" / "tasks"
+def _canonical_baseline_files(
+    task_id: str, task_root: Path | None = None,
+) -> tuple[dict[str, str], dict]:
+    from provenance import checked_path, read_bytes, MAX_FILES
+
+    task_root = task_root or Path(__file__).resolve().parent / "pipeline" / "custom-eval" / "tasks"
     task_dir = task_root / task_id
     if task_dir.parent.resolve() != task_root.resolve() or not task_dir.is_dir():
         raise ValueError("workspace task has no canonical repository fixture origin")
     declaration_path = safe_file(task_dir, "inputs.json")
-    declaration = json.loads(declaration_path.read_text(encoding="utf-8"))
-    if declaration.get("version") != 1 or not isinstance(declaration.get("inputs"), list):
+    declaration = json.loads(read_bytes(declaration_path).decode("utf-8"))
+    if (not isinstance(declaration, dict) or declaration.get("version") != 1
+            or not isinstance(declaration.get("inputs"), list)):
         raise ValueError("canonical fixture input declaration is invalid")
-    expected = {
-        "context/solution-profile.yaml": hashlib.sha256(
-            safe_file(task_dir, "solution-profile.yaml").read_bytes()
-        ).hexdigest(),
-        "context/inputs.json": hashlib.sha256(declaration_path.read_bytes()).hexdigest(),
-    }
+    expected = {}
+
+    def add_file(destination: str, source: Path) -> None:
+        if destination not in expected and len(expected) >= MAX_FILES:
+            raise ValueError("canonical input inventory exceeds file limit")
+        expected[destination] = hashlib.sha256(read_bytes(source)).hexdigest()
+
+    add_file("context/solution-profile.yaml", safe_file(task_dir, "solution-profile.yaml"))
+    add_file("context/inputs.json", declaration_path)
     for entry in declaration["inputs"]:
         if not isinstance(entry, dict) or entry.get("required") is not True:
             raise ValueError("canonical fixture input entry is invalid")
         source_rel = safe_relative(entry["source"])
         source = task_dir.joinpath(*source_rel.parts)
+        checked_path(source)
         source.resolve(strict=True).relative_to(task_dir.resolve(strict=True))
         if source.is_symlink() or any(parent.is_symlink() for parent in source.parents):
             raise ValueError("canonical fixture contains a symlink")
         destination = safe_relative(entry["destination"]).as_posix()
         if source.is_dir():
-            for path in sorted(source.rglob("*")):
+            for path in source.rglob("*"):
+                checked_path(path)
                 if path.is_symlink():
                     raise ValueError("canonical fixture contains a symlink")
                 if path.is_file():
                     relative = path.relative_to(source).as_posix()
-                    expected[f"{destination}/{relative}"] = hashlib.sha256(
-                        path.read_bytes()
-                    ).hexdigest()
+                    add_file(f"{destination}/{relative}", path)
         else:
-            expected[destination] = hashlib.sha256(source.read_bytes()).hexdigest()
+            add_file(destination, source)
     return expected, declaration
 
 
@@ -382,13 +433,18 @@ def self_test() -> int:
 
 
 def result_status(path: Path, exit_code: int, acceptance: Path | None = None) -> str:
-    """Validate the bounded structured result without retaining raw judge output."""
+    """Format-only API. Credit consumers MUST use credited_status with trusted context."""
+    from provenance import read_json, read_bytes
+
     try:
-        row = json.loads(path.read_text(encoding="utf-8-sig"))
+        row = read_json(path)
         if row.get("schema_version") != 2:
             return "setup_error"
+        expected = row.get("expected_criteria")
+        if type(expected) is not int or not 0 <= expected <= 1000:
+            return "setup_error"
         if acceptance and row["expected_criteria"] != acceptance_count(
-            acceptance.read_text(encoding="utf-8")
+            read_bytes(acceptance).decode("utf-8")
         ):
             return "setup_error"
         status = row["status"]
@@ -404,7 +460,9 @@ def result_status(path: Path, exit_code: int, acceptance: Path | None = None) ->
                 and row.get("score") == 0 else "setup_error"
             )
         criteria = row["criteria"]
-        if not isinstance(criteria, list) or [item.get("id") for item in criteria] != list(
+        if not isinstance(criteria, list) or not all(isinstance(item, dict) for item in criteria):
+            return "setup_error"
+        if [item.get("id") for item in criteria] != list(
             range(1, row["expected_criteria"] + 1)
         ):
             return "setup_error"
@@ -429,12 +487,68 @@ def result_status(path: Path, exit_code: int, acceptance: Path | None = None) ->
         return "setup_error"
 
 
-def write_result(result: JudgeResult, path: str | Path | None) -> None:
+def credited_status(
+    path: Path, exit_code: int, acceptance: Path, expected_context: dict | None,
+    task_id: str,
+) -> str:
+    """No positive credit without an independent run/task/input binding."""
+    from provenance import validate_result
+
+    status = result_status(path, exit_code, acceptance)
+    try:
+        if expected_context is None:
+            # Legacy uncertainty is still uncertainty, not a reproducibility claim.
+            return status if status not in {"resolved", "partial"} else "setup_error"
+        validate_result(path, expected_context, task_id, acceptance)
+        if status in {"resolved", "partial"}:
+            # Provenance is not permission. V1 records only dry/blocked executions.
+            return "setup_error"
+        return status
+    except (OSError, ValueError, KeyError, TypeError):
+        return "setup_error"
+
+
+def retained_result(path: Path, expected_context: dict, task_id: str, acceptance: Path) -> dict | None:
+    """Reconstruct bounded sanitized grading for summaries; never inline untrusted JSON."""
+    from provenance import read_json, validate_result
+
+    try:
+        validate_result(path, expected_context, task_id, acceptance)
+        row = read_json(path)
+        status = credited_status(path, row.get("exit_code"), acceptance, expected_context, task_id)
+        if status == "setup_error":
+            result = environment_error("result validation failed", "setup")
+        else:
+            canonical = "\n".join([
+                *(f"{c['id']}. {c['status']} - evidence omitted" for c in row["criteria"]),
+                f"VERDICT: {row['claimed_verdict']}",
+            ])
+            result = parse_result(canonical, row["expected_criteria"])
+        value = result.to_dict()
+        value["raw_response_persisted"] = False
+        return value
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def write_result(
+    result: JudgeResult, path: str | Path | None, *, workspace: Path | None = None,
+    acceptance: Path | None = None, scorer: str = "both", judge_model: str | None = None,
+) -> None:
+    from provenance import write_json, result_context, manifest, binding
+
     row = result.to_dict()
     row["raw_response_persisted"] = False
     print("[judge-result] " + json.dumps(row))
     if path:
-        Path(path).write_text(json.dumps(row, indent=2) + "\n", encoding="utf-8")
+        path = Path(path)
+        context = None
+        if workspace is not None and acceptance is not None:
+            context = result_context(path, workspace, scorer, judge_model)
+        write_json(path, row)
+        if context is not None:
+            write_json(path.with_name(path.name + ".provenance.json"),
+                       manifest(context, [binding(path, context, workspace.name, acceptance)]))
 
 
 class GradingArgumentParser(argparse.ArgumentParser):
@@ -451,9 +565,29 @@ if __name__ == "__main__":
     ap.add_argument("--result-status", type=Path)
     ap.add_argument("--exit-code", type=int, default=4)
     ap.add_argument("--acceptance", type=Path)
+    ap.add_argument("--run-dir", type=Path)
+    ap.add_argument("--expected-context")
+    ap.add_argument("--task-id", default="")
+    ap.add_argument("--retained-result", type=Path)
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     if args.self_test:
         raise SystemExit(self_test())
     if args.result_status:
-        print(result_status(args.result_status, args.exit_code, args.acceptance))
+        from provenance import load_expected
+
+        try:
+            context = load_expected(args.run_dir, args.expected_context) if args.run_dir else None
+            print(credited_status(args.result_status, args.exit_code, args.acceptance,
+                                  context, args.task_id))
+        except (OSError, ValueError, KeyError, TypeError):
+            print("setup_error")
+    if args.retained_result:
+        from provenance import load_expected
+
+        try:
+            context = load_expected(args.run_dir, args.expected_context)
+            print(json.dumps(retained_result(args.retained_result, context, args.task_id,
+                                             args.acceptance)))
+        except (OSError, ValueError, KeyError, TypeError):
+            print("null")
