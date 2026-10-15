@@ -19,7 +19,8 @@ description: >-
   Pester (use infrastructure), reviewing or auditing code or test quality
   (use review-lead / test-reviewer), end-to-end autonomous delivery (use dev-lead if
   present). Hands off to review once the change builds and its tests are green.
-model_tier: mid  # mechanical code + test generation against established patterns and skills
+metadata:
+  model_tier: mid  # mechanical code + test generation against established patterns and skills
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, playwright/*, browser]
 argument-hint: "Describe the work: feature to add, bug to fix, refactor scope, or test coverage to close"
 ---

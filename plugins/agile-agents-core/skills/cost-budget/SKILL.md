@@ -30,7 +30,7 @@ Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuc
                                      # 0.00 is a rate, not an absence - it makes every
                                      # USD figure compute as 0.00 and pass silently.
      max_usd_per_run: 25.00          # inert until usd_per_aiu is set
-     model_tiers:           # optional — pin specific models per tier
+     model_tiers:           # advisory preferences only; no runtime consumer
        heavy: gpt-5.4
        mid:   gpt-5-mini
        light: gpt-4.1
@@ -110,17 +110,16 @@ Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuc
 
 ## Model tiering convention
 
-Every agent declares `model_tier: heavy | mid | light` in its frontmatter (introduced in Wave 2). The tier is **portable**; the actual model is provider-specific (see `references/tier-defaults.md`).
+Agents record advisory `metadata.model_tier` (`light`, `mid`, or `heavy`) in
+Copilot frontmatter. Native `model` and `tools` stay top-level. The annotation
+neither selects a model nor establishes its suitability or savings.
 
-| Tier  | Used by                                                                 | Why                                                              |
-|-------|-------------------------------------------------------------------------|------------------------------------------------------------------|
-| heavy | `architect`, `data-scientist`, all reviewers (`review-lead`, `code-reviewer`, `architecture-reviewer`, `security-reviewer`, `test-reviewer`, `data-reviewer`, `infrastructure-reviewer`) | Explainability and judgement matter more than speed; a bad architecture or missed security finding is catastrophic. |
-| mid   | `coding`, `infrastructure`, `backlog-manager`                          | Day-to-day authoring on a clear spec — cost-quality sweet spot. |
-| light | `dev-lead` orchestration loops, doc-only / release-notes tasks          | High call volume, low reasoning load — keep cheap.              |
+`cost_envelope.model_tiers{}` records optional preferences only: no runtime code
+consumes it. This skill does not override native selection or automatically enforce
+`ai_copilot.approved_models`. Configure actual models through the runtime's native
+controls. This is not a cross-harness contract.
 
-### Override
-
-A project can pin specific models via `cost_envelope.model_tiers{}` in `solution-profile.yaml` (e.g. mandate `claude-opus-4.7` for `heavy` for an EU-residency-only engagement). The skill respects the override; the agent frontmatter is the **fallback default**.
+See `references/tier-defaults.md` for historical recommendations, not executable defaults.
 
 ## Stop-report
 

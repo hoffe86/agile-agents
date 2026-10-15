@@ -185,6 +185,7 @@ ai_copilot:
   allowed_ai_providers: []      # E.g. ["azure-openai-tenant-only", "foundry"]
   foundry_project_url: ""       # Microsoft Foundry project URL (if used).
   approved_models: []           # E.g. ["gpt-5.4", "claude-opus-4.7", "gpt-4.1"]
+                                # Policy record; no automatic tier resolver/enforcement.
   responsible_ai_tier: ""       # low | medium | high — drives RAI review depth.
   pii_handling_rule: ""         # E.g. "no-pii-to-llm", "redact-then-send", "tenant-bound-only"
   active_agents: []             # Subset of the agent suite that applies in this repo.
@@ -283,7 +284,7 @@ testing:
 # Per-AI-run budget for the agent suite — DISTINCT from `operational.cost_band_eur_monthly`,
 # which is steady-state app cost. Drives the `cost-budget` skill (plugins/agile-agents-core/skills/cost-budget/):
 # refuses to start external-project runs without an envelope, checkpoints at every phase
-# transition, hard-halts on breach. Tier defaults align with cost-budget/references/tier-defaults.md.
+# transition, hard-halts on breach. Model-tier preferences do not select runtime models.
 cost_envelope:
   enabled: true
   tier: "medium"                # small | medium | large (default medium). Drives default caps.

@@ -17,7 +17,8 @@ description: >-
   (use `dev-lead`), or writing the skill a gap calls for (a human decides; then a
   maintainer or `coding` writes it). Never adopts, installs, or edits an artifact itself.
 tools: [vscode, read, search, web, todo, execute, browser, playwright/*, 'github/*', context7/*, microsoft-docs/*]
-model_tier: heavy  # judgement-dense: coverage reasoning, overlap, placement — the mechanical half is a script
+metadata:
+  model_tier: heavy  # judgement-dense: coverage reasoning, overlap, placement — the mechanical half is a script
 argument-hint: "What to scout for (a stack, a phase, 'coverage', or 'triage drift')"
 ---
 

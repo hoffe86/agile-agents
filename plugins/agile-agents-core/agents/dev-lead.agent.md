@@ -32,7 +32,8 @@ description: >-
   requirement is ambiguous, asks once up-front and stops.
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*, browser]
 agents: ["architect", "backlog-manager", "coding", "data-scientist", "infrastructure", "review-lead", "bootstrapper"]
-model_tier: light  # supervisor is a light-tier orchestrator — high call volume, low reasoning load; heavy reasoning is delegated to specialists
+metadata:
+  model_tier: heavy  # planning/decomposition, acceptance coverage, risk sequencing, and gate judgement require deep reasoning
 argument-hint: "Describe the requirement to deliver end-to-end (or point at a backlog item id, or the path to a planning-mode plan.md)"
 ---
 

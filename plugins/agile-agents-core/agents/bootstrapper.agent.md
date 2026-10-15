@@ -18,7 +18,8 @@ description: >-
   plugin or otherwise — without explicit approval, and never invents a profile value
   to get past a question.
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, browser, playwright/*]
-model_tier: mid  # interview + mechanical derivation; the judgement is the user's, not yours
+metadata:
+  model_tier: mid  # interview + mechanical derivation; the judgement is the user's, not yours
 argument-hint: "Bootstrap the harness for this repo (or name the profile field to repair)"
 ---
 

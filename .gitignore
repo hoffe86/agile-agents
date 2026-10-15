@@ -5,6 +5,8 @@
 eval/**/runs/
 eval/**/results/
 eval/**/.runs/
+eval/pipeline/custom-eval/tasks/**/bin/
+eval/pipeline/custom-eval/tasks/**/obj/
 
 # Local/ephemeral runtime artifacts
 .copilot-runs/

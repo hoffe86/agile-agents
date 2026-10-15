@@ -19,7 +19,8 @@ description: >-
 # A grant must match the server's registered name exactly, and that name may itself contain a slash
 # (`microsoft/azure-devops-mcp`) — copy it verbatim from your mcp-config.json.
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, browser, 'github/*', 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*]
-model_tier: mid  # mechanical authoring of well-structured work items; reasoning is bounded by the Definition of Ready + INVEST checklists
+metadata:
+  model_tier: mid  # mechanical authoring of well-structured work items; reasoning is bounded by the Definition of Ready + INVEST checklists
 argument-hint: "Describe the backlog task: create, improve, review, or update a work item"
 handoffs:
   - label: "Load"
