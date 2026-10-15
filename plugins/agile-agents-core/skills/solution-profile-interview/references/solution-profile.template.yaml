@@ -316,7 +316,11 @@ cost_envelope:
   max_minutes_per_run: 60       # Wall-clock cap. Catches stuck loops even when token spend is fine.
   stop_on_breach: true          # true → emit cost-stop-report and halt; false → warn-only (rare).
   model_tiers: {}               # Optional advisory preferences; no runtime code consumes this map.
-                                #   { heavy: "gpt-5.4", mid: "gpt-5-mini", light: "gpt-4.1" }
+                                # Values: ordered nonempty lists or legacy single model strings.
+                                # Example: { heavy: ["model-a", "model-b"], mid: "model-c" }
+                                # Keys: heavy | mid | light. No duplicate or empty model strings;
+                                # every listed model must appear in ai_copilot.approved_models.
+                                # Order records preference, not automatic fallback or selection.
                                 # Does not resolve `metadata.model_tier` or override native `model`.
 
 # ─── legal ────────────────────────────────────────────────────────────────────

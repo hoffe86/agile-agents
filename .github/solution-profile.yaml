@@ -16,11 +16,11 @@ identity:
   codename: ""                  # Optional internal/short name.
   customer: ""                  # Project / business unit / client. Empty for internal.
   business_unit: ""             # E.g. owning team or org unit (free-text).
-  lifecycle_stage: ""           # REQUIRED. poc | pilot | production | sunset
+  lifecycle_stage: "production" # REQUIRED. poc | pilot | production | sunset
   repo_url: "https://github.com/hoffe86/agile-agents"                  # Canonical URL.
   default_branch: "main"
-  owner: ""                     # GitHub handle / email of the responsible owner.
-  tech_lead: ""                 # GitHub handle / email of the tech lead.
+  owner: "hoffe86"              # GitHub handle / email of the responsible owner.
+  tech_lead: "hoffe86"          # GitHub handle / email of the tech lead.
 
 # ─── documentation ─── REQUIRED: location ─────────────────────────────────────
 documentation:
@@ -37,7 +37,7 @@ documentation:
                                 # Agents read here, and write here only when the platform is
                                 # writable from the workspace (in-repo). Otherwise they emit
                                 # the content and say where it needs to be pasted.
-  framework: ""                 # Documentation framework — the *table of contents* agents
+  framework: "arc42"            # Documentation framework — the *table of contents* agents
                                 # follow when authoring or reviewing architecture docs.
                                 # arc42 | c4-only | togaf | 4+1 | custom | none
                                 # Empty → agents default to arc42 + C4 and say so.
@@ -57,8 +57,8 @@ backlog:
   project: "hoffe86/agile-agents"                   # ADO project name / Jira key / GitHub org-project.
   area_path: ""                 # ADO area path (if applicable).
   default_iteration: ""         # ADO iteration / Jira sprint pattern (optional).
-  branch_naming: ""             # E.g. "feature/<work-item-id>-<slug>", "fix/<id>-<slug>".
-  pr_link_pattern: ""           # E.g. "Closes #<n>" (GitHub), "AB#<n>" (ADO Boards).
+  branch_naming: "<type>/<slug>" # E.g. "feature/<work-item-id>-<slug>", "fix/<id>-<slug>".
+  pr_link_pattern: "Closes #<n>" # E.g. "Closes #<n>" (GitHub), "AB#<n>" (ADO Boards).
   commit_convention: "conventional-commits"         # conventional-commits | gitmoji | freeform
   required_commit_trailers: ["Co-authored-by"]  # E.g. ["Signed-off-by", "Co-authored-by"]
   task_type: "Task"             # Work-item type used for planned child tasks (ADO: Task; GitHub: Issue; Jira: Sub-task).
@@ -90,18 +90,20 @@ tech_stack:
     - { name: "python" }
     - { name: "shell" }
   frameworks: []                # E.g. ["aspnetcore", "ef-core", "fastapi"]
-  package_managers: []          # E.g. ["nuget", "pip", "uv", "npm"]
-  test_discipline: ""           # REQUIRED. tdd | bdd | test-after | none
-  test_frameworks: []           # E.g. ["xunit", "fluentassertions"], ["pytest", "pytest-cov"]
+  package_managers: ["pip"]     # E.g. ["nuget", "pip", "uv", "npm"]
+  test_discipline: "test-after" # REQUIRED. tdd | bdd | test-after | none
+  test_frameworks: ["unittest", "pytest"] # E.g. ["xunit", "fluentassertions"], ["pytest", "pytest-cov"]
   coverage_threshold: null      # Integer percent (e.g. 80) or null if not enforced.
   lint_format_tools: []         # E.g. ["dotnet-format", "ruff", "black", "eslint"]
   build_tools: []               # E.g. ["dotnet", "uv", "make"]
 
 # ─── infrastructure ───────────────────────────────────────────────────────────
 infrastructure:
-  iac_tool: ""                  # bicep | terraform | arm | pulumi | none
+  iac_tool: "none"              # bicep | terraform | arm | pulumi | none
   iac_root: ""                  # Path to IaC root (e.g. "infra/").
   cloud: ""                     # azure | aws | gcp | on-prem | hybrid
+                                # Not applicable: this harness repo has no cloud deployment.
+                                # Empty because the template vocabulary has no `none` value.
   allowed_regions: []           # E.g. ["westeurope", "northeurope"] — hard constraint.
   hosting_model: ""             # aks | aca | functions | app-service | vm | on-prem | edge
   environment_chain: []         # E.g. ["dev", "test", "stage", "prod"]
@@ -118,7 +120,16 @@ infrastructure:
 cicd:
   platform: "github-actions"                  # github-actions | azure-pipelines | gitlab-ci | jenkins
   pipeline_paths: [".github/workflows/"]            # E.g. [".github/workflows/", "azure-pipelines.yml"]
-  required_checks: []           # Status-check names that must pass to merge.
+  required_checks:              # Status-check names that must pass to merge.
+    # Desired repo gates from PR workflows; branch protection has not been verified.
+    # Dispatch-only pipeline-outcome is excluded; live evaluation remains disabled.
+    - "check-agents-md-in-sync"
+    - "audit-references"
+    - "trajectory"
+    - "runtime-contracts (ubuntu-latest)"
+    - "runtime-contracts (windows-latest)"
+    - "skill-quality"
+    - "plugin-versions"
   release_strategy: "trunk"          # trunk | gitflow | release-branches | env-branches
                                 # Read by `deploy-verify`: on trunk-based a feature-branch push
                                 # normally triggers the dev deploy; on gitflow / env-branches it
@@ -129,7 +140,7 @@ cicd:
 
 # ─── compliance_security ──────────────────────────────────────────────────────
 compliance_security:
-  data_classification: ""       # public | internal | confidential | restricted
+  data_classification: "public" # public | internal | confidential | restricted
   data_residency: []            # ISO country codes the data must stay in (e.g. ["DE", "EU"]).
   regulatory_scope: []          # E.g. ["gdpr", "bsi-su3", "hipaa", "fedramp", "il5", "iso-27001"]
   security_benchmarks: []       # Benchmarks reviewers cite control ids from. E.g. ["mcsb", "cis-azure"],
@@ -172,10 +183,10 @@ team_communication:
 # (e.g. delivery methodologies, internal phase names) belong in vendor-internal
 # notes, not here.
 engagement_context:
-  engagement_type: ""           # internal | external-project | open-source | partner
-  delivery_phase: ""            # discovery | design | build | run | sunset
+  engagement_type: "open-source" # internal | external-project | open-source | partner
+  delivery_phase: "build"       # discovery | design | build | run | sunset
   contract_type: ""             # fixed-price | time-and-materials | retainer | none
-  ip_ownership: ""              # client | vendor | shared | open-source
+  ip_ownership: "open-source"   # client | vendor | shared | open-source
   third_parties: []             # Other vendors / partners involved (free-text bullets).
   contractual_constraints: []   # Constraints the agents must respect (NDAs, residency,
                                 # exclusivity, sub-processor lists) as free-text bullets.
@@ -184,8 +195,15 @@ engagement_context:
 ai_copilot:
   allowed_ai_providers: []      # E.g. ["azure-openai-tenant-only", "foundry"]
   foundry_project_url: ""       # Microsoft Foundry project URL (if used).
-  approved_models: []           # E.g. ["gpt-5.4", "claude-opus-4.7", "gpt-4.1"]
+  approved_models:              # E.g. ["gpt-5.4", "claude-opus-4.7", "gpt-4.1"]
                                 # Policy record; no automatic tier resolver/enforcement.
+    - "gpt-6-astra"
+    - "claude-opus-5.5"
+    - "gpt-6.1-sol"
+    - "claude-sonnet-5.5"
+    - "gpt-6-luna"
+    - "claude-haiku-5.5"
+    - "mai-code-1.1-flash"
   responsible_ai_tier: ""       # low | medium | high — drives RAI review depth.
   pii_handling_rule: ""         # E.g. "no-pii-to-llm", "redact-then-send", "tenant-bound-only"
   active_agents: []             # Subset of the agent suite that applies in this repo.
@@ -223,14 +241,16 @@ quality_gates:
     mutation_score_threshold_percent: 0  # 0 → mutation gate disabled (Stryker / mutmut etc.).
     # Per-check overrides. Leave `command: ""` to use the per-stack default from
     # commands.yaml. Set `enabled: false` to skip a check explicitly (with a note in PR).
+    # Run at repo root with eval/deepeval/requirements.txt installed in the active
+    # Python environment and pwsh available. The helper propagates every failure.
     lint:
-      command: ""
+      command: "python scripts/run-repo-checks.py lint"
       enabled: true
     typecheck:
       command: ""
-      enabled: true
+      enabled: false            # No configured static type checker for this mixed script repo.
     unit_test:
-      command: ""
+      command: "python scripts/run-repo-checks.py unit"
       enabled: true
     integration_test:
       command: ""
@@ -270,6 +290,7 @@ testing:
   smoke:
     # Local "does it even come up?" check. Runs at Stage 7 after the unit tests,
     # before the reviewers. Leave `command` empty to skip the slot entirely.
+    # Not applicable: this harness repo has no runnable application.
     command: []                 # E.g. ["func", "start"] or ["dotnet", "run", "--project", "src/Api"].
     url: ""                     # Health endpoint polled until it answers (e.g. "http://localhost:7071/api/health").
     timeout_s: 60               # Give up (and fail the gate) after this many seconds.
@@ -301,6 +322,12 @@ cost_envelope:
   max_tokens_per_run: 2000000   # Aggregate token cap (input + output across all agents).
   max_minutes_per_run: 60       # Wall-clock cap. Catches stuck loops even when token spend is fine.
   stop_on_breach: true          # true → emit cost-stop-report and halt; false → warn-only (rare).
+  model_tiers:                 # Optional advisory preferences; no runtime code consumes this map.
+                                # Ordered preference lists, not resolver/fallback enforcement.
+                                # Does not resolve `metadata.model_tier` or override native `model`.
+    heavy: ["gpt-6-astra", "claude-opus-5.5"]
+    mid: ["gpt-6.1-sol", "claude-sonnet-5.5"]
+    light: ["gpt-6-luna", "claude-haiku-5.5", "mai-code-1.1-flash"]
 
 # ─── legal ────────────────────────────────────────────────────────────────────
 legal:

@@ -395,6 +395,14 @@ stay top-level. Copilot's runtime-native controls govern model selection; the an
 does not override them. Neither the optional `cost_envelope.model_tiers` preferences nor
 `ai_copilot.approved_models` is automatically enforced by a tier resolver — none exists.
 This is advisory Copilot metadata, not a cross-harness contract or measured cost saving.
+The checker also validates advisory policy in the root profile and shipped template
+(not consumer fixtures): tier values are ordered nonempty model-ID lists or legacy
+single strings, without duplicates, and all listed IDs must be in the approved list.
+This static consistency check does not enforce runtime selection or automatic fallback.
+Keep this repo's seven IDs in its own profile; keep the shipped template generic.
+The dogfood test bar uses `scripts/run-repo-checks.py lint|unit` with the active Python
+environment (`eval/deepeval/requirements.txt`) and `pwsh`; failures propagate immediately.
+Preserve the unittest/pytest split from CI, not blanket pytest discovery.
 
 ### Skill format
 Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`,
