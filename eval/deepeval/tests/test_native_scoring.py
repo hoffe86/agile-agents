@@ -92,6 +92,18 @@ def isolated_command_path(bin_dir, commands_dir, command_paths):
     return os.pathsep.join([str(bin_dir), str(commands_dir)])
 
 
+def fake_command_path(bin_dir, shell_commands):
+    # A POSIX venv's executable is a symlink to the base Python. Resolving it
+    # before selecting its parent loses pyvenv.cfg and the locked dependencies.
+    safe_dirs = [str(Path(sys.executable).parent), str(shell_commands)]
+    real_copilot = shutil.which("copilot")
+    if real_copilot:
+        real_dir = Path(real_copilot).resolve().parent
+        safe_dirs = [directory for directory in safe_dirs
+                     if Path(directory).resolve() != real_dir]
+    return os.pathsep.join([str(bin_dir), *safe_dirs])
+
+
 @pytest.fixture(scope="session")
 def shell_commands(tmp_path_factory):
     commands = tmp_path_factory.mktemp("native-utilities") / "commands"
@@ -130,13 +142,7 @@ def fake_cli(tmp_path, shell_commands):
         executable = bin_dir / "copilot"
         write_unix_launcher(executable, script)
     env = os.environ.copy()
-    safe_dirs = [str(Path(sys.executable).resolve().parent), str(shell_commands)]
-    real_copilot = shutil.which("copilot")
-    if real_copilot:
-        real_dir = Path(real_copilot).resolve().parent
-        safe_dirs = [directory for directory in safe_dirs
-                     if Path(directory).resolve() != real_dir]
-    env["PATH"] = os.pathsep.join([str(bin_dir), *safe_dirs])
+    env["PATH"] = fake_command_path(bin_dir, shell_commands)
     env["FAKE_COUNTER"] = str(tmp_path / "calls.txt")
     env["FAKE_RESPONSES"] = "[]"
     env["DEEPEVAL_TELEMETRY_OPT_OUT"] = "1"
@@ -152,6 +158,73 @@ def fake_cli(tmp_path, shell_commands):
     for native in ("powershell", "bash"):
         verify_fake_cli(native, env, executable, tmp_path / f"preflight-{native}.jsonl")
     return env
+
+
+def test_fake_path_and_unix_launcher_preserve_symlinked_interpreter(tmp_path, monkeypatch):
+    # Model a POSIX venv even on Windows, where venv normally copies a launcher.
+    venv_bin = tmp_path / "venv/bin"
+    venv_bin.mkdir(parents=True)
+    interpreter = venv_bin / Path(sys.executable).name
+    interpreter.symlink_to(sys.executable)
+    monkeypatch.setattr(sys, "executable", str(interpreter))
+    launcher = tmp_path / "copilot"
+    script = tmp_path / "copilot.py"
+
+    path = fake_command_path(tmp_path / "fake-bin", tmp_path / "utilities")
+    write_unix_launcher(launcher, script)
+
+    assert path.split(os.pathsep) == [
+        str(tmp_path / "fake-bin"), str(venv_bin), str(tmp_path / "utilities"),
+    ]
+    assert launcher.read_text(encoding="utf-8") == (
+        f'#!/bin/sh\nexec "{interpreter.as_posix()}" "{script.as_posix()}" "$@"\n'
+    )
+
+
+@pytest.fixture
+def yaml_only_venv(tmp_path):
+    import venv
+    import yaml
+
+    environment = tmp_path / "isolated-venv"
+    venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt").create(environment)
+    interpreter = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    proc = execute([
+        interpreter, "-I", "-c",
+        "import importlib.util,json,sysconfig; "
+        "print(json.dumps([importlib.util.find_spec('yaml') is None,"
+        "sysconfig.get_path('purelib')]))",
+    ], os.environ.copy())
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    absent, site_packages = json.loads(proc.stdout)
+    assert absent, "isolated venv unexpectedly inherited PyYAML"
+    # Reuse the locked package offline; no pip install or ambient site directory.
+    package = Path(site_packages) / "yaml"
+    shutil.copytree(Path(yaml.__file__).parent, package)
+    return interpreter, environment, package / "__init__.py"
+
+
+@pytest.mark.parametrize("native", ["powershell", "bash"])
+def test_native_python_preserves_interpreter_and_yaml_identity(
+        native, yaml_only_venv, monkeypatch, request):
+    interpreter, environment, yaml_file = yaml_only_venv
+    monkeypatch.setattr(sys, "executable", str(interpreter))
+    fake_cli = request.getfixturevalue("fake_cli")
+    probe = (
+        "import json,sys,yaml; "
+        "print(json.dumps([sys.executable,sys.prefix,yaml.__file__]))"
+    )
+    if native == "powershell":
+        command = [PWSH, "-NoProfile", "-Command", "python -c $env:PYTHON_PROBE; exit $LASTEXITCODE"]
+    else:
+        command = [BASH, "--noprofile", "--norc", "-c", 'python -c "$PYTHON_PROBE"']
+    proc = execute(command, dict(fake_cli, PYTHON_PROBE=probe))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert [Path(value) for value in json.loads(proc.stdout)] == [
+        interpreter, environment, yaml_file,
+    ]
+    assert not Path(fake_cli["FAKE_COUNTER"]).exists()
 
 
 @pytest.mark.parametrize("native", ["powershell", "bash"])

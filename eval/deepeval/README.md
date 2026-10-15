@@ -211,6 +211,9 @@ On Windows the native tests use PowerShell 7 and Git Bash; on Unix they use `pws
 `bash`. Shells run by absolute executable path (the native `Git/usr/bin/bash.exe`, not
 the PATH-extending wrapper). Utilities are individually exposed in a temporary command
 directory, never by adding a shell's host directory such as `/usr/bin` to PATH.
+The fixture keeps the active Python executable's original parent on PATH and
+its original path in the Unix fake-CLI launcher: resolving a POSIX venv's Python
+symlink first would select the base interpreter and lose the locked dependencies.
 Missing-Python tests verify interpreter absence and fake-CLI resolution in the native
 shell before checking the full ten-task setup-error summary.
 Scoring segments run as offline units with a local fake CLI. Live custom-eval is

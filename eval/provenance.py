@@ -21,6 +21,7 @@ VERSION = 1
 ROOT = Path(__file__).resolve().parents[1]
 MAX_BYTES = 4 * 1024 * 1024
 MAX_FILES = 20000
+MAX_JSON_DEPTH = 64
 MANIFEST = "run-provenance.json"
 HASH = re.compile(r"[0-9a-f]{64}")
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,159}")
@@ -88,9 +89,34 @@ def identity(value: object) -> str:
                              ensure_ascii=True).encode("utf-8"))
 
 
+def _check_json_depth(text: str) -> None:
+    """Bound container nesting before decoding; leave JSON syntax to json.loads."""
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+        elif character == '"':
+            in_string = True
+        elif character in "{[":
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise ValueError("provenance JSON exceeds nesting limit")
+        elif character in "}]":
+            depth -= 1
+
+
 def read_json(path: Path) -> dict:
+    text = read_bytes(path).decode("utf-8-sig")
+    _check_json_depth(text)
     try:
-        value = json.loads(read_bytes(path).decode("utf-8-sig"))
+        value = json.loads(text)
     except RecursionError as exc:
         raise ValueError("provenance JSON exceeds nesting limit") from exc
     if not isinstance(value, dict):

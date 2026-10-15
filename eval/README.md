@@ -185,6 +185,9 @@ their parent directory. Capture precedes writing the result or native run manife
 This does not discover historical output trees outside the declared output root.
 
 Reads are bounded to 4 MiB per file with a 20,000-source-file inventory cap.
+Provenance JSON reads also reject more than 64 nested object/array containers
+(the root object counts as one) before decoding. Delimiters inside strings do
+not count. This bound is explicit, not dependent on Python's recursion limit.
 Traversal, symlinks/reparse points, malformed versions/hashes/statuses and unsafe
 export paths fail explicitly. References from a manifest are compared, never used
 to discover arbitrary files. Hashes and sanitized result metadata are retained;

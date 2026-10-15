@@ -355,6 +355,65 @@ def test_excessive_json_nesting_is_explicit_failure(tmp_path):
         p.read_json(path)
 
 
+def nested_json(shape, depth, leaf="0"):
+    """Build containers iteratively, including the required root object in depth."""
+    wrappers = {
+        "object": [('{"nested":', "}")],
+        "array": [("[", "]")],
+        "mixed": [('{"nested":', "}"), ("[", "]")],
+    }[shape]
+    for index in range(depth - 1):
+        opening, closing = wrappers[index % len(wrappers)]
+        leaf = opening + leaf + closing
+    return '{"root":' + leaf + "}"
+
+
+@pytest.mark.parametrize("shape", ["object", "array", "mixed"])
+@pytest.mark.parametrize("depth", [1, p.MAX_JSON_DEPTH - 1, p.MAX_JSON_DEPTH])
+def test_json_container_depth_through_limit_is_accepted(tmp_path, shape, depth):
+    text = nested_json(shape, depth)
+    path = tmp_path / "nested.json"
+    path.write_text(text, encoding="utf-8")
+
+    assert p.read_json(path) == json.loads(text)
+
+
+@pytest.mark.parametrize("shape", ["object", "array", "mixed"])
+def test_json_one_container_over_limit_is_rejected_before_decode(tmp_path, monkeypatch, shape):
+    path = tmp_path / "nested.json"
+    path.write_text(nested_json(shape, p.MAX_JSON_DEPTH + 1), encoding="utf-8")
+
+    def unexpected_decode(*args, **kwargs):
+        pytest.fail("over-depth JSON reached the runtime-dependent decoder")
+
+    monkeypatch.setattr(p.json, "loads", unexpected_decode)
+    with pytest.raises(ValueError, match="nesting"):
+        p.read_json(path)
+
+
+@pytest.mark.parametrize("leaf", [
+    "{[" * (p.MAX_JSON_DEPTH + 1),
+    "}]" * (p.MAX_JSON_DEPTH + 1),
+    'escaped quote " then {[ and backslash \\',
+    'backslash then quote \\" and ]}',
+])
+def test_json_depth_ignores_string_delimiters_and_escapes(tmp_path, leaf):
+    text = nested_json("mixed", p.MAX_JSON_DEPTH, json.dumps(leaf))
+    path = tmp_path / "nested.json"
+    path.write_text(text, encoding="utf-8")
+
+    assert p.read_json(path) == json.loads(text)
+
+
+@pytest.mark.parametrize("text", ['{"broken":[}', '{"broken":"unterminated}', '{"broken":"\\q"}'])
+def test_json_depth_scan_does_not_replace_syntax_validation(tmp_path, text):
+    path = tmp_path / "malformed.json"
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        p.read_json(path)
+
+
 def test_capture_failure_retains_full_denominator_without_invented_hashes(repo, tmp_path, monkeypatch):
     run = tmp_path / "failed-run"
     run.mkdir()
