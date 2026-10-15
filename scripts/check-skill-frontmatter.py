@@ -30,9 +30,11 @@ Checks (all fatal):
   6. Agents: `metadata` is a string-to-string mapping containing `model_tier`
      (light / mid / heavy). Legacy top-level tiers and nested native fields fail.
   7. Core agents: the ADR 0007 inventory and tier assignments are preserved.
+  8. Root profile and shipped template: advisory model lists are well formed and
+     reference only declared approved models (not runtime model enforcement).
 
 Agent annotations are advisory. These checks neither select a runtime model nor
-enforce approved_models. Skill metadata is not subject to the agent convention.
+enforce runtime approved-model selection. Skill metadata is not subject to the agent convention.
 
 Usage:
   check-skill-frontmatter.py [repo-root]
@@ -136,11 +138,109 @@ def inspect(path: str, kind: str, dirname: str | None = None,
     return defects
 
 
+class ProfileLoader(yaml.SafeLoader):
+    """Reject duplicate keys rather than silently discarding profile policy."""
+
+    def __init__(self, stream):
+        super().__init__(stream)
+        self._checked_mappings = set()
+
+    def flatten_mapping(self, node):
+        if not isinstance(node, yaml.MappingNode):
+            raise yaml.constructor.ConstructorError(
+                None, None, "expected a mapping node", node.start_mark)
+        # PyYAML calls this recursively for inline and sequence merge sources.
+        # Aliases can revisit nodes already flattened; their inherited keys must
+        # not be mistaken for duplicate explicit keys.
+        if node in self._checked_mappings:
+            return
+        keys = set()
+        for key_node, _ in node.value:
+            key = (key_node.value if key_node.tag == "tag:yaml.org,2002:merge"
+                   else self.construct_object(key_node))
+            try:
+                if key in keys:
+                    raise yaml.constructor.ConstructorError(
+                        None, None, f"duplicate key: {key!r}", key_node.start_mark)
+                keys.add(key)
+            except TypeError as exc:
+                raise yaml.constructor.ConstructorError(
+                    None, None, "mapping key must be hashable", key_node.start_mark) from exc
+        self._checked_mappings.add(node)
+        super().flatten_mapping(node)
+
+    def construct_object(self, node, deep=False):
+        try:
+            return super().construct_object(node, deep=deep)
+        except ValueError as exc:
+            # PyYAML's numeric and timestamp constructors can raise ValueError
+            # for invalid scalar values rather than a YAML diagnostic.
+            if not isinstance(node, yaml.ScalarNode) or node.tag not in (
+                    "tag:yaml.org,2002:int", "tag:yaml.org,2002:float",
+                    "tag:yaml.org,2002:timestamp"):
+                raise
+            raise yaml.constructor.ConstructorError(
+                None, None, f"invalid {node.tag.rsplit(':', 1)[-1]}: {exc}",
+                node.start_mark) from exc
+
+
+def inspect_profile(path: str) -> list[str]:
+    """Validate only the advisory model policy, not a general profile schema."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = yaml.load(handle, Loader=ProfileLoader)
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        return ["profile could not be read as valid YAML: " + str(exc)]
+    if not isinstance(data, dict):
+        return ["profile must be a YAML mapping"]
+
+    for section in ("cost_envelope", "ai_copilot"):
+        if section in data and not isinstance(data[section], dict):
+            return [f"`{section}` must be a mapping"]
+    tiers = data.get("cost_envelope", {}).get("model_tiers", {})
+    if not isinstance(tiers, dict):
+        return ["`cost_envelope.model_tiers` must be a mapping (or omitted)"]
+    approved = data.get("ai_copilot", {}).get("approved_models", [])
+    if not isinstance(approved, list) or any(
+            not isinstance(model, str) or not model.strip() for model in approved):
+        return ["`ai_copilot.approved_models` must be a list of nonempty model strings"]
+    defects = []
+    if len(approved) != len(set(approved)):
+        defects.append("duplicate model in `ai_copilot.approved_models`")
+    seen = set()
+    for tier, models in tiers.items():
+        label = f"cost_envelope.model_tiers.{tier}"
+        if tier not in ("heavy", "mid", "light"):
+            defects.append(f"invalid tier {tier!r}; expected heavy / mid / light")
+        if isinstance(models, str):
+            models = [models]  # Legacy single-string tier; no coercion of other types.
+        if not isinstance(models, list) or not models or any(
+                not isinstance(model, str) or not model.strip() for model in models):
+            defects.append(f"`{label}` must be a nonempty model string or nonempty list of strings")
+            continue
+        for model in models:
+            if model in seen:
+                defects.append(f"duplicate model {model!r} in `{label}`")
+            seen.add(model)
+            if model not in approved:
+                defects.append(f"`{label}` model {model!r} is not in `ai_copilot.approved_models`")
+    return defects
+
+
 def scan(repo_root: str):
-    """Yield (kind, label, path, defects) for every artifact under plugins/."""
+    """Inspect artifacts and two explicit profiles, never consumer fixtures."""
     plugins = os.path.join(repo_root, "plugins")
     if not os.path.isdir(plugins):
         raise SystemExit("error: no plugins/ directory under %s" % repo_root)
+
+    for relative in (
+        ".github/solution-profile.yaml",
+        "plugins/agile-agents-core/skills/solution-profile-interview/"
+        "references/solution-profile.template.yaml",
+    ):
+        path = os.path.join(repo_root, relative)
+        if os.path.exists(path):
+            yield "profile", relative, path, inspect_profile(path)
 
     core_path = os.path.join(plugins, "agile-agents-core")
     if not os.path.isdir(core_path):

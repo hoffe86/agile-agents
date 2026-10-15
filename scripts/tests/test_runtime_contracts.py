@@ -2155,5 +2155,339 @@ class AgentMetadataTests(unittest.TestCase):
             self.assertTrue(all(text == outputs[0] for text in outputs))
 
 
+class AdvisoryProfileTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            "profile_checker", ROOT / "scripts/check-skill-frontmatter.py")
+        cls.checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.checker)
+
+    def inspect_text(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "profile.yaml"
+            path.write_text(text, encoding="utf-8")
+            return self.checker.inspect_profile(str(path))
+
+    def test_optional_map_and_legacy_strings_remain_compatible(self):
+        for text in (
+            "{}",
+            "cost_envelope: {}",
+            "cost_envelope: {model_tiers: {}}",
+            "ai_copilot: {approved_models: [a, b, c]}\n"
+            "cost_envelope: {model_tiers: {heavy: a, mid: [b]}}",
+            "ai_copilot: {approved_models: [a, b, c]}\n"
+            "cost_envelope: {model_tiers: {heavy: [a, b], light: c}}",
+            "defaults: &defaults {model_tiers: {heavy: a}}\n"
+            "ai_copilot: {approved_models: [b]}\n"
+            "cost_envelope: {<<: *defaults, model_tiers: {heavy: [b]}}",
+        ):
+            with self.subTest(profile=text):
+                self.assertEqual(self.inspect_text(text), [])
+
+    def test_malformed_policy_fails_with_field_diagnostics(self):
+        cases = (
+            ("[]", "profile must be a YAML mapping"),
+            ("", "profile must be a YAML mapping"),
+            ("cost_envelope: [", "valid YAML"),
+            ("cost_envelope: null", "`cost_envelope` must be a mapping"),
+            ("ai_copilot: []", "`ai_copilot` must be a mapping"),
+            ("cost_envelope: {model_tiers: null}", "model_tiers` must be a mapping"),
+            ("cost_envelope: {model_tiers: []}", "model_tiers` must be a mapping"),
+            ("cost_envelope: {model_tiers: heavy}", "model_tiers` must be a mapping"),
+            ("cost_envelope: {model_tiers: {Heavy: a}}", "invalid tier"),
+            ("cost_envelope: {model_tiers: {true: a}}", "invalid tier"),
+            ("cost_envelope: {model_tiers: {heavy: a}}", "not in `ai_copilot.approved_models`"),
+            ("ai_copilot: {approved_models: a}", "list of nonempty model strings"),
+            ("ai_copilot: {approved_models: null}", "list of nonempty model strings"),
+            ("ai_copilot: {approved_models: [a, a]}", "duplicate model"),
+            ("cost_envelope: {model_tiers: {heavy: a, heavy: b}}", "duplicate key"),
+            ("cost_envelope: {}\ncost_envelope: {}", "duplicate key"),
+            ("? [not, a, scalar]\n: value", "mapping key must be hashable"),
+        )
+        for text, diagnostic in cases:
+            with self.subTest(profile=text):
+                self.assertIn(diagnostic, " ".join(self.inspect_text(text)))
+
+    def test_duplicate_keys_in_merge_sources_are_rejected(self):
+        for tiers in (
+            "{<<: {heavy: a, heavy: b}}",
+            "{<<: [{heavy: a, heavy: b}, {mid: c}]}",
+            "{<<: [{mid: c}, {heavy: a, heavy: b}]}",
+            "{<<: {<<: {heavy: a, heavy: b}}}",
+            "{<<: {heavy: a, heavy: b}, heavy: c}",
+            "{<<: [&tiers {heavy: a, heavy: b}, *tiers]}",
+        ):
+            with self.subTest(tiers=tiers):
+                self.assertIn("duplicate key: 'heavy'", " ".join(self.inspect_text(
+                    "ai_copilot: {approved_models: [a, b, c]}\n"
+                    "cost_envelope: {model_tiers: " + tiers + "}")))
+
+    def test_merge_overrides_and_reused_aliases_remain_valid(self):
+        for tiers in (
+            "{<<: {heavy: a}, heavy: b}",
+            "{<<: [{heavy: a}, {heavy: b}]}",
+            "{<<: [{heavy: a}, {heavy: b}], heavy: c}",
+            "{<<: [&tiers {<<: {heavy: a}, heavy: b}, *tiers]}",
+        ):
+            with self.subTest(tiers=tiers):
+                self.assertEqual(self.inspect_text(
+                    "ai_copilot: {approved_models: [a, b, c]}\n"
+                    "cost_envelope: {model_tiers: " + tiers + "}"), [])
+
+    def test_malformed_yaml_cli_reports_diagnostics_without_tracebacks(self):
+        cases = (
+            ("ai_copilot: !!map wrong", "expected a mapping node"),
+            ("ai_copilot: !!map [wrong]", "expected a mapping node"),
+            ("ai_copilot: {approved_models: [2026-99-99]}", "invalid timestamp"),
+            ("ai_copilot: {approved_models: [2026-02-30]}", "invalid timestamp"),
+            ("ai_copilot: {approved_models: [2026-10-15T25:00:00Z]}", "invalid timestamp"),
+            ("ai_copilot: {approved_models: [!!int wrong]}", "invalid int"),
+            ("ai_copilot: {approved_models: [!!float wrong]}", "invalid float"),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(CORE / "agents", root / "plugins/agile-agents-core/agents")
+            (root / ".github").mkdir()
+            profile = root / ".github/solution-profile.yaml"
+            for text, diagnostic in cases:
+                with self.subTest(profile=text):
+                    profile.write_text(text, encoding="utf-8")
+                    result = subprocess.run(
+                        [sys.executable, str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
+                        capture_output=True, encoding="utf-8", timeout=20)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn("profile could not be read as valid YAML", result.stdout)
+                    self.assertIn(diagnostic, result.stdout)
+                    self.assertNotIn("Traceback", result.stdout + result.stderr)
+                    self.assertEqual(result.stderr, "")
+
+    def test_unrelated_constructor_errors_are_not_suppressed(self):
+        from unittest.mock import patch
+        with patch.object(self.checker.ProfileLoader, "construct_scalar",
+                          side_effect=ValueError("unexpected constructor bug")):
+            with self.assertRaisesRegex(ValueError, "unexpected constructor bug"):
+                self.inspect_text("ai_copilot: {}")
+
+    def test_model_values_are_not_silently_coerced(self):
+        for value in ("null", "false", "42", "{}", "[]", "''", "'  '",
+                      "[a, null]", "[a, true]", "[42]", "[{}]", "[[]]", "['  ']"):
+            with self.subTest(value=value):
+                self.assertIn("must be a nonempty model string",
+                              " ".join(self.inspect_text(
+                                  "ai_copilot: {approved_models: [a]}\n"
+                                  "cost_envelope: {model_tiers: {heavy: " + value + "}}")))
+        for value in ("[null]", "[false]", "[42]", "[{}]", "[[]]", "['']", "['  ']"):
+            with self.subTest(approved=value):
+                self.assertIn("list of nonempty model strings", " ".join(
+                    self.inspect_text("ai_copilot: {approved_models: " + value + "}")))
+
+    def test_duplicates_within_and_across_tiers_are_rejected(self):
+        for tiers in ("{heavy: [a, a]}", "{heavy: a, mid: [a]}"):
+            with self.subTest(tiers=tiers):
+                self.assertIn("duplicate model", " ".join(self.inspect_text(
+                    "ai_copilot: {approved_models: [a]}\n"
+                    "cost_envelope: {model_tiers: " + tiers + "}")))
+
+    def test_root_policy_is_checked_but_consumer_fixtures_are_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(CORE / "agents", root / "plugins/agile-agents-core/agents")
+            (root / ".github").mkdir()
+            (root / ".github/solution-profile.yaml").write_text(
+                "cost_envelope: {model_tiers: {heavy: unapproved}}", encoding="utf-8")
+            fixture = root / "eval/fixture/.github"
+            fixture.mkdir(parents=True)
+            (fixture / "solution-profile.yaml").write_text("malformed: [", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
+                capture_output=True, encoding="utf-8", timeout=20)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("not in `ai_copilot.approved_models`", result.stdout)
+            (root / ".github/solution-profile.yaml").write_text("{}", encoding="utf-8")
+            self.assertFalse([row for row in self.checker.scan(tmp) if row[3]])
+            template = root / (
+                "plugins/agile-agents-core/skills/solution-profile-interview/references/"
+                "solution-profile.template.yaml")
+            template.parent.mkdir(parents=True)
+            template.write_text("cost_envelope: {model_tiers: false}", encoding="utf-8")
+            failures = [row for row in self.checker.scan(tmp) if row[3]]
+            self.assertEqual(len(failures), 1)
+            self.assertEqual(Path(failures[0][2]), template)
+
+    def test_repo_policy_exact_union_and_template_separation(self):
+        profile = self.checker.yaml.safe_load(
+            (ROOT / ".github/solution-profile.yaml").read_text(encoding="utf-8"))
+        template = self.checker.yaml.safe_load(
+            (CORE / "skills/solution-profile-interview/references/"
+             "solution-profile.template.yaml").read_text(encoding="utf-8"))
+        tiers = {
+            "heavy": ["gpt-6-astra", "claude-opus-5.5"],
+            "mid": ["gpt-6.1-sol", "claude-sonnet-5.5"],
+            "light": ["gpt-6-luna", "claude-haiku-5.5", "mai-code-1.1-flash"],
+        }
+        self.assertEqual(profile["cost_envelope"]["model_tiers"], tiers)
+        self.assertEqual(profile["ai_copilot"]["approved_models"],
+                         [model for models in tiers.values() for model in models])
+        self.assertEqual(template["cost_envelope"]["model_tiers"], {})
+        self.assertEqual(template["ai_copilot"]["approved_models"], [])
+        self.assertEqual(template["identity"]["lifecycle_stage"], "")
+        self.assertEqual(template["tech_stack"]["test_discipline"], "")
+        self.assertEqual(profile["identity"]["project_name"], "agile-agents")
+        self.assertEqual(profile["identity"]["lifecycle_stage"], "production")
+        self.assertEqual(profile["documentation"]["location"], "docs/")
+        self.assertEqual(profile["backlog"]["platform"], "github-issues")
+        self.assertEqual(profile["backlog"]["branch_naming"], "<type>/<slug>")
+        self.assertEqual(profile["backlog"]["pr_link_pattern"], "Closes #<n>")
+        self.assertEqual(profile["tech_stack"]["primary_languages"],
+                         [{"name": "powershell"}, {"name": "python"}, {"name": "shell"}])
+        self.assertEqual(profile["tech_stack"]["test_discipline"], "test-after")
+        self.assertEqual(profile["tech_stack"]["test_frameworks"], ["unittest", "pytest"])
+        self.assertEqual(profile["engagement_context"]["engagement_type"], "open-source")
+        self.assertEqual(profile["cicd"]["required_checks"], [
+            "check-agents-md-in-sync", "audit-references", "trajectory",
+            "runtime-contracts (ubuntu-latest)", "runtime-contracts (windows-latest)",
+            "skill-quality", "plugin-versions"])
+        self.assertEqual(profile["compliance_security"]["allowed_oss_licenses"], [])
+        self.assertEqual(profile["infrastructure"]["cloud"], "")
+        self.assertEqual(profile["infrastructure"]["deploy_verify"], "off")
+        self.assertFalse(profile["data_science"]["enabled"])
+        for key in ("max_usd_per_run", "max_aiu_per_run", "max_aiu_per_phase",
+                    "max_tokens_per_run", "max_minutes_per_run"):
+            self.assertEqual(profile["cost_envelope"][key], template["cost_envelope"][key])
+
+
+class RepoCheckRunnerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            "repo_checks", ROOT / "scripts/run-repo-checks.py")
+        cls.runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.runner)
+
+    def run_children(self, commands):
+        # Exercise actual child exit codes without invoking the suite recursively.
+        code = (
+            "import importlib.util, sys;"
+            f"spec=importlib.util.spec_from_file_location('checks', {str(ROOT / 'scripts/run-repo-checks.py')!r});"
+            "module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);"
+            f"sys.exit(module.run_commands({commands!r}))")
+        return subprocess.run([sys.executable, "-c", code], capture_output=True,
+                              encoding="utf-8", timeout=20)
+
+    def test_success_runs_each_child(self):
+        commands = [
+            [sys.executable, "-c", "print('first-check')"],
+            [sys.executable, "-c", "print('last-check')"]]
+        result = self.run_children(commands)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), [
+            "+ " + subprocess.list2cmdline(commands[0]),
+            "first-check",
+            "+ " + subprocess.list2cmdline(commands[1]),
+            "last-check",
+        ])
+
+    def test_early_failure_cannot_be_hidden_by_later_success(self):
+        result = self.run_children([
+            [sys.executable, "-c", "raise SystemExit(7)"],
+            [sys.executable, "-c", "print('must-not-run')"]])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("command failed (exit 7)", result.stderr)
+        self.assertNotIn("must-not-run", result.stdout)
+
+    def test_missing_prerequisite_fails_explicitly(self):
+        result = self.run_children([
+            [str(ROOT / "nonexistent-prerequisite-executable")],
+            [sys.executable, "-c", "print('must-not-run')"]])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("could not execute", result.stderr)
+        self.assertNotIn("must-not-run", result.stdout)
+
+    def test_lint_plan_preserves_all_checks_and_self_tests(self):
+        self.assertEqual(self.runner.commands_for("lint"), [
+            [sys.executable, "scripts/check-skill-frontmatter.py"],
+            [sys.executable, "scripts/check-skill-frontmatter.py", "--self-test"],
+            ["pwsh", "-NoProfile", "-File", "scripts/audit-references.ps1"],
+            [sys.executable, "scripts/check-instructions-drift.py"],
+            [sys.executable, "scripts/check-instructions-drift.py", "--self-test"],
+            ["pwsh", "-NoProfile", "-File", "scripts/check-plugin-versions.ps1"],
+        ])
+
+    def run_cli(self, mode, fail_at=None):
+        # Run the real __main__/argparse/dispatch path in an isolated interpreter.
+        # Replace only child execution so this cannot recursively run the suite.
+        code = f"""
+import json
+import runpy
+import subprocess
+import sys
+
+calls = 0
+def run_child(command, *, cwd, check):
+    global calls
+    print("CHILD " + json.dumps([command, str(cwd), check]), flush=True)
+    returncode = 7 if calls == {fail_at!r} else 0
+    calls += 1
+    return subprocess.CompletedProcess(command, returncode)
+
+subprocess.run = run_child
+sys.argv = [{str(ROOT / "scripts/run-repo-checks.py")!r}, {mode!r}]
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                                encoding="utf-8", timeout=20)
+        calls = [json.loads(line.removeprefix("CHILD "))
+                 for line in result.stdout.splitlines() if line.startswith("CHILD ")]
+        return result, calls
+
+    def test_cli_dispatches_selected_plan(self):
+        for mode in ("lint", "unit"):
+            with self.subTest(mode=mode):
+                result, calls = self.run_cli(mode)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls, [
+                    [command, str(ROOT), False]
+                    for command in self.runner.commands_for(mode)])
+
+    def test_cli_propagates_child_failures_and_stops(self):
+        for mode in ("lint", "unit"):
+            commands = self.runner.commands_for(mode)
+            for fail_at in range(len(commands)):
+                with self.subTest(mode=mode, fail_at=fail_at):
+                    result, calls = self.run_cli(mode, fail_at)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn("command failed (exit 7)", result.stderr)
+                    self.assertEqual(calls, [
+                        [command, str(ROOT), False]
+                        for command in commands[:fail_at + 1]])
+
+    def test_cli_rejects_invalid_mode_without_running_children(self):
+        result, calls = self.run_cli("invalid")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("invalid choice", result.stderr)
+        self.assertEqual(calls, [])
+        self.assertEqual(result.stdout, "")
+
+    def test_profile_commands_preserve_ci_runner_split(self):
+        import yaml
+        profile = yaml.safe_load((ROOT / ".github/solution-profile.yaml").read_text(encoding="utf-8"))
+        gate = profile["quality_gates"]["test_bar"]
+        self.assertEqual(gate["lint"]["command"], "python scripts/run-repo-checks.py lint")
+        self.assertEqual(gate["unit_test"]["command"], "python scripts/run-repo-checks.py unit")
+        self.assertTrue(gate["lint"]["enabled"])
+        self.assertTrue(gate["unit_test"]["enabled"])
+        self.assertFalse(gate["typecheck"]["enabled"])
+        self.assertEqual(profile["testing"]["smoke"]["command"], [])
+        commands = self.runner.commands_for("unit")
+        self.assertEqual([command[1:4] for command in commands[:3]],
+                         [["-m", "unittest", "discover"]] * 3)
+        self.assertEqual([command[5] for command in commands[:3]],
+                         ["scripts/tests", "eval/pipeline/tests", "eval/pipeline/trajectory"])
+        self.assertEqual(commands[3][1:], [
+            "-m", "pytest", "-q", "eval/pipeline/custom-eval/tests", "eval/deepeval/tests"])
+        self.assertTrue(all(command[0] == sys.executable for command in commands))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -17,7 +17,7 @@ authoritative, richer machine-readable contract remains
 - **Primary language(s)**: powershell, python, shell
 - **Backlog platform**: github-issues
 - **Documentation**: docs/ (platform: in-repo)
-- **Branch naming**: unspecified
+- **Branch naming**: <type>/<slug>
 - **Commit convention**: conventional-commits
 - **Default branch**: main
 

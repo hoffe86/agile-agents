@@ -22,3 +22,11 @@ select a runtime model or validate the dated model recommendations above.
 > but no runtime code consumes that map. Actual selection uses runtime-native controls,
 > including top-level `model` when configured. Neither these recommendations nor the
 > annotation automatically enforces `ai_copilot.approved_models`.
+
+Profile tier values may be ordered nonempty lists of model IDs or legacy single
+strings. Order is advisory, not automatic fallback. Use only `heavy`, `mid`, and
+`light`, with no duplicate model IDs; each listed ID must appear in the profile's
+`ai_copilot.approved_models`. The marketplace's existing checker validates this
+static consistency in its root profile and generic shipped template, not the
+runtime's model choice. Project-specific preferences belong in the project's
+profile, never in the shipped template or these historical recommendations.

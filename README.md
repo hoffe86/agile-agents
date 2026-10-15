@@ -289,6 +289,13 @@ Runtime-native settings govern actual model selection; no tier resolver or autom
 `ai_copilot.approved_models` enforcement exists here. The optional
 `cost_envelope.model_tiers` profile map records preferences only: no runtime code
 consumes it. This annotation convention is Copilot-specific, not a cross-harness contract.
+Tier values accept ordered nonempty lists of model IDs or legacy single strings.
+The existing frontmatter checker validates the root profile and shipped template:
+only `heavy` / `mid` / `light`, no duplicates, and each listed model must be in
+`ai_copilot.approved_models`. This is static consistency checking, not runtime
+authorization, selection, or fallback. Consumer fixtures are not scanned as root profiles.
+The shipped template stays empty and generic; this repository's seven approved IDs
+and ordered preferences belong only in `.github/solution-profile.yaml`.
 The approved assignments reflect `dev-lead`'s deep-reasoning responsibilities for
 planning/decomposition, acceptance coverage, risk sequencing, and gate judgement;
 the other 14 assignments are unchanged:
@@ -300,6 +307,25 @@ the other 14 assignments are unchanged:
 | `architect`, `capability-scout`, `data-scientist`, `review-lead`, `code-reviewer`, `architecture-reviewer`, `security-reviewer`, `infrastructure-reviewer`, `test-reviewer`, `data-reviewer` | heavy |
 
 The roster has 0 light, 4 mid, and 11 heavy agents; `light` remains a supported tier.
+
+**Dogfood test bar.** At repository root, activate a Python environment with
+`eval/deepeval/requirements.txt` installed and put `pwsh` on `PATH`. The profile's
+`lint.command` and `unit_test.command` call `python scripts/run-repo-checks.py lint`
+and `python scripts/run-repo-checks.py unit`. The helper stops on any failed command
+or missing prerequisite. Unit checks use unittest for script, pipeline-workflow,
+and trajectory tests, and pytest only for custom-eval/deepeval; running all paths
+through pytest incorrectly collects trajectory helper functions as tests.
+There is no configured static type checker, application smoke command, or deployment.
+Run the actual profile integration with either:
+
+```text
+pwsh -NoProfile -File plugins/agile-agents-core/skills/test-bar-gate/scripts/run-gate.ps1 -ProfilePath .github/solution-profile.yaml
+bash plugins/agile-agents-core/skills/test-bar-gate/scripts/run-gate.sh --profile .github/solution-profile.yaml
+```
+
+The PowerShell gate requires `powershell-yaml`; the Bash gate requires mikefarah
+`yq` v4. These are existing gate prerequisites, not optional skips. Checks are
+offline: this does not enable live evaluation or change budget caps.
 
 `scripts/check-skill-frontmatter.py` requires string-to-string agent metadata, restricts
 the tier to `light` / `mid` / `heavy`, rejects legacy top-level tiers and nested native
