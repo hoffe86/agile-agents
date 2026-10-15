@@ -21,7 +21,8 @@ description: >-
   (delegate back to data-scientist).
   NEVER modifies code, never re-runs an experiment to "check", and never
   re-fits a model.
-model_tier: heavy  # the defects here are invisible in the output — a leaked split produces a confident number, not an error
+metadata:
+  model_tier: heavy  # the defects here are invisible in the output — a leaked split produces a confident number, not an error
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the data review scope: analysis, model, evaluation set, or metric change to audit"
 ---

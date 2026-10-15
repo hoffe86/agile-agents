@@ -1978,5 +1978,182 @@ class TestingOwnershipTests(unittest.TestCase):
                     "polyglot", marker, "removed", "polyglot identity or fallback drift")
 
 
+class AgentMetadataTests(unittest.TestCase):
+    """ADR 0007 annotations are validated, never used as model selectors."""
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            "frontmatter", ROOT / "scripts/check-skill-frontmatter.py")
+        cls.checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.checker)
+
+    def test_core_inventory_and_assignments_are_preserved(self):
+        expected = {
+            "architect": "heavy", "architecture-reviewer": "heavy",
+            "backlog-manager": "mid", "bootstrapper": "mid",
+            "capability-scout": "heavy", "code-reviewer": "heavy",
+            "coding": "mid", "data-reviewer": "heavy",
+            "data-scientist": "heavy", "dev-lead": "heavy",
+            "infrastructure-reviewer": "heavy", "infrastructure": "mid",
+            "review-lead": "heavy", "security-reviewer": "heavy",
+            "test-reviewer": "heavy",
+        }
+        actual = {}
+        for path in sorted((CORE / "agents").glob("*.agent.md")):
+            data = self.checker.yaml.safe_load(path.read_text(encoding="utf-8").split("---", 2)[1])
+            with self.subTest(agent=path.name):
+                self.assertNotIn("model_tier", data)
+                self.assertNotIn("model", data)  # Migration must not configure a runtime model.
+                self.assertIn("tools", data)
+                self.assertIn("argument-hint", data)
+                self.assertEqual(data["name"], path.name.removesuffix(".agent.md"))
+                actual[data["name"]] = data["metadata"]["model_tier"]
+        self.assertEqual(actual, expected)
+
+    def test_scan_rejects_dev_lead_reassignment_to_light(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = Path(tmp) / "plugins/agile-agents-core/agents"
+            shutil.copytree(CORE / "agents", agents)
+            self.assertFalse([row for row in self.checker.scan(tmp) if row[3]])
+            dev_lead = agents / "dev-lead.agent.md"
+            _, frontmatter, body = dev_lead.read_text(encoding="utf-8").split("---", 2)
+            data = self.checker.yaml.safe_load(frontmatter)
+            self.assertEqual(data["metadata"]["model_tier"], "heavy")
+            data["metadata"]["model_tier"] = "light"
+            dev_lead.write_text("---\n" + self.checker.yaml.safe_dump(data, sort_keys=False)
+                                + "---" + body, encoding="utf-8")
+            defects = {label: messages for _, label, _, messages in self.checker.scan(tmp)
+                       if messages}
+            self.assertEqual(set(defects), {"dev-lead"})
+            self.assertIn("expected `metadata.model_tier: heavy`", " ".join(defects["dev-lead"]))
+
+    def test_scan_rejects_missing_added_and_changed_core_agents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = Path(tmp) / "plugins/agile-agents-core/agents"
+            shutil.copytree(CORE / "agents", agents)
+            self.assertFalse([row for row in self.checker.scan(tmp) if row[3]])
+            (agents / "architect.agent.md").unlink()
+            coding = agents / "coding.agent.md"
+            _, frontmatter, body = coding.read_text(encoding="utf-8").split("---", 2)
+            data = self.checker.yaml.safe_load(frontmatter)
+            self.assertEqual(data["metadata"]["model_tier"], "mid")
+            data["metadata"]["model_tier"] = "light"
+            coding.write_text("---\n" + self.checker.yaml.safe_dump(data, sort_keys=False)
+                              + "---" + body, encoding="utf-8")
+            shutil.copyfile(agents / "dev-lead.agent.md", agents / "extra.agent.md")
+            defects = {label: messages for _, label, _, messages in self.checker.scan(tmp)
+                       if messages}
+            self.assertEqual(set(defects), {"architect", "coding", "extra"})
+            self.assertIn("missing core agent", " ".join(defects["architect"]))
+            self.assertIn("expected `metadata.model_tier: mid`", " ".join(defects["coding"]))
+            self.assertIn("unexpected core agent", " ".join(defects["extra"]))
+
+    def test_absent_core_plugin_fails_inventory_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "plugins").mkdir()
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
+                capture_output=True, encoding="utf-8", timeout=20)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("missing core plugin (ADR 0007 inventory)", result.stdout)
+            self.assertNotIn("Frontmatter check passed", result.stdout)
+
+    def test_native_model_is_independent_of_advisory_tier(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "demo.agent.md"
+            for tier in ("light", "mid", "heavy"):
+                with self.subTest(tier=tier):
+                    content = (
+                        "---\nname: demo\ndescription: Native selection stays native.\n"
+                        "model: runtime-selected-model\ntools: [read]\n"
+                        f"metadata:\n  model_tier: {tier}\n---\nBody unchanged.\n")
+                    path.write_text(content, encoding="utf-8")
+                    self.assertEqual(self.checker.inspect(str(path), "agent"), [])
+                    self.assertEqual(path.read_text(encoding="utf-8"), content)
+
+    @staticmethod
+    def normalize_generated_date(text):
+        # Sequential generator invocations may straddle UTC midnight.
+        return re.sub(
+            r"^(> Generated from `solution-profile\.yaml` on )\d{4}-\d{2}-\d{2}(\.)$",
+            r"\g<1><generated-date>\2", text, count=1, flags=re.MULTILINE)
+
+    def test_generated_date_normalization_preserves_substantive_output(self):
+        template = (
+            "> Generated from `solution-profile.yaml` on {date}.\n\n"
+            "Agent description stays intact. Second sentence.\n"
+            "Body date: 2026-10-15.\n"
+            "- **Tools**: edit, read\n")
+        before_midnight = template.format(date="2026-10-15")
+        after_midnight = template.format(date="2026-10-16")
+        expected = template.format(date="<generated-date>")
+        self.assertEqual(self.normalize_generated_date(before_midnight), expected)
+        self.assertEqual(self.normalize_generated_date(after_midnight), expected)
+        self.assertNotEqual(
+            self.normalize_generated_date(
+                after_midnight.replace("Body date: 2026-10-15", "Body date: 2026-10-16")),
+            expected)
+        self.assertNotEqual(
+            self.normalize_generated_date(
+                after_midnight.replace("Second sentence.", "Changed sentence.")),
+            expected)
+
+    def test_generators_ignore_annotations_without_swallowing_descriptions(self):
+        runners = []
+        if shutil.which("pwsh"):
+            runners.append(["pwsh", "-NoProfile", "-File",
+                            str(ROOT / "scripts/generate-agents-md.ps1")])
+        elif REQUIRE_RUNNERS:
+            self.fail("pwsh is required for generator regressions")
+        bash = os.environ.get("RUNTIME_GATE_BASH") or shutil.which("bash")
+        if os.name != "nt" or os.environ.get("RUNTIME_GATE_BASH"):
+            if bash:
+                runners.append([bash, str(ROOT / "scripts/generate-agents-md.sh")])
+            elif REQUIRE_RUNNERS:
+                self.fail("bash is required for generator regressions")
+        self.assertTrue(runners, "At least one generator runner is required")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agents, skills = root / "agents", root / "skills"
+            agents.mkdir()
+            (skills / "demo").mkdir(parents=True)
+            profile = root / "profile.yaml"
+            profile.write_text("identity:\n  project_name: metadata-fixture\n", encoding="utf-8")
+            # Skill-standard metadata has no agent tier requirement.
+            (skills / "demo/SKILL.md").write_text(
+                "---\nname: demo\ndescription: >-\n  Skill description stays intact.\n"
+                "metadata:\n  author: fixture-author\napplies_to: all\n---\n", encoding="utf-8")
+            annotation = "metadata:\n  model_tier: heavy\n  note: annotation-not-description\n"
+            description = "description: >-\n  Agent description stays intact.\n  Second sentence.\n"
+            outputs = []
+            # Both orders catch a fallback reader treating indented metadata as prose.
+            for frontmatter in (annotation + description, description + annotation):
+                (agents / "demo.agent.md").write_text(
+                    "---\nname: demo\n" + frontmatter +
+                    "model: runtime-selected-model\ntools: [read, edit]\nagents: [coding]\n---\n",
+                    encoding="utf-8")
+                for runner in runners:
+                    with self.subTest(order=frontmatter[:12], runner=runner[0]):
+                        ps = runner[0] == "pwsh"
+                        flags = (["-ProfilePath", str(profile), "-AgentsDir", str(agents),
+                                  "-SkillsDir", str(skills), "-DryRun"] if ps else
+                                 ["--profile", profile.as_posix(), "--agents-dir", agents.as_posix(),
+                                  "--skills-dir", skills.as_posix(), "--dry-run"])
+                        result = subprocess.run(runner + flags, capture_output=True,
+                                                encoding="utf-8", timeout=60)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        text = result.stdout.strip()
+                        self.assertIn("Agent description stays intact. Second sentence.", text)
+                        self.assertIn("Skill description stays intact.", text)
+                        self.assertIn("- **Tools**: edit, read", text)
+                        self.assertIn("- **Sub-agents**: coding", text)
+                        self.assertNotIn("annotation-not-description", text)
+                        self.assertNotIn("model_tier", text)
+                        self.assertNotIn("runtime-selected-model", text)
+                        outputs.append(self.normalize_generated_date(text))
+            self.assertTrue(all(text == outputs[0] for text in outputs))
+
+
 if __name__ == "__main__":
     unittest.main()

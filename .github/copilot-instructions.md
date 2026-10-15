@@ -61,8 +61,8 @@ and `skills/` directly from each plugin (see
 agent/                               Marketplace root
 ├── .github/
 │   ├── copilot-instructions.md      This file
-│   ├── solution-profile.yaml        This repo's own profile - byte-identical to the
-│   │                                template it ships (see below)
+│   ├── solution-profile.yaml        This repo's own profile; the shipped template
+│   │                                defines keys, not identical project values
 │   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace,
 │   │                                pluginRoot ./plugins)
 │   └── workflows/                   5 workflows -> CI checks audit-references,
@@ -381,14 +381,20 @@ should have internalised. Cutting it would produce a shorter agent that finds le
 adding judgement, pay for it by deleting *procedure* — never by deleting *reference*.
 
 ### Model-tier convention
-Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),
-`mid` (mechanical authoring: `coding`, `infrastructure`, `backlog-manager`), or
-`heavy` (deep reasoning: `architect` and all review agents).
+Each `.agent.md` records `metadata.model_tier` in a string-to-string metadata map:
+`mid` for `coding`, `infrastructure`, `backlog-manager`, and `bootstrapper`; `heavy`
+for `dev-lead`, `architect`, `capability-scout`, `data-scientist`, and all review agents.
+`dev-lead` needs deep reasoning for planning/decomposition, acceptance coverage, risk
+sequencing, and gate judgement. Preserve these 15 assignments (ADR 0007): 4 mid,
+11 heavy. `light` remains supported but has no current roster assignment.
 
-**Nothing reads it.** It is declared by all 15 agents and consumed by no script, no
-manifest, and not by the CLI — whose own frontmatter field is `model`. Treat it as recorded
-intent (the rationale lives in ADR 0007 and `cost-budget/references/tier-defaults.md`), keep
-it accurate when editing, and do not expect changing it to change which model runs.
+**Validation reads it; runtime selection does not.** `scripts/check-skill-frontmatter.py`
+rejects missing/invalid metadata or tiers, legacy top-level tiers, nested native fields,
+and core inventory/assignment drift. Native fields (`model`, `tools`, `description`, etc.)
+stay top-level. Copilot's runtime-native controls govern model selection; the annotation
+does not override them. Neither the optional `cost_envelope.model_tiers` preferences nor
+`ai_copilot.approved_models` is automatically enforced by a tier resolver — none exists.
+This is advisory Copilot metadata, not a cross-harness contract or measured cost saving.
 
 ### Skill format
 Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`,
@@ -429,8 +435,9 @@ ecosystem, otherwise a comma-separated list of the ecosystems it actually assume
 `github-actions`, …). It is **required on every skill**; a missing value is a defect, not
 a default. The split today is 34 `all` / 26 scoped.
 
-**Nothing reads it.** Like `model_tier`, it is declared on every skill and consumed by no
-script, no manifest, and not by the CLI — it is a local field that upstream has no equivalent
+**Validation checks its presence; it does not control loading.** Like the agents'
+`metadata.model_tier`, it records intent rather than runtime selection policy.
+It is a local field that upstream has no equivalent
 for (which is why `plugins/VENDORED.md` lists it as the one sanctioned modification to a
 vendored copy). It does **not** filter the matching pool: every installed skill is a candidate
 on every task regardless of what it declares. Treat it as recorded intent — it tells a *human*
@@ -524,4 +531,3 @@ reads, it reports *"no claim found"* rather than silently passing; update the re
 the script. Counting vendored skills means the rows under **`## Skill → Upstream` only**:
 `VENDORED.md` has three tables, and the adopted (`polyglot-test-agent`) and
 suggested-contribution tables are not vendored entries.
-

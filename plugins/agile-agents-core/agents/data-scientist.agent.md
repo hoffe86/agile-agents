@@ -21,7 +21,8 @@ description: >-
   (use review-lead), end-to-end autonomous delivery (use dev-lead).
   Hands off with `ANALYSIS COMPLETE`, which reports a negative result as a
   legitimate outcome rather than a failure.
-model_tier: heavy  # methodology judgement — a wrong metric or a leaked split is invisible in the output and expensive later
+metadata:
+  model_tier: heavy  # methodology judgement — a wrong metric or a leaked split is invisible in the output and expensive later
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, playwright/*, browser]
 argument-hint: "Describe the data work: question to answer, dataset to profile, model to build/evaluate, or AI feature to measure"
 ---

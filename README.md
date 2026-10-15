@@ -275,16 +275,44 @@ artifact while its gates never fire). An L1 review-detection eval is planned.
 > **SWE-bench task-prep** (dataset fetch + repo checkout) isn't wired yet. The workflow stays
 > manual and non-gating. See [`eval/README.md`](eval/README.md#scoring).
 
-### `model_tier` frontmatter convention
-Each agent declares a tier so the orchestrator can pick the right model (light = high-volume
-orchestration, mid = mechanical authoring, heavy = deep multi-file reasoning).
+### `metadata.model_tier` frontmatter convention
+Each Copilot agent records an **advisory preference**, not a model selector
+([ADR 0007](docs/adr/0007-model-tier-convention.md)):
+
+```yaml
+metadata:
+  model_tier: heavy
+```
+
+Native fields such as `model`, `tools`, and `description` stay at the top level.
+Runtime-native settings govern actual model selection; no tier resolver or automatic
+`ai_copilot.approved_models` enforcement exists here. The optional
+`cost_envelope.model_tiers` profile map records preferences only: no runtime code
+consumes it. This annotation convention is Copilot-specific, not a cross-harness contract.
+The approved assignments reflect `dev-lead`'s deep-reasoning responsibilities for
+planning/decomposition, acceptance coverage, risk sequencing, and gate judgement;
+the other 14 assignments are unchanged:
 
 | Agent | Tier |
 |---|---|
-| `dev-lead` | light |
-| `coding`, `infrastructure`, `backlog-manager` | mid |
-| `data-scientist` | heavy |
-| `architect`, `data-scientist`, `review-lead`, `code-reviewer`, `architecture-reviewer`, `security-reviewer`, `infrastructure-reviewer`, `test-reviewer`, `data-reviewer` | heavy |
+| `dev-lead` | heavy |
+| `coding`, `infrastructure`, `backlog-manager`, `bootstrapper` | mid |
+| `architect`, `capability-scout`, `data-scientist`, `review-lead`, `code-reviewer`, `architecture-reviewer`, `security-reviewer`, `infrastructure-reviewer`, `test-reviewer`, `data-reviewer` | heavy |
+
+The roster has 0 light, 4 mid, and 11 heavy agents; `light` remains a supported tier.
+
+`scripts/check-skill-frontmatter.py` requires string-to-string agent metadata, restricts
+the tier to `light` / `mid` / `heavy`, rejects legacy top-level tiers and nested native
+fields, and checks the core inventory and assignments. It does **not** apply the agent
+schema to `SKILL.md`; skill `applies_to` is unchanged. Its inline self-test fixtures
+cover invalid shapes/types and misplaced fields. `AgentMetadataTests` covers inventory
+mutations, native-model independence, and both generators' description handling:
+
+```shell
+python scripts/check-skill-frontmatter.py --self-test
+python scripts/check-skill-frontmatter.py
+python -m unittest scripts.tests.test_runtime_contracts.AgentMetadataTests -v
+```
 
 ### AGENTS.md generation (`scripts/`)
 `scripts/generate-agents-md.ps1` / `.sh` produces a portable [`AGENTS.md`](AGENTS.md) (per the

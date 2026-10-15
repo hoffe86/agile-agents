@@ -27,6 +27,12 @@ Checks (all fatal):
      by directory name; a mismatch makes the skill unaddressable).
   5. Skills: `applies_to` is present — repo convention states a missing value
      is a defect, not a default.
+  6. Agents: `metadata` is a string-to-string mapping containing `model_tier`
+     (light / mid / heavy). Legacy top-level tiers and nested native fields fail.
+  7. Core agents: the ADR 0007 inventory and tier assignments are preserved.
+
+Agent annotations are advisory. These checks neither select a runtime model nor
+enforce approved_models. Skill metadata is not subject to the agent convention.
 
 Usage:
   check-skill-frontmatter.py [repo-root]
@@ -47,8 +53,33 @@ except ImportError:  # pragma: no cover - environment problem, not a repo defect
 
 FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
 
+# ADR 0007's approved preferences, not a model resolver.
+CORE_MODEL_TIERS = {
+    "architect": "heavy",
+    "architecture-reviewer": "heavy",
+    "backlog-manager": "mid",
+    "bootstrapper": "mid",
+    "capability-scout": "heavy",
+    "code-reviewer": "heavy",
+    "coding": "mid",
+    "data-reviewer": "heavy",
+    "data-scientist": "heavy",
+    "dev-lead": "heavy",
+    "infrastructure-reviewer": "heavy",
+    "infrastructure": "mid",
+    "review-lead": "heavy",
+    "security-reviewer": "heavy",
+    "test-reviewer": "heavy",
+}
+NATIVE_AGENT_FIELDS = {
+    "name", "description", "model", "tools", "agents", "argument-hint",
+    "handoffs", "target", "infer", "user-invocable", "disable-model-invocation",
+    "mcp-servers",
+}
 
-def inspect(path: str, kind: str, dirname: str | None = None) -> list[str]:
+
+def inspect(path: str, kind: str, dirname: str | None = None,
+            expected_tier: str | None = None) -> list[str]:
     """Return a list of defect messages for one artifact ("" list == clean)."""
     with open(path, encoding="utf-8") as handle:
         text = handle.read()
@@ -84,6 +115,24 @@ def inspect(path: str, kind: str, dirname: str | None = None) -> list[str]:
         if not data.get("applies_to"):
             defects.append("missing `applies_to` (required on every skill)")
 
+    if kind == "agent":
+        if "model_tier" in data:
+            defects.append("legacy top-level `model_tier`; use `metadata.model_tier`")
+        metadata = data.get("metadata")
+        if not isinstance(metadata, dict):
+            defects.append("missing or non-mapping `metadata` (expected a string-to-string map)")
+        else:
+            if any(not isinstance(key, str) or not isinstance(value, str)
+                   for key, value in metadata.items()):
+                defects.append("`metadata` keys and values must be strings")
+            for field in sorted(NATIVE_AGENT_FIELDS.intersection(metadata)):
+                defects.append("native `%s` must remain top-level, not in `metadata`" % field)
+            tier = metadata.get("model_tier")
+            if not isinstance(tier, str) or tier not in ("light", "mid", "heavy"):
+                defects.append("missing or invalid `metadata.model_tier` (expected light / mid / heavy)")
+            elif expected_tier is not None and tier != expected_tier:
+                defects.append("expected `metadata.model_tier: %s` (ADR 0007)" % expected_tier)
+
     return defects
 
 
@@ -92,6 +141,11 @@ def scan(repo_root: str):
     plugins = os.path.join(repo_root, "plugins")
     if not os.path.isdir(plugins):
         raise SystemExit("error: no plugins/ directory under %s" % repo_root)
+
+    core_path = os.path.join(plugins, "agile-agents-core")
+    if not os.path.isdir(core_path):
+        yield "plugin", "agile-agents-core", core_path, [
+            "missing core plugin (ADR 0007 inventory)"]
 
     for plugin in sorted(os.listdir(plugins)):
         skills = os.path.join(plugins, plugin, "skills")
@@ -102,12 +156,23 @@ def scan(repo_root: str):
                     yield "skill", name, path, inspect(path, "skill", name)
 
         agents = os.path.join(plugins, plugin, "agents")
+        core = plugin == "agile-agents-core"
+        found = set()
         if os.path.isdir(agents):
             for filename in sorted(os.listdir(agents)):
                 if filename.endswith(".agent.md"):
                     path = os.path.join(agents, filename)
                     label = filename[: -len(".agent.md")]
-                    yield "agent", label, path, inspect(path, "agent")
+                    found.add(label)
+                    expected = CORE_MODEL_TIERS.get(label) if core else None
+                    defects = inspect(path, "agent", expected_tier=expected)
+                    if core and label not in CORE_MODEL_TIERS:
+                        defects.append("unexpected core agent (update the approved ADR 0007 inventory)")
+                    yield "agent", label, path, defects
+        if core:
+            for label in sorted(CORE_MODEL_TIERS.keys() - found):
+                path = os.path.join(agents, label + ".agent.md")
+                yield "agent", label, path, ["missing core agent (ADR 0007 inventory)"]
 
 
 def run(repo_root: str) -> int:
@@ -148,6 +213,65 @@ SELF_TEST_CASES = [
     ("not a mapping", "---\n- just\n- a list\n---\n\nbody\n", 1),
 ]
 
+# Inline fixtures deliberately separate agent annotations from skill metadata.
+AGENT_SELF_TEST_CASES = [
+    ("nested light", "metadata:\n  model_tier: light\n", None, None),
+    ("nested mid", "metadata:\n  model_tier: mid\n", "mid", None),
+    ("nested heavy", "metadata:\n  model_tier: heavy\n", None, None),
+    ("native model independent",
+     "model: any-runtime-model\ntools: [read]\nmetadata:\n  model_tier: light\n",
+     None, None),
+    ("string annotations", "metadata:\n  model_tier: heavy\n  owner: team\n", None, None),
+    ("missing metadata", "", None, "non-mapping `metadata`"),
+    ("null metadata", "metadata:\n", None, "non-mapping `metadata`"),
+    ("scalar metadata", "metadata: heavy\n", None, "non-mapping `metadata`"),
+    ("list metadata", "metadata: [heavy]\n", None, "non-mapping `metadata`"),
+    ("numeric metadata", "metadata: 42\n", None, "non-mapping `metadata`"),
+    ("boolean metadata", "metadata: true\n", None, "non-mapping `metadata`"),
+    ("missing tier", "metadata: {}\n", None, "invalid `metadata.model_tier`"),
+    ("unknown tier", "metadata:\n  model_tier: huge\n", None, "invalid `metadata.model_tier`"),
+    ("case-sensitive tier", "metadata:\n  model_tier: Heavy\n", None, "invalid `metadata.model_tier`"),
+    ("null tier", "metadata:\n  model_tier:\n", None, "invalid `metadata.model_tier`"),
+    ("numeric tier", "metadata:\n  model_tier: 1\n", None, "invalid `metadata.model_tier`"),
+    ("boolean tier", "metadata:\n  model_tier: true\n", None, "invalid `metadata.model_tier`"),
+    ("list tier", "metadata:\n  model_tier: [heavy]\n", None, "invalid `metadata.model_tier`"),
+    ("mapping tier", "metadata:\n  model_tier: {value: heavy}\n", None, "invalid `metadata.model_tier`"),
+    ("legacy only", "model_tier: heavy\n", None, "legacy top-level"),
+    ("legacy and nested", "model_tier: heavy\nmetadata:\n  model_tier: heavy\n",
+     None, "legacy top-level"),
+    ("changed assignment", "metadata:\n  model_tier: light\n", "mid", "expected `metadata.model_tier: mid`"),
+    ("non-string annotation", "metadata:\n  model_tier: heavy\n  owner: [team]\n",
+     None, "keys and values must be strings"),
+    ("non-string key", "metadata:\n  model_tier: heavy\n  1: team\n",
+     None, "keys and values must be strings"),
+    # Independent contract fixtures: removing a production field must not remove its test.
+    ("nested native agents", "metadata:\n  model_tier: heavy\n  agents: value\n",
+     None, "native `agents` must remain top-level"),
+    ("nested native argument-hint", "metadata:\n  model_tier: heavy\n  argument-hint: value\n",
+     None, "native `argument-hint` must remain top-level"),
+    ("nested native description", "metadata:\n  model_tier: heavy\n  description: value\n",
+     None, "native `description` must remain top-level"),
+    ("nested native disable-model-invocation",
+     "metadata:\n  model_tier: heavy\n  disable-model-invocation: value\n",
+     None, "native `disable-model-invocation` must remain top-level"),
+    ("nested native handoffs", "metadata:\n  model_tier: heavy\n  handoffs: value\n",
+     None, "native `handoffs` must remain top-level"),
+    ("nested native infer", "metadata:\n  model_tier: heavy\n  infer: value\n",
+     None, "native `infer` must remain top-level"),
+    ("nested native mcp-servers", "metadata:\n  model_tier: heavy\n  mcp-servers: value\n",
+     None, "native `mcp-servers` must remain top-level"),
+    ("nested native model", "metadata:\n  model_tier: heavy\n  model: value\n",
+     None, "native `model` must remain top-level"),
+    ("nested native name", "metadata:\n  model_tier: heavy\n  name: value\n",
+     None, "native `name` must remain top-level"),
+    ("nested native target", "metadata:\n  model_tier: heavy\n  target: value\n",
+     None, "native `target` must remain top-level"),
+    ("nested native tools", "metadata:\n  model_tier: heavy\n  tools: value\n",
+     None, "native `tools` must remain top-level"),
+    ("nested native user-invocable", "metadata:\n  model_tier: heavy\n  user-invocable: value\n",
+     None, "native `user-invocable` must remain top-level"),
+]
+
 
 def self_test() -> int:
     ok = True
@@ -165,6 +289,23 @@ def self_test() -> int:
                 ok = False
             print("  %s  %-32s %s" % (status, label,
                                       defects[0] if defects else "(clean)"))
+        path = os.path.join(tmp, "demo.agent.md")
+        for label, fields, expected_tier, expected_defect in AGENT_SELF_TEST_CASES:
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("---\nname: demo\ndescription: Fine.\n" + fields + "---\n\nbody\n")
+            defects = inspect(path, "agent", expected_tier=expected_tier)
+            passed = (not defects if expected_defect is None else
+                      any(expected_defect in defect for defect in defects))
+            ok = ok and passed
+            print("  %s  %-32s %s" % ("PASS" if passed else "FAIL", label,
+                                      "; ".join(defects) if defects else "(clean)"))
+        # Skill-standard metadata is not an agent schema; no model tier is required.
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("---\nname: demo\ndescription: Fine.\napplies_to: all\n"
+                         "metadata:\n  author: team\n---\n\nbody\n")
+        defects = inspect(path, "skill", "demo")
+        ok = ok and not defects
+        print("  %s  skill metadata without tier" % ("FAIL" if defects else "PASS"))
     print("self-test: %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 

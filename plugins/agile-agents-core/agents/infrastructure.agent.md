@@ -21,7 +21,8 @@ description: >-
   (use dev-lead if present). Owns its own IaC tests end-to-end — does NOT
   hand those off to coding (which owns application code and the unit /
   integration tests that cover it). Hands off to infrastructure-reviewer and review.
-model_tier: mid  # mechanical IaC authoring against declared conventions and existing repo patterns
+metadata:
+  model_tier: mid  # mechanical IaC authoring against declared conventions and existing repo patterns
 tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, edit, agent, playwright/*, browser]
 argument-hint: "Describe the IaC work: Bicep / Terraform / Helm / Kustomize / pipeline change"
 ---

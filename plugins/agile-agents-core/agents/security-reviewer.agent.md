@@ -18,7 +18,8 @@ description: >-
   architecture-level threat modelling before code exists (use
   architect + threat-model-analyst skill).
   NEVER modifies code.
-model_tier: heavy  # threat-model reasoning across OWASP/CWE/LLM lenses requires deep analysis
+metadata:
+  model_tier: heavy  # threat-model reasoning across OWASP/CWE/LLM lenses requires deep analysis
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the security review scope: diff to audit, repo path, or specific risk area"
 ---
