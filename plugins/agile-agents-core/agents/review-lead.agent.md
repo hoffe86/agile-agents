@@ -142,6 +142,15 @@ You are an orchestrator, so you load few skills of your own: `read-repo-context`
 
 ## Output format — merged report
 
+At the beginning of each task, read only
+[REVIEW COMPLETE](../skills/read-repo-context/references/handoff-contracts.md#review-complete)
+for the terminator schema. On receipt of corrective hand-offs, also read
+[Corrective accounting](../skills/read-repo-context/references/handoff-contracts.md#corrective-accounting)
+before re-review. Resolve these links relative to this loaded core agent file,
+not the consumer repository's working directory. If the file or named section
+is missing or mismatched, stop and report a malformed contract/context;
+do not reconstruct the schema. Keep the full merged report below.
+
 ```markdown
 # Code Review: <branch / PR title>
 
@@ -199,13 +208,7 @@ You are an orchestrator, so you load few skills of your own: `read-repo-context`
 
 ---
 
-REVIEW COMPLETE
-- Verdict: ✅ Approve | 🔁 Request changes | ❌ Block
-- Specialists invoked: <list — Quality/Security/Tests/Data/Architecture/Infrastructure, with skip reasons>
-- Open findings: 🔴 <N> Critical, 🟠 <N> Major, 🟡 <N> Minor, 🔵 <N> Nits
-- Findings by owner: coding: <ids> | data-scientist: <ids> | infrastructure: <ids> | architect: <ids>
-- Files changed: <N>, lines: +<X> / −<Y>
-- Recommended next step: ready to merge | route fixes back to <agent(s)> | escalate to human
+<Append the REVIEW COMPLETE block using the referenced schema.>
 ```
 
 Return the merged report. Do not attempt to apply your own suggestions or any specialist's suggestions.

@@ -175,16 +175,12 @@ the profile — writing a config file and changing an environment are different 
 
 ## Hand-off contract
 
-```
-BOOTSTRAP COMPLETE
-- Profile: <path> — <created | repaired | already valid>
-- Required fields: <n>/6 populated <list any still empty>
-- Plugins installed this run: <list, or "none — user deferred">
-- Plugins already present: <list, or "none">
-- Declared but unsupported: <technology → "falls back to repo conventions", or "none">
-- Gaps for the user: <profile fields left empty, deferred installs, decisions still needed, or "none">
-- Ready for delivery: yes | no — <what blocks it>
-```
+At the beginning of each task, read only
+[BOOTSTRAP COMPLETE](../skills/read-repo-context/references/handoff-contracts.md#bootstrap-complete)
+and emit that exact schema on completion. Resolve this link relative to this
+loaded core agent file, not the consumer repository's working directory.
+If the file or named section is missing or mismatched, stop and report a
+malformed contract/context; do not reconstruct the schema.
 
 **"Ready for delivery: yes" requires all six required fields populated** (`identity.project_name`,
 `identity.lifecycle_stage`, `documentation.location`, `backlog.platform`,

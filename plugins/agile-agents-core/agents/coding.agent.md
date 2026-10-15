@@ -168,24 +168,14 @@ review), you are in a corrective round, not a fresh implementation:
 When you finish, return one structured summary to the orchestrator. This block
 covers both halves of the work — there is no separate test hand-off:
 
-```
-IMPLEMENTATION COMPLETE
-- Files changed: <production files>
-- Test files changed: <test files — "none" only when the change is genuinely untestable, with the reason>
-- ADRs honoured: <list of ADR ids your change is constrained by, or "none found / none applicable">
-- Docs updated: <list of README / docs/ / instruction-file paths touched, or "none — no existing docs reference the changed area" / "asked user — pending answer">
-- Behavior added/modified: <bulleted list of observable behaviors, each with the test that asserts it: "<behaviour> → <test name>">
-- Public surface added/changed: <new or changed public types, methods, HTTP routes, CLI flags, config keys, exported symbols — anything an external caller can see; "none" if internal-only>
-- Internal-only changes: <refactors, private helpers, plumbing not visible to callers; "none" if everything is in the Public surface list>
-- Build status: ✅ passes  /  ⚠️ warnings: <list>  /  ❌ failures: <list>
-- Test run: ✅ <N>/<N> passing  /  ❌ <N> failing — <why, and why you stopped rather than weakening them>
-- Coverage on touched files: <%> (was <%>)
-- Existing tests modified: ⚠️ <none | one line each: what the old assertion claimed and why it was invalid>
-- Startup verified: <✅ app starts — <how you checked> | n/a — change doesn't touch startup | ⚠️ couldn't determine — <reason>>
-- Findings addressed: <corrective rounds only — one line per finding: "<id>: fixed in <file:line>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit the field entirely on a first pass.>
-- Unmet design constraint (if any): <only fill in if you could not deliver inside the architect's locked design without a new dependency, boundary, contract, or cloud resource — describe the gap so dev-lead can route back to architect>
-- Open questions for review: <if any>
-```
+At the beginning of each task, read only
+[IMPLEMENTATION COMPLETE](../skills/read-repo-context/references/handoff-contracts.md#implementation-complete)
+and emit that exact schema on completion. For a corrective round, also read
+[Corrective accounting](../skills/read-repo-context/references/handoff-contracts.md#corrective-accounting)
+before fixing findings. Resolve these links relative to this loaded core agent
+file, not the consumer repository's working directory. If the file or named
+section is missing or mismatched, stop and report a malformed contract/context;
+do not reconstruct the schema.
 
 If the change cannot be made to work without exceeding the task's scope — a new
 dependency, a contract change, a design decision no ADR covers — **stop and

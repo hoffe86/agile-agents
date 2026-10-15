@@ -183,22 +183,12 @@ On a later **Approve**, dev-lead asks you to **remove the `pending-approval` tag
 
 #### `TASKS PLANNED` hand-off block
 
-Emit this exact block when the Plan workflow completes:
-
-```markdown
-## TASKS PLANNED
-
-**Tracker platform:** <github-issues | ado-boards | jira | linear>
-**Parent work item:** <id> — <link>
-**Link pattern:** <e.g. AB#<n> / parent-child relation>
-**Tasks created (provisional, tag `pending-approval`):**
-| Task id | Title | ACs | State |
-|---|---|---|---|
-| <id> | <title> | <n> | <entry state> |
-| ... | ... | ... | ... |
-**Approach comment posted on parent:** yes — <comment link or id>
-**Open items / could not link:** <list, or "none">
-```
+At the beginning of a Plan task, read only
+[TASKS PLANNED](../skills/read-repo-context/references/handoff-contracts.md#tasks-planned)
+and emit that exact schema when the Plan workflow completes. Resolve this link
+relative to this loaded core agent file, not the consumer repository's working
+directory. If the file or named section is missing or mismatched, stop and report
+a malformed contract/context; do not reconstruct the schema.
 
 ### Status updates from a dev-lead run
 

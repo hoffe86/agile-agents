@@ -182,21 +182,11 @@ that claim was invalid.
 
 ## Hand-off contract
 
-```
-INFRASTRUCTURE COMPLETE
-- Technology: <IaC tool / orchestrator / pipeline platform>
-- Files changed: <list>
-- ADRs honoured: <list of ADR ids constraining this change, or "none found / none applicable">
-- Docs updated: <list of README / docs/ / runbook paths touched, or "none — no existing docs reference the changed area" / "asked user — pending answer">
-- Scope: <subscription / project / resource group / cluster namespace / workflow>
-- Plan / what-if summary: +<N> add, ~<N> change, -<N> destroy
-- Verified modules used (with versions): <list, or "none — custom resources, reason: …">
-- Validation: ✅ lint clean, ✅ plan clean / ⚠️ warnings: <list>
-- Secrets touched: <list — all as references into the declared secrets store>
-- Findings addressed: <corrective rounds only — one line per finding: "<id>: fixed in <file:line>" | "<id>: disputed — <reason>" | "<id>: not mine — owned by <agent>". Omit the field entirely on a first-pass implementation.>
-- Open items for review: <if any>
-- IaC tests authored / run: <count, framework, ✅ pass | ❌ fail | n/a>
-- Behavior added/modified: <each observable infrastructure/pipeline behavior → IaC test name; n/a only with a reason no executable test applies>
-- Existing tests modified: <none | one line per changed/deleted/newly-skipped test: old assertion and why it was invalid>
-- Recommended next step: hand off to infrastructure-reviewer | review | deploy
-```
+At the beginning of each task, read only
+[INFRASTRUCTURE COMPLETE](../skills/read-repo-context/references/handoff-contracts.md#infrastructure-complete)
+and emit that exact schema on completion. For a corrective round, also read
+[Corrective accounting](../skills/read-repo-context/references/handoff-contracts.md#corrective-accounting)
+before fixing findings. Resolve these links relative to this loaded core agent
+file, not the consumer repository's working directory. If the file or named
+section is missing or mismatched, stop and report a malformed contract/context;
+do not reconstruct the schema.

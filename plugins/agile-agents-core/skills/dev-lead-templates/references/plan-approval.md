@@ -1,5 +1,7 @@
 # Plan-approval prompt (dev-lead Stage 4)
 
+## Prompt
+
 The **only mandatory *approval* gate** — "only" counts approvals, not questions;
 intake may already have asked about an ambiguity, an undiscoverable profile field,
 or the criteria derived from a plan file. Rendered via `ask_user` *after* the child
@@ -93,18 +95,8 @@ review verdict ❌ Block.
 **Approve the plan to start autonomous run?**
 ```
 
-## Handling the answer
+### Return the answer
 
-- **Approve** → have `backlog-manager` remove the `pending-approval` tag from the
-  created tasks when task creation is enabled, then return to `dev-lead` to
-  evaluate the **Stage 5 conditional design approval**. Proceed to Stage 6 only
-  after that gate passes or its trigger conditions do not apply.
-- **Adjust** → take the human's edits, have `backlog-manager` revise the affected
-  tasks (add / remove / re-scope), re-render this template, ask again. No silent
-  re-planning.
-- **Cancel** → this authorises cleanup of the provisional tasks: have
-  `backlog-manager` close / remove the `pending-approval` child items created in
-  this run, mark all SQL todos `blocked` with reason "user cancelled at plan gate",
-  and stop. List any ids that could not be cleaned up automatically.
-
-After approval, ask no further questions unless a stop condition fires.
+Return the selected choice and feedback unchanged to `dev-lead`. The supervisor's
+Stage 4 owns approval, task revision, cancellation cleanup and the subsequent
+conditional design gate. This rendering template authorises no transition.

@@ -77,9 +77,15 @@ Pass the localisation result forward in your hand-off so downstream agents (revi
 
 ## 7. Receiving a hand-off from another agent
 
-When another agent hands you a structured block (`IMPLEMENTATION COMPLETE`,
-`REVIEW COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `INFRASTRUCTURE COMPLETE`, `TASKS PLANNED`,
-or a Stage-1 brief from a supervisor):
+On receipt of a canonical block, read only the level-two section whose heading
+equals the received sentinel in [handoff-contracts.md](references/handoff-contracts.md).
+For corrective hand-offs also read
+[Corrective accounting](references/handoff-contracts.md#corrective-accounting).
+Resolve links relative to this loaded core skill file, not the consumer repository's
+working directory. Missing/mismatched file or section: stop and surface a malformed
+contract/context; do not reconstruct the schema or preload all sections.
+
+For these blocks or a Stage-1 brief from a supervisor:
 
 - **Treat it as a contract.** If a required field is missing, ambiguous, or internally
   contradictory, **stop and surface** — name the missing field and what you would have done
