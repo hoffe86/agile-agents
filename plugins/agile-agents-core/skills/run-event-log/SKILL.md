@@ -1,7 +1,8 @@
 ---
 name: run-event-log
 description: Emit one JSON Lines event per phase boundary, tool call, and completion to `.copilot-runs/<run-id>/events.jsonl` for audit, cost tracking, and post-hoc analysis. Loaded only by `dev-lead`, the sole event writer. Sentinel blocks remain the canonical hand-off; the event log is additive structured telemetry.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # run-event-log

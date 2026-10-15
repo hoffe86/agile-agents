@@ -1,7 +1,8 @@
 ---
 name: update-avm-modules-in-bicep
 description: 'Update Azure Verified Modules (AVM) to latest versions in Bicep files.'
-applies_to: azure, bicep
+metadata:
+  applies_to: azure, bicep
 ---
 
 # Update Azure Verified Modules in Bicep Files

@@ -7,6 +7,11 @@ breach details in the final report.
 
 Every number here comes from `collect-usage.py`, which reads the runtime's own usage store. Do **not** hand-fill any figure — an agent cannot observe its own consumption, so a hand-written number is a guess dressed as a measurement. If the collector exits 3 (telemetry unavailable) there is no breach to report: that is a tooling failure, and the run continues with a warning.
 
+Only tokens, AIU, and rated USD can breach this gate. `max_minutes_per_run`
+is an informational planning value, not an enforced deadline or a stop-report
+metric. Summed call `duration_ms` is not elapsed wall-clock runtime; it omits
+idle time and can double-count overlapping calls.
+
 ## Template
 
 ```markdown

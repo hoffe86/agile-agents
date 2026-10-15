@@ -1,7 +1,8 @@
 ---
 name: release-notes
 description: Generate release notes (CHANGELOG entry + GitHub release body) from commit history between two refs. Groups commits by Conventional Commit type (feat / fix / perf / refactor / docs / test / build / ci / chore), highlights breaking changes, surfaces security fixes prominently, links contributors, and outputs a Keep-a-Changelog-compatible markdown block. Loaded by dev-lead at release-tag time. Composes with conventional-commit (parsing) and read-repo-context (repo conventions, version scheme).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # release-notes

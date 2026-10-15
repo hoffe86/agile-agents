@@ -6,7 +6,8 @@ description: >-
   skill in any authoring agent (architect, coding, infrastructure, testing) so
   the agent reports *why* it picked an option and what was given up — not just
   *what* it did. Keeps decisions reviewable, reversible, and ADR-ready.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 You report **trade-offs**, not narration. A trade-off exists only when **a real alternative was considered and rejected**. If there was no alternative, **omit the note** — do not fabricate one.

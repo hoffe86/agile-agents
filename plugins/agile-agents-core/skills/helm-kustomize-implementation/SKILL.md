@@ -1,7 +1,8 @@
 ---
 name: helm-kustomize-implementation
 description: Implement Kubernetes deployments via raw manifests, Helm charts, or Kustomize overlays — with AKS in mind. Covers Deployment/Service/Ingress/HPA/PDB/NetworkPolicy authoring, Helm chart structure, Kustomize bases & overlays, and AKS-specific patterns (workload identity, Azure CNI, KEDA). USE FOR any request to write, add, or modify `.yaml` Kubernetes manifests, Helm charts (`Chart.yaml`, `values.yaml`, `templates/*`), Kustomize files (`kustomization.yaml`, overlays), or AKS workload definitions. Triggered by "Helm", "Kustomize", "K8s manifest", "Kubernetes deployment", "AKS", "Ingress", "HelmRelease".
-applies_to: kubernetes, helm, kustomize
+metadata:
+  applies_to: kubernetes, helm, kustomize
 ---
 
 # Helm / Kustomize / Kubernetes Implementation

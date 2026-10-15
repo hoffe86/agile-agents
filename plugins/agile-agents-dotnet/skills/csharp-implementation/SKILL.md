@@ -1,7 +1,8 @@
 ---
 name: csharp-implementation
 description: Implement C#/.NET features end-to-end using current best practices (modern C# language features, async correctness, DI, SOLID, secure-by-default). USE FOR any request to write, add, modify, or refactor C# code, .NET projects, ASP.NET Core APIs, EF Core data access, .NET Aspire workloads, console apps, libraries, or NuGet packages. Also triggered by "implement in C#", ".NET feature", "add endpoint", "add EF migration", "Aspire app", or any task that involves changing `.cs`, `.csproj`, `.sln`, `Directory.Build.*`, or `global.json` files.
-applies_to: dotnet
+metadata:
+  applies_to: dotnet
 ---
 
 # C# / .NET Implementation

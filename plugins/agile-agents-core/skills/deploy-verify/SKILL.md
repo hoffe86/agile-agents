@@ -2,7 +2,8 @@
 name: deploy-verify
 description: >-
   Opt-in deployed verification — push the feature branch, let the project's own CI/CD pipeline deploy pipeline + IaC + application to the first non-production environment, and report whether it actually deployed. Proves the things `plan` / `what-if` structurally cannot: quota, policy denial, name collisions, RBAC at apply time, unregistered providers, non-idempotent IaC. Gated on `solution-profile.yaml: infrastructure.deploy_verify` (default `off`) and never touches production. Loaded by `dev-lead` at Stage 7 after the test bar passes.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Deploy-Verify
@@ -62,7 +63,16 @@ If the strategy or the triggers say this branch will not reach a dev deploy, emi
    content, repeat verification for the new SHA before re-review; do not reuse
    an old green run. Recheck all preconditions and retain the existing retry
    count, non-production boundary, and explicit skip reasons.
-4. **Poll to completion**, bounded by `cost_envelope.max_minutes_per_run` (whatever remains of it). On timeout: `failure, reason=timeout`, and report the run URL so a human can pick it up.
+4. **Establish an operation timeout before polling.** Use an explicit end-to-end
+   polling timeout already documented by the project/pipeline or supplied by
+   the user, not a single job timeout that excludes queue time. Record its
+   source, duration, and fixed deadline before the first poll. Include queued
+   time; bound each status request and sleep by the time left. Do not reset
+   the deadline on a status change or resume. If no bound is established,
+   report `failure, reason=timeout_not_configured` and the run URL, and stop
+   verification without polling; a bound is required before retrying.
+   On expiry: `failure, reason=timeout`; stop polling and report the run URL
+   so a human can pick it up. Do not cancel the pipeline.
 5. **Read the outcome.** On failure, extract the failing stage/job name and the error tail. A pipeline URL alone is not a report.
 6. **Assert convergence** — the strong check, and the reason this skill is worth more than "the pipeline went green". Re-run `terraform plan` / `az deployment group what-if` against the deployed environment. **An empty diff is the pass condition.** A non-empty diff after a successful apply means the IaC is not idempotent — it will drift on every subsequent run. Report that as a failure even though the pipeline reported success.
 7. **Application liveness**, when the pipeline does not already assert it: one request to the deployed health endpoint. Same shape as the smoke slot in `test-bar-gate`, pointed at the deployed URL rather than localhost.
@@ -76,7 +86,12 @@ The consequence to be honest about: **concurrent runs against the same dev envir
 
 ## Cost
 
-`cost_envelope` models tokens and wall-clock. It does not and should not model Azure spend — a token budget cannot see a resource left running. Put an **Azure Budget with an alert on the dev subscription**; that is the platform's job and it already does it well. This skill's only cost obligation is honouring the remaining `max_minutes_per_run` when polling.
+`cost_envelope` gates tokens, AIU, and rated USD, not cloud-resource spend.
+`max_minutes_per_run` is informational planning only, not an enforced deadline
+or a source of remaining polling time. Use the operation timeout above; never
+poll indefinitely. Keep the normal cost checkpoints and retry limits.
+For Azure workloads, put an **Azure Budget with an alert on the dev subscription**:
+a token budget cannot see a resource left running.
 
 ## Failure attribution
 

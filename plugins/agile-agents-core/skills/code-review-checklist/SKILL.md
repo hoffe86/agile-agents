@@ -1,7 +1,8 @@
 ---
 name: code-review-checklist
 description: Perform a high-signal code review of a diff or set of changed files focused on correctness, design, readability, test quality, and documentation. Returns a structured report with severity-rated findings and explicit action items. USE FOR any request to "review this", "review my changes", "review PR", "review diff", "code review", or after a coding+testing pass. This skill is READ-ONLY — it analyzes but does not modify code.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Code Review Checklist

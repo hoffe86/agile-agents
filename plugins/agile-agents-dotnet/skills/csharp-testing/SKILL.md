@@ -1,7 +1,8 @@
 ---
 name: csharp-testing
 description: Add or extend tests for C#/.NET code using xUnit, NUnit, MSTest, or TUnit (whichever the solution already uses), then run them and pursue coverage. USE FOR any request to "write tests for", "add unit tests", "improve coverage", "test this method", "fix failing tests", or after coding work in a `.cs` project. Detects the existing test framework automatically.
-applies_to: dotnet
+metadata:
+  applies_to: dotnet
 ---
 
 # C# / .NET Testing

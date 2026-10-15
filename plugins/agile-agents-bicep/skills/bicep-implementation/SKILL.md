@@ -1,7 +1,8 @@
 ---
 name: bicep-implementation
 description: Implement Azure infrastructure using Bicep with Azure Verified Modules (AVM) wherever possible, following Microsoft's published Bicep best practices and Well-Architected Framework. USE FOR any request to write, add, modify, or refactor `.bicep` files, Bicep modules, `main.bicep`, parameter files (`*.bicepparam`), or to migrate ARM JSON to Bicep. Triggered by "Bicep", "AVM", "Azure Verified Module", "deploy with Bicep", "Bicep module".
-applies_to: azure, bicep
+metadata:
+  applies_to: azure, bicep
 ---
 
 # Bicep Implementation

@@ -1,4 +1,4 @@
-# ADR 0004 — Per-run cost envelope (USD / tokens / minutes) with `stop_on_breach: true` default
+# ADR 0004 — Per-run cost envelope (USD / tokens; minutes informational) with `stop_on_breach: true` default
 
 - **Status:** Accepted
 - **Date:** 2026-04
@@ -28,21 +28,21 @@ envelope catches.
 
 A new top-level `cost_envelope` block in
 `solution-profile.yaml` (the `cost_envelope:` key), distinct from
-`operational.cost_band_eur_monthly`. Three orthogonal hard caps are
-enforced per run:
+`operational.cost_band_eur_monthly`. Measured cost caps are enforced per run;
+minutes are retained as an informational planning value, not a hard deadline:
 
-| Cap | Default (medium tier) | Catches |
+| Setting | Default (medium tier) | Purpose |
 | --- | --- | --- |
 | `max_usd_per_run` | 25.00 | Token spend on expensive models |
 | `max_tokens_per_run` | 2,000,000 | High-volume cheap-model loops |
-| `max_minutes_per_run` | 60 | Stuck loops where token spend stays low |
+| `max_minutes_per_run` | 60 | Informational planning only; no deadline enforcement |
 
 `tier: small | medium | large` selects a default palette per
 `plugins/agile-agents-core/skills/cost-budget/references/tier-defaults.md` (small ≈ $5,
 medium ≈ $25, large ≈ $100). Per-field overrides win over tier defaults.
 
 **`stop_on_breach: true` is the default.** On a hard breach (≥ 10% over any
-cap), the dev-lead writes the cost-stop report
+measured cost cap), the dev-lead writes the cost-stop report
 (`plugins/agile-agents-core/skills/cost-budget/references/cost-stop-report.md`), emits
 `run.abort` with `gate=cost`, and stops. The user must approve the overrun
 or split scope into a follow-up — there is **no auto-retry** at the cost
@@ -53,11 +53,13 @@ dev-lead pipeline (Stage 0 loads the envelope; every subsequent stage exit
 calls `sum-costs.sh`). This is wired as a cross-cutting concern, not an
 extra stage.
 
-### Why three orthogonal caps
+### Why multiple measured caps
 
-Any single cap has a known evasion: a cheap-model loop blows tokens without
-blowing USD; a stuck planner blows wallclock without blowing tokens. All
-three together catch the realistic failure modes.
+A cheap-model loop can blow tokens without blowing USD, so measured cost
+caps complement one another. A stalled planner can consume wall-clock time
+without spending tokens, but this cost gate does not detect that case.
+Operation timeouts must be established separately; the minutes planning
+value is not a watchdog.
 
 ### Why `stop_on_breach: true` by default
 
@@ -89,8 +91,8 @@ three together catch the realistic failure modes.
   conflates the two cost questions; would either set per-run caps absurdly
   high (so they never fire) or absurdly low (so steady-state app cost
   doesn't fit).
-- **Single USD cap, no tokens/minutes.** Rejected: misses the cheap-loop
-  and the wallclock-stall failure modes.
+- **Single USD cap, no tokens.** Rejected: misses the cheap-loop failure
+  mode. Wall-clock stalls are not covered by the cost envelope.
 - **`stop_on_breach: false` default (warn-only).** Rejected: defeats the
   purpose — defaults must be safe in customer projects.
 - **Tier defaults baked into the skill, no `tier` field.** Rejected: the
@@ -99,7 +101,7 @@ three together catch the realistic failure modes.
 
 ## Amendment (2026-08) - the cost unit changed, the decision did not
 
-The three-orthogonal-caps decision stands. Two mechanics in it turned out to
+The measured-cost-caps decision stands. Two mechanics in it turned out to
 be unimplementable as written and were replaced:
 
 - **`sum-costs.sh` is gone.** It summed `cost_usd` fields that agents were
@@ -115,8 +117,20 @@ be unimplementable as written and were replaced:
   `cost_envelope.usd_per_aiu` supplies an org rate, and an unrated run reports
   USD as *unmetered* rather than as zero.
 
-`max_tokens_per_run` and `max_minutes_per_run` are unchanged and now actually
-enforceable.
+`max_tokens_per_run` remains enforced. `max_minutes_per_run` retains its key
+and value but is informational, not enforced.
+
+### Correction (2026-10-15) — minutes are planning information
+
+The earlier claim that minutes were enforceable was incorrect.
+`collect-usage.py` gates tokens, AIU, and rated USD, with no minutes gate or
+runtime watchdog. Its summed call `duration_ms` is not elapsed wall-clock
+runtime: overlapping calls can double-count time, and idle time is absent.
+Elapsed runtime instead measures the interval from run start to current/end
+timestamp. Deployment polling needs an explicitly established operation
+timeout; a missing bound must be reported and polling stopped, not inferred
+from a remaining global minutes budget. Numeric cost caps, breach thresholds,
+and `stop_on_breach` are unchanged.
 
 ## References
 

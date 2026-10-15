@@ -1978,6 +1978,14 @@ class TestingOwnershipTests(unittest.TestCase):
                     "polyglot", marker, "removed", "polyglot identity or fallback drift")
 
 
+def legacy_python_environment():
+    """Exercise explicit child UTF-8 without an ambient encoding workaround."""
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "0"
+    env.pop("PYTHONIOENCODING", None)
+    return env
+
+
 class AgentMetadataTests(unittest.TestCase):
     """ADR 0007 annotations are validated, never used as model selectors."""
 
@@ -2053,11 +2061,15 @@ class AgentMetadataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "plugins").mkdir()
             result = subprocess.run(
-                [sys.executable, str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
-                capture_output=True, encoding="utf-8", timeout=20)
+                [sys.executable, "-X", "utf8",
+                 str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
+                capture_output=True, encoding="utf-8", timeout=20,
+                env=legacy_python_environment())
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertIn("missing core plugin (ADR 0007 inventory)", result.stdout)
             self.assertNotIn("Frontmatter check passed", result.stdout)
+            self.assertIn("CLI — it can never be invoked.", result.stdout)
+            self.assertEqual(result.stderr, "")
 
     def test_native_model_is_independent_of_advisory_tier(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2120,15 +2132,21 @@ class AgentMetadataTests(unittest.TestCase):
             (skills / "demo").mkdir(parents=True)
             profile = root / "profile.yaml"
             profile.write_text("identity:\n  project_name: metadata-fixture\n", encoding="utf-8")
-            # Skill-standard metadata has no agent tier requirement.
-            (skills / "demo/SKILL.md").write_text(
-                "---\nname: demo\ndescription: >-\n  Skill description stays intact.\n"
-                "metadata:\n  author: fixture-author\napplies_to: all\n---\n", encoding="utf-8")
+            # Skill metadata is a scope annotation, not the agent string-map schema.
+            skill_annotation = (
+                "metadata:\n  applies_to: all\n  author: fixture-author\n"
+                "  enhancements:\n    - inherited-list-not-description\n")
+            skill_description = "description: >-\n  Skill description stays intact.\n"
             annotation = "metadata:\n  model_tier: heavy\n  note: annotation-not-description\n"
             description = "description: >-\n  Agent description stays intact.\n  Second sentence.\n"
             outputs = []
             # Both orders catch a fallback reader treating indented metadata as prose.
             for frontmatter in (annotation + description, description + annotation):
+                skill_fields = (skill_annotation + skill_description if frontmatter == annotation + description
+                                else skill_description + skill_annotation)
+                (skills / "demo/SKILL.md").write_text(
+                    "---\nname: demo\n" + skill_fields +
+                    "allowed-tools: [read, edit]\n---\n", encoding="utf-8")
                 (agents / "demo.agent.md").write_text(
                     "---\nname: demo\n" + frontmatter +
                     "model: runtime-selected-model\ntools: [read, edit]\nagents: [coding]\n---\n",
@@ -2149,10 +2167,299 @@ class AgentMetadataTests(unittest.TestCase):
                         self.assertIn("- **Tools**: edit, read", text)
                         self.assertIn("- **Sub-agents**: coding", text)
                         self.assertNotIn("annotation-not-description", text)
+                        self.assertNotIn("inherited-list-not-description", text)
+                        self.assertNotIn("applies_to", text)
                         self.assertNotIn("model_tier", text)
                         self.assertNotIn("runtime-selected-model", text)
                         outputs.append(self.normalize_generated_date(text))
             self.assertTrue(all(text == outputs[0] for text in outputs))
+
+
+class SkillMetadataTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            "skill_checker", ROOT / "scripts/check-skill-frontmatter.py")
+        cls.checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.checker)
+
+    def inspect(self, fields):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "SKILL.md"
+            path.write_text("---\nname: demo\ndescription: Fine.\n" + fields +
+                            "---\n\napplies_to: body text is not scope\n", encoding="utf-8")
+            return self.checker.inspect(str(path), "skill", "demo")
+
+    def test_inherited_metadata_is_preserved_not_a_stringmap(self):
+        self.assertEqual(self.inspect(
+            "license: MIT\nallowed-tools: [read, edit]\nmetadata:\n"
+            "  applies_to: azure, terraform\n  version: '1.3'\n"
+            "  enhancements: [one, two]\n  unknown: {nested: [1, true]}\n"), [])
+
+    def test_missing_null_and_nonmapping_metadata_fail(self):
+        for fields in ("", "metadata:\n", "metadata: all\n", "metadata: []\n",
+                       "metadata: true\n", "metadata: 42\n"):
+            with self.subTest(fields=fields):
+                self.assertIn("missing or non-mapping `metadata`", self.inspect(fields))
+
+    def test_missing_blank_and_nonstring_scope_fail(self):
+        for value in ("", "null", "''", "'   '", "true", "42", "[]", "{}"):
+            with self.subTest(value=value):
+                self.assertTrue(any("invalid `metadata.applies_to`" in d for d in
+                                    self.inspect(f"metadata:\n  applies_to: {value}\n")))
+        self.assertTrue(self.inspect("metadata: {}\n"))
+
+    def test_legacy_and_duplicate_placements_fail(self):
+        for fields in ("applies_to: all\n",
+                       "applies_to: all\nmetadata:\n  applies_to: all\n"):
+            with self.subTest(fields=fields):
+                self.assertTrue(any("legacy top-level" in d for d in self.inspect(fields)))
+
+    def test_duplicate_yaml_keys_fail_at_every_level(self):
+        for fields in (
+            "metadata:\n  applies_to: all\n  applies_to: python\n",
+            "metadata: {applies_to: all}\nmetadata: {applies_to: python}\n",
+            "metadata:\n  applies_to: all\n  inherited: {version: a, version: b}\n",
+            "name: demo\nmetadata: {applies_to: all}\n",
+        ):
+            with self.subTest(fields=fields):
+                self.assertTrue(any("duplicate key" in d for d in self.inspect(fields)))
+
+    def test_native_skill_fields_cannot_be_hidden_in_metadata(self):
+        for field in ("name", "description", "license", "compatibility", "allowed-tools",
+                      "argument-hint", "user-invocable", "disable-model-invocation"):
+            with self.subTest(field=field):
+                self.assertIn(f"native `{field}` must remain top-level, not in `metadata`",
+                              self.inspect(f"metadata:\n  applies_to: all\n  {field}: value\n"))
+
+    def test_repository_scope_inventory_and_unique_names(self):
+        paths = sorted((ROOT / "plugins").glob("*/skills/*/SKILL.md"))
+        self.assertEqual(len(paths), 62)
+        scopes, names = [], []
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(self.checker.inspect(str(path), "skill", path.parent.name), [])
+            data = self.checker.yaml.safe_load(
+                self.checker.FRONTMATTER.match(path.read_text(encoding="utf-8")).group(1))
+            scopes.append(data["metadata"]["applies_to"])
+            names.append(data["name"])
+        self.assertEqual(scopes.count("all"), 36)
+        self.assertEqual(len(scopes) - scopes.count("all"), 26)
+        for path in (CORE / "agents").glob("*.agent.md"):
+            data = self.checker.yaml.safe_load(
+                self.checker.FRONTMATTER.match(path.read_text(encoding="utf-8")).group(1))
+            names.append(data["name"])
+        self.assertEqual(len(names), 77)
+        self.assertEqual(len(set(names)), 77)
+
+    def test_acquire_codebase_retains_upstream_types(self):
+        path = CORE / "skills/acquire-codebase-knowledge/SKILL.md"
+        data = self.checker.yaml.safe_load(
+            self.checker.FRONTMATTER.match(path.read_text(encoding="utf-8")).group(1))
+        self.assertEqual(data["metadata"]["version"], "1.3")
+        self.assertIsInstance(data["metadata"]["enhancements"], list)
+        self.assertEqual(len(data["metadata"]["enhancements"]), 6)
+
+
+class VendoredNormalizationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Use the public stdin/stdout seam below as well as direct deterministic fixtures.
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            cls.normalizer = importlib.import_module("normalize-vendored-skill")
+        finally:
+            sys.path.pop(0)
+
+    @staticmethod
+    def document(fields="", body="Body.\n"):
+        return "---\nname: demo\ndescription: Fine.\n" + fields + "---\n\n" + body
+
+    def test_annotation_only_wrapper_is_removed(self):
+        upstream = self.document()
+        self.assertEqual(self.normalizer.comparable(
+            self.document("metadata:\n  applies_to: all\n"), upstream), (upstream, upstream))
+
+    def test_crlf_is_the_only_general_format_normalization(self):
+        upstream = self.document()
+        local = self.document("metadata:\n  applies_to: all\n").replace("\n", "\r\n")
+        self.assertEqual(self.normalizer.comparable(local, upstream), (upstream, upstream))
+
+    def test_existing_metadata_list_and_comments_remain_exact(self):
+        fields = "metadata:\n  # upstream note\n  version: '1.3'\n  enhancements:\n    - one\n"
+        upstream = self.document(fields)
+        local = self.document(fields.replace("metadata:\n", "metadata:\n  applies_to: all\n"))
+        self.assertEqual(self.normalizer.comparable(local, upstream), (upstream, upstream))
+
+    def test_body_scope_lookalikes_and_delimiters_are_not_removed(self):
+        body = "applies_to: body\nmetadata:\n  applies_to: body\n---\napplies_to: later\n"
+        upstream = self.document(body=body)
+        local = self.document("metadata:\n  applies_to: all\n", body)
+        self.assertEqual(self.normalizer.comparable(local, upstream), (upstream, upstream))
+        changed = local.replace("applies_to: body", "applies_to: changed")
+        self.assertNotEqual(*self.normalizer.comparable(changed, upstream))
+
+    def test_unrelated_changes_remain_drift(self):
+        fields = "license: MIT\nmetadata:\n  version: '1.3'\n  enhancements:\n    - one\n"
+        upstream = self.document(fields)
+        local = self.document(fields.replace("metadata:\n", "metadata:\n  applies_to: all\n"))
+        for old, new in (
+            ("MIT", "BSD"), ("Fine.", "Changed."), ("'1.3'", "'1.4'"),
+            ("- one", "- two"), ("Body.", "Body. "), ("Body.", "New body."),
+            ("metadata:\n", "metadata: # local comment\n"),
+            ("  version:", "  # local note\n  version:"),
+            ("license: MIT", "license:  MIT"),
+        ):
+            with self.subTest(mutation=(old, new)):
+                self.assertNotEqual(*self.normalizer.comparable(local.replace(old, new), upstream))
+        self.assertNotEqual(*self.normalizer.comparable(local + "\n", upstream))
+
+    def test_comments_and_blank_lines_do_not_disappear_with_wrapper(self):
+        upstream = self.document()
+        for fields in ("metadata: # keep me\n  applies_to: all\n",
+                       "metadata:\n  # keep me\n  applies_to: all\n",
+                       "metadata:\n  applies_to: all\n  # keep me\n",
+                       "metadata:\n  applies_to: all\n\n"):
+            with self.subTest(fields=fields):
+                normalized, remote = self.normalizer.comparable(self.document(fields), upstream)
+                self.assertNotEqual(normalized, remote)
+                self.assertIn("metadata:", normalized)
+
+    def test_upstream_collisions_are_errors_not_normalized(self):
+        local = self.document("metadata:\n  applies_to: all\n")
+        for fields in ("applies_to: all\n", "metadata:\n  applies_to: all\n",
+                       "applies_to:\n", "metadata:\n  applies_to:\n"):
+            with self.subTest(fields=fields):
+                with self.assertRaisesRegex(ValueError, "upstream applies_to collision"):
+                    self.normalizer.comparable(local, self.document(fields))
+
+    def test_malformed_or_duplicate_yaml_fails_on_either_side(self):
+        local = self.document("metadata:\n  applies_to: all\n")
+        upstream = self.document()
+        for invalid in ("no frontmatter", self.document("metadata: []\n"),
+                        self.document("metadata: [\n"),
+                        self.document("license: MIT\nlicense: BSD\n"),
+                        self.document("metadata: {version: a, version: b}\n")):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises((ValueError, self.normalizer.yaml.YAMLError)):
+                    self.normalizer.comparable(invalid, upstream)
+                with self.assertRaises((ValueError, self.normalizer.yaml.YAMLError)):
+                    self.normalizer.comparable(local, invalid)
+
+    def test_noncanonical_or_legacy_annotation_fails_closed(self):
+        for fields in ("applies_to: all\n", "metadata: {applies_to: all}\n",
+                       "metadata:\n  applies_to: all # do not erase this\n",
+                       "metadata:\n  applies_to: >-\n    all\n",
+                       "defaults: &base {applies_to: all}\nmetadata:\n  <<: *base\n",
+                       "defaults: &base\n  applies_to: all\nmetadata: *base\n",
+                       "defaults: &base {metadata: {applies_to: all}}\n<<: *base\n",
+                       "metadata:\n  applies_to: all\n  applies_to: python\n"):
+            with self.subTest(fields=fields):
+                with self.assertRaises((ValueError, self.normalizer.yaml.YAMLError)):
+                    self.normalizer.comparable(self.document(fields), self.document())
+
+    def test_cli_reports_collision_and_preserves_unicode(self):
+        for fields, code in (("", 0), ("applies_to: all\n", 2)):
+            with self.subTest(fields=fields):
+                request = {"local": self.document("metadata:\n  applies_to: all\n", "modèle-模型\n"),
+                           "upstream": self.document(fields, "modèle-模型\n")}
+                result = subprocess.run(
+                    [sys.executable, "-X", "utf8", str(ROOT / "scripts/normalize-vendored-skill.py")],
+                    input=json.dumps(request), capture_output=True, encoding="utf-8", timeout=20,
+                    env=legacy_python_environment())
+                self.assertEqual(result.returncode, code, result.stderr)
+                if code:
+                    self.assertIn("upstream applies_to collision", result.stderr)
+                    self.assertEqual(result.stdout, "")
+                else:
+                    output = json.loads(result.stdout)
+                    self.assertEqual(output["local"], request["upstream"])
+                    self.assertEqual(output["upstream"], request["upstream"])
+                    self.assertEqual(result.stderr, "")
+
+    def test_powershell_drift_uses_normalizer_without_network(self):
+        if not shutil.which("pwsh"):
+            self.fail("pwsh is required for vendored drift integration")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill = root / "plugins/demo/skills/demo/SKILL.md"
+            skill.parent.mkdir(parents=True)
+            (root / "plugins/VENDORED.md").write_text(
+                "## Skill → Upstream\n"
+                "| demo | `demo` | https://github.com/example/fixture/tree/main/skills/demo |\n",
+                encoding="utf-8")
+            skill.write_text(self.document("metadata:\n  applies_to: all\n", "modèle-模型\n"),
+                             encoding="utf-8")
+            remote = root / "upstream.md"
+            script = str(ROOT / "scripts/check-vendored-drift.ps1").replace("'", "''")
+            env = legacy_python_environment()
+            env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
+            env["DRIFT_FIXTURE_ROOT"] = str(root)
+            env["DRIFT_FIXTURE_REMOTE"] = str(remote)
+            command = (
+                "function Invoke-WebRequest { "
+                "[pscustomobject]@{Content=(Get-Content $env:DRIFT_FIXTURE_REMOTE -Raw -Encoding utf8)} }; "
+                f"& '{script}' -RepoRoot $env:DRIFT_FIXTURE_ROOT -ShowDiff")
+            for fields, body, flags, expected, diagnostic in (
+                ("", "modèle-模型\n", "", 0, "All vendored skills match upstream."),
+                ("", "changed\n", "", 1, "DRIFTED"),
+                ("", "changed\n", " -WarnOnly", 0, "DRIFTED"),
+                ("applies_to: all\n", "modèle-模型\n", " -WarnOnly", 2, "upstream applies_to collision"),
+                ("license: MIT\nlicense: BSD\n", "modèle-模型\n", "", 2, "duplicate key"),
+            ):
+                with self.subTest(fields=fields, body=body, flags=flags):
+                    remote.write_text(self.document(fields, body), encoding="utf-8")
+                    result = subprocess.run(
+                        ["pwsh", "-NoProfile", "-Command", command + flags + "; exit $LASTEXITCODE"],
+                        capture_output=True, encoding="utf-8", timeout=30, env=env)
+                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                    self.assertIn(diagnostic, result.stdout + result.stderr)
+
+
+class ScopeCountDriftTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            "instructions_checker", ROOT / "scripts/check-instructions-drift.py")
+        cls.checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.checker)
+
+    def test_real_inventory_matches_documented_split(self):
+        actual = self.checker.actual_facts(str(ROOT))
+        claimed = self.checker.claimed_facts(
+            (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8"))
+        self.assertEqual((actual["all_scopes"], actual["scoped"]), (36, 26))
+        self.assertEqual(self.checker.compare(actual, claimed), [])
+
+    def test_stale_and_removed_scope_claims_fail(self):
+        actual = self.checker.actual_facts(str(ROOT))
+        text = (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8")
+        for replacement in ("34 `all` / 26 scoped", "36 `all` / 25 scoped", "not counted"):
+            with self.subTest(replacement=replacement):
+                changed = text.replace("36 `all` / 26 scoped", replacement)
+                self.assertTrue(self.checker.compare(actual, self.checker.claimed_facts(changed)))
+
+    def test_count_reads_nested_annotation_not_body_or_fixed_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill = Path(tmp) / "plugins/demo/skills/demo/SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text("---\nmetadata:\n  applies_to: python\n---\napplies_to: all\n",
+                             encoding="utf-8")
+            actual = self.checker.actual_facts(tmp)
+            self.assertEqual((actual["all_scopes"], actual["scoped"]), (0, 1))
+            skill.write_text("---\nmetadata:\n  applies_to: all\n---\n", encoding="utf-8")
+            actual = self.checker.actual_facts(tmp)
+            self.assertEqual((actual["all_scopes"], actual["scoped"]), (1, 0))
+
+    def test_missing_or_legacy_scope_is_not_counted_as_scoped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill = Path(tmp) / "plugins/demo/skills/demo/SKILL.md"
+            skill.parent.mkdir(parents=True)
+            for fields in ("metadata: {}\n", "applies_to: all\n", "metadata: []\n"):
+                with self.subTest(fields=fields):
+                    skill.write_text("---\n" + fields + "---\n", encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "invalid metadata.applies_to"):
+                        self.checker.actual_facts(tmp)
 
 
 class AdvisoryProfileTests(unittest.TestCase):
@@ -2254,13 +2561,34 @@ class AdvisoryProfileTests(unittest.TestCase):
                 with self.subTest(profile=text):
                     profile.write_text(text, encoding="utf-8")
                     result = subprocess.run(
-                        [sys.executable, str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
-                        capture_output=True, encoding="utf-8", timeout=20)
+                        [sys.executable, "-X", "utf8",
+                         str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
+                        capture_output=True, encoding="utf-8", timeout=20,
+                        env=legacy_python_environment())
                     self.assertEqual(result.returncode, 1, result.stderr)
                     self.assertIn("profile could not be read as valid YAML", result.stdout)
                     self.assertIn(diagnostic, result.stdout)
+                    self.assertIn("CLI — it can never be invoked.", result.stdout)
                     self.assertNotIn("Traceback", result.stdout + result.stderr)
                     self.assertEqual(result.stderr, "")
+
+    def test_valid_root_cli_succeeds_with_ambient_utf8_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "valid-模型"
+            shutil.copytree(CORE / "agents", root / "plugins/agile-agents-core/agents")
+            (root / ".github").mkdir()
+            (root / ".github/solution-profile.yaml").write_text(
+                "ai_copilot: {approved_models: [modèle-模型]}\n"
+                "cost_envelope: {model_tiers: {heavy: modèle-模型}}\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-X", "utf8",
+                 str(ROOT / "scripts/check-skill-frontmatter.py"), str(root)],
+                capture_output=True, encoding="utf-8", timeout=20,
+                env=legacy_python_environment())
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Frontmatter check passed: 16 artifacts, all frontmatter valid.",
+                          result.stdout)
+            self.assertEqual(result.stderr, "")
 
     def test_unrelated_constructor_errors_are_not_suppressed(self):
         from unittest.mock import patch
@@ -2300,10 +2628,14 @@ class AdvisoryProfileTests(unittest.TestCase):
             fixture.mkdir(parents=True)
             (fixture / "solution-profile.yaml").write_text("malformed: [", encoding="utf-8")
             result = subprocess.run(
-                [sys.executable, str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
-                capture_output=True, encoding="utf-8", timeout=20)
+                [sys.executable, "-X", "utf8",
+                 str(ROOT / "scripts/check-skill-frontmatter.py"), tmp],
+                capture_output=True, encoding="utf-8", timeout=20,
+                env=legacy_python_environment())
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertIn("not in `ai_copilot.approved_models`", result.stdout)
+            self.assertIn("CLI — it can never be invoked.", result.stdout)
+            self.assertEqual(result.stderr, "")
             (root / ".github/solution-profile.yaml").write_text("{}", encoding="utf-8")
             self.assertFalse([row for row in self.checker.scan(tmp) if row[3]])
             template = root / (

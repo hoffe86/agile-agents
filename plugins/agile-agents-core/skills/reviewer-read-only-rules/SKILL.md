@@ -1,7 +1,8 @@
 ---
 name: reviewer-read-only-rules
 description: Defence-in-depth read-only contract that every review agent enforces. Defines the canonical refuse-list (write tools, file/repo mutations, workspace-mutating commands, real deploys), the allowed read-only operations, and the rule for routing fix requests to the right write-capable agent. Loaded by review, security-reviewer, architecture-reviewer, infrastructure-reviewer, test-reviewer. NOT loaded by author agents.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Reviewer read-only rules

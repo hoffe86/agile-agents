@@ -1,7 +1,8 @@
 ---
 name: dev-lead-templates
 description: Stage-local preparation, SQL/tracker bookkeeping and reporting recipes for dev-lead, plus plan/design approval prompts and the final Done/Stop report. Read only the named section on stage entry or resume; load other references only as needed. The supervisor owns transitions, gates, stop conditions, retry budgets and event/cost semantics; these recipes supply inputs and output shapes, not alternate control flow. Not used by other agents.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # dev-lead-templates

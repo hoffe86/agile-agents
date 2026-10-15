@@ -1,7 +1,8 @@
 ---
 name: ef-core
 description: 'Get best practices for Entity Framework Core'
-applies_to: dotnet
+metadata:
+  applies_to: dotnet
 ---
 
 # Entity Framework Core Best Practices

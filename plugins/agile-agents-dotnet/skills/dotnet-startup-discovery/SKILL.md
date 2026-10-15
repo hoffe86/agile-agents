@@ -1,7 +1,8 @@
 ---
 name: dotnet-startup-discovery
 description: Work out how to start a .NET application and which URL proves it came up — Aspire AppHost, Azure Functions, ASP.NET Core web projects, console/worker services — by reading what the project already declares (project SDK, OutputType, launchSettings.json, health-check registration). USE FOR the smoke slot of `test-bar-gate` when `testing.smoke.command` is not configured, or any request to "run the app", "start the API", "check it boots", "which project do I run" in a .NET repo. Also detects when there is nothing to start (class library, analyzer, shared contracts).
-applies_to: dotnet
+metadata:
+  applies_to: dotnet
 ---
 
 # .NET startup discovery

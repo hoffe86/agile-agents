@@ -1,7 +1,8 @@
 ---
 name: python-testing
 description: Add or extend tests for Python code using pytest (the de-facto standard), then run them and chase coverage. USE FOR any request to "write tests for", "add unit tests", "improve coverage", "test this function", "fix failing tests", or after coding work in `.py` files. Defaults to pytest; respects unittest if that's what the project uses.
-applies_to: python
+metadata:
+  applies_to: python
 ---
 
 # Python Testing
