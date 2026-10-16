@@ -253,9 +253,29 @@ pathlib.Path("/output/result.json").write_text(json.dumps({"reset": True}))
             self.worker.export()
 
     def test_06_output_fifo_denied(self):
-        self.launch('import os\nos.mkfifo("/output/fifo")\n')
+        self.launch(r'''
+import json, os, pathlib, stat
+pathlib.Path("/output/permitted.txt").write_text("synthetic permitted output\n")
+os.mkfifo("/output/fifo")
+fifo_mode = os.lstat("/output/fifo").st_mode
+regular_mode = os.lstat("/output/permitted.txt").st_mode
+assert stat.S_ISFIFO(fifo_mode), fifo_mode
+assert stat.S_ISREG(regular_mode), regular_mode
+print("FIFO_GUEST_CREATED=" + json.dumps({
+    "fifo": stat.S_IFMT(fifo_mode), "permitted.txt": stat.S_IFMT(regular_mode)
+}), flush=True)
+''')
+        # Diagnostic only: the guest log is not a trusted filesystem inventory.
+        # A host-volume walk cannot see gVisor's in-memory synthetic FIFO either.
+        print(docker("logs", "--tail", "20", self.worker.name).decode(errors="replace"),
+              flush=True)
         with self.assertRaisesRegex(BoundaryError, "OUTPUT_MEMBER_DENIED"):
-            self.worker.export()
+            files = self.worker.export()
+            print("FIFO_EXPORT_UNEXPECTEDLY_ACCEPTED=" + json.dumps({
+                "names": sorted(files),
+                "permitted_bytes_match": files.get("output/permitted.txt")
+                == b"synthetic permitted output\n",
+            }), flush=True)
 
     def test_07_output_budget_denied(self):
         self.launch('from pathlib import Path\nPath("/output/large").write_bytes(b"x" * (2*1024**2))\n')
