@@ -63,7 +63,7 @@ class WorkerUnitTests(unittest.TestCase):
 
     def test_output_traversal_absolute_and_nested_denied(self):
         for name in ("../escape", "/output/a", "output/../a", "output/sub/a",
-                     "output//../a", "other/a"):
+                     "output//../a", "other/a", "output/./a", "output//a"):
             with self.subTest(name=name):
                 with self.assertRaisesRegex(worker.BoundaryError, "OUTPUT_MEMBER_DENIED"):
                     worker.parse_output(archive_of([(name, tarfile.REGTYPE, b"x")]))
@@ -118,6 +118,16 @@ class WorkerUnitTests(unittest.TestCase):
             self.assertEqual(environment["HOME"], environment["DOCKER_CONFIG"])
             self.assertIn("live-worker-client-", environment["HOME"])
             self.assertFalse(worker.Path(environment["HOME"]).exists())
+
+    def test_paused_teardown_thaws_only_after_export(self):
+        instance = worker.Worker()
+        instance.created = True
+        with patch("worker.docker", side_effect=[b'{"Paused":true}', b"", b""]) as cli:
+            instance.terminate()
+        self.assertEqual([c.args[0] for c in cli.call_args_list],
+                         ["inspect", "unpause", "rm"])
+        self.assertTrue(instance.revoked.is_set())
+        self.assertFalse(instance.created)
 
     def test_create_policy_mismatch_fails_closed(self):
         instance = worker.Worker()

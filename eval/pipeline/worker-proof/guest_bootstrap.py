@@ -64,6 +64,9 @@ def main():
                 raise RuntimeError("SOCKET_STDIO_FORBIDDEN")
         os.closerange(3, 65536)
         os.umask(0o077)
+        # Defense-in-depth requested limit, NOT evidence of enforcement:
+        # pinned gVisor sys_rlimit.go explicitly does not enforce ProcessCount.
+        # The native process-pressure test therefore remains a blocking gate.
         resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
         resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
         resource.setrlimit(resource.RLIMIT_FSIZE, (8 * 1024**2, 8 * 1024**2))

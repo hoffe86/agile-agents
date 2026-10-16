@@ -21,11 +21,14 @@ remains **BLOCKED**; grade2/provenance1 and scorer `UNVERIFIED` behavior are unc
   an **8 MiB, task-owned Docker local-driver tmpfs volume**, not a host-path bind.
   This permits Docker's trusted archive API to read output while frozen without
   a `docker exec` escape around the entrypoint. There is no persistent data service.
-- The immutable guest bootstrap sets hard limits (128 guest processes, 1 GiB
+- The immutable guest bootstrap requests hard limits (128 guest processes, 1 GiB
   address space, 8 MiB/file, 256 FDs, no cores), closes inherited non-stdio FDs,
   verifies stdio is not sockets, installs **guest** seccomp, then execs task code
   with exactly `PATH`, `HOME`, `TMPDIR`, `LANG`. Docker does not inherit runner
   environment; its client also receives a fixed credential-free environment.
+  **Known blocker:** gVisor `release-20261005.0` explicitly does **not enforce**
+  `RLIMIT_NPROC` (`ProcessCount` in `sys_rlimit.go`); a successful set/get is not
+  a guest process bound. The native process-pressure test stays non-green.
 - Socket denial covers socket/socketpair, all ordinary socket operations,
   io_uring creation, alternative ABI/x32, and is inherited across fork/exec.
   This is not a claim that Docker `--network none` or runsc's host seccomp
@@ -35,8 +38,10 @@ remains **BLOCKED**; grade2/provenance1 and scorer `UNVERIFIED` behavior are unc
   task ceiling. Revocation is a terminal latch, checked before work and by a
   100 ms watchdog. Owned-container force removal is bounded to 8 seconds; failure
   is non-green, not silently ignored. The hosted job has a 30-minute timeout.
-- The harness freezes the guest before bounded output acquisition, verifies
-  Docker reports paused, then removes the container. The host parses archive
+- The harness freezes the guest before bounded output acquisition and verifies
+  Docker reports paused. After acquiring the immutable snapshot bytes it thaws
+  **only for immediate removal**: native testing found runsc teardown cannot
+  service Docker while frozen. No output is acquired after thaw. The host parses archive
   bytes as inert data: no extraction, no link following. Only 16 flat regular
   files totaling 1 MiB may leave; symlinks, hardlinks, directories, devices,
   FIFOs, duplicate names, absolute/traversal names and oversize data fail closed.

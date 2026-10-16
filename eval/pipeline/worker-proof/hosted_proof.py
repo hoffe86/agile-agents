@@ -36,10 +36,19 @@ time.sleep(120)
 class HostedWorkerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.owned_names = set()
         cls.identities = preflight()
         print("IDENTITIES=" + json.dumps(cls.identities, sort_keys=True), flush=True)
         if cls.identities["runner_image"] == "not-reported":
             raise AssertionError("Actual hosted runner image version required")
+
+    @classmethod
+    def tearDownClass(cls):
+        remaining = set(docker("ps", "-a", "--format", "{{.Names}}").decode().splitlines())
+        leaked = remaining & cls.owned_names
+        print("OWNED_CONTAINERS_REMAINING=" + json.dumps(sorted(leaked)), flush=True)
+        if leaked:
+            raise AssertionError("TASK_OWNED_CLEANUP_FAILED:" + ",".join(sorted(leaked)))
 
     def setUp(self):
         global ACTIVE
@@ -48,6 +57,9 @@ class HostedWorkerTests(unittest.TestCase):
         self.addCleanup(self.worker.close)
 
     def launch(self, source, extra=None):
+        global ACTIVE
+        ACTIVE = self.worker
+        self.owned_names.add(self.worker.name)
         self.worker.prepare({"task.py": (source + GUEST_END).encode(), **(extra or {})})
         self.worker.run()
         print("CONTAINER=" + json.dumps({
@@ -171,6 +183,7 @@ except MemoryError:
     memory_denied = True
 else:
     raise AssertionError("memory limit did not fire")
+print("MEMORY_BOUND_DENIED:MemoryError", flush=True)
 children = []
 process_denied = False
 try:
@@ -185,6 +198,7 @@ try:
             signal.pause()
             os._exit(0)
         children.append(pid)
+        print("GUEST_CHILDREN=" + str(len(children)), flush=True)
 finally:
     for pid in children:
         os.kill(pid, signal.SIGKILL)
@@ -198,6 +212,21 @@ pathlib.Path("/output/result.json").write_text(json.dumps({
         self.assertTrue(result["memory_denied"])
         self.assertLess(result["children_before_eagain"], 128)
         print("RESOURCES=" + json.dumps(result), flush=True)
+
+    def test_11_memory_bound_independent_of_process_pressure(self):
+        self.launch(r'''
+import json, pathlib
+positive = bytearray(1024**2)
+assert len(positive) == 1024**2
+try:
+    value = bytearray(1100 * 1024**2)
+except MemoryError:
+    pass
+else:
+    raise AssertionError("memory limit did not fire")
+pathlib.Path("/output/result.json").write_text(json.dumps({"memory_denied": True}))
+''')
+        self.assertTrue(self.result()["memory_denied"])
 
     def test_04_reset(self):
         self.launch(r'''

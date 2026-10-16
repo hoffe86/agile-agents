@@ -47,7 +47,7 @@ def docker(*args, timeout=60, data=None):
     if result.returncode:
         # Runtime messages are diagnostic only, not trusted structured results.
         raise BoundaryError("DOCKER_FAILED:" + result.stderr[:4096].decode(errors="replace"))
-    return result.stdout
+    return result.stdout + (result.stderr if args and args[0] == "logs" else b"")
 
 
 def preflight():
@@ -149,6 +149,7 @@ def parse_output(archive_bytes):
                 continue
             path = PurePosixPath(member.name)
             if (len(path.parts) != 2 or path.parts[0] != "output"
+                    or member.name != path.as_posix()
                     or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}", path.parts[1])
                     or not member.isfile() or member.name in result
                     or member.size < 0 or member.size > OUTPUT_LIMIT):
@@ -289,7 +290,14 @@ class Worker:
         self.revoke()
         with self.stop_lock:
             if self.created:
-                docker("rm", "--force", self.name, timeout=8)
+                state = json.loads(docker("inspect", "--format", "{{json .State}}",
+                                          self.name, timeout=1))
+                if state["Paused"]:
+                    # Snapshot bytes have already been acquired while frozen.
+                    # runsc cannot service Docker removal while its sentry is
+                    # frozen. Thaw ONLY for teardown; never export again.
+                    docker("unpause", self.name, timeout=1)
+                docker("rm", "--force", self.name, timeout=6)
                 self.created = False
 
     def close(self):
