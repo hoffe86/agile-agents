@@ -54,6 +54,8 @@ class WorkerUnitTests(unittest.TestCase):
         self.assertIn("type=volume,src=volume,dst=/output,volume-nocopy", args)
         self.assertEqual(args[args.index("--cpus") + 1], "1")
         self.assertEqual(args[args.index("--pids-limit") + 1], "128")
+        self.assertIn("max-file=1", args)
+        self.assertIn("compress=false", args)
 
     def test_output_regular_file_positive(self):
         data = archive_of([("output/description.md", tarfile.REGTYPE, b"# Synthetic")])

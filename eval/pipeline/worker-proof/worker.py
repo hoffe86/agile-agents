@@ -132,7 +132,8 @@ def create_args(name, image, volume):
         "--tmpfs", "/scratch:rw,noexec,nosuid,nodev,size=268435456,mode=0700,uid=65532,gid=65532",
         "--mount", f"type=volume,src={volume},dst=/output,volume-nocopy",
         "--log-driver", "local", "--log-opt", "max-size=1m",
-        "--log-opt", "max-file=1", "--stop-timeout", "1", image,
+        "--log-opt", "max-file=1", "--log-opt", "compress=false",
+        "--stop-timeout", "1", image,
     ]
 
 
