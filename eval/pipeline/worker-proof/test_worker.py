@@ -111,7 +111,11 @@ class WorkerUnitTests(unittest.TestCase):
             with self.assertRaisesRegex(worker.BoundaryError, "DOCKER_FAILED"):
                 worker.docker("start", "owned")
             self.assertEqual(run.call_count, 1)
-            self.assertEqual(run.call_args.kwargs["env"], worker.SAFE_ENV)
+            environment = run.call_args.kwargs["env"]
+            self.assertEqual(set(environment), set(worker.SAFE_ENV))
+            self.assertEqual(environment["HOME"], environment["DOCKER_CONFIG"])
+            self.assertIn("live-worker-client-", environment["HOME"])
+            self.assertFalse(worker.Path(environment["HOME"]).exists())
 
     def test_create_policy_mismatch_fails_closed(self):
         instance = worker.Worker()

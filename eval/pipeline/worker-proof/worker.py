@@ -13,6 +13,7 @@ import platform
 import re
 import subprocess
 import tarfile
+import tempfile
 import threading
 import time
 import uuid
@@ -35,9 +36,14 @@ class BoundaryError(RuntimeError):
 
 
 def docker(*args, timeout=60, data=None):
-    result = subprocess.run(
-        ["docker", "--host=unix:///var/run/docker.sock", *args],
-        input=data, capture_output=True, env=SAFE_ENV, timeout=timeout)
+    # Buildx needs a writable client home even for COPY-only local builds.
+    # A fresh empty directory avoids reading/writing the real Docker credential
+    # config. It is host preparation state and is never mounted into the guest.
+    with tempfile.TemporaryDirectory(prefix="live-worker-client-") as home:
+        environment = {**SAFE_ENV, "HOME": home, "DOCKER_CONFIG": home}
+        result = subprocess.run(
+            ["docker", "--host=unix:///var/run/docker.sock", *args],
+            input=data, capture_output=True, env=environment, timeout=timeout)
     if result.returncode:
         # Runtime messages are diagnostic only, not trusted structured results.
         raise BoundaryError("DOCKER_FAILED:" + result.stderr[:4096].decode(errors="replace"))
