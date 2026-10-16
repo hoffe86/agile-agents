@@ -1,0 +1,41 @@
+name: Synthetic worker proof (no models)
+
+on:
+  push:
+    branches: [feat/live-evaluation-authorization]
+    paths:
+      - eval/pipeline/worker-proof/**
+      - .github/workflows/worker-proof.yml
+
+permissions: {}
+
+concurrency:
+  group: synthetic-worker-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted proof harness
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Pure unit checks
+        working-directory: eval/pipeline/worker-proof
+        run: python3 -m unittest -v test_worker
+      - name: Prepare pinned gVisor and image on disposable host
+        working-directory: eval/pipeline/worker-proof
+        run: |
+          sudo env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            GITHUB_ACTIONS=true RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
+            python3 setup_host.py
+      - name: Exercise isolated synthetic boundaries
+        working-directory: eval/pipeline/worker-proof
+        run: |
+          env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            ImageVersion="$ImageVersion" ImageOS="$ImageOS" \
+            python3 hosted_proof.py
