@@ -123,6 +123,7 @@ class WorkerUnitTests(unittest.TestCase):
         self.assertRegex(worker.LOCK["image"], r"@sha256:[0-9a-f]{64}$")
         self.assertRegex(worker.LOCK["bundle_sha256"], r"^[0-9a-f]{64}$")
         self.assertEqual(len(worker.LOCK["files"]), 7)
+        self.assertEqual(worker.LOCK["bundle_size"], 166822039)
         self.assertEqual(json.loads((worker.ROOT / "runtime.lock.json").read_text()),
                          worker.LOCK)
 

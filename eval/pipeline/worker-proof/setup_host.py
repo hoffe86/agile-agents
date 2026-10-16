@@ -33,7 +33,9 @@ def main():
     if INSTALL.exists():
         raise SystemExit("FAIL_CLOSED: task-owned runtime directory already exists")
     with urllib.request.urlopen(LOCK["bundle_url"], timeout=120) as response:
-        bundle = response.read(128 * 1024**2 + 1)
+        bundle = response.read(LOCK["bundle_size"] + 1)
+    if len(bundle) != LOCK["bundle_size"]:
+        raise SystemExit("FAIL_CLOSED: runtime bundle size mismatch")
     if hashlib.sha256(bundle).hexdigest() != LOCK["bundle_sha256"]:
         raise SystemExit("FAIL_CLOSED: runtime bundle checksum mismatch")
     # Validate every member and hash before writing; never extractall.

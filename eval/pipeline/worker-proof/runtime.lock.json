@@ -2,6 +2,7 @@
   "release": "release-20261005.0",
   "bundle_url": "https://github.com/google/gvisor/releases/download/release-20261005.0/gvisor-x86_64.tar.bz2",
   "bundle_sha256": "bd4eb2ca0ee74f0fbbb5f5273ba011e79c56a29fbb047393b88b981cd3230ede",
+  "bundle_size": 166822039,
   "files": {
     "containerd-shim-runsc-v1": "2bff94d15386d36e62e2f105ba835f650e55327cb731d96820cbbfe5592c2a6b",
     "runsc": "210b437a9cfae51e8f8c9074ed19b8b5e59477178e2e391a18117d8d6b924f7a",
