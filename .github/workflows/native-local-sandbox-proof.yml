@@ -57,6 +57,21 @@ jobs:
           "$RUNNER_TEMP/native-proof-venv/bin/python" -m pip install \
             --require-hashes --only-binary=:all: -r requirements.txt
           python setup_runtime.py "$RUNNER_TEMP/native-proof-runtime"
+      - name: Enable namespace prerequisite on this disposable runner only
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(id -u)" != 0
+          # CLI 1.0.98's host diagnostic recommends this on ephemeral Ubuntu hosts.
+          # Permit creation of namespaces; do NOT disable AppArmor or run tools as root.
+          previous="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)"
+          printf 'NATIVE_PROOF_PREVIOUS_USERNS=%s\n' "$previous" | \
+            dd of="$GITHUB_ENV" oflag=append conv=notrunc status=none
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sysctl kernel.apparmor_restrict_unprivileged_userns \
+            kernel.unprivileged_userns_clone user.max_user_namespaces user.max_net_namespaces
+          # Readiness only. Acceptance still requires the native Copilot tool and OS effects.
+          unshare --user --net true
+          printf '::notice title=Namespace readiness::Non-root unshare --user --net succeeded\n'
       - name: Exercise Copilot native tool pipeline
         run: |
           env -i PATH="$PATH" GITHUB_ACTIONS=true RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
@@ -85,4 +100,7 @@ jobs:
       - name: Remove disposable proof runtime
         if: ${{ always() }}
         run: |
+          if test -n "${NATIVE_PROOF_PREVIOUS_USERNS:-}"; then
+            sudo sysctl -w "kernel.apparmor_restrict_unprivileged_userns=$NATIVE_PROOF_PREVIOUS_USERNS"
+          fi
           rm -rf -- "$RUNNER_TEMP/native-proof-runtime" "$RUNNER_TEMP/native-proof-venv"

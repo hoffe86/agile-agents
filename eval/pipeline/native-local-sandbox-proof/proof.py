@@ -66,6 +66,52 @@ def permitted(data, command):
                 "sandboxPathGrant", "managedApprovalRequired")))
 
 
+def verify_effective_policy(result, requested):
+    """Require native readback, not a saved settings file or update acknowledgement."""
+    if result.get("kind") != "text":
+        raise AssertionError("Native /sandbox policy did not return policy text")
+    text = result.get("text", "")
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text):
+        try:
+            candidate, _ = decoder.raw_decode(text[match.start():])
+        except ValueError:
+            continue
+        if not isinstance(candidate, dict):
+            continue
+        filesystem = candidate.get("filesystem", {})
+        network = candidate.get("network", {})
+        expected = requested["userPolicy"]
+        if (all(network.get(k) is False for k in ("allowOutbound", "allowLocalNetwork"))
+                and all(set(paths) <= set(filesystem.get(key, []))
+                        for key, paths in expected["filesystem"].items())):
+            return candidate
+    raise AssertionError("Native effective filesystem/network policy could not be verified")
+
+
+def sandbox_applied(result):
+    properties = result.get("toolTelemetry", {}).get("properties", {})
+    return (properties.get("sandboxApplied") in (True, "true")
+            and properties.get("sandboxOptOutRequested") in (False, "false"))
+
+
+async def cleanup(session, client, evidence):
+    """Always stop the client; never replace execution evidence or its exception."""
+    errors = []
+    if session is not None:
+        try:
+            await asyncio.wait_for(session.disconnect(), 15)
+        except Exception as error:
+            errors.append(f"session.disconnect: {type(error).__name__}: {error}")
+    try:
+        stop_errors = await asyncio.wait_for(client.stop(), 15)
+        if stop_errors:
+            errors.append(f"client.stop: {stop_errors}")
+    except Exception as error:
+        errors.append(f"client.stop: {type(error).__name__}: {error}")
+    evidence["cleanup_errors"] = errors
+
+
 @contextmanager
 def trap_server():
     requests = []
@@ -105,7 +151,10 @@ def observe_bwrap(stop, observed):
 
 async def native(cli, base, workspace, command, evidence, provider_port, unavailable):
     from copilot import CopilotClient, RuntimeConnection
-    from copilot.rpc import PermissionDecisionApproveOnce, PermissionDecisionReject, ToolsExecuteRequest
+    from copilot.rpc import (
+        CommandsInvokeRequest, PermissionDecisionApproveOnce, PermissionDecisionReject,
+        SandboxConfig, SandboxConfigSource, SessionUpdateOptionsParams, ToolsExecuteRequest,
+    )
 
     def permission(request, _):
         data = request.to_dict()
@@ -134,7 +183,10 @@ async def native(cli, base, workspace, command, evidence, provider_port, unavail
         evidence["stage"] = "sandbox.getHostSupport"
         support = await client.rpc.sandbox.get_host_support(timeout=20)
         evidence["host_support"] = support.to_dict()
-        if not unavailable and not evidence["host_support"].get("supported"):
+        support_data = evidence["host_support"]
+        capabilities = {c["name"]: c["supported"] for c in support_data.get("capabilities", [])}
+        if not unavailable and (not support_data.get("supported") or not all(
+                capabilities.get(name) for name in ("network", "denied_paths", "shell"))):
             raise RuntimeError("Native host support is unavailable; refusing normal proof")
         evidence["stage"] = "session.create"
         session = await asyncio.wait_for(client.create_session(
@@ -147,6 +199,22 @@ async def native(cli, base, workspace, command, evidence, provider_port, unavail
             enable_session_store=False, skip_embedding_retrieval=True,
             enable_session_telemetry=False,
         ), 45)
+        # The high-level SDK create_session has no sandbox_config argument in 1.0.22.
+        # Explicitly patch the native session; --sandbox/settings alone are not proof.
+        evidence["stage"] = "session.options.update"
+        requested = evidence["policy"]["sandbox"]
+        update = await session.rpc.options.update(SessionUpdateOptionsParams(
+            sandbox_config=SandboxConfig.from_dict(requested),
+            sandbox_config_source=SandboxConfigSource.SESSION_FLAG,
+        ), timeout=20)
+        evidence["policy_update"] = update.to_dict()
+        if not update.success:
+            raise AssertionError("Native session rejected explicit sandbox configuration")
+        evidence["stage"] = "session.commands.invoke.sandbox.policy"
+        readback = await session.rpc.commands.invoke(
+            CommandsInvokeRequest(name="sandbox", input="policy"), timeout=20)
+        evidence["policy_readback"] = readback.to_dict()
+        evidence["effective_policy"] = verify_effective_policy(evidence["policy_readback"], requested)
         evidence["stage"] = "session.tools.initializeAndValidate"
         await session.rpc.tools.initialize_and_validate(timeout=30)
         metadata = await session.rpc.tools.get_current_metadata(timeout=20)
@@ -160,9 +228,7 @@ async def native(cli, base, workspace, command, evidence, provider_port, unavail
         evidence["native_result"] = result
         return result
     finally:
-        if session is not None:
-            await asyncio.wait_for(session.destroy(), 15)
-        await asyncio.wait_for(client.stop(), 15)
+        await cleanup(session, client, evidence)
 
 
 async def run(args, evidence):
@@ -231,12 +297,14 @@ async def run(args, evidence):
                 child = parse_probe(result.get("textResultForLlm", ""))
                 evidence["sandbox_probe"] = child
                 evidence["assertions"] = check_boundaries(host, child, observed)
+                evidence["assertions"]["sandbox_applied"] = sandbox_applied(result)
                 evidence["assertions"]["outside_unchanged"] = (
                     (denied / "sentinel").read_text() == "synthetic-not-a-secret"
                     and not (denied / "write-marker").exists())
                 evidence["assertions"]["workspace_output"] = (
                     (workspace / "output").read_text() == "synthetic-output")
             evidence["assertions"]["no_provider_requests"] = not requests
+            evidence["assertions"]["cleanup_clean"] = not evidence.get("cleanup_errors")
             if not all(evidence["assertions"].values()):
                 raise AssertionError("Native sandbox acceptance failed")
         finally:
@@ -266,12 +334,15 @@ def main():
         args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")
         print(json.dumps(evidence, indent=2), flush=True)
         # Public check annotations remain readable when raw Actions logs require login.
-        summary = {key: evidence[key] for key in (
-            "status", "scenario", "stage", "error", "assertions", "provider_requests",
-            "model_send_calls", "host_support", "native_result", "host_control",
-            "versions", "elapsed_seconds") if key in evidence}
-        message = json.dumps(summary).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-        print(f"::notice title=Native local sandbox proof::{message}", flush=True)
+        # Separate notices avoid truncating the decisive evidence in public REST reads.
+        for key in ("status", "scenario", "stage", "error", "assertions", "provider_requests",
+                    "model_send_calls", "host_support", "native_result", "host_control",
+                    "sandbox_probe", "policy_update", "policy_readback", "effective_policy",
+                    "cleanup_errors", "observed_bwrap_pids", "versions", "elapsed_seconds"):
+            if key in evidence:
+                message = json.dumps({key: evidence[key]}).replace(
+                    "%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                print(f"::notice title=Native {evidence['scenario']} {key}::{message}", flush=True)
     raise SystemExit(0 if evidence["status"] == "PASS" else 1)
 
 

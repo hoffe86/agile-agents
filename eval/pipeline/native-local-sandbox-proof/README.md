@@ -25,6 +25,17 @@ synthetic denied directory. Explicit policy disables outbound/local networking,
 bypass, automatic developer-tool grants and Git/GitHub authentication. No local
 workstation settings or OS trust stores are modified.
 
+The corrective activation attempt temporarily sets only
+`kernel.apparmor_restrict_unprivileged_userns=0` on that disposable hosted runner.
+This is the remedy explicitly suggested by CLI 1.0.98's failed namespace
+diagnostic on Ubuntu 24.04. It permits unprivileged namespace creation; it does
+not disable AppArmor, grant root to the payload, or replace the native sandbox.
+The workflow records the existing value, tests `unshare --user --net true` as the
+non-root runner user, and restores the value in its always-run cleanup.
+Cancellation/host loss still relies on runner disposal. This VM-wide prerequisite
+relaxation is appropriate only for this credential-free synthetic job, not a
+workstation or shared runner.
+
 ## Native, non-model route
 
 The installed SDK 1.0.22's generated public RPC schema exposes these
@@ -35,6 +46,17 @@ The installed SDK 1.0.22's generated public RPC schema exposes these
   inspect the native offered tools without sending a turn.
 - `session.tools.execute`: documented in the generated schema as executing a
   tool through the **native invocation pipeline**.
+- `session.options.update`: explicitly supplies `sandboxConfig` and
+  `sandboxConfigSource: session_flag` before tool initialization. The pinned
+  high-level Python `create_session` signature has no `sandbox_config` parameter;
+  neither a settings file nor `--sandbox` alone establishes session propagation.
+- `session.commands.invoke` with `sandbox policy`: requests native effective
+  policy readback without inference. Before any negative tool probe, the harness
+  requires a text result containing a JSON filesystem/network policy with the
+  requested grants, denials and both network switches false. An unsupported
+  command, unrecognized rendering, or policy mismatch is a **readiness blocker**,
+  not evidence that containment passed or failed. An update acknowledgement alone
+  cannot pass this gate. The exact raw readback is published for diagnosis.
 
 The proof requests the native `bash` tool through this route. It does not call
 raw bubblewrap or wrap MXC itself. A missing RPC is an explicit **BLOCKED** result,
@@ -58,7 +80,10 @@ remote MCP, or a hostile model. It is not a general security certification.
    direct connections fail.
 3. A real `bwrap` process is observed during native invocation, and the payload's
    user/mount/network namespace identifiers differ from the host controls. A
-   saved preference or successful raw bwrap command alone cannot pass.
+   saved preference or successful raw bwrap command alone cannot pass. Native
+   telemetry must explicitly report `sandboxApplied:true` and
+   `sandboxOptOutRequested:false`. Normal host readiness requires the `network`,
+   `denied_paths` and `shell` capabilities, not just top-level `supported:true`.
 4. A separate fresh CLI process runs with `/usr/bin/bwrap` temporarily removed
    from PATH on the disposable runner. Only an explicit sandbox failure at the
    native tool execution boundary, with no output marker created, passes.
@@ -66,12 +91,18 @@ remote MCP, or a hostile model. It is not a general security certification.
    unavailable-backend assertion. No claim about managed `failIfUnavailable`
    is inferred from newer documentation.
 5. No provider requests. All assertions must pass; missing results fail closed.
+6. Session cleanup uses SDK 1.0.22's `disconnect()`, not the nonexistent
+   `destroy()`. Client shutdown is attempted even if disconnect fails. Cleanup
+   errors are recorded separately and prevent acceptance, without overwriting
+   a native response or masking the original execution failure.
 
 Logs and a seven-day evidence artifact contain the policy, versions, pinned CLI
 help, stage reached, native response/error, synthetic controls, assertions and
 elapsed time. Compact results also appear in public check annotations, because
 unauthenticated Actions log/artifact downloads may be refused. They do not upload
 HOME, CLI sessions, environment dumps or secrets.
+Each evidence field has a separate annotation to avoid truncating decisive
+responses behind version/diagnostic text.
 Temporary directories are removed; the missing-backend step restores bwrap even
 on failure, and the workflow removes its CLI/venv. Runner disposal is the final
 cleanup boundary. There are no invented token/AIU measurements.
@@ -103,6 +134,18 @@ fallback, which is why this proof tests behavior rather than trusting settings.
   reproduced a transcribed `h11` wheel checksum error. The one corrective round
   fixes that checksum, adds a hash-shape check, validates full Linux wheel
   resolution before push, and publishes compact results through annotations.
+- Dependency repair: `e9979563ea95b6e59db424a4baffbaaf3ed56bae`,
+  [hosted run 39399022251](https://github.com/hoffe86/agile-agents/actions/runs/39399022251).
+  Fifteen unit tests and dependencies passed. The native shell returned
+  `sandboxApplied:false`, host namespaces, and successful denied filesystem and
+  network operations. Its missing-bwrap marker also executed. The native host
+  diagnostic identified unavailable unprivileged user/network namespaces.
+  A harness `destroy()` cleanup bug masked the normal assertions and overwrote
+  the unavailable response. This was **not** a passing sandbox proof.
+  The current narrow correction repairs that lifecycle, explicitly propagates
+  session policy, adds a native readback gate, and enables only the documented
+  ephemeral-runner namespace prerequisite. It does not change acceptance criteria
+  to tolerate fallback.
 
 - [Official sandbox concepts and prerequisites](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/about-cloud-and-local-sandboxes)
 - [SDK public generated Python RPC schema](https://github.com/github/copilot-sdk/blob/main/python/copilot/generated/rpc.py)
