@@ -31,7 +31,7 @@ jobs:
         with:
           python-version: '3.12.12'
       - name: Unit checks (no runtime invocation)
-        run: python -m unittest -v test_proof test_compatibility
+        run: python -m unittest -v test_proof test_compatibility test_prerequisites
       - name: Install native prerequisites from signed fixed Ubuntu snapshot
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
@@ -42,10 +42,8 @@ jobs:
             'deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://snapshot.ubuntu.com/ubuntu/20261015T000000Z noble-updates main universe' \
             'deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://snapshot.ubuntu.com/ubuntu/20261015T000000Z noble-security main universe' \
             | sudo dd of=/etc/apt/native-sandbox-proof.list status=none
-          apt_options=(-o Dir::Etc::sourcelist=/etc/apt/native-sandbox-proof.list
-                       -o Dir::Etc::sourceparts=-)
-          sudo apt-get "${apt_options[@]}" update
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends -y bubblewrap slirp4netns util-linux iptables
+          python diagnose_prerequisites.py update
+          python diagnose_prerequisites.py install
           dpkg-query -W bubblewrap slirp4netns util-linux iptables
           bwrap --version
           iptables --version

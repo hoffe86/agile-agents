@@ -232,6 +232,16 @@ signed **20261015T000000Z Ubuntu snapshot**; runner-provided base packages may b
 newer and their actual versions and runner image identity are recorded. The
 GitHub-hosted OS image is not immutable; that is a limitation of this proof.
 
+Prerequisite apt update/install failures now publish sanitized, bounded output
+in public check annotations and the job summary (last 60 lines, 500 characters
+per line, 6,000 characters per report). Update warnings are also published even
+when apt returns zero, so a repository-fetch failure is not hidden by a later
+package-resolution error. Both stdout and stderr are captured; URL credentials,
+query strings, auth headers and token patterns are redacted, and no environment
+or apt configuration is dumped. The original apt exit status is retained, with
+no automatic retry, dependency relaxation or source fallback. This diagnostic
+helper runs only on the disposable hosted runner; its tests mock apt entirely.
+
 The runner creates disposable HOME, COPILOT_HOME, XDG directories, workspace and
 synthetic denied directory. Explicit policy disables outbound/local networking,
 bypass, automatic developer-tool grants and Git/GitHub authentication. No local
