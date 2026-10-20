@@ -219,6 +219,28 @@ class RequiredImportTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_native_control_suites_run_as_separate_steps_on_both_operating_systems(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/eval-skills.yml").read_text(encoding="utf-8"))
+        job = workflow["jobs"]["runtime-contracts"]
+        self.assertEqual(job["strategy"]["matrix"]["os"], ["ubuntu-latest", "windows-latest"])
+        self.assertEqual(job["runs-on"], "${{ matrix.os }}")
+        self.assertNotIn("if", job)
+        steps = job["steps"]
+        workflow_test = next(
+            i for i, step in enumerate(steps)
+            if step.get("run") == (
+                "python -m unittest discover -s eval/pipeline/tests -p test_eval_pipeline_workflow.py -v"
+            )
+        )
+        for offset, module in enumerate(("test_authorization.py", "test_native_controller.py"), start=1):
+            with self.subTest(module=module):
+                step = steps[workflow_test + offset]
+                self.assertEqual(
+                    step["run"], f"python -m unittest discover -s eval/pipeline/tests -p {module} -v",
+                )
+                self.assertNotIn("if", step)
+                self.assertFalse(step.get("continue-on-error", False))
+
     def test_both_native_lanes_use_clean_hash_installs_and_required_gate(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/eval-skills.yml").read_text(encoding="utf-8"))
         job = workflow["jobs"]["runtime-contracts"]
