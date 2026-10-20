@@ -52,8 +52,9 @@ The installed SDK 1.0.22's generated public RPC schema exposes these
   neither a settings file nor `--sandbox` alone establishes session propagation.
 - `session.commands.invoke` with `sandbox policy`: requests native effective
   policy readback without inference. Before any negative tool probe, the harness
-  requires a text result containing a JSON filesystem/network policy with the
-  requested grants, denials and both network switches false. An unsupported
+  parses the pinned CLI's ANSI text report and requires the requested grants,
+  denials, blocked outbound/local network, disabled bypass, disabled developer
+  grants/authentication, and sandboxed MCP/LSP routing. An unsupported
   command, unrecognized rendering, or policy mismatch is a **readiness blocker**,
   not evidence that containment passed or failed. An update acknowledgement alone
   cannot pass this gate. The exact raw readback is published for diagnosis.
@@ -101,7 +102,8 @@ help, stage reached, native response/error, synthetic controls, assertions and
 elapsed time. Compact results also appear in public check annotations, because
 unauthenticated Actions log/artifact downloads may be refused. They do not upload
 HOME, CLI sessions, environment dumps or secrets.
-Each evidence field has a separate annotation to avoid truncating decisive
+Lifecycle/version fields share a summary; larger evidence fields have separate
+annotations (at most ten per step) to avoid dropping or truncating decisive
 responses behind version/diagnostic text.
 Temporary directories are removed; the missing-backend step restores bwrap even
 on failure, and the workflow removes its CLI/venv. Runner disposal is the final
@@ -146,6 +148,16 @@ fallback, which is why this proof tests behavior rather than trusting settings.
   session policy, adds a native readback gate, and enables only the documented
   ephemeral-runner namespace prerequisite. It does not change acceptance criteria
   to tolerate fallback.
+- Readback-format correction: `2cfbb57585a38f0b581057b53b7338e936f45401`,
+  [hosted run 39400508772](https://github.com/hoffe86/agile-agents/actions/runs/39400508772).
+  Twenty-three tests, installation, namespace readiness and final cleanup passed.
+  Native diagnostics reported all capabilities supported with bwrap installed.
+  Both session policy updates succeeded, and native readback displayed the
+  requested restrictions. The harness incorrectly expected JSON rather than the
+  pinned native ANSI text report, so both scenarios stopped **before execution**.
+  Zero provider requests and no cleanup errors were observed. The renderer is now
+  covered by regression tests; this run is readiness evidence, not OS containment
+  evidence, and does not count as a completed negative boundary test.
 
 - [Official sandbox concepts and prerequisites](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/about-cloud-and-local-sandboxes)
 - [SDK public generated Python RPC schema](https://github.com/github/copilot-sdk/blob/main/python/copilot/generated/rpc.py)

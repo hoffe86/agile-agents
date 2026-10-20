@@ -14,6 +14,25 @@ from proof import (
 from setup_runtime import require_hosted, verify
 
 
+def native_policy_report():
+    """Renderer observed on CLI 1.0.98, hosted run 39400508772."""
+    return (
+        "Effective sandbox policy for /work\n\n"
+        "\x1b[1mUser-configured paths:\x1b[22m\n"
+        "  Read-only paths (4):\n    /bin\n    /lib\n    /lib64\n    /usr\n"
+        "  Denied paths (1):\n    /outside\n\n"
+        "\x1b[1mWorking directory:\x1b[22m\n"
+        "  Read-write paths (1):\n    /work\n\n"
+        "\x1b[1mDev tools:\x1b[22m\n  Not granted.\n\n"
+        "\x1b[1mNetwork:\x1b[22m\n  Outbound: blocked\n  Local network: blocked\n\n"
+        "\x1b[1mCapabilities:\x1b[22m\n"
+        "  Allow sandbox bypass: no\n  Sandbox MCP servers: sandboxed\n"
+        "  Sandbox LSP servers: sandboxed\n"
+        "  Authenticate git (sandbox setting): off\n"
+        "  Authenticate gh (sandbox setting): off\n  Denial capture: off\n"
+    )
+
+
 class ProofTests(unittest.TestCase):
     def setUp(self):
         self.host = {
@@ -107,9 +126,11 @@ class ProofTests(unittest.TestCase):
 
     def test_effective_policy_requires_native_text_and_all_restrictions(self):
         requested = policy(PurePosixPath("/work"), PurePosixPath("/outside"))["sandbox"]
-        effective = requested["userPolicy"]
-        result = {"kind": "text", "text": "Effective policy:\n```json\n" + json.dumps(effective) + "\n```"}
-        self.assertEqual(verify_effective_policy(result, requested), effective)
+        result = {"kind": "text", "text": native_policy_report()}
+        effective = verify_effective_policy(result, requested)
+        self.assertEqual(effective["filesystem"]["deniedPaths"], ["/outside"])
+        self.assertFalse(effective["allowBypass"])
+        self.assertEqual(effective["network"], requested["userPolicy"]["network"])
         for invalid in (
             {"kind": "prompt", "text": result["text"]},
             {"kind": "text", "text": "Sandbox disabled"},
@@ -117,18 +138,34 @@ class ProofTests(unittest.TestCase):
         ):
             with self.subTest(invalid=invalid), self.assertRaises(AssertionError):
                 verify_effective_policy(invalid, requested)
-        for area, key, value in (
-            ("filesystem", "deniedPaths", []),
-            ("filesystem", "readwritePaths", []),
-            ("filesystem", "readonlyPaths", []),
-            ("network", "allowOutbound", True),
-            ("network", "allowLocalNetwork", True),
-            ("network", "allowOutbound", None),
+        for original, replacement in (
+            ("    /outside", "    /different"),
+            ("    /work", "    /different"),
+            ("    /lib64", "    /different"),
+            ("Outbound: blocked", "Outbound: allowed"),
+            ("Local network: blocked", "Local network: allowed"),
+            ("  Outbound: blocked\n", ""),
+            ("Allow sandbox bypass: no", "Allow sandbox bypass: yes"),
+            ("Not granted.", "Granted."),
+            ("Sandbox MCP servers: sandboxed", "Sandbox MCP servers: unsandboxed"),
+            ("Sandbox LSP servers: sandboxed", "Sandbox LSP servers: unsandboxed"),
+            ("Authenticate git (sandbox setting): off", "Authenticate git (sandbox setting): on"),
+            ("Authenticate gh (sandbox setting): off", "Authenticate gh (sandbox setting): on"),
+            ("Read-only paths (4)", "Read-only paths (5)"),
+            ("policy for /work", "policy for /different"),
+            ("Network:", "Unknown network:"),
         ):
-            altered = copy.deepcopy(effective)
-            altered[area][key] = value
-            with self.subTest(key=key), self.assertRaises(AssertionError):
-                verify_effective_policy({"kind": "text", "text": json.dumps(altered)}, requested)
+            with self.subTest(original=original), self.assertRaises(AssertionError):
+                verify_effective_policy({
+                    "kind": "text", "text": result["text"].replace(original, replacement),
+                }, requested)
+
+    def test_conflicting_duplicate_policy_sections_fail(self):
+        requested = policy(PurePosixPath("/work"), PurePosixPath("/outside"))["sandbox"]
+        for extra in ("\n\nNetwork:\n  Outbound: allowed\n",
+                      "  Allow sandbox bypass: yes\n"):
+            with self.subTest(extra=extra), self.assertRaises(AssertionError):
+                verify_effective_policy({"kind": "text", "text": native_policy_report() + extra}, requested)
 
     def test_telemetry_must_explicitly_confirm_sandbox_and_no_opt_out(self):
         self.assertFalse(sandbox_applied({}))
@@ -184,12 +221,11 @@ class NativeLifecycleTests(unittest.IsolatedAsyncioTestCase):
             return SimpleNamespace(to_dict=lambda: data, **data)
 
         config = policy(PurePosixPath("/work"), PurePosixPath("/outside"))
-        effective = config["sandbox"]["userPolicy"]
         result = {"resultType": "success", "textResultForLlm": "synthetic"}
         session = SimpleNamespace(disconnect=AsyncMock(), rpc=SimpleNamespace(
             options=SimpleNamespace(update=AsyncMock(return_value=response({"success": True}))),
             commands=SimpleNamespace(invoke=AsyncMock(return_value=response({
-                "kind": "text", "text": json.dumps(effective) if readback_valid else "disabled",
+                "kind": "text", "text": native_policy_report() if readback_valid else "disabled",
             }))),
             tools=SimpleNamespace(
                 initialize_and_validate=AsyncMock(),

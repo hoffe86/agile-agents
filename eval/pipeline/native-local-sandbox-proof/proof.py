@@ -70,23 +70,49 @@ def verify_effective_policy(result, requested):
     """Require native readback, not a saved settings file or update acknowledgement."""
     if result.get("kind") != "text":
         raise AssertionError("Native /sandbox policy did not return policy text")
-    text = result.get("text", "")
-    decoder = json.JSONDecoder()
-    for match in re.finditer(r"\{", text):
-        try:
-            candidate, _ = decoder.raw_decode(text[match.start():])
-        except ValueError:
-            continue
-        if not isinstance(candidate, dict):
-            continue
-        filesystem = candidate.get("filesystem", {})
-        network = candidate.get("network", {})
-        expected = requested["userPolicy"]
-        if (all(network.get(k) is False for k in ("allowOutbound", "allowLocalNetwork"))
-                and all(set(paths) <= set(filesystem.get(key, []))
-                        for key, paths in expected["filesystem"].items())):
-            return candidate
-    raise AssertionError("Native effective filesystem/network policy could not be verified")
+    # Pinned CLI 1.0.98 returns a human-readable ANSI report, not JSON.
+    # Fail closed on unrecognized/changed rendering; never treat our input as readback.
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.get("text", ""))
+    workspace = requested["userPolicy"]["filesystem"]["readwritePaths"][0]
+    if not text.startswith(f"Effective sandbox policy for {workspace}\n\n"):
+        raise AssertionError("Native effective policy header missing or workspace mismatch")
+    sections = {}
+    for block in re.split(r"\n{2,}", text)[1:]:
+        lines = block.splitlines()
+        if lines:
+            if lines[0] in sections:
+                raise AssertionError("Duplicate effective policy section")
+            sections[lines[0]] = lines[1:]
+    if sections.get("Network:") != ["  Outbound: blocked", "  Local network: blocked"]:
+        raise AssertionError("Native effective network policy is not fully blocked")
+    if sections.get("Dev tools:") != ["  Not granted."]:
+        raise AssertionError("Native effective developer-tool grants are not disabled")
+    capabilities = sections.get("Capabilities:", [])
+    for label, value in (
+        ("Allow sandbox bypass", "no"),
+        ("Sandbox MCP servers", "sandboxed"), ("Sandbox LSP servers", "sandboxed"),
+        ("Authenticate git (sandbox setting)", "off"), ("Authenticate gh (sandbox setting)", "off"),
+    ):
+        actual = [line for line in capabilities if line.startswith(f"  {label}:")]
+        if actual != [f"  {label}: {value}"]:
+            raise AssertionError(f"Native effective capability mismatch: {label}")
+    filesystem = {"readonlyPaths": [], "readwritePaths": [], "deniedPaths": []}
+    keys = {"Read-only": "readonlyPaths", "Read-write": "readwritePaths", "Denied": "deniedPaths"}
+    for match in re.finditer(
+            r"^  (Read-only|Read-write|Denied) paths \((\d+)\):\n((?:    /[^\n]+\n?)+)",
+            text, re.MULTILINE):
+        paths = [line[4:] for line in match[3].splitlines()]
+        if len(paths) != int(match[2]):
+            raise AssertionError("Native effective path count mismatch")
+        filesystem[keys[match[1]]].extend(paths)
+    expected = requested["userPolicy"]["filesystem"]
+    if not all(set(paths) <= set(filesystem[key]) for key, paths in expected.items()):
+        raise AssertionError("Native effective filesystem grants/denials mismatch")
+    return {"filesystem": filesystem,
+            "network": {"allowOutbound": False, "allowLocalNetwork": False},
+            "allowBypass": False, "allowDevToolAccess": False,
+            "auth": {"git": False, "gh": False},
+            "sandboxMcpServers": True, "sandboxLspServers": True}
 
 
 def sandbox_applied(result):
@@ -334,15 +360,18 @@ def main():
         args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")
         print(json.dumps(evidence, indent=2), flush=True)
         # Public check annotations remain readable when raw Actions logs require login.
-        # Separate notices avoid truncating the decisive evidence in public REST reads.
-        for key in ("status", "scenario", "stage", "error", "assertions", "provider_requests",
-                    "model_send_calls", "host_support", "native_result", "host_control",
-                    "sandbox_probe", "policy_update", "policy_readback", "effective_policy",
-                    "cleanup_errors", "observed_bwrap_pids", "versions", "elapsed_seconds"):
-            if key in evidence:
-                message = json.dumps({key: evidence[key]}).replace(
-                    "%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-                print(f"::notice title=Native {evidence['scenario']} {key}::{message}", flush=True)
+        # GitHub limits notices per step: keep lifecycle evidence together and use <=10.
+        notices = {"summary": {key: evidence[key] for key in (
+            "status", "scenario", "stage", "error", "provider_requests", "model_send_calls",
+            "cleanup_errors", "versions", "elapsed_seconds") if key in evidence}}
+        notices.update({key: evidence[key] for key in (
+            "assertions", "native_result", "host_control", "sandbox_probe", "host_support",
+            "policy_update", "policy_readback", "effective_policy", "observed_bwrap_pids")
+            if key in evidence})
+        for key, value in notices.items():
+            message = json.dumps({key: value}).replace(
+                "%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            print(f"::notice title=Native {evidence['scenario']} {key}::{message}", flush=True)
     raise SystemExit(0 if evidence["status"] == "PASS" else 1)
 
 
