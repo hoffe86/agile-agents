@@ -3,12 +3,13 @@
 import copy
 import json
 from pathlib import Path, PurePosixPath
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from proof import (
-    check_boundaries, cleanup, native, parse_probe, permitted, policy,
+    check_boundaries, check_host_integrity, check_unavailable, cleanup, native, parse_probe, permitted, policy,
     sandbox_applied, verify_effective_policy,
 )
 from setup_runtime import require_hosted, verify
@@ -38,11 +39,13 @@ class ProofTests(unittest.TestCase):
         self.host = {
             "uid": 1001, "namespaces": {"user": "u1", "mnt": "m1", "net": "n1"},
             **{k: True for k in ("workspace_read", "workspace_write", "command",
-                                "outside_read", "outside_write", "outbound", "localhost")},
+                                "outside_read", "outside_directory_write",
+                                "outside_sentinel_write", "outbound", "localhost")},
         }
         self.child = copy.deepcopy(self.host)
         self.child.update(namespaces={"user": "u2", "mnt": "m2", "net": "n2"},
-                          outside_read=False, outside_write=False, outbound=False, localhost=False)
+                          outside_read=False, outside_directory_write=False,
+                          outside_sentinel_write=False, outbound=False, localhost=False)
 
     def test_positive_isolation(self):
         self.assertTrue(all(check_boundaries(self.host, self.child, {"123"}).values()))
@@ -51,10 +54,44 @@ class ProofTests(unittest.TestCase):
         self.assertFalse(all(check_boundaries(self.host, self.host, set()).values()))
 
     def test_each_leak_fails(self):
-        for field in ("outside_read", "outside_write", "outbound", "localhost"):
+        for field in ("outside_read", "outbound", "localhost"):
             with self.subTest(field=field):
                 child = dict(self.child, **{field: True})
                 self.assertFalse(all(check_boundaries(self.host, child, {"123"}).values()))
+
+    def test_private_writes_pass_only_with_unchanged_host(self):
+        with tempfile.TemporaryDirectory() as temp:
+            denied = Path(temp)
+            (denied / "sentinel").write_bytes(b"synthetic-not-a-secret")
+            child = dict(self.child, outside_directory_write=True, outside_sentinel_write=True)
+            checks = check_boundaries(self.host, child, {"123"})
+            checks.update(check_host_integrity(denied))
+            self.assertTrue(all(checks.values()))
+            (denied / "write-marker").write_text("synthetic")
+            checks.update(check_host_integrity(denied))
+            self.assertFalse(all(checks.values()))
+
+    def test_host_sentinel_mutation_or_removal_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            denied = Path(temp)
+            sentinel = denied / "sentinel"
+            sentinel.write_text("synthetic-overwrite")
+            self.assertFalse(check_host_integrity(denied)["host_sentinel_unchanged"])
+            sentinel.unlink()
+            self.assertFalse(check_host_integrity(denied)["host_sentinel_unchanged"])
+            sentinel.mkdir()
+            self.assertFalse(check_host_integrity(denied)["host_sentinel_unchanged"])
+
+    def test_any_added_host_directory_entry_fails(self):
+        for name in ("write-marker", "unexpected-file", "unexpected-directory"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
+                denied = Path(temp)
+                (denied / "sentinel").write_bytes(b"synthetic-not-a-secret")
+                if name == "unexpected-directory":
+                    (denied / name).mkdir()
+                else:
+                    (denied / name).write_text("synthetic")
+                self.assertFalse(check_host_integrity(denied)["host_denied_directory_unchanged"])
 
     def test_failed_positive_control_cannot_prove_denial(self):
         host = dict(self.host, outbound=False)
@@ -178,6 +215,66 @@ class ProofTests(unittest.TestCase):
                 self.assertEqual(sandbox_applied({"toolTelemetry": {"properties": {
                     "sandboxApplied": applied, "sandboxOptOutRequested": bypass,
                 }}}), expected)
+
+
+class UnavailableTests(unittest.TestCase):
+    def setUp(self):
+        # Shape observed on CLI 1.0.98 / SDK 1.0.22, hosted run 39401092928.
+        error = (
+            "<error: GenericFailure, Sandboxing is enabled but not supported on this platform: "
+            "Bubblewrap (bwrap) is unavailable. (Neither LXC nor Bubblewrap is available on this system "
+            "(Bubblewrap (bwrap) is not installed or not on PATH. Install it via your package manager "
+            "(e.g., apt install bubblewrap). Version 0.5.0 or newer is required.))>\n")
+        self.result = {
+            "resultType": "success",
+            "textResultForLlm": error + "<shellId: 0 completed with exit code 1>",
+            "toolTelemetry": {"metrics": {"exit_code": 1.0}},
+            "contents": [{"type": "shell_exit", "shellId": "0", "exitCode": 1,
+                          "outputPreview": error}],
+        }
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.marker = Path(self.temp.name) / "UNSANDBOXED"
+
+    def test_transport_success_with_explicit_command_failure_passes(self):
+        self.assertTrue(all(check_unavailable(self.result, self.marker).values()))
+
+    def test_exit_zero_cannot_pass_even_with_unavailable_error(self):
+        self.result["contents"][0]["exitCode"] = 0
+        self.result["toolTelemetry"]["metrics"]["exit_code"] = 0.0
+        self.result["textResultForLlm"] = self.result["textResultForLlm"].replace("exit code 1", "exit code 0")
+        self.assertFalse(check_unavailable(self.result, self.marker)["unavailable_command_failed"])
+
+    def test_execution_marker_fails_even_with_nonzero_unavailable_result(self):
+        self.marker.write_text("synthetic")
+        self.assertFalse(check_unavailable(self.result, self.marker)["no_unsandboxed_marker"])
+        self.assertFalse(all(check_unavailable(self.result, self.marker).values()))
+
+    def test_generic_command_failure_without_sandbox_error_fails(self):
+        for output in ("permission denied", "echo sandbox unavailable", ""):
+            with self.subTest(output=output):
+                self.result["contents"][0]["outputPreview"] = output
+                self.assertFalse(check_unavailable(self.result, self.marker)["unavailable_sandbox_error"])
+
+    def test_transport_failure_alone_is_not_command_failure_evidence(self):
+        result = {"resultType": "failure", "error": "sandbox bwrap unavailable"}
+        self.assertFalse(all(check_unavailable(result, self.marker).values()))
+
+    def test_missing_ambiguous_or_invalid_shell_exit_fails(self):
+        for exits in ([], self.result["contents"] * 2,
+                      [{"type": "shell_exit", "exitCode": "1"}],
+                      [{"type": "shell_exit", "exitCode": True}]):
+            with self.subTest(exits=exits):
+                result = dict(self.result, contents=exits)
+                self.assertFalse(check_unavailable(result, self.marker)["unavailable_command_failed"])
+
+    def test_conflicting_or_missing_exit_evidence_fails(self):
+        for field, value in (("toolTelemetry", {}), ("toolTelemetry", {"metrics": {"exit_code": 0}}),
+                             ("textResultForLlm", "<shellId: 0 completed with exit code 0>"),
+                             ("textResultForLlm", "")):
+            with self.subTest(field=field, value=value):
+                result = dict(self.result, **{field: value})
+                self.assertFalse(check_unavailable(result, self.marker)["unavailable_command_failed"])
 
 
 class CleanupTests(unittest.IsolatedAsyncioTestCase):

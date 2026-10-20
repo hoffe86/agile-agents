@@ -34,7 +34,9 @@ def main():
         "command": subprocess.check_output(["/bin/sh", "-c", "printf synthetic-command"],
                                            text=True, timeout=5) == "synthetic-command",
         "outside_read": attempt(lambda: (denied / "sentinel").read_text()),
-        "outside_write": attempt(lambda: (denied / "write-marker").write_text("synthetic")),
+        # These record command outcomes in this process's view, not host mutations.
+        "outside_directory_write": attempt(lambda: (denied / "write-marker").write_text("synthetic")),
+        "outside_sentinel_write": attempt(lambda: (denied / "sentinel").write_text("synthetic-overwrite")),
         "outbound": attempt(lambda: connect(ip, 443)),
         "localhost": attempt(lambda: connect("127.0.0.1", int(port))),
     }

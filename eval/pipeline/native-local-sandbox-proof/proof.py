@@ -49,7 +49,6 @@ def check_boundaries(host, child, observed_bwrap):
         "workspace_write": child["workspace_write"],
         "command": child["command"],
         "outside_read_denied": host["outside_read"] and not child["outside_read"],
-        "outside_write_denied": host["outside_write"] and not child["outside_write"],
         "outbound_denied": host["outbound"] and not child["outbound"],
         "localhost_denied": host["localhost"] and not child["localhost"],
         "native_bwrap_observed": bool(observed_bwrap),
@@ -57,6 +56,40 @@ def check_boundaries(host, child, observed_bwrap):
                                   for n in ("user", "mnt", "net")),
     }
     return checks
+
+
+def check_host_integrity(denied):
+    """Check the host view, not whether writes succeeded in a private sandbox view."""
+    sentinel = denied / "sentinel"
+    directory_intact = denied.is_dir() and not denied.is_symlink()
+    return {
+        "host_sentinel_unchanged": (
+            directory_intact and sentinel.is_file() and not sentinel.is_symlink()
+            and sentinel.read_bytes() == b"synthetic-not-a-secret"),
+        "host_denied_directory_unchanged": (
+            directory_intact and sorted(p.name for p in denied.iterdir()) == ["sentinel"]),
+    }
+
+
+def check_unavailable(result, marker):
+    """CLI 1.0.98 handles the RPC successfully even when its shell command fails."""
+    exits = [item for item in result.get("contents", []) if item.get("type") == "shell_exit"]
+    shell = exits[0] if len(exits) == 1 else {}
+    code = shell.get("exitCode")
+    output = shell.get("outputPreview", "")
+    # Use the actual shell result, not a mention in echoed arguments or a transport error.
+    explicit_error = (
+        output.startswith("<error: GenericFailure, Sandboxing is enabled but not supported on this platform:")
+        and "Bubblewrap (bwrap) is unavailable." in output)
+    return {
+        "unavailable_sandbox_error": explicit_error,
+        "unavailable_command_failed": (
+            type(code) is int and code != 0
+            and result.get("toolTelemetry", {}).get("metrics", {}).get("exit_code") == code
+            and result.get("textResultForLlm", "").endswith(
+                f"<shellId: {shell.get('shellId')} completed with exit code {code}>")),
+        "no_unsandboxed_marker": not marker.exists(),
+    }
 
 
 def permitted(data, command):
@@ -294,9 +327,13 @@ async def run(args, evidence):
             host = parse_probe(subprocess.check_output(argv, text=True, timeout=20))
             evidence["host_control"] = host
             if not all(host[k] for k in ("workspace_read", "workspace_write", "command",
-                                         "outside_read", "outside_write", "outbound", "localhost")):
+                                         "outside_read", "outside_directory_write",
+                                         "outside_sentinel_write", "outbound", "localhost")):
                 raise AssertionError("Unsandboxed positive control failed")
             (denied / "write-marker").unlink()
+            (denied / "sentinel").write_text("synthetic-not-a-secret")
+            if not all(check_host_integrity(denied).values()):
+                raise AssertionError("Host denied-path baseline was not restored")
             (workspace / "output").unlink()
             command = shlex.join(argv)
         observed, stop = set(), threading.Event()
@@ -306,27 +343,20 @@ async def run(args, evidence):
             try:
                 result = await native(args.cli, base, workspace, command, evidence, port, args.unavailable)
             except Exception as error:
-                # Only an explicit sandbox rejection at the actual execution boundary counts.
+                # Preserve execution-boundary errors, but transport failure alone
+                # cannot satisfy the required completed shell-failure evidence.
                 if not args.unavailable or evidence["stage"] != "session.tools.execute":
                     raise
                 result = {"resultType": "failure", "error": str(error)}
                 evidence["native_result"] = result
             if args.unavailable:
-                error_text = json.dumps(result).lower()
-                evidence["assertions"] = {
-                    "unavailable_rejected": result.get("resultType") != "success"
-                    and "sandbox" in error_text
-                    and any(s in error_text for s in ("unavailable", "unsupported", "not supported", "bwrap")),
-                    "no_unsandboxed_marker": not (workspace / "UNSANDBOXED").exists(),
-                }
+                evidence["assertions"] = check_unavailable(result, workspace / "UNSANDBOXED")
             else:
                 child = parse_probe(result.get("textResultForLlm", ""))
                 evidence["sandbox_probe"] = child
                 evidence["assertions"] = check_boundaries(host, child, observed)
                 evidence["assertions"]["sandbox_applied"] = sandbox_applied(result)
-                evidence["assertions"]["outside_unchanged"] = (
-                    (denied / "sentinel").read_text() == "synthetic-not-a-secret"
-                    and not (denied / "write-marker").exists())
+                evidence["assertions"].update(check_host_integrity(denied))
                 evidence["assertions"]["workspace_output"] = (
                     (workspace / "output").read_text() == "synthetic-output")
             evidence["assertions"]["no_provider_requests"] = not requests

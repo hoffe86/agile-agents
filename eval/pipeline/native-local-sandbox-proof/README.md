@@ -77,8 +77,17 @@ remote MCP, or a hostile model. It is not a general security certification.
    reads/writes, shell execution, direct TCP to `example.com:443`, direct localhost
    TCP to the proof listener. No external request body is sent.
 2. The same payload through Copilot: workspace read/write/command succeeds,
-   execution is non-root, external sentinel access fails, outbound and localhost
-   direct connections fail.
+   execution is non-root, external sentinel **read** fails, outbound and localhost
+   direct connections fail. The payload attempts both a denied-directory marker
+   write and a denied-sentinel overwrite. These operations may succeed in a
+   private/masked view: `outside_directory_write` and `outside_sentinel_write`
+   record operation outcomes, not host access. Acceptance requires **host
+   integrity**, not operation-level write rejection: `host_sentinel_unchanged`
+   requires the original regular file and bytes, and
+   `host_denied_directory_unchanged` requires exactly the original `sentinel`
+   entry (no added marker or other entry). The host positive control must perform
+   both writes successfully; its effects are reset and the baseline checked
+   before native execution. A private write success never excuses host mutation.
 3. A real `bwrap` process is observed during native invocation, and the payload's
    user/mount/network namespace identifiers differ from the host controls. A
    saved preference or successful raw bwrap command alone cannot pass. Native
@@ -86,8 +95,14 @@ remote MCP, or a hostile model. It is not a general security certification.
    `sandboxOptOutRequested:false`. Normal host readiness requires the `network`,
    `denied_paths` and `shell` capabilities, not just top-level `supported:true`.
 4. A separate fresh CLI process runs with `/usr/bin/bwrap` temporarily removed
-   from PATH on the disposable runner. Only an explicit sandbox failure at the
-   native tool execution boundary, with no output marker created, passes.
+   from PATH on the disposable runner. Only an explicit sandbox-unavailable error
+   in the native shell result, a completed **nonzero shell exit**, and no execution
+   marker passes. `resultType: success` means the RPC request was handled, not
+   that the command succeeded. The pinned response's single `shell_exit` record
+   must have an integer nonzero `exitCode`, corroborated by telemetry `exit_code`
+   and the rendered shell completion. Missing, ambiguous or contradictory exit
+   evidence fails closed. An outer success wrapping exit 0 or an execution marker
+   cannot pass; an outer failure without shell failure evidence cannot pass either.
    A capability/RPC failure earlier in startup is **blocked**, not a successful
    unavailable-backend assertion. No claim about managed `failIfUnavailable`
    is inferred from newer documentation.
@@ -114,6 +129,13 @@ Local pure tests (do not start Copilot):
 ```powershell
 python -m unittest discover -s eval/pipeline/native-local-sandbox-proof -p test_proof.py -v
 ```
+
+Regression coverage includes private write success with an unchanged host,
+sentinel mutation/removal/type replacement, added host files/directories,
+transport success with command failure, exit 0 despite unavailable-error text,
+actual execution-marker creation, generic errors, transport-only failures, and
+missing/ambiguous/contradictory shell exit evidence. Existing read/network,
+namespace, telemetry, policy readback, no-model and cleanup checks remain.
 
 ## Decisions and sources
 
@@ -158,6 +180,25 @@ fallback, which is why this proof tests behavior rather than trusting settings.
   Zero provider requests and no cleanup errors were observed. The renderer is now
   covered by regression tests; this run is readiness evidence, not OS containment
   evidence, and does not count as a completed negative boundary test.
+- Host-integrity/protocol correction baseline:
+  `18c9964dd113a54ece2b28b0e906b2fd6b473437`,
+  [hosted run 39401092928](https://github.com/hoffe86/agile-agents/actions/runs/39401092928).
+  Twenty-four tests passed. Native execution reported sandbox applied/no opt-out,
+  UID 1001, bwrap processes and separate user/mount/network namespaces. Workspace
+  controls passed; outside read and outbound/direct localhost were blocked.
+  The denied-directory write succeeded privately while the host sentinel stayed
+  unchanged and no host marker appeared. Missing bwrap produced an explicit
+  unavailable-sandbox error, shell exit 1 and no marker, wrapped in RPC
+  `resultType: success`. Cleanup succeeded and provider requests stayed zero.
+  This run failed two **incorrect assertions**, not those observed controls:
+  `outside_write_denied` conflated host integrity with private operation rejection;
+  `unavailable_rejected` conflated transport handling with command success.
+  The user approved private denied-path writes on this disposable runner and
+  replacing those claims with host-integrity and command-failure checks.
+  `outside_unchanged` is now split into two named host checks and strengthened
+  from absence of one marker to the exact directory entry set. No read denial,
+  network, native activation, policy, cleanup or no-model condition was relaxed.
+  This approved correction does not authorize live evaluation or silent fallback.
 
 - [Official sandbox concepts and prerequisites](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/about-cloud-and-local-sandboxes)
 - [SDK public generated Python RPC schema](https://github.com/github/copilot-sdk/blob/main/python/copilot/generated/rpc.py)
