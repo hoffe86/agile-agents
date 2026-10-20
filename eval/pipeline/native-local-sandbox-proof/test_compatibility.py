@@ -40,6 +40,96 @@ class CompatibilityTests(unittest.TestCase):
             row = proof.mutation_observation(path, [{}], [{}], {})
             self.assertFalse(row["controller_denial_proved"])
 
+    def test_native_permission_rejection_is_observed_without_changing_raw_evidence(self):
+        # CLI 1.0.98 / SDK 1.0.22 run 39424597215: reject and hook-exception.
+        result = {
+            "textResultForLlm": "The user rejected this tool call.",
+            "resultType": "rejected",
+            "sessionLog": "The user rejected this tool call.",
+            "error": "The user rejected this tool call.",
+            "toolTelemetry": {"properties": {"shell_error_category": "permission_denied"}},
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            for hooks in ([], [{}]):
+                with self.subTest(hooks=hooks):
+                    row = proof.mutation_observation(Path(temp) / "absent", [{}], hooks, result)
+                    self.assertTrue(row["controller_denial_proved"])
+                    self.assertFalse(row["host_mutated"])
+                    self.assertEqual(row["permission_callback_count"], 1)
+                    self.assertEqual(row["pre_tool_callback_count"], len(hooks))
+                    self.assertIs(row["native_result"], result)
+
+    def test_native_hook_denial_needs_no_permission_callback(self):
+        result = {
+            "resultType": "denied",
+            "textResultForLlm": "Denied by preToolUse hook: No reason provided",
+            "error": "Denied by preToolUse hook: No reason provided",
+            "toolTelemetry": {},
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            row = proof.mutation_observation(Path(temp) / "absent", [], [{}], result)
+            self.assertTrue(row["controller_denial_proved"])
+
+    def test_explicit_refusal_without_callbacks_is_not_controller_denial(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for kind in ("denied", "rejected"):
+                with self.subTest(kind=kind):
+                    row = proof.mutation_observation(
+                        Path(temp) / "absent", [], [], {"resultType": kind})
+                    self.assertFalse(row["controller_denial_proved"])
+
+    def test_host_mutation_overrules_explicit_native_refusal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "present"
+            path.touch()
+            for kind in ("denied", "rejected"):
+                with self.subTest(kind=kind):
+                    row = proof.mutation_observation(path, [{}], [{}], {"resultType": kind})
+                    self.assertTrue(row["host_mutated"])
+                    self.assertFalse(row["controller_denial_proved"])
+
+    def test_non_refusal_result_types_and_prose_do_not_prove_denial(self):
+        results = [
+            {},
+            {"textResultForLlm": "The user rejected this tool call."},
+            {"error": "Permission denied"},
+            {"toolTelemetry": {"properties": {"shell_error_category": "permission_denied"}}},
+            {"resultType": None},
+            {"resultType": ["rejected"]},
+            {"resultType": "unknown"},
+            {"resultType": "not rejected"},
+            {"resultType": "not denied"},
+            {"resultType": "success", "textResultForLlm": "not rejected"},
+            {"resultType": "success", "error": "The user rejected this tool call.",
+             "contents": [{"type": "shell_exit", "exitCode": 0}]},
+            {"resultType": "failure", "error": "Permission denied"},
+            {"rpc_error": "The user rejected this tool call."},
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            for result in results:
+                with self.subTest(result=result):
+                    row = proof.mutation_observation(Path(temp) / "absent", [{}], [{}], result)
+                    self.assertFalse(row["controller_denial_proved"])
+
+    def test_shell_completion_contradicts_controller_refusal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for kind in ("denied", "rejected"):
+                for exit_code in (0, 1, None):
+                    with self.subTest(kind=kind, exit_code=exit_code):
+                        result = {"resultType": kind, "contents": [
+                            {"type": "shell_exit", "exitCode": exit_code}]}
+                        row = proof.mutation_observation(
+                            Path(temp) / "absent", [{}], [{}], result)
+                        self.assertFalse(row["controller_denial_proved"])
+
+    def test_rpc_error_contradicts_controller_refusal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for kind in ("denied", "rejected"):
+                with self.subTest(kind=kind):
+                    result = {"resultType": kind, "rpc_error": "TimeoutError"}
+                    row = proof.mutation_observation(Path(temp) / "absent", [{}], [{}], result)
+                    self.assertFalse(row["controller_denial_proved"])
+
     def test_agent_path_and_body_are_independent_evidence(self):
         source = proof.PLUGIN / "agents/dev-lead.agent.md"
         body = source.read_text(encoding="utf-8").split("---", 2)[2].strip()

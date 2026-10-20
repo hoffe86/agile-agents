@@ -120,14 +120,22 @@ Full synthetic evidence is in the seven-day `native-local-sandbox-proof` artifac
    `shell.executeUserRequested` RPC paths were **not tested**; the successful
    `session.tools.execute` evidence must not be generalized to them.
 
-   **Known proof-classifier limitation, retained after the one permitted correction:**
-   `mutation_observation` conservatively recognizes only `resultType: denied`.
-   Consequently the `reject` and `hook-exception` summary entries say denial was
-   not proved even though their raw responses are `rejected`, report a
-   `permission_denied` category, record one permission callback, and show no host
-   mutation. These two derived flags are **probe false negatives, not runtime
-   rejection failures**. Do not use the blocker array as an admission decision.
-   Fixing/retesting this classifier would be a further, separately scoped round.
+   **Proof-classifier reporting repair:** the earlier classifier recognized only
+   `resultType: denied`, producing false negatives for `reject` and
+   `hook-exception`, also reproduced in
+   [run 39424597215](https://github.com/hoffe86/agile-agents/actions/runs/39424597215)
+   at `573d34ea65824849fa1608743aacd217d98fc4b4`. Both native responses were
+   `rejected`, with a `permission_denied` category, one permission callback and
+   no host mutation. The narrowly authorized repair accepts exact structured
+   `resultType` values `denied` or `rejected`, still requiring a callback and no
+   host mutation. A shell completion or RPC error contradicts controller denial
+   and prevents that derived flag. Text such as “not rejected”, error prose or
+   telemetry alone never establishes denial. Raw native responses, callback
+   counts and host observations remain separate from the derived flag.
+   Seven added offline regression tests cover these distinctions; all 39 original
+   sandbox tests and 13 prior compatibility tests are unchanged (59 total).
+   This repairs observation reporting, not live acceptance: `integration: BLOCKED`
+   and the instruction-fidelity, environment and trace limitations remain.
 
 3. **Synthetic credential boundaries: mixed, explicitly bounded.**
    An unconfigured inherited environment marker reached the sandboxed shell.
@@ -178,7 +186,8 @@ or judge gates were changed. Pre-existing dirty/untracked work was not staged.
 - Capture genuine model-turn/delegation events through the existing trace adapter;
   implement admission/result provenance without bypassing the current dry-only
   validator, then reuse the existing grading doctrine and `JudgeResult`.
-- Correct the proof classifier before treating its derived flags as automated gates.
+- The repaired classifier reports direct-tool observations only; its derived flags
+  and blocker array are not live admission gates.
 
 This is a completed negative feasibility experiment, not permission for a paid
 canary. Full task-05, all live benchmarks and model judges remain disabled.

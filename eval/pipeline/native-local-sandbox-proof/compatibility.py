@@ -44,14 +44,22 @@ def agent_evidence(agent, plugin):
 
 
 def mutation_observation(path, permissions, hooks, result):
+    host_mutated = path.exists()
     return {
-        "host_mutated": path.exists(),
+        "host_mutated": host_mutated,
         "permission_callback_count": len(permissions),
         "pre_tool_callback_count": len(hooks),
         "native_result": result,
-        # Absence of a callback is not proof that its exception fails closed.
-        "controller_denial_proved": (bool(permissions or hooks) and not path.exists()
-                                     and result.get("resultType") == "denied"),
+        # Native permission rejection and hook/permission-error denial are distinct
+        # result types. Prose alone is not evidence; execution/transport conflicts
+        # and callback absence must not be reported as controller denial.
+        "controller_denial_proved": (
+            bool(permissions or hooks) and not host_mutated
+            and result.get("resultType") in ("denied", "rejected")
+            and "rpc_error" not in result
+            and not any(item.get("type") == "shell_exit"
+                        for item in result.get("contents") or [])
+        ),
     }
 
 
