@@ -404,3 +404,112 @@ download (mirrorable internally) and whatever the agent + judge fetch.
 - **H3** — test-bar gate: re-run to measure reviewer-cycles-saved
 - **H4** — cost tracking: depends on H6 events, scored alongside resolved-rate here
 - **H6** — JSON event log: events appear in `runs/<run-id>/events.jsonl` once H6 lands
+
+## Offline authorization controls (2026-10-20): implemented, LIVE HOLD unchanged
+
+The October 20 continuation authorizes this **policy/ledger implementation**, not
+live execution. It supersedes the earlier controller-proof recommendation to stop
+before implementing grants; the runtime proof limitations remain. ADRs 0008 and
+0015, ordinary human approval gates, dry provenance v1, grading schema 2, disabled
+live judging and rejection of positive credit are unchanged.
+
+`authorization.py` provides frozen, strictly validated records with bounded,
+canonical JSON and SHA-256 digests. Unknown/missing fields, duplicate JSON keys,
+type coercion, nonfinite numbers and invalid UTC timestamps are rejected. A
+`PlanSubmission` includes its assessment reference but not the assessment outcome;
+the independent `Assessment` binds the submission digest, avoiding a digest cycle.
+Favorable advice is not approval and cannot expand capabilities.
+
+The approved inventory always includes all ten existing task IDs. Only
+`task-05-pr-description` is supported as the initial candidate; nine unsupported
+tasks stay in the denominator. Task 05 reads the immutable synthetic `diff.patch`
+and produces Markdown **description text only**. It cannot open a PR, modify the
+depicted source, contact JIRA, alter inputs or use network/shell tools.
+
+### Controller API seam for the held native adapter
+
+Import these modules from `eval/`, following the existing evaluation scripts:
+
+```text
+authorization:
+  Identities, Budget, Operation, BatchEnvelope, PlanSubmission, Assessment,
+  Decision, Grant, AdmissionReceipt, Readiness
+  Record.from_dict / from_json / canonical_bytes / digest
+  sha256(exact_plan_bytes) -> str
+  evaluate(envelope, submission, assessment, *, now) -> Decision
+  evaluate_operation(receipt, operation, current_binding, *, now) -> Decision
+  live_readiness() -> Readiness
+
+authorization_ledger:
+  Ledger(path, *, controller_instance_id, join_existing=False)
+  Ledger.register_envelope(envelope, *, expected_digest, approval_reference)
+  Ledger.issue(submission, assessment, *, now) -> Grant | Decision
+  Ledger.consume(grant_id, *, current_binding, now) -> AdmissionReceipt
+  Ledger.invalidate_attempt(attempt_id, *, reason)
+  Ledger.abort_batch(batch_id, *, reason)
+  Ledger.close() / context manager
+  AdmissionDenied.decision -> Decision
+```
+
+All `now` values come from the trusted controller clock as UTC whole-second
+`YYYY-MM-DDTHH:MM:SSZ` strings. `Identities` binds source, plugin, overlay, input
+and toolchain SHA-256 values plus runtime/model IDs and capabilities; operations
+bind kind, exact absolute target, actor identity and byte limit. The native
+adapter must capture the actual owned-session path and hash exact plan bytes
+without newline/whitespace normalization, then supply the full current submission
+again at consumption. This library does not read native plan files or authenticate
+model/runtime claims on its own.
+
+Envelope registration is a **trusted controller API**, never an agent tool. The
+expected digest and approval reference must arrive independently from human
+approval, not from a workspace file or the envelope's own claim. Adjacent approval
+and provenance files are never ingested. `issue` evaluates policy internally;
+there is no API accepting a caller's purported eligible decision.
+
+SQLite `BEGIN IMMEDIATE`, durable commits and one-use compare-and-set consumption
+bind admission to the full submission. Duplicate attempts cannot issue new grants.
+Attempt counts include blocked attempts; issued budgets are reserved cumulatively
+and never refunded on consumption, revocation, crash or abort. A receipt refers to
+durably consumed ledger state, **not a bearer permission, grade or tool approval**.
+Even an otherwise matching operation returns `execution_not_ready` in this slice.
+
+Create the ledger in an already-existing controller-private directory outside
+worker access (owner-only permissions on POSIX; separately enforced ACL/isolation
+on Windows). Parent/file identities, hard links, symlinks/reparse points, SQLite
+side files, schema and cross-record consistency are checked. These checks cannot
+prove isolation from hostile tools or make native plan capture/execution atomic.
+Copying a DB or hashing it is not authorization.
+
+Opening an existing ledger normally aborts active batches/unfinished grants and
+rotates its epoch. Use a fresh controller instance ID on restart.
+`join_existing=True` is only for additional connections/processes of the **same
+currently running trusted controller**, never for recovery/resumption. Old
+connections are fenced out. The controller must stop all its owned connections
+and runtime on `AdmissionDenied` with `abort_batch`; a failed required write may
+prevent persisting an abort, so an in-memory latch alone must not be treated as
+distributed revocation. Restart never resumes or refunds the uncertain attempt.
+No transaction spans an SDK await.
+
+### Offline verification and remaining blockers
+
+```text
+python -B -m unittest discover -s eval/pipeline/tests -p test_authorization.py -v
+python eval/authorization.py check-readiness
+```
+
+The first command uses only the standard library, real temporary SQLite files,
+independent connections, a two-process consumption race and a crash-after-commit
+probe. Symlink/reparse detection additionally uses portable `lstat` fault injection;
+it is not an OS sandbox proof. The second performs no SDK import/startup, ledger
+creation, credential discovery, staging or network access, and always exits **2**.
+The new test module is run explicitly; the existing repository test-bar helper
+names its pre-existing unittest modules rather than discovering this one.
+
+Readiness is permanently `execution_ready: false`, `state: not_ready`, with:
+`live_hold`, `controller_ledger_isolation_unverified`,
+`native_atomic_admission_unverified`, `stage4_plan_provenance_unverified`,
+`delegate_model_provenance_unverified`, `credential_transport_unverified`, and
+`pinned_runtime_compatibility_unverified`. Task 2 owns native callbacks,
+environment sanitation and runner diagnostic wiring; none is enabled here.
+No paid evaluation, native SDK session, runtime pin change, live-v2 success record
+or positive credit is part of these controls.
