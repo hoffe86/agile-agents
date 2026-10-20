@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from contextlib import closing
 from dataclasses import dataclass, replace
 import json
@@ -12,8 +13,9 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 import unittest
+from unittest.mock import patch
 
 EVAL = Path(__file__).resolve().parents[2]
 ROOT = EVAL.parent
@@ -101,6 +103,25 @@ class BrokenContext(dict):
         raise RuntimeError("synthetic-sensitive-diagnostic")
 
 
+class PendingCall:
+    """Never completes until released or cancelled; no synthetic timeout."""
+
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+        self.cancelled = asyncio.Event()
+        self.calls = 0
+
+    async def __call__(self) -> None:
+        self.calls += 1
+        self.entered.set()
+        try:
+            await self.release.wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+
+
 class FailingLedger:
     """Required-write/close fault at the external persistence seam."""
 
@@ -151,6 +172,17 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.runtime.stops, 1)
         with self.assertRaises(AdmissionDenied):
             self.ledger.issue(self.submission, self.assessment, now=NOW)
+
+    async def watchdog(self, callback: Coroutine, *pending: PendingCall) -> object:
+        # This generous test watchdog must not supply the controller's deadline.
+        task = asyncio.create_task(callback)
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), 5)
+        finally:
+            # Also drain when a missing production timeout trips the watchdog.
+            for call in pending:
+                call.release.set()
+            await asyncio.wait_for(task, 5)
 
     async def test_empty_inline_reads_owned_native_artifact_but_never_approves(self) -> None:
         result = await self.controller.on_exit_plan_mode_request(self.request, self.context)
@@ -221,10 +253,57 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assert_terminal()
 
     async def test_read_timeout_is_terminal(self) -> None:
-        self.plan.error = TimeoutError()
-        result = await self.controller.on_exit_plan_mode_request(self.request, self.context)
+        pending = PendingCall()
+        self.controller = self.make_controller(timeout_seconds=0.02)
+        with patch.object(self.plan, "read", pending):
+            result = await self.watchdog(
+                self.controller.on_exit_plan_mode_request(self.request, self.context), pending)
         self.assertFalse(result["approved"])
+        self.assertEqual(result["feedback"], "native_plan_read_failed")
+        self.assertTrue(pending.entered.is_set())
+        self.assertTrue(pending.cancelled.is_set())
+        self.assertEqual(pending.calls, 1)
         self.assert_terminal()
+
+    async def test_cleanup_deadlines_cancel_pending_calls_and_force_stop(self) -> None:
+        disconnect, stop, force_stop = PendingCall(), PendingCall(), PendingCall()
+        self.controller = self.make_controller(timeout_seconds=0.02)
+        with (patch.object(self.session, "disconnect", disconnect),
+              patch.object(self.runtime, "stop", stop),
+              patch.object(self.runtime, "force_stop", force_stop)):
+            result = await self.watchdog(
+                self.controller.on_exit_plan_mode_request(self.request, {"session_id": "wrong"}),
+                disconnect, stop, force_stop)
+            await self.controller.on_disconnect()
+        self.assertFalse(result["approved"])
+        self.assertEqual(result["feedback"], "native_plan_read_failed")
+        self.assertEqual(self.controller.terminal_reason, "native_plan_read_failed")
+        self.assertEqual(self.controller.cleanup_failures, (
+            "session_disconnect_failed", "runtime_stop_failed", "runtime_force_stop_failed"))
+        for call in (disconnect, stop, force_stop):
+            self.assertTrue(call.entered.is_set())
+            self.assertTrue(call.cancelled.is_set())
+            self.assertEqual(call.calls, 1)
+        with self.assertRaises(AdmissionDenied):
+            self.ledger.issue(self.submission, self.assessment, now=NOW)
+        self.assertEqual(await self.controller.on_exit_plan_mode_request(
+            self.request, self.context),
+            {"approved": False, "feedback": "controller_terminal"})
+
+    async def test_stop_deadline_falls_back_to_successful_force_stop(self) -> None:
+        stop = PendingCall()
+        self.controller = self.make_controller(timeout_seconds=0.02)
+        with patch.object(self.runtime, "stop", stop):
+            await self.watchdog(self.controller.on_disconnect(), stop)
+        self.assertTrue(stop.entered.is_set())
+        self.assertTrue(stop.cancelled.is_set())
+        self.assertEqual(stop.calls, 1)
+        self.assertEqual(self.session.disconnects, 1)
+        self.assertEqual(self.runtime.force_stops, 1)
+        self.assertEqual(self.controller.terminal_reason, "native_disconnected")
+        self.assertEqual(self.controller.cleanup_failures, ("runtime_stop_failed",))
+        with self.assertRaises(AdmissionDenied):
+            self.ledger.issue(self.submission, self.assessment, now=NOW)
 
     async def test_callback_cancellation_cleans_up_then_propagates(self) -> None:
         self.plan.release = asyncio.Event()
@@ -345,6 +424,8 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
                                  "permissionDecisionReason": "controller_terminal"})
         self.assertEqual(await self.controller.on_permission_request(
             {"approved": True}, self.context), PermissionRejection())
+        permission = await self.controller.on_permission_request({"approved": True}, self.context)
+        self.assertEqual((permission.kind, permission.feedback), ("reject", "execution_not_ready"))
 
     async def test_hook_callback_session_mismatch_aborts(self) -> None:
         result = await self.controller.on_pre_tool_use(
@@ -372,6 +453,38 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
         result = await self.controller.on_permission_request(
             {"kind": "write", "approved": True}, BrokenContext())
         self.assertEqual(result, PermissionRejection())
+        self.assertEqual((result.kind, result.feedback), ("reject", "execution_not_ready"))
+
+    async def test_opted_in_sdk_callbacks_wire_handlers_and_translate_rejection(self) -> None:
+        class FakePermissionDecisionReject:
+            def __init__(self, *, feedback: str) -> None:
+                self.kind = "reject"
+                self.feedback = feedback
+
+        package, rpc = ModuleType("copilot"), ModuleType("copilot.rpc")
+        rpc.PermissionDecisionReject = FakePermissionDecisionReject
+        package.rpc = rpc
+        with patch.dict(sys.modules, {"copilot": package, "copilot.rpc": rpc}):
+            callbacks = sdk_callbacks(self.controller, opt_in=True)
+            self.assertEqual(set(callbacks), {
+                "on_exit_plan_mode_request", "on_user_input_request",
+                "on_permission_request", "hooks"})
+            self.assertEqual(callbacks["on_exit_plan_mode_request"],
+                             self.controller.on_exit_plan_mode_request)
+            self.assertEqual(callbacks["on_user_input_request"],
+                             self.controller.on_user_input_request)
+            self.assertEqual(callbacks["hooks"],
+                             {"on_pre_tool_use": self.controller.on_pre_tool_use})
+            for terminal in (False, True):
+                with self.subTest(terminal=terminal):
+                    if terminal:
+                        await self.controller.on_disconnect()
+                    result = await callbacks["on_permission_request"](
+                        {"kind": "write", "approved": True}, BrokenContext())
+                    self.assertIsInstance(result, FakePermissionDecisionReject)
+                    self.assertEqual((result.kind, result.feedback),
+                                     ("reject", "execution_not_ready"))
+        self.assert_terminal()
 
     async def test_arbitrary_ask_user_approval_is_refused(self) -> None:
         result = await self.controller.on_user_input_request(

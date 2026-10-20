@@ -180,6 +180,14 @@ class Ledger:
             self._connection.rollback()
             self._check_paths()
             self._connection.execute("BEGIN IMMEDIATE")
+            owner = self._connection.execute(
+                "SELECT ledger_id,epoch,controller_id FROM metadata WHERE singleton=1").fetchone()
+            if owner != (self.ledger_id, self._epoch, self._controller_id):
+                # A replacement may acquire ownership between failure and cleanup.
+                # Fenced controllers must only latch/close their own connection.
+                self._connection.rollback()
+                self.close()
+                return
             self._abort_all()
             self._connection.commit()
         except (OSError, sqlite3.Error, AdmissionDenied):
@@ -280,6 +288,11 @@ class Ledger:
             grant = Grant(secrets.token_hex(32), submission, submission.digest, now,
                           expires_at(now, min(envelope.grant_ttl_seconds, budget.seconds),
                                      envelope.valid_until), "issued")
+            # The eventual receipt encloses the same submission plus ledger ID.
+            # UTC wire timestamps have fixed width, so reserve its encoded size
+            # before issuance; failure rolls back the attempt as well as the grant.
+            AdmissionReceipt(self.ledger_id, grant.grant_id, submission,
+                             submission.digest, now, grant.expires_at)
             db.execute("INSERT INTO grants VALUES (?,?,?,?,?,'issued',NULL)",
                        (grant.grant_id, submission.attempt_id, submission.digest,
                         grant.canonical_bytes().decode("ascii"),

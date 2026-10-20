@@ -126,6 +126,9 @@ class Record:
         for name, annotation in get_type_hints(type(self)).items():
             _decode(annotation, getattr(self, name), wire=False)
         self._validate()
+        # Apply the decoder's bound to constructors and nested enclosing records,
+        # including ASCII escaping and JSON overhead, not just individual fields.
+        self._encoded_bytes()
 
     def _validate(self) -> None:
         pass
@@ -154,8 +157,13 @@ class Record:
 
     def canonical_bytes(self) -> bytes:
         self.__post_init__()
-        return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"),
+        return self._encoded_bytes()
+
+    def _encoded_bytes(self) -> bytes:
+        data = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"),
                           ensure_ascii=True, allow_nan=False).encode("ascii")
+        _require(len(data) <= MAX_JSON_BYTES)
+        return data
 
     @property
     def digest(self) -> str:

@@ -585,11 +585,11 @@ These are callback/configuration and real-shell **unit tests**, not runtime
 integration evidence. The existing local CLI 1.0.100 plan proof does not establish
 parity with CI CLI 1.0.98; SDK remains 1.0.22. No dependency/model/runtime pins change.
 
-**CI hand-off (infrastructure owner):** `.github/workflows/eval-skills.yml` still
-lists individual suites rather than calling the test-bar helper. Add separate
-steps in its `runtime-contracts` job (both OS matrix entries), after the existing
-pipeline workflow regression step, preserving all existing commands:
+**CI wiring:** `.github/workflows/eval-skills.yml` runs both suites as separate
+steps in its `runtime-contracts` job, on the `ubuntu-latest` and `windows-latest`
+matrix entries, after the pipeline workflow regression step:
 `python -m unittest discover -s eval/pipeline/tests -p test_authorization.py -v`
 and
 `python -m unittest discover -s eval/pipeline/tests -p test_native_controller.py -v`.
-No workflow YAML is changed by Task 2.
+This describes the configured workflow, not a verified successful Linux CI run.
+No workflow YAML is changed by this corrective round.

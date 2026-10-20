@@ -22,7 +22,7 @@ sys.path.insert(0, str(EVAL))
 from authorization import (  # noqa: E402
     AdmissionReceipt, Assessment, BatchEnvelope, BLOCKERS, Budget, Decision, Grant,
     Identities, InvalidRecord, Operation, PlanSubmission, Readiness, SELECTED_TASKS,
-    TASK05, evaluate, evaluate_operation, live_readiness, sha256,
+    MAX_JSON_BYTES, TASK05, evaluate, evaluate_operation, live_readiness, sha256,
 )
 from authorization_ledger import AdmissionDenied, Ledger  # noqa: E402
 
@@ -141,6 +141,48 @@ class RecordTests(unittest.TestCase):
                 self.assertEqual(type(value).from_dict(json.loads(value.canonical_bytes())), value)
                 with self.assertRaises(FrozenInstanceError):
                     setattr(value, fields(value)[0].name, None)
+
+    def test_encoded_limit_is_consistent_for_construction_dict_json_and_canonical(self) -> None:
+        submission = replace(self.submission, plan_path="/native/" + "東京" * 100,
+                             operations=tuple(replace(o, max_bytes=1024)
+                                              for o in self.submission.operations))
+        grant = Grant("grant-1", submission, submission.digest, NOW, EXPIRED, "issued")
+        receipt = AdmissionReceipt("ledger-1", grant.grant_id, submission,
+                                   submission.digest, LATER, EXPIRED)
+        for record in (submission, grant, receipt):
+            encoded = record.canonical_bytes()
+            wire = json.loads(encoded)
+            # Raw UTF-8 fits even when canonical ASCII escaping exceeds the bound.
+            compact_utf8 = json.dumps(wire, ensure_ascii=False, separators=(",", ":"))
+            self.assertLess(len(compact_utf8.encode("utf-8")), len(encoded) - 1)
+            with self.subTest(record=type(record).__name__):
+                with patch("authorization.MAX_JSON_BYTES", len(encoded)):
+                    self.assertEqual(replace(record), record)
+                    self.assertEqual(type(record).from_dict(wire), record)
+                    self.assertEqual(type(record).from_json(encoded), record)
+                    self.assertEqual(record.canonical_bytes(), encoded)
+                with patch("authorization.MAX_JSON_BYTES", len(encoded) - 1):
+                    for name, build in (
+                        ("constructor", lambda: replace(record)),
+                        ("dict", lambda: type(record).from_dict(wire)),
+                        ("json", lambda: type(record).from_json(compact_utf8)),
+                        ("canonical", record.canonical_bytes),
+                    ):
+                        with self.subTest(entrypoint=name), self.assertRaisesRegex(
+                                InvalidRecord, "^invalid_record$"):
+                            build()
+
+    def test_aggregate_operations_exceed_real_encoded_limit(self) -> None:
+        operations = tuple(replace(self.submission.operations[0],
+                                   target="/" + str(i).zfill(2) + "x" * 4093)
+                           for i in range(32))
+        wire = json.loads(self.submission.canonical_bytes())
+        wire["operations"] = [asdict(operation) for operation in operations]
+        self.assertGreater(len(json.dumps(wire).encode("utf-8")), MAX_JSON_BYTES)
+        with self.assertRaisesRegex(InvalidRecord, "^invalid_record$"):
+            replace(self.submission, operations=operations)
+        with self.assertRaisesRegex(InvalidRecord, "^invalid_record$"):
+            PlanSubmission.from_dict(wire)
 
     def test_unknown_missing_duplicate_keys_and_nonfinite_numbers_deny(self) -> None:
         encoded = self.submission.canonical_bytes().decode()
@@ -281,6 +323,31 @@ class PolicyTests(unittest.TestCase):
                     self.assertEqual(evaluate(self.envelope, submission, advice(submission),
                                               now=NOW).outcome, "abort_batch")
 
+    def test_operation_scope_with_fresh_advice_and_unchanged_receipt_binding(self) -> None:
+        receipt = AdmissionReceipt("ledger-1", "grant-1", self.submission,
+                                   self.submission.digest, NOW, EXPIRED)
+        for allowed in self.submission.operations:
+            cases = (
+                ("target", replace(allowed, target=allowed.target + ".other"), False),
+                ("actor", replace(allowed, actor_id="other-writer"), False),
+                ("excess_bytes", replace(allowed, max_bytes=allowed.max_bytes + 1), False),
+                ("exact_limit", replace(allowed), True),
+                ("narrower", replace(allowed, max_bytes=allowed.max_bytes - 1), True),
+            )
+            for name, operation, fits in cases:
+                with self.subTest(kind=allowed.kind, case=name):
+                    submission = replace(self.submission, operations=(operation,))
+                    assessment = advice(submission)
+                    self.assertEqual(assessment.submission_digest, submission.digest)
+                    self.assertEqual(
+                        evaluate(self.envelope, submission, assessment, now=NOW),
+                        Decision("eligible", ("policy_eligible_not_execution_ready",))
+                        if fits else Decision("block_task", ("operation_out_of_scope",)))
+                    self.assertEqual(
+                        evaluate_operation(receipt, operation, self.submission, now=NOW),
+                        Decision("block_task", ("execution_not_ready",) if fits
+                                 else ("operation_out_of_scope",)))
+
     def test_nine_unsupported_tasks_stay_in_denominator_and_deny(self) -> None:
         denied = []
         for task in SELECTED_TASKS:
@@ -367,6 +434,54 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(state, "consumed")
         self.assertEqual(AdmissionReceipt.from_json(stored), receipt)
         self.deny_consume(grant.grant_id, "grant_not_issued")
+
+    def test_oversized_grant_or_receipt_rolls_back_issuance(self) -> None:
+        envelope = replace(self.envelope, permitted_operations=tuple(
+            replace(o, max_bytes=1024) for o in self.envelope.permitted_operations))
+        submission = replace(self.submission, envelope_digest=envelope.digest,
+                             operations=envelope.permitted_operations)
+        assessment = advice(submission)
+        grant = Grant("g" * 64, submission, submission.digest,
+                      NOW, EXPIRED, "issued")
+        receipt = AdmissionReceipt(self.ledger.ledger_id, grant.grant_id, submission,
+                                   submission.digest, NOW, EXPIRED)
+        self.assertGreater(len(receipt.canonical_bytes()), len(grant.canonical_bytes()))
+        for record in (grant, receipt):
+            limit = len(record.canonical_bytes()) - 1
+            self.assertLess(len(envelope.canonical_bytes()), limit)
+            self.assertLess(len(submission.canonical_bytes()), limit)
+            with self.subTest(record=type(record).__name__), tempfile.TemporaryDirectory() as temp:
+                path = Path(temp).resolve() / "ledger.sqlite"
+                with Ledger(path, controller_instance_id="controller-1") as ledger:
+                    self.register(envelope, ledger)
+                    with patch("authorization.MAX_JSON_BYTES", limit):
+                        with self.assertRaisesRegex(AdmissionDenied, "^ledger_integrity_failure$"):
+                            ledger.issue(submission, assessment, now=NOW)
+                    with closing(sqlite3.connect(path)) as db:
+                        self.assertEqual(db.execute("SELECT COUNT(*) FROM grants").fetchone(), (0,))
+                        self.assertEqual(db.execute("SELECT COUNT(*) FROM attempts").fetchone(), (0,))
+                        self.assertEqual(db.execute("SELECT state FROM batches").fetchone(),
+                                         ("aborted",))
+
+    def test_receipt_at_encoded_limit_roundtrips_through_real_ledger(self) -> None:
+        self.envelope = replace(self.envelope, batch_id="bounded-batch", permitted_operations=tuple(
+            replace(o, max_bytes=1024) for o in self.envelope.permitted_operations))
+        self.submission = replace(self.submission, batch_id=self.envelope.batch_id,
+                                  envelope_digest=self.envelope.digest,
+                                  operations=self.envelope.permitted_operations)
+        self.register()
+        receipt = AdmissionReceipt(self.ledger.ledger_id, "g" * 64, self.submission,
+                                   self.submission.digest, LATER, EXPIRED)
+        limit = len(receipt.canonical_bytes())
+        with patch("authorization.MAX_JSON_BYTES", limit):
+            grant = self.issue()
+            actual = self.ledger.consume(grant.grant_id, current_binding=self.submission, now=LATER)
+            self.assertEqual(len(actual.canonical_bytes()), limit)
+            with closing(sqlite3.connect(self.path)) as db:
+                stored_grant, stored_receipt = db.execute(
+                    "SELECT record,receipt FROM grants").fetchone()
+            self.assertEqual(Grant.from_json(stored_grant), grant)
+            self.assertEqual(AdmissionReceipt.from_json(stored_receipt), actual)
 
     def test_registration_requires_independent_digest_and_approval_reference(self) -> None:
         for changes in ({"expected_digest": sha256(b"forged")},
@@ -541,6 +656,30 @@ class LedgerTests(unittest.TestCase):
                             self.assessment, now=NOW)
         self.assertEqual(self.deny_consume(grant.grant_id, "controller_mismatch").decision.outcome,
                          "abort_batch")
+
+    def test_fenced_controller_cannot_abort_replacement_batch_or_grant(self) -> None:
+        self.issue()
+        replacement = self.open(controller="controller-2")
+        envelope = replace(self.envelope, batch_id="replacement-batch")
+        self.register(envelope, replacement)
+        submission = replace(self.submission, batch_id=envelope.batch_id,
+                             envelope_digest=envelope.digest, attempt_id="replacement-attempt",
+                             controller_instance_id="controller-2")
+        grant = replacement.issue(submission, advice(submission), now=NOW)
+        self.assertIsInstance(grant, Grant)
+        with self.assertRaisesRegex(AdmissionDenied, "^controller_mismatch$"):
+            self.ledger.abort_batch(self.envelope.batch_id, reason="stale_cleanup")
+        with self.assertRaisesRegex(AdmissionDenied, "^ledger_aborted$"):
+            self.ledger.issue(self.submission, self.assessment, now=NOW)
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT state FROM batches WHERE batch_id=?",
+                                        (envelope.batch_id,)).fetchone(), ("active",))
+            self.assertEqual(db.execute("SELECT state FROM grants WHERE grant_id=?",
+                                        (grant.grant_id,)).fetchone(), ("issued",))
+            self.assertEqual(db.execute("SELECT state FROM attempts WHERE attempt_id=?",
+                                        (submission.attempt_id,)).fetchone(), ("issued",))
+        receipt = replacement.consume(grant.grant_id, current_binding=submission, now=LATER)
+        self.assertEqual(receipt.submission, submission)
 
     def test_process_crash_after_consumption_does_not_refund_or_resume(self) -> None:
         grant = self.issue()
