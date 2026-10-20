@@ -276,6 +276,47 @@ class UnavailableTests(unittest.TestCase):
                 result = dict(self.result, **{field: value})
                 self.assertFalse(check_unavailable(result, self.marker)["unavailable_command_failed"])
 
+    def test_duplicate_rendered_completion_fails(self):
+        self.result["textResultForLlm"] += "\n<shellId: 0 completed with exit code 1>"
+        self.assertFalse(check_unavailable(self.result, self.marker)["unavailable_command_failed"])
+
+    def test_contradictory_rendered_completions_fail_in_either_order(self):
+        for codes in ((0, 1), (1, 0), (2, 1), (1, 2)):
+            with self.subTest(codes=codes):
+                result = dict(self.result, textResultForLlm="\n".join(
+                    f"<shellId: 0 completed with exit code {code}>" for code in codes))
+                checks = check_unavailable(result, self.marker)
+                self.assertTrue(checks["unavailable_sandbox_error"])
+                self.assertTrue(checks["no_unsandboxed_marker"])
+                self.assertFalse(checks["unavailable_command_failed"])
+                self.assertFalse(all(checks.values()))
+
+    def test_rendered_shell_id_must_match_structured_shell_exit(self):
+        for text in (
+            "<shellId: 1 completed with exit code 1>",
+            "<shellId: 1 completed with exit code 1>\n<shellId: 0 completed with exit code 1>",
+            "<shellId: 0 completed with exit code 1>\n<shellId: 1 completed with exit code 1>",
+        ):
+            with self.subTest(text=text):
+                result = dict(self.result, textResultForLlm=text)
+                self.assertFalse(check_unavailable(result, self.marker)["unavailable_command_failed"])
+
+    def test_missing_or_invalid_structured_shell_id_fails(self):
+        for shell_id in (None, "", 0):
+            with self.subTest(shell_id=shell_id):
+                result = copy.deepcopy(self.result)
+                if shell_id is None:
+                    del result["contents"][0]["shellId"]
+                else:
+                    result["contents"][0]["shellId"] = shell_id
+                result["textResultForLlm"] = f"<shellId: {shell_id} completed with exit code 1>"
+                self.assertFalse(check_unavailable(result, self.marker)["unavailable_command_failed"])
+
+    def test_matching_non_default_shell_id_passes(self):
+        self.result["contents"][0]["shellId"] = "7"
+        self.result["textResultForLlm"] = self.result["textResultForLlm"].replace("shellId: 0", "shellId: 7")
+        self.assertTrue(all(check_unavailable(self.result, self.marker).values()))
+
 
 class CleanupTests(unittest.IsolatedAsyncioTestCase):
     async def test_disconnect_then_stop_without_destroy(self):

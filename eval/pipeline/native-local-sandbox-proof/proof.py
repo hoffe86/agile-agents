@@ -76,6 +76,10 @@ def check_unavailable(result, marker):
     exits = [item for item in result.get("contents", []) if item.get("type") == "shell_exit"]
     shell = exits[0] if len(exits) == 1 else {}
     code = shell.get("exitCode")
+    shell_id = shell.get("shellId")
+    rendered = result.get("textResultForLlm", "")
+    completions = re.findall(
+        r"<shellId: ([^<>\r\n]*) completed with exit code ([^<>\r\n]*)>", rendered)
     output = shell.get("outputPreview", "")
     # Use the actual shell result, not a mention in echoed arguments or a transport error.
     explicit_error = (
@@ -85,9 +89,11 @@ def check_unavailable(result, marker):
         "unavailable_sandbox_error": explicit_error,
         "unavailable_command_failed": (
             type(code) is int and code != 0
+            and isinstance(shell_id, str) and bool(shell_id)
             and result.get("toolTelemetry", {}).get("metrics", {}).get("exit_code") == code
-            and result.get("textResultForLlm", "").endswith(
-                f"<shellId: {shell.get('shellId')} completed with exit code {code}>")),
+            # A matching suffix alone can hide earlier contradictory completions.
+            and completions == [(shell_id, str(code))]
+            and rendered.endswith(f"<shellId: {shell_id} completed with exit code {code}>")),
         "no_unsandboxed_marker": not marker.exists(),
     }
 

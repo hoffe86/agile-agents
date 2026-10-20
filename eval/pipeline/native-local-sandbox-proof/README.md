@@ -100,8 +100,12 @@ remote MCP, or a hostile model. It is not a general security certification.
    marker passes. `resultType: success` means the RPC request was handled, not
    that the command succeeded. The pinned response's single `shell_exit` record
    must have an integer nonzero `exitCode`, corroborated by telemetry `exit_code`
-   and the rendered shell completion. Missing, ambiguous or contradictory exit
-   evidence fails closed. An outer success wrapping exit 0 or an execution marker
+   and exactly one rendered shell completion with the same `shellId` and exit
+   code. The structured `shellId` must be a nonempty string; telemetry in the
+   observed response supplies an exit code, not a shell ID. Duplicate completions
+   fail even when identical or when the final completion matches. Missing,
+   ambiguous or contradictory exit evidence fails closed. An outer success
+   wrapping exit 0 or an execution marker
    cannot pass; an outer failure without shell failure evidence cannot pass either.
    A capability/RPC failure earlier in startup is **blocked**, not a successful
    unavailable-backend assertion. No claim about managed `failIfUnavailable`
@@ -134,7 +138,9 @@ Regression coverage includes private write success with an unchanged host,
 sentinel mutation/removal/type replacement, added host files/directories,
 transport success with command failure, exit 0 despite unavailable-error text,
 actual execution-marker creation, generic errors, transport-only failures, and
-missing/ambiguous/contradictory shell exit evidence. Existing read/network,
+missing/ambiguous/contradictory shell exit evidence, duplicate rendered
+completions, contradictory rendered exits in both orders, and mismatched or
+missing/invalid structured shell IDs. Existing read/network,
 namespace, telemetry, policy readback, no-model and cleanup checks remain.
 
 ## Decisions and sources
