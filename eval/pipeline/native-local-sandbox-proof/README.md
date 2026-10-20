@@ -54,6 +54,19 @@ verification and exit code); `eval/provenance.py` owns hashes and result binding
 Local validation before hosted execution: 52 proof unit tests (39 unchanged,
 13 new proof-logic tests), plus 172 existing trace/grading/provenance pytest tests.
 
+Classifier-repair validation: **59 proof tests and 172 existing offline
+trace/grading/provenance tests passed**. Replaying the raw mutation responses from
+run 39424597215 changed exactly the two known false-negative flags, preserving all
+other observation fields. The first repaired-SHA hosted attempt,
+[39425671589](https://github.com/hoffe86/agile-agents/actions/runs/39425671589)
+at `04694c686e2f785f39ad60692945b44894259369`, passed the unit step but failed
+the unchanged Ubuntu prerequisite installation with exit 100. Native execution
+was skipped; final runtime cleanup succeeded. Public annotations do not identify
+the package-install cause, and unauthenticated log download was refused.
+That attempt is **not native verification of the repair** and supplies no fresh
+provider-trap or compatibility measurements. Dependency pins and workflow gates
+were not changed to retry it.
+
 First run: [39423365886](https://github.com/hoffe86/agile-agents/actions/runs/39423365886),
 commit `0d68c80b66dd6342815c445faafcaf0219965960`. All original 15 available /
 5 unavailable assertions passed. Native hooks denied mutations; 42 core skills
