@@ -265,6 +265,13 @@ def main():
         args.evidence.parent.mkdir(parents=True, exist_ok=True)
         args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")
         print(json.dumps(evidence, indent=2), flush=True)
+        # Public check annotations remain readable when raw Actions logs require login.
+        summary = {key: evidence[key] for key in (
+            "status", "scenario", "stage", "error", "assertions", "provider_requests",
+            "model_send_calls", "host_support", "native_result", "host_control",
+            "versions", "elapsed_seconds") if key in evidence}
+        message = json.dumps(summary).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::notice title=Native local sandbox proof::{message}", flush=True)
     raise SystemExit(0 if evidence["status"] == "PASS" else 1)
 
 

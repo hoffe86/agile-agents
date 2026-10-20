@@ -84,6 +84,11 @@ class ProofTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "integrity"):
             verify(b"not-a-cli")
 
+    def test_lock_hashes_have_sha256_shape(self):
+        for line in Path(__file__).with_name("requirements.txt").read_text().splitlines():
+            if line and not line.startswith("#"):
+                self.assertRegex(line, r"^[\w-]+==[\w.]+ --hash=sha256:[0-9a-f]{64}$")
+
     def test_local_execution_refused(self):
         with patch("setup_runtime.platform.system", return_value="Windows"):
             with self.assertRaisesRegex(RuntimeError, "GitHub-hosted"):

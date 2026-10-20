@@ -69,7 +69,9 @@ remote MCP, or a hostile model. It is not a general security certification.
 
 Logs and a seven-day evidence artifact contain the policy, versions, pinned CLI
 help, stage reached, native response/error, synthetic controls, assertions and
-elapsed time. They do not upload HOME, CLI sessions, environment dumps or secrets.
+elapsed time. Compact results also appear in public check annotations, because
+unauthenticated Actions log/artifact downloads may be refused. They do not upload
+HOME, CLI sessions, environment dumps or secrets.
 Temporary directories are removed; the missing-backend step restores bwrap even
 on failure, and the workflow removes its CLI/venv. Runner disposal is the final
 cleanup boundary. There are no invented token/AIU measurements.
@@ -91,6 +93,16 @@ Read `copilot help sandbox` from the pinned hosted executable. The local
 workstation CLI was 1.0.100 during research and is not version evidence for 1.0.98.
 Current web documentation also differs from that local help on unsupported-host
 fallback, which is why this proof tests behavior rather than trusting settings.
+
+### Execution history
+
+- Initial implementation: `adbf5ed7fac3efb42e579a58a69b392bd87365fe`,
+  [hosted run 39398481935](https://github.com/hoffe86/agile-agents/actions/runs/39398481935).
+  Prerequisite installation and 14 unit checks passed; SDK installation failed,
+  so neither native assertion scenario ran. A local Linux-targeted pip dry-run
+  reproduced a transcribed `h11` wheel checksum error. The one corrective round
+  fixes that checksum, adds a hash-shape check, validates full Linux wheel
+  resolution before push, and publishes compact results through annotations.
 
 - [Official sandbox concepts and prerequisites](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/about-cloud-and-local-sandboxes)
 - [SDK public generated Python RPC schema](https://github.com/github/copilot-sdk/blob/main/python/copilot/generated/rpc.py)
