@@ -12,10 +12,12 @@ from urllib.parse import urlsplit, urlunsplit
 
 MAX_LINES = 60
 MAX_LINE_CHARS = 500
-MAX_REPORT_CHARS = 6000
+# Public check annotation messages were observed truncated at 4,096 characters.
+MAX_REPORT_CHARS = 3000
 APT_OPTIONS = [
     "-o", "Dir::Etc::sourcelist=/etc/apt/native-sandbox-proof.list",
     "-o", "Dir::Etc::sourceparts=-",
+    "-o", "Acquire::Retries=2",
 ]
 
 
@@ -59,6 +61,9 @@ def report(phase, code, lines):
 
 def run(phase):
     command = ["sudo", "apt-get", *APT_OPTIONS, phase]
+    if phase == "update":
+        # Do not continue with missing indexes after a transient fetch failure.
+        command += ["--error-on=any"]
     if phase == "install":
         command += ["--no-install-recommends", "-y",
                     "bubblewrap", "slirp4netns", "util-linux", "iptables"]

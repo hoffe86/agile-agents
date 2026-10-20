@@ -234,13 +234,26 @@ GitHub-hosted OS image is not immutable; that is a limitation of this proof.
 
 Prerequisite apt update/install failures now publish sanitized, bounded output
 in public check annotations and the job summary (last 60 lines, 500 characters
-per line, 6,000 characters per report). Update warnings are also published even
+per line, 3,000 characters per report, below the observed 4,096-character public
+annotation truncation). Update warnings are also published even
 when apt returns zero, so a repository-fetch failure is not hidden by a later
 package-resolution error. Both stdout and stderr are captured; URL credentials,
 query strings, auth headers and token patterns are redacted, and no environment
-or apt configuration is dumped. The original apt exit status is retained, with
-no automatic retry, dependency relaxation or source fallback. This diagnostic
+or apt configuration is dumped. The original apt exit status is retained. Apt
+acquisition retries are capped at two, and update uses `--error-on=any` to stop
+on failed index fetches rather than proceed with missing indexes. There is no
+dependency relaxation or source fallback. This diagnostic
 helper runs only on the disposable hosted runner; its tests mock apt entirely.
+
+Diagnostic [run 39427139133](https://github.com/hoffe86/agile-agents/actions/runs/39427139133)
+at `1e722acd56af0822f2257f22b899aa894239bc52` exposed the prerequisite blocker:
+the fixed snapshot endpoint returned **HTTP 502 Bad Gateway** (reported IP
+`185.125.189.36:443`), including for `noble-security/universe amd64 Packages`.
+Update returned zero despite fetch errors; install then returned 100 with
+`E: Unable to locate package bubblewrap`. Native runtime/proof steps were skipped;
+65 offline tests and final cleanup passed. This justifies bounded acquisition
+retries and fail-closed update, not a different snapshot or fewer dependencies.
+The snapshot service's internal reason for returning 502 is not observable here.
 
 The runner creates disposable HOME, COPILOT_HOME, XDG directories, workspace and
 synthetic denied directory. Explicit policy disables outbound/local networking,

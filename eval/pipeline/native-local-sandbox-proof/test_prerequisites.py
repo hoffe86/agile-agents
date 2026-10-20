@@ -49,6 +49,16 @@ class PrerequisiteDiagnosticsTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn("::", output)
 
+    def test_update_retries_are_bounded_and_fetch_errors_fail_closed(self):
+        code, output, call = self.invoke(
+            "update", "E: Failed to fetch snapshot index 502 Bad Gateway\n", 100)
+        self.assertEqual(code, 100)
+        self.assertEqual(call.args[0], [
+            "sudo", "apt-get", *diagnostics.APT_OPTIONS, "update", "--error-on=any",
+        ])
+        self.assertIn("Acquire::Retries=2", call.args[0])
+        self.assertIn("502 Bad Gateway", output)
+
     def test_sanitizes_credentials_and_terminal_controls(self):
         text = diagnostics.sanitize(
             "\x1b[31mE: https://user:password@example.org/path?token=private#secret "
@@ -59,7 +69,7 @@ class PrerequisiteDiagnosticsTests(unittest.TestCase):
     def test_bounds_output_and_escapes_workflow_commands(self):
         _, output, _ = self.invoke(
             "install", ("x" * 1000 + "\n") * 1000 + "E: 50%\n::error::injected\n", 100)
-        self.assertLess(len(output), 7000)
+        self.assertLess(len(output), 4096)
         self.assertIn("50%25%0A::error::injected", output)
         self.assertEqual(len(output.splitlines()), 1)
 
