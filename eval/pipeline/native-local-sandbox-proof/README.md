@@ -65,7 +65,130 @@ tools reach their own refusing callbacks. This changes the experiment, not the
 sandbox policy or original tests. First-run credentials already demonstrated an
 unconfigured inherited marker reaching the shell, configured masking changing the
 marker, and both file-tool and shell denial of the controller marker file.
-The corrected hosted result is recorded below after execution.
+### Executed result and limits (2026-10-20)
+
+Corrected run:
+[39424029975](https://github.com/hoffe86/agile-agents/actions/runs/39424029975),
+commit **`ad361a9291dead5c9d5074c283e78cea52d14bb3`**.
+GitHub-hosted `ubuntu-24.04`, image `20261018.339.1`; CLI 1.0.98,
+SDK 1.0.22, Python 3.12.12. All workflow steps succeeded, including **52 unit
+tests**, original **15 available / 5 unavailable** assertions, compatibility,
+artifact publication and runner cleanup. Public evidence:
+[check annotations API](https://api.github.com/repos/hoffe86/agile-agents/check-runs/118631909958/annotations?per_page=100).
+Full synthetic evidence is in the seven-day `native-local-sandbox-proof` artifact.
+
+**Integration remains BLOCKED. A green experiment is not a live readiness gate.**
+
+1. **Real plugin discovery and selection: observed, not inferred from manifests.**
+   Native inventory returned 15 namespace-qualified core agents, all with exact
+   working-tree paths and `source: plugin`. Selection and current-agent readback
+   both returned `agile-agents-core:dev-lead`. Its source-file SHA-256 was
+   `a6900e5e88a135c3cab062e785f397f7413e9070f560592c53cd02c9bfaada48`.
+   All seven workers declared by dev-lead were present in that inventory under
+   namespace-qualified IDs. **Recognition/enforcement of the authored `agents:`
+   restriction is not proved**: the returned SDK inventory has no worker-list
+   field, and no delegate was executed. Despite `includePrompt: true`, no authored
+   prompt text reached the inventory; all runtime-prompt hashes were the empty
+   string hash. This is an introspection gap, **not proof that the runtime discarded
+   the instructions**. Exact loaded instruction-content fidelity remains unverified.
+   Native skill inventory returned all 42 core skills enabled at matching paths;
+   source hashes were recorded. For example, `acceptance-grading`:
+   `b27f9263066dd94d41019a365c49d6b7e91de89b10b92ccc0016ac8094e7856a`.
+   No skill was chosen/read by a model. Companion plugins and external MCP
+   servers were not exercised.
+
+2. **Native callbacks: observed, including failure paths.**
+   `session.tools.execute` **does run** the SDK pre-tool hook. Explicit hook denial
+   blocked both `bash` and `create`, with no host mutation and no permission request.
+   Without that hook, `bash` reached the permission callback: rejection returned
+   `resultType: rejected`; a callback exception returned `resultType: denied`,
+   reporting that user permission could not be obtained. Both left the host marker
+   absent. A **pre-tool hook exception did not deny**: the shell proceeded to the
+   permission callback, which rejected it. This demonstrates the difference between
+   hook-only control and the separate permission boundary, not that every SDK
+   controller is unsafe. In-process `create` outside writable paths was stopped by
+   the sandbox file-policy check, before any permission callback.
+
+   `ask_user` delivered a real native callback and its returned synthetic refusal
+   appeared in the native tool response. `exit_plan_mode` delivered the separate
+   callback with `summary`, actions, recommendation and **empty `planContent`**;
+   the controller returned `approved: false`, the tool reported “Plan not approved”,
+   and native mode readback remained `PLAN`. That proves callback delivery/return
+   mechanics, **not authored-plan provenance, approval/resumption of an agent turn,
+   or batch-policy authorization**. No approval was granted. No execution route
+   was intentionally switched to bypass hooks. Alternate `shell.exec` and
+   `shell.executeUserRequested` RPC paths were **not tested**; the successful
+   `session.tools.execute` evidence must not be generalized to them.
+
+   **Known proof-classifier limitation, retained after the one permitted correction:**
+   `mutation_observation` conservatively recognizes only `resultType: denied`.
+   Consequently the `reject` and `hook-exception` summary entries say denial was
+   not proved even though their raw responses are `rejected`, report a
+   `permission_denied` category, record one permission callback, and show no host
+   mutation. These two derived flags are **probe false negatives, not runtime
+   rejection failures**. Do not use the blocker array as an admission decision.
+   Fixing/retesting this classifier would be a further, separately scoped round.
+
+3. **Synthetic credential boundaries: mixed, explicitly bounded.**
+   An unconfigured inherited environment marker reached the sandboxed shell.
+   An explicitly configured `SYNTHETIC_MASKED` value was present but was **not**
+   the original marker. No HTTPS-proxy environment variable was observed;
+   credential substitution over HTTPS was not tested. The denied controller marker
+   file was unreadable through both built-in `view` (policy rejection) and sandboxed
+   shell; its host bytes were unchanged. Shell telemetry confirmed sandbox applied
+   and no opt-out. These are separate mechanisms: built-in in-process file checks
+   are best-effort, not an OS process boundary; remote MCP is outside this OS sandbox.
+   A disposable runner does not protect in-job credentials. Live controller secrets,
+   alternate file/proc routes, HTTPS injection destination checks, proxy CA handling
+   and remote MCP containment remain untested. No real credentials were supplied.
+
+4. **DeepEval contract: parsing works, an evaluation trace/grade is still missing.**
+   The unchanged adapter parsed **118 native event envelopes** and observed the
+   offered skills. It found **zero tool-execution-start events and zero assistant
+   turns**, and its existing schema checks flagged both. Direct-tool RPC results
+   therefore cannot be presented as a live trajectory or silently converted into
+   successful tool/skill-use evidence. An approved future agent-turn capture must
+   satisfy the existing event contract without fabricating model events.
+   `JudgeResult` v2, immutable baseline validation and result bindings remain the
+   grading/provenance contracts; no replacement grade shape was introduced.
+   `provenance.validate_result` currently accepts **only the dry/blocked execution
+   contract**. An evidence-backed live admission extension is missing implementation,
+   not a demonstrated DeepEval-engine incompatibility. All 172 existing offline
+   trace/grading/provenance tests passed locally; no judge was invoked.
+
+**No-model and cleanup evidence:** provider requests `[]`, model send calls `0`,
+synthetic model events `false`, cleanup errors `[]`, temporary directory removed
+`true`. The original scenarios also recorded no provider access and clean cleanup.
+The always-run workflow cleanup/restoration step succeeded. No global workstation
+configuration, plugin contracts, dependency pins, original proof tests, live runner
+or judge gates were changed. Pre-existing dirty/untracked work was not staged.
+
+### Remaining evidence contract before any live integration
+
+- Confirm loaded authored instructions and worker selection/restriction semantics;
+  distinguish inventory, actual skill invocation and delegated work.
+- Bind an actual plan snapshot/digest to run, task, immutable inputs, harness,
+  controller/session/delegate identities and an explicit human or authorized
+  batch-policy approval reference. Prove no implementation before approval,
+  rejection/cancellation/disconnect fail-closed behaviour, and invalidation after
+  plan or scope changes. Permission approval is never a substitute for this record.
+- Resolve credential placement and supported execution routes, test the intended
+  synthetic proxy/transport boundary, and keep remote MCP disabled until separately
+  assessed. A hook exception must not silently authorize mutations.
+- Capture genuine model-turn/delegation events through the existing trace adapter;
+  implement admission/result provenance without bypassing the current dry-only
+  validator, then reuse the existing grading doctrine and `JudgeResult`.
+- Correct the proof classifier before treating its derived flags as automated gates.
+
+This is a completed negative feasibility experiment, not permission for a paid
+canary. Full task-05, all live benchmarks and model judges remain disabled.
+No live-canary scope is authorized or recommended as ready by this result.
+
+**Trade-off:** direct native RPC was chosen over a synthetic model server to keep
+this verification small and zero-inference. It provides genuine tool/callback
+mechanics, but cannot establish model-selected skills, authored-plan semantics or
+delegation fidelity. Revisit only in an explicitly approved, separately bounded
+follow-up; do not grow this proof into a replacement orchestration layer.
 
 This **synthetic infrastructure experiment** is separate from `worker-proof` and
 `controller-proof`. It does not lift any live-evaluation hold, run a benchmark,
