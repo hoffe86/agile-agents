@@ -20,6 +20,10 @@ PLUGIN = REPO / "plugins" / "agile-agents-core"
 MARKER = "SYNTHETIC-NOT-A-CREDENTIAL-compatibility"
 
 
+def local_agent_name(name):
+    return name.removeprefix("agile-agents-core:")
+
+
 def sha(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -27,7 +31,7 @@ def sha(data):
 def agent_evidence(agent, plugin):
     """Hash only known repository files, never arbitrary paths from runtime output."""
     row = {k: v for k, v in agent.items() if k != "prompt"}
-    source = plugin / "agents" / f"{agent['name']}.agent.md"
+    source = plugin / "agents" / f"{local_agent_name(agent['name'])}.agent.md"
     if source.is_file():
         content = source.read_text(encoding="utf-8")
         body = content.split("---", 2)[2].strip()
@@ -46,7 +50,8 @@ def mutation_observation(path, permissions, hooks, result):
         "pre_tool_callback_count": len(hooks),
         "native_result": result,
         # Absence of a callback is not proof that its exception fails closed.
-        "controller_denial_proved": bool(permissions or hooks) and not path.exists(),
+        "controller_denial_proved": (bool(permissions or hooks) and not path.exists()
+                                     and result.get("resultType") == "denied"),
     }
 
 
@@ -116,7 +121,7 @@ async def experiment(cli, base, port, evidence):
     try:
         await asyncio.wait_for(client.start(), 45)
         # Separate sessions avoid permission caching and hook state contamination.
-        for mode in ("reject", "exception", "credentials"):
+        for mode in ("hook-deny", "reject", "exception", "hook-exception", "credentials"):
             row = evidence["sessions"][mode] = {
                 "permissions": [], "pre_tool_hooks": [], "user_inputs": [], "plan_exits": []}
             evidence["stage"] = mode + ".create"
@@ -132,6 +137,10 @@ async def experiment(cli, base, port, evidence):
 
             def hook(request, _):
                 row["pre_tool_hooks"].append(request)
+                if request["toolName"] in ("ask_user", "exit_plan_mode"):
+                    return None  # Reach the independent refusal handlers.
+                if mode == "hook-exception":
+                    raise ValueError("SYNTHETIC pre-tool callback exception")
                 return {"permissionDecision": "deny"}
 
             def user_input(request, context):
@@ -147,7 +156,7 @@ async def experiment(cli, base, port, evidence):
                 provider={"type": "openai", "base_url": f"http://127.0.0.1:{port}/v1"},
                 on_permission_request=permission, on_user_input_request=user_input,
                 on_exit_plan_mode_request=plan_exit,
-                hooks={"on_pre_tool_use": hook} if mode != "credentials" else None,
+                hooks={"on_pre_tool_use": hook} if mode in ("hook-deny", "hook-exception") else None,
                 on_event=lambda event: events.append(event.to_dict()),
                 working_directory=str(workspace), plugin_directories=[str(PLUGIN)],
                 disabled_mcp_servers=["context7", "microsoft-docs", "playwright"],
@@ -181,17 +190,17 @@ async def experiment(cli, base, port, evidence):
                     return {"rpc_error": f"{type(error).__name__}: {error}"}
                 return result.to_dict() if hasattr(result, "to_dict") else result
 
-            if mode == "reject":
+            if mode == "hook-deny":
                 inventory = await session.rpc.agent.list(
                     SessionAgentListRequest(include_prompt=True), timeout=30)
                 evidence["agents"] = [agent_evidence(a.to_dict(), PLUGIN) for a in inventory.agents]
                 expected_agents = {p.stem.removesuffix(".agent") for p in (PLUGIN / "agents").glob("*.agent.md")}
-                matched_agents = {a["name"] for a in evidence["agents"]
+                matched_agents = {local_agent_name(a["name"]) for a in evidence["agents"]
                                   if a.get("path_matches") and a.get("prompt_matches")}
                 evidence["agent_content_gaps"] = sorted(expected_agents - matched_agents)
                 if evidence["agent_content_gaps"]:
                     evidence["blockers"].append("Some authored agents lack matching native path/prompt evidence")
-                lead = next((a for a in inventory.agents if a.name == "dev-lead"), None)
+                lead = next((a for a in inventory.agents if a.name == "agile-agents-core:dev-lead"), None)
                 if lead is not None:
                     selected = await session.rpc.agent.select(AgentSelectRequest(name=lead.id), timeout=20)
                     current = await session.rpc.agent.get_current(timeout=20)
@@ -226,10 +235,12 @@ async def experiment(cli, base, port, evidence):
 
             await session.rpc.tools.initialize_and_validate(timeout=30)
             row["tool_metadata"] = (await session.rpc.tools.get_current_metadata(timeout=20)).to_dict()
-            if mode == "reject":
+            if mode == "hook-deny":
                 row["ask_user_result"] = await execute("ask_user", {
                     "question": "SYNTHETIC direct-tool input round trip; refuse approval",
                     "allowFreeform": True})
+                if not row["user_inputs"]:
+                    evidence["blockers"].append("Native ask_user did not reach input callback")
                 # Native plan-mode callback mechanics, not semantic plan provenance.
                 row["mode_update"] = (await session.rpc.mode.set(
                     ModeSetRequest.from_dict({"mode": "plan"}), timeout=20)).to_dict()
@@ -237,10 +248,12 @@ async def experiment(cli, base, port, evidence):
                 row["plan_result"] = await execute("exit_plan_mode", {
                     "summary": "SYNTHETIC direct-tool plan refusal; no authored agent plan"})
                 row["mode_after_refusal"] = str(await session.rpc.mode.get(timeout=20))
+                if not row["plan_exits"]:
+                    evidence["blockers"].append("Native exit_plan_mode did not reach plan callback")
                 await session.rpc.mode.set(ModeSetRequest.from_dict({"mode": "interactive"}), timeout=20)
                 await session.rpc.tools.initialize_and_validate(timeout=30)
 
-            if mode in ("reject", "exception"):
+            if mode != "credentials":
                 marker = workspace / ("mutation-" + mode)
                 before_permissions, before_hooks = len(row["permissions"]), len(row["pre_tool_hooks"])
                 result = await execute("bash", {
@@ -334,19 +347,38 @@ def main():
     args.evidence.write_text(json.dumps(evidence, indent=2, default=str) + "\n")
     # Small public annotations; complete paths/hashes/results remain in the artifact.
     summary = {k: v for k, v in evidence.items() if k not in (
-        "agents", "skills", "sessions", "events", "agent_selected", "agent_current", "policy")}
+        "agents", "skills", "sessions", "events", "agent_selected", "agent_current", "policy",
+        "trace_contract")}
     print(json.dumps(summary, indent=2, default=str))
     notices = {"summary": summary}
     notices["discovery"] = {
-        "agents": [{k: a[k] for k in ("name", "id", "path_matches", "prompt_matches",
-                                    "source_sha256", "runtime_prompt_sha256") if k in a}
-                   for a in evidence.get("agents", [])],
+        "agents_count": len(evidence.get("agents", [])),
+        "agent_names": [a["name"] for a in evidence.get("agents", [])],
+        "agent_paths_matched": sum(a.get("path_matches", False) for a in evidence.get("agents", [])),
+        "agent_prompts_matched": sum(a.get("prompt_matches", False) for a in evidence.get("agents", [])),
+        "dev_lead": next(({k: v for k, v in a.items() if k not in ("description", "tools")}
+                          for a in evidence.get("agents", [])
+                          if local_agent_name(a["name"]) == "dev-lead"), None),
         "skills_count": len(evidence.get("skills", [])),
         "skill_paths_matched": sum(s.get("path_matches", False) for s in evidence.get("skills", [])),
-        "selected": evidence.get("agent_current")}
+        "selected": {k: v for k, v in evidence.get("agent_current", {}).get("agent", {}).items()
+                     if k in ("name", "id", "path", "source")},
+        "example_skill": next(({k: v for k, v in s.items() if k != "description"}
+                               for s in evidence.get("skills", [])
+                               if s["name"] == "acceptance-grading"), None)}
+    if "trace_contract" in evidence:
+        notices["trace"] = {**evidence["trace_contract"],
+                            "skills_offered": sorted(set(evidence["trace_contract"]["skills_offered"]))}
     for mode, row in evidence.get("sessions", {}).items():
-        notices[mode] = {k: v for k, v in row.items()
-                         if k not in ("tool_metadata", "policy_readback", "effective_policy")}
+        notices[mode] = {
+            k: v for k, v in row.items() if k not in (
+                "tool_metadata", "policy_readback", "effective_policy", "pre_tool_hooks",
+                "permissions", "shell_result", "file_read")}
+        notices[mode]["permission_kinds"] = [p["kind"] for p in row["permissions"]]
+        notices[mode]["hook_tools"] = [p["toolName"] for p in row["pre_tool_hooks"]]
+        if "shell_result" in row:
+            notices[mode]["shell_result"] = row["shell_result"]
+            notices[mode]["file_read_error"] = row["file_read"].get("error")
     for key, value in notices.items():
         text = json.dumps(value, default=str).replace(
             "%", "%25").replace("\r", "%0D").replace("\n", "%0A")

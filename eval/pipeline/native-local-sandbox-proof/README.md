@@ -51,9 +51,21 @@ verification and exit code); `eval/provenance.py` owns hashes and result binding
 `metrics/acceptance.run_judge` still returns `verification_disabled`, and
 `run-eval.{sh,ps1}` still block non-dry execution. This experiment removes no gates.
 
-Local validation before hosted execution: 48 proof unit tests (39 unchanged,
-9 new proof-logic tests), plus 172 existing trace/grading/provenance pytest tests.
-The hosted result and remaining blockers are recorded below after execution.
+Local validation before hosted execution: 52 proof unit tests (39 unchanged,
+13 new proof-logic tests), plus 172 existing trace/grading/provenance pytest tests.
+
+First run: [39423365886](https://github.com/hoffe86/agile-agents/actions/runs/39423365886),
+commit `0d68c80b66dd6342815c445faafcaf0219965960`. All original 15 available /
+5 unavailable assertions passed. Native hooks denied mutations; 42 core skills
+had matching source paths. The probe initially mishandled namespace-qualified
+agent names and shadowed input/permission callbacks with its deny hook. One
+corrective round maps `agile-agents-core:` names and separates explicit hook denial,
+permission rejection, permission exception and hook-exception sessions. Input
+tools reach their own refusing callbacks. This changes the experiment, not the
+sandbox policy or original tests. First-run credentials already demonstrated an
+unconfigured inherited marker reaching the shell, configured masking changing the
+marker, and both file-tool and shell denial of the controller marker file.
+The corrected hosted result is recorded below after execution.
 
 This **synthetic infrastructure experiment** is separate from `worker-proof` and
 `controller-proof`. It does not lift any live-evaluation hold, run a benchmark,
