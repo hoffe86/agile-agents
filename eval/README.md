@@ -502,14 +502,94 @@ independent connections, a two-process consumption race and a crash-after-commit
 probe. Symlink/reparse detection additionally uses portable `lstat` fault injection;
 it is not an OS sandbox proof. The second performs no SDK import/startup, ledger
 creation, credential discovery, staging or network access, and always exits **2**.
-The new test module is run explicitly; the existing repository test-bar helper
-names its pre-existing unittest modules rather than discovering this one.
+Both authorization test modules are selected explicitly by
+`python scripts/run-repo-checks.py unit`, retaining the existing unittest/pytest
+split. They can also run independently without SDK or DeepEval.
 
 Readiness is permanently `execution_ready: false`, `state: not_ready`, with:
 `live_hold`, `controller_ledger_isolation_unverified`,
 `native_atomic_admission_unverified`, `stage4_plan_provenance_unverified`,
 `delegate_model_provenance_unverified`, `credential_transport_unverified`, and
-`pinned_runtime_compatibility_unverified`. Task 2 owns native callbacks,
-environment sanitation and runner diagnostic wiring; none is enabled here.
+`pinned_runtime_compatibility_unverified`. The native control seam below adds
+defensive callbacks, environment sanitation and runner diagnostics behind this
+same permanent hold; no live execution is enabled.
 No paid evaluation, native SDK session, runtime pin change, live-v2 success record
 or positive credit is part of these controls.
+
+### Held native controller (Task 2)
+
+`native_controller.py` is a standard-library-only adapter seam. Its
+`NativeController` receives one independently bound `PlanSubmission`, the exact
+owned native session/path, a dedicated owned runtime, and **all** that
+controller's ledger connections. Do not supply a shared runtime or omit joined
+connections. The public `NativeSession` / `NativeRpc` / `NativePlan` protocols
+mirror the SDK 1.0.22 `session.rpc.plan.read()` attribute result
+(`exists`, `content`, `path`); callback tests use typed doubles, not a live SDK.
+
+- `on_exit_plan_mode_request` checks callback and owned session IDs, awaits the
+  owned native plan read, and checks the exact path and UTF-8 content SHA-256
+  without newline or whitespace normalization. It never substitutes inline
+  `planContent`, `summary` or `recommendedAction`. Even a matching plan returns
+  `stage4_plan_provenance_unverified`: native plan capture is not semantic Stage 4
+  provenance. No branch approves, consumes a grant, or selects `exit_only`.
+- `on_pre_tool_use` explicitly denies every route, including native tools,
+  delegates, unknown/unattributed calls and remote MCP. Ordinary handler failures
+  latch abort, finish cleanup and **return deny**, rather than trusting an SDK
+  hook exception to deny. `on_permission_request` independently rejects;
+  `on_user_input_request` refuses arbitrary approval strings.
+- `abort` / `on_disconnect` latch terminal state before awaiting cleanup. They
+  try to persist batch abort, close every supplied ledger connection, disconnect
+  the session and stop only the dedicated owned runtime. Failed graceful stop
+  falls back to bounded `force_stop`. Cancellation waits for cleanup and then
+  propagates. Cleanup failures retain bounded codes, not exception text; even a
+  failed force-stop never permits continuation. No automatic resume, retry or
+  grant refund. An OS-level failure to stop remains unresolved—not proof that
+  the process died.
+- A session lock serializes callback work; neither it nor SQLite makes native
+  plan-read-to-callback-return-to-tool execution atomic. No transaction spans an
+  SDK await. SDK failures before callback dispatch and alternate execution routes
+  remain unverified and are among the reasons startup stays blocked.
+
+`sanitized_runtime_spec(parent_environment, *, home, config, temp, workspace,
+trusted_path)` builds an immutable environment from explicit values and only a
+constrained `LANG` allowlist. It does not copy the parent's environment, mutate it,
+discover credentials, create directories, or inherit user PATH/config, Git/SSH,
+proxy/keychain/cloud/model credentials or Node/Python startup injection settings.
+Paths and binaries must already be controller-owned/trusted. Its defensive
+session options disable discovery, file hooks, host Git/cache integration and
+session storage; no plugin/MCP/tool routes are enabled. This is tested
+**configuration hygiene**, not verified native sandbox/network/credential isolation.
+An empty tool list is not revocation.
+
+`start_native_runtime(spec, *, github_token=None)` always returns `not_ready`
+**before SDK import, client construction or startup**. Client-level token options
+are rejected (including an empty string). SDK 1.0.22 `client.py` replaces inherited
+environment when explicit `env` is supplied, but then injects `github_token` into
+`COPILOT_SDK_AUTH_TOKEN`; sanitizing the input mapping alone cannot prevent that
+leak. No per-session token, environment-secret or proxy workaround is implemented.
+`sdk_callbacks(controller, opt_in=True)` is an explicit integration-only lazy
+import that translates the independent rejection into `PermissionDecisionReject`;
+it does not create a client and is never called by readiness or the runners.
+
+Both non-dry runners request the shared `authorization.py check-readiness`
+diagnostic and then **unconditionally exit 2**. A zero/error diagnostic status,
+missing Python, plausible envelope/grant files, credentials, or `NoIsolation`
+cannot unlock execution. No staging or model startup occurs. Dry-run behavior,
+dry provenance v1, grading v2, disabled judge and trace requirements are unchanged.
+
+```text
+python -B -m unittest discover -s eval/pipeline/tests -p test_native_controller.py -v
+```
+
+These are callback/configuration and real-shell **unit tests**, not runtime
+integration evidence. The existing local CLI 1.0.100 plan proof does not establish
+parity with CI CLI 1.0.98; SDK remains 1.0.22. No dependency/model/runtime pins change.
+
+**CI hand-off (infrastructure owner):** `.github/workflows/eval-skills.yml` still
+lists individual suites rather than calling the test-bar helper. Add separate
+steps in its `runtime-contracts` job (both OS matrix entries), after the existing
+pipeline workflow regression step, preserving all existing commands:
+`python -m unittest discover -s eval/pipeline/tests -p test_authorization.py -v`
+and
+`python -m unittest discover -s eval/pipeline/tests -p test_native_controller.py -v`.
+No workflow YAML is changed by Task 2.

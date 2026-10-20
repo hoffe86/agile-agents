@@ -122,6 +122,18 @@ $pluginDir = $pluginDirs[0]  # retained for messages that name a single represen
 $devLeadAgent = 'agile-agents-core:dev-lead'
 
 if (-not $DryRun) {
+    # Isolated stdlib diagnostic: no site/PYTHONPATH startup hooks or bytecode writes.
+    # Diagnostic only. Even success, a terminating error, or missing Python
+    # cannot bypass the unconditional hold below.
+    try {
+        if (Get-Command python -ErrorAction SilentlyContinue) {
+            & python -I -S -B (Join-Path $PSScriptRoot '..' 'authorization.py') check-readiness
+        } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+            & python3 -I -S -B (Join-Path $PSScriptRoot '..' 'authorization.py') check-readiness
+        }
+    } catch {
+        [Console]::Error.WriteLine('Readiness diagnostic unavailable; execution remains not ready.')
+    }
     Write-FatalError 'Live evaluation is disabled: no verified OS sandbox for untrusted artifact workers (no host credentials or external/host/control-plane network). Use -DryRun for offline staging and preflight, not execution-readiness certification.'
 }
 

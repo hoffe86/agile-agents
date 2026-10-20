@@ -95,6 +95,14 @@ if [[ ! "$PASS_THRESHOLD" =~ ^[0-9]{1,3}$ ]] || (( 10#$PASS_THRESHOLD > 100 )); 
     exit 2
 fi
 if [[ "$DRY_RUN" != "1" ]]; then
+    # Isolated stdlib diagnostic: no site/PYTHONPATH startup hooks or bytecode writes.
+    # Diagnostic only, never an unlock: missing/broken Python or even exit 0
+    # must still reach the unconditional hold below (including under set -e).
+    if command -v python >/dev/null 2>&1; then
+        python -I -S -B "${SCRIPT_DIR}/../authorization.py" check-readiness || true
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -I -S -B "${SCRIPT_DIR}/../authorization.py" check-readiness || true
+    fi
     echo "ERROR: live evaluation is disabled: no verified OS sandbox for untrusted artifact workers (no host credentials or external/host/control-plane network). Use --dry-run for offline staging and preflight, not execution-readiness certification." >&2
     exit 2
 fi

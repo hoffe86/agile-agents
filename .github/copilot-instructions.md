@@ -65,7 +65,7 @@ agent/                               Marketplace root
 │   │                                defines keys, not identical project values
 │   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace,
 │   │                                pluginRoot ./plugins)
-│   └── workflows/                   5 workflows -> CI checks audit-references,
+│   └── workflows/                   7 workflows -> CI checks audit-references,
 │                                    check-agents-md-in-sync, trajectory,
 │                                    plugin-versions, skill-quality
 ├── plugins/                         One folder per plugin
