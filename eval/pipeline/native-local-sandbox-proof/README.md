@@ -1,5 +1,60 @@
 # Native local Copilot sandbox feasibility proof
 
+## Bounded controller/plugin compatibility verification
+
+`compatibility.py` extends the **same** hosted workflow only after both original
+sandbox scenarios pass. It keeps the original tests, pins and restrictions intact.
+It uses native SDK RPC with the real core plugin directory, isolated HOME/config,
+disabled plugin MCP servers, and the rejecting localhost provider trap. It never
+sends a model turn, delegates a task, calls a judge, or enables the live runner.
+All payloads, input questions and refusal answers are **synthetic**; there are no
+synthetic model events and no claims about model-chosen skill use.
+
+The experiment records native agent inventory, exact authored-body hashes and
+source paths, dev-lead selection/readback, and enabled skill paths/source hashes.
+The SDK 1.0.22 `AgentInfo` schema has no `agents` field: discovering declared
+workers does **not** establish enforcement of dev-lead's worker list.
+Separate sessions probe direct native tool callbacks with rejecting and raising
+permission handlers, an explicitly denying pre-tool hook, user input and plan-exit
+refusals. No callback invocation is fabricated by the test harness. Mutations are
+checked in the host view; callback absence cannot prove controller denial.
+Dependent delegated/plan execution is not attempted without semantic authorization.
+
+An independent session uses entirely synthetic environment/file markers to compare
+the native in-process `view` tool against sandboxed `bash`. Only the exact synthetic
+shell command can receive `approve_once`; all other permissions are rejected.
+`credentials.envVars.SYNTHETIC_MASKED.injectHosts: [example.invalid]` probes the
+opt-in credential-masking boundary with outbound/local network still blocked.
+It does **not** test real credentials, HTTPS substitution, destination enforcement,
+remote MCP, or the controller process's own protection from a hostile peer process.
+An unconfigured inherited marker is a deliberate negative control, not a secret.
+
+`experiment: COMPLETE` means measurements finished, **not** readiness.
+`integration: BLOCKED` is unconditional: permission approval is not plan
+authorization, and direct RPC is not a live agent trace. Errors, negative findings,
+provider requests and cleanup remain visible in artifacts/public annotations.
+No production grading/admission implementation is changed.
+
+Contract sources: pinned SDK `generated/rpc.py` (`AgentInfo`, `ToolsApi`,
+`SandboxCredentialsConfig`) and `session.py` (separate input/plan callbacks);
+[SDK skills documentation](https://github.com/github/copilot-sdk/blob/main/docs/features/skills.md);
+ADRs [0008](../../../docs/adr/0008-layered-evaluation-strategy.md) and
+[0015](../../../docs/adr/0015-deepeval-for-pipeline-evaluation.md).
+The installed schema, not newer documentation, determines the tested signatures.
+
+The existing `eval/deepeval/adapters/copilot_trace.py` accepts serialized event
+envelopes with `type/data/id/parentId/timestamp`; `verify_schema` must expose absent
+tool, turn and skills events rather than interpreting an empty direct-RPC trace as
+agent behaviour. Native tool output is **not** a grade. `eval/grading.py` owns
+`JudgeResult` schema v2 (claimed/normalized verdict, criteria, completeness,
+verification and exit code); `eval/provenance.py` owns hashes and result bindings.
+`metrics/acceptance.run_judge` still returns `verification_disabled`, and
+`run-eval.{sh,ps1}` still block non-dry execution. This experiment removes no gates.
+
+Local validation before hosted execution: 48 proof unit tests (39 unchanged,
+9 new proof-logic tests), plus 172 existing trace/grading/provenance pytest tests.
+The hosted result and remaining blockers are recorded below after execution.
+
 This **synthetic infrastructure experiment** is separate from `worker-proof` and
 `controller-proof`. It does not lift any live-evaluation hold, run a benchmark,
 send a prompt, or authorize a model request. It provisions no cloud resources.

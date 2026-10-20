@@ -31,7 +31,7 @@ jobs:
         with:
           python-version: '3.12.12'
       - name: Unit checks (no runtime invocation)
-        run: python -m unittest -v test_proof
+        run: python -m unittest -v test_proof test_compatibility
       - name: Install native prerequisites from signed fixed Ubuntu snapshot
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
@@ -73,6 +73,7 @@ jobs:
           unshare --user --net true
           printf '::notice title=Namespace readiness::Non-root unshare --user --net succeeded\n'
       - name: Exercise Copilot native tool pipeline
+        id: available
         run: |
           env -i PATH="$PATH" GITHUB_ACTIONS=true RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
             ImageOS="$ImageOS" ImageVersion="$ImageVersion" \
@@ -89,6 +90,12 @@ jobs:
             ImageOS="$ImageOS" ImageVersion="$ImageVersion" \
             "$RUNNER_TEMP/native-proof-venv/bin/python" proof.py \
             "$RUNNER_TEMP/native-proof-runtime/copilot" evidence/unavailable.json --unavailable
+      - name: Controller and plugin compatibility (no models)
+        if: ${{ !cancelled() && steps.available.outcome == 'success' && steps.unavailable.outcome == 'success' }}
+        run: |
+          env -i PATH="$PATH" GITHUB_ACTIONS=true RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
+            "$RUNNER_TEMP/native-proof-venv/bin/python" compatibility.py \
+            "$RUNNER_TEMP/native-proof-runtime/copilot" evidence/compatibility.json
       - name: Publish synthetic evidence only
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
