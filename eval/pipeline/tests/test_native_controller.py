@@ -29,7 +29,7 @@ from test_authorization import NOW, PLAN, records  # noqa: E402
 
 @dataclass
 class NativePlanResult:
-    """Same attribute contract as SDK 1.0.22 rpc.PlanReadResult."""
+    """Same attribute contract as SDK 1.0.24 rpc.PlanReadResult."""
 
     exists: bool
     content: str | None
@@ -480,7 +480,7 @@ class SdkCallbacksContractTests(unittest.IsolatedAsyncioTestCase):
             "eval/deepeval/requirements.lock.txt"
         )
         try:
-            self.assertEqual(version("github-copilot-sdk"), "1.0.22", install)
+            self.assertEqual(version("github-copilot-sdk"), "1.0.24", install)
         except PackageNotFoundError:
             self.fail(install)
         # The event loop's wakeup sockets already exist. Imports and callbacks
@@ -496,7 +496,7 @@ class SdkCallbacksContractTests(unittest.IsolatedAsyncioTestCase):
             from copilot.rpc import PlanReadResult
         except ImportError as exc:
             self.fail(f"{install}: {exc}")
-        self.assertEqual(CLI_VERSION, "1.0.98")
+        self.assertEqual(CLI_VERSION, "1.0.101")
         blocker = patch("copilot.CopilotClient",
                         side_effect=AssertionError("offline contract forbids startup"))
         mock = blocker.start()
@@ -564,6 +564,37 @@ class SdkCallbacksContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.runtime.stops, 1)
 
 
+class SdkConfigurationContractTests(unittest.TestCase):
+    def test_runtime_options_bind_to_selected_sdk_without_startup(self) -> None:
+        import inspect
+
+        with (
+            patch("socket.socket.__init__",
+                  side_effect=AssertionError("offline contract")) as socket_start,
+            patch("subprocess.Popen",
+                  side_effect=AssertionError("offline contract")) as process_start,
+        ):
+            from copilot.client import CopilotClient, RuntimeConnection
+
+            base = Path(tempfile.gettempdir()) / "not-created-sdk-contract"
+            spec = sanitized_runtime_spec(
+                {}, home=base / "home", config=base / "config", temp=base / "tmp",
+                workspace=base / "workspace", trusted_path=(base / "bin",))
+            # Bind against the real keyword-only API, not a permissive test double.
+            inspect.signature(CopilotClient.create_session).bind(
+                None, **spec.session_options())
+            connection = RuntimeConnection.for_stdio(
+                path=str(base / "bin" / "copilot-runtime"), args=spec.cli_args)
+            self.assertEqual(connection.path, str(base / "bin" / "copilot-runtime"))
+            self.assertEqual(connection.args, spec.cli_args)
+            inspect.signature(CopilotClient).bind(
+                connection=connection, env=dict(spec.environment),
+                base_directory=spec.base_directory, working_directory=spec.working_directory,
+                use_logged_in_user=False)
+            socket_start.assert_not_called()
+            process_start.assert_not_called()
+
+
 class RuntimeConfigurationUnitTests(unittest.IsolatedAsyncioTestCase):
     def spec(self, parent: dict[str, str]):
         base = Path(tempfile.gettempdir()) / "not-created-held-runtime"
@@ -606,7 +637,6 @@ class RuntimeConfigurationUnitTests(unittest.IsolatedAsyncioTestCase):
             "enable_on_demand_instruction_discovery": False,
             "enable_file_hooks": False, "enable_host_git_operations": False,
             "enable_session_store": False, "enable_session_telemetry": False,
-            "enable_github_cache_store": False,
             "skip_embedding_retrieval": True, "enable_skills": False,
             "plugin_directories": [], "mcp_servers": {}, "available_tools": [],
         })

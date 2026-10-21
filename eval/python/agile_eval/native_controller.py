@@ -1,6 +1,6 @@
 """Held native callback boundary. No SDK import, discovery or startup on import.
 
-Protocols mirror public SDK 1.0.22 surfaces, not its private dispatch machinery.
+Protocols mirror public SDK 1.0.24 surfaces, not its private dispatch machinery.
 Callback unit tests are NOT native mediation, Stage 4 or OS isolation evidence.
 There is deliberately no approved/exit_only branch, live admission or resume.
 """
@@ -278,7 +278,6 @@ class RuntimeSpec:
             "enable_on_demand_instruction_discovery": False,
             "enable_file_hooks": False, "enable_host_git_operations": False,
             "enable_session_store": False, "enable_session_telemetry": False,
-            "enable_github_cache_store": False,
             "skip_embedding_retrieval": True, "enable_skills": False,
             "plugin_directories": [], "mcp_servers": {}, "available_tools": [],
         }
@@ -332,7 +331,7 @@ async def start_native_runtime(
 ) -> Readiness:
     """Held launcher: no SDK import/client, token discovery, files or process.
 
-    SDK 1.0.22 injects client github_token into COPILOT_SDK_AUTH_TOKEN *after*
+    SDK 1.0.24 injects client github_token into COPILOT_SDK_AUTH_TOKEN *after*
     env replacement. Reject that option, including empty strings, before startup.
     No per-session token/proxy workaround. No caller-supplied readiness switch.
     """

@@ -541,8 +541,9 @@ Readiness is permanently `execution_ready: false`, `state: not_ready`, with:
 `pinned_runtime_compatibility_unverified`. The native control seam below adds
 defensive callbacks, environment sanitation and runner diagnostics behind this
 same permanent hold; no live execution is enabled.
-No paid evaluation, native SDK session, runtime pin change, live-v2 success record
-or positive credit is part of these controls.
+No paid evaluation, live-v2 success record or positive credit is enabled by these
+controls. The separately authorized dependency upgrade and bounded no-model
+qualification below do not release them.
 
 ### Held native controller
 
@@ -551,7 +552,7 @@ or positive credit is part of these controls.
 owned native session/path and a dedicated owned runtime, and creates its own fresh
 `JobAuthorization`. Do not supply a shared runtime. The public
 `NativeSession` / `NativeRpc` / `NativePlan` protocols
-mirror the SDK 1.0.22 `session.rpc.plan.read()` attribute result
+mirror the SDK 1.0.24 `session.rpc.plan.read()` attribute result
 (`exists`, `content`, `path`); tests use typed doubles and offline SDK contracts,
 not a live runtime.
 
@@ -590,7 +591,7 @@ An empty tool list is not revocation.
 
 `start_native_runtime(spec, *, github_token=None)` always returns `not_ready`
 **before SDK import, client construction or startup**. Client-level token options
-are rejected (including an empty string). SDK 1.0.22 `client.py` replaces inherited
+are rejected (including an empty string). SDK 1.0.24 `client.py` replaces inherited
 environment when explicit `env` is supplied, but then injects `github_token` into
 `COPILOT_SDK_AUTH_TOKEN`; sanitizing the input mapping alone cannot prevent that
 leak. No per-session token, environment-secret or proxy workaround is implemented.
@@ -611,9 +612,68 @@ python -B -m unittest discover -s eval/pipeline/tests -p test_native_controller.
 These are callback/configuration and real-shell **unit tests**, not runtime
 integration evidence. Three offline tests in this same module exercise the actual
 `sdk_callbacks` factory, `PermissionDecisionReject` and `PlanReadResult` types
-against SDK 1.0.22 using the shared `deepeval/requirements.lock.txt` environment.
+against SDK 1.0.24 using the shared `deepeval/requirements.lock.txt` environment.
 They forbid client/process/socket creation and fail on missing or wrong SDK pins.
 No runtime starts or model calls occur.
+
+### Approved boundaries and bounded qualification (2026-10-21)
+
+The user approved **D1** and **D2**, plus latest-stable SDK/CLI restoration and
+bounded **no-model** qualification. This does not approve an evaluation run.
+
+- **D1:** the unchanged `dev-lead` supervisor may execute only its prescribed
+  `run-event-log`, `cost-budget` and applicable `test-bar-gate` orchestration
+  scripts inside the native sandbox. Task-05 workers remain shell/network denied.
+  Native role/session attribution must distinguish them; no blanket shell grant
+  or command-prefix workaround is acceptable. Native OS enforcement for process
+  tools and CLI software enforcement for built-in file operations are accepted
+  trust boundaries, **not measured facts**. Workers must not access credentials,
+  controller state, approval records or canonical baselines; bypass stays disabled.
+- **D2:** native `exit_only`, exclusive owned session, an immutable binding to the
+  actual plan, and **one separately authorized continuation** replace the earlier
+  proposed native compare-digest-and-execute transaction. No autoexecution,
+  competing queued turns/clients, capability broadening, or mutable-plan
+  substitution is permitted. Fail-closed errors and genuine cleanup are required.
+  The legacy `native_atomic_admission_unverified` code is retained as a conservative
+  hold pending measurement of this approved replacement, not a demand to invent
+  a nonexistent transaction. Production still has no approval/continuation branch.
+
+SDK **1.0.24** and its publisher-selected CLI runtime **1.0.101** were restored
+with the unchanged DeepEval **4.1.8** closure; exact release sources and hashes
+are in [dependency maintenance](deepeval/README.md#dependency-lock-and-maintenance).
+The actual selected SDK source supports `session.rpc.tools.execute(...)` without a model
+turn and retains the isolated delegation tool names. Source availability is not
+proof of their runtime enforcement or agent/model fidelity.
+
+| Check on this Windows host | Result / evidence boundary |
+|---|---|
+| Official package/release identity, wheel hash, exact offline restore, `pip check` | Passed; only the SDK version changed in the Python closure |
+| Selected SDK session keyword and explicit stdio connection contract | Ordinary offline regression passed; removed obsolete `enable_github_cache_store` keyword |
+| Actual downloaded native executable | SDK-managed `copilot-runtime.exe` rejects `--version` with `unsupported argument '--version'`; no runtime self-reported version or handshake claimed |
+| One bounded no-model SDK startup attempt | Blocked **before client construction/start**: CPython 3.11.9 Windows default asyncio loop stalls in `socket.socketpair()` → `socket.accept()`; 25-second watchdog captured the stack and terminated the owned Python child |
+| Owned session creation/authentication, plugin inventory, native direct tool execution/denial | Not reached; no session created, tool dispatched, or model request sent |
+| D1 supervisor/worker distinction, filesystem/network/credential protection, bypass denial | Unverified; no synthetic callback result is credited as native enforcement |
+| D2 native plan binding, `exit_only`, no autoexecution, exclusive ownership, one continuation | Unverified on this pair; no plan-mode transition or continuation attempted |
+| Actual delegation, selected agent/model fidelity | Unverified; deliberately no model generation or agent spawn |
+| Cleanup | Qualification Python child exited; no SDK runtime/session was started. Disposable synthetic task/state removed. OS descendant inspection via `Get-CimInstance Win32_Process` was denied (`Access to a CIM resource was not available to the client`); no alternate/elevated inspection attempted |
+
+Raw sanitized qualification data is a session-local JSON file, not a repository
+proof framework or a production authorization record. The socket stall does not
+identify a specific sandbox policy file: **cause/policy attribution is unknown**.
+The full unit gate also stalls at the unchanged DeepEval dependency smoke's
+default event-loop creation; this is not a green full-suite result. Focused package,
+import-isolation and native DeepEval framework tests passed without model calls.
+No tests, event-loop implementation, transport, sandbox settings or guard were
+weakened to avoid the stall.
+
+Next qualification requires the ordinary default asyncio loop to function in an
+authorized environment, then real native checks of D1/D2. Additionally, the
+selected SDK's `SandboxConfig` documentation says the runtime reads credential
+hosts but ignores `enabled` and other policy fields supplied by the host. Therefore
+neither that object nor `sandbox.get_enforcement_status()` (managed-policy status
+only) attests OS enforcement. Establish the native host's enforcement capability
+before permitting tools; do not substitute a custom host/proxy or remote TCP.
+All readiness blockers remain in force.
 
 **CI wiring:** `.github/workflows/eval-skills.yml` runs both suites as separate
 steps in its `runtime-contracts` job, on the `ubuntu-latest` and `windows-latest`

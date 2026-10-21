@@ -87,7 +87,7 @@ too late. Set it in CI as well — belt and braces.
 
 `requirements.txt` is the **maintainer input**, not an installation command.
 `requirements.lock.txt` is the complete transitive pip requirements closure:
-DeepEval **4.1.8**, github-copilot-sdk **1.0.22**, pytest **9.1.1**, PyYAML **6.0.3**,
+DeepEval **4.1.8**, github-copilot-sdk **1.0.24**, pytest **9.1.1**, PyYAML **6.0.3**,
 and exact dependency versions.
 Versions were retained from the working evaluation venv, not broadly upgraded.
 The exception is setuptools **84.0.0**, already present in the developer environment;
@@ -108,10 +108,50 @@ not a separate environment. Its added transitive pins are httpx **0.28.1**,
 httpcore **1.0.9**, python-dateutil **2.9.0.post0**, and six **1.17.0**; existing
 shared versions and platform hashes are unchanged. The tests assert the actual
 `PlanReadResult` and `PermissionDecisionReject` contracts and the SDK's declared
-CLI version **1.0.98**, without installing or launching that CLI. SDK imports
+CLI runtime version **1.0.101**, without installing or launching that runtime in
+unit tests. SDK imports
 are local to those tests; missing or incompatible dependencies fail with the
 shared-lock install command. Client construction, sockets and subprocesses are
 forbidden, and the production readiness path remains SDK-free and held.
+The configuration contract also binds the held session options against the real
+SDK signature without constructing a client. SDK 1.0.24 removed
+`enable_github_cache_store`; that obsolete keyword is no longer emitted.
+This is API compatibility, **not** evidence that a cache or sandbox is isolated.
+
+The **2026-10-21** upgrade changes only the SDK root and wheel hash; DeepEval and
+the remaining closure are unchanged. Latest stable versions were checked against
+[PyPI JSON](https://pypi.org/pypi/github-copilot-sdk/1.0.24/json) and the
+[SDK v1.0.24 release](https://github.com/github/copilot-sdk/releases/tag/v1.0.24),
+and against [npm metadata](https://registry.npmjs.org/@github%2fcopilot/1.0.101)
+and the [CLI v1.0.101 release](https://github.com/github/copilot-cli/releases/tag/v1.0.101).
+Both GitHub releases were published on 2026-10-20 and are neither drafts nor
+prereleases. The downloaded SDK wheel's `_cli_version.py` pins **1.0.101** too:
+no older automatic bundle, prerelease, ambient CLI, or fallback was selected.
+Its SHA-256 is
+`6b2e896df6801c5b144c3e5a0ee6c8890e7bb3af43903401fc4053fec875dc9d`.
+
+The official SDK `python -m copilot download-runtime` utility restored that
+runtime into a disposable `COPILOT_CLI_EXTRACT_DIR`, not user/global runtime
+settings. Its release asset is `github-copilot-1.0.101-win32-x64.tgz`
+(release SHA-256
+`b4ea97de362afc4c17d25a2aee8e4212c97c8ada488398f9735b7ec09922c6cc`);
+the utility verifies the release checksum before extracting. This SDK-managed
+entrypoint is `copilot-runtime.exe`, not the interactive `copilot.exe`.
+In the selected package the explicit native path API is
+`CopilotClient(connection=RuntimeConnection.for_stdio(path=..., args=...))`,
+not the older dictionary/`cli_path` examples in current local-CLI documentation.
+The matching published pins establish the publisher-selected pair; successful
+RPC, sandbox and delegated-agent compatibility are **not yet measured**.
+See [bounded qualification and its blockers](../README.md#approved-boundaries-and-bounded-qualification-2026-10-21).
+
+Upgrade validation used the existing private Windows CPython **3.11.9** environment:
+hash-verified wheel download, exact offline dry-run/restore and `pip check` passed.
+The new universal SDK wheel's `Requires-Python` and active `Requires-Dist` entries
+fit the unchanged lock under Windows/Ubuntu CPython 3.11/3.12 marker environments.
+A bounded full Ubuntu 3.11 wheel download timed out after 220 seconds; the
+remaining full cross-target downloads were not attempted. Thus this upgrade does
+**not** claim renewed full four-target download or native Ubuntu/Python 3.12
+execution evidence. The platform hashes were preserved, not regenerated.
 
 CI creates a fresh venv, downloads with `--require-hashes --only-binary=:all:`,
 installs with `--no-index`, runs `pip check`, then requires the real DeepEval import,
