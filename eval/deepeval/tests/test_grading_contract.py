@@ -1,16 +1,15 @@
 """Strict, model-free contract tests shared by both scoring paths."""
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from grading import (
-    Verdict, acceptance_count, artifact_dump, has_unverified, immutable_inputs,
-    parse_result, result_status, write_result,
+from agile_eval.grading_contract import (
+    Verdict, acceptance_count, has_unverified, parse_result,
 )
+from agile_eval.workspace_inputs import artifact_dump, immutable_inputs
+from agile_eval.provenance import result_status, write_result
 
 
 @pytest.mark.parametrize("statuses,claimed,want,exit_code", [
@@ -60,6 +59,18 @@ def test_malformed_contract_is_judge_error_not_agent_failure(text):
     assert result.exit_code == 4
     assert result.score == 0 and not result.complete
     assert result.error_kind == "judge_contract" and result.reasons
+
+
+def test_out_of_order_criteria_round_trip_in_canonical_order(tmp_path):
+    from agile_eval.grading_contract import parse_result
+    from agile_eval.provenance import result_status, write_result
+
+    result = parse_result("2. FAIL - absent\n1. PASS - checked\nVERDICT: PARTIAL", 2)
+    assert [criterion["id"] for criterion in result.criteria] == [1, 2]
+    path = tmp_path / "result.json"
+    write_result(result, path)
+    assert result_status(path, 2) == "partial"
+    assert result.to_dict()["verified_failures"] == [2]
 
 
 def test_status_words_in_prose_are_not_criterion_statuses():
@@ -123,7 +134,7 @@ def test_artifacts_include_workflows_but_not_secrets_internal_inputs_or_builds(t
 
 @pytest.mark.parametrize("threshold", [0, 0.5, 1])
 def test_metric_never_succeeds_for_unverified_even_at_permissive_threshold(tmp_path, monkeypatch, threshold):
-    from metrics import acceptance
+    from agile_eval.metrics import acceptance
     monkeypatch.setattr(acceptance, "run_judge", lambda *a, **kw: parse_result(
         "1. UNVERIFIED - tool missing\nVERDICT: RESOLVED", 1,
     ))
@@ -134,7 +145,7 @@ def test_metric_never_succeeds_for_unverified_even_at_permissive_threshold(tmp_p
 
 @pytest.mark.parametrize("threshold", [0, 1])
 def test_task10_ingress_uncertainty_denies_resolved_and_metric_credit(tmp_path, monkeypatch, threshold):
-    from metrics import acceptance
+    from agile_eval.metrics import acceptance
 
     acceptance_path = Path(__file__).resolve().parents[2] / (
         "pipeline/custom-eval/tasks/task-10-helm-to-kustomize/acceptance.md"
@@ -174,8 +185,7 @@ def test_task10_ingress_uncertainty_denies_resolved_and_metric_credit(tmp_path, 
 
 @pytest.fixture
 def staged(tmp_path):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pipeline/custom-eval"))
-    from prepare_inputs import prepare
+    from agile_eval.prepare_inputs import prepare
     task = Path(__file__).resolve().parents[2] / "pipeline/custom-eval/tasks/task-10-helm-to-kustomize"
     workspace = tmp_path / "ws" / task.name
     baseline = tmp_path / "baseline" / task.name
@@ -277,7 +287,7 @@ def test_manifest_path_traversal_is_rejected(staged):
 
 
 def test_raw_judge_response_and_embedded_credentials_are_never_persisted(tmp_path, capsys):
-    from grading import write_result
+    from agile_eval.provenance import write_result
 
     secret = "ghp_fixtureNotARealCredential_1234567890"
     response = f"1. FAIL - copied {secret} VERDICT: FAILED\nVERDICT: FAILED"

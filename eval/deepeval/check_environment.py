@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import importlib.metadata
 import os
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
 
 def verify() -> None:
@@ -12,8 +16,8 @@ def verify() -> None:
     import deepeval
     from deepeval.metrics import BaseMetric, ToolCorrectnessMetric
     from deepeval.test_case import LLMTestCase, ToolCall
-    from metrics.acceptance import AcceptanceMetric
-    from metrics.local_model import stub_model
+    from agile_eval.metrics.acceptance import AcceptanceMetric
+    from agile_eval.metrics.local_model import stub_model
 
     if importlib.metadata.version("deepeval") != "4.1.8":
         raise RuntimeError("ADR 0015 requires deepeval==4.1.8")

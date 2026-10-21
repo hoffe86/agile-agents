@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -88,6 +89,12 @@ def _install_cli_sentinel(bash, temp_dir):
 
 
 def _run_actual_runner(bash, args, env_updates):
+    # Python is now a prelaunch prerequisite, not merely an optional diagnostic.
+    # Keep these runner tests on their actual interpreter, including Windows venvs.
+    env_updates = dict(env_updates)
+    env_updates["PATH"] = (
+        _bash_path(bash, Path(sys.executable).parent) + ":" + env_updates.get("PATH", "")
+    )
     runner = shlex.quote(_bash_path(bash, RUN_EVAL))
     command = "bash " + runner + " " + " ".join(shlex.quote(arg) for arg in args)
     return _run_bash(bash, command, env_updates)

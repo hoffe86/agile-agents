@@ -240,6 +240,10 @@ in `solution-profile.yaml` under `backlog.platform` + `backlog.url`. Task creati
 
 ### Eval harness (`eval/`)
 
+Shared Python implementation lives in [`eval/python/agile_eval/`](eval/python/agile_eval/).
+Existing script paths remain executable entrypoints; library callers use explicit
+`agile_eval.*` imports from the single `eval/python` source root.
+
 The eval harness is the suite's **measurement frame** — it makes quality a number, not a vibe,
 so two questions have evidence-based answers: *is the suite getting better or worse over time?*
 and *did change X actually help?* (run before/after, compare the delta). Quantitative
@@ -284,12 +288,14 @@ gate_checks, cost telemetry). It runs on every push/PR via the
 catches process failures the outcome eval is blind to (e.g. a run that produces a plausible
 artifact while its gates never fire). An L1 review-detection eval is planned.
 
-> **Status:** `custom-eval` **invokes `dev-lead` for real** (`copilot --agent
-> agile-agents-core:dev-lead --plugin-dir <repo>/plugins/agile-agents-core`) and **scores the result**: an LLM judge grades the
-> produced workspace against the task's `acceptance.md` (`resolved`/`partial`/`failed`), with an
-> optional deterministic per-task `score.ps1`/`score.sh` override for build/test-based checks.
-> **SWE-bench task-prep** (dataset fetch + repo checkout) isn't wired yet. The workflow stays
-> manual and non-gating. See [`eval/README.md`](eval/README.md#scoring).
+> **Status:** the single Python runner **holds all live execution** before staging,
+> SDK startup or model calls. `custom-eval` dry runs only preflight/stage fixtures;
+> held grading returns `UNVERIFIED` for valid inputs, not a measured score.
+> Executable per-task scorer overrides and the live CLI invocation helper were removed.
+> **SWE-bench task-prep** (dataset fetch + repo checkout) is also unwired. Future execution
+> requires separately approved implementation, safe isolation and human approval—not just
+> dataset preparation. The workflow stays manual and non-gating.
+> See [`eval/README.md`](eval/README.md#scoring).
 
 ### `metadata.model_tier` frontmatter convention
 Each Copilot agent records an **advisory preference**, not a model selector

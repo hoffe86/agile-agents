@@ -22,7 +22,7 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Output '[judge-result] {"schema_version":2,"status":"setup_error","exit_code":4,"error_kind":"setup","reasons":["python is required"],"normalized_verdict":"SETUP_ERROR","score":0,"raw_response_persisted":false}'
     exit 4
 }
-$judgeArgs = @((Join-Path $PSScriptRoot 'shell_judge.py'))
+$judgeArgs = @('-I', '-S', '-B', '-X', 'utf8', (Join-Path $PSScriptRoot '../deepeval/score_workspace.py'))
 if ($SelfTest) {
     $judgeArgs += '--self-test'
 } else {

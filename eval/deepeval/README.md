@@ -2,7 +2,13 @@
 
 Status: **spike**. Decision and risks in [ADR 0015](../../docs/adr/0015-deepeval-for-pipeline-evaluation.md).
 The native harness in [`../pipeline/`](../pipeline/) remains available. Both outcome
-judges now share the strict structured contract in [`../grading.py`](../grading.py).
+judges now share the strict structured contract in
+[`agile_eval.grading_contract`](../python/agile_eval/grading_contract.py).
+
+First-party implementation is under [`../python/agile_eval/`](../python/agile_eval/),
+including `metrics` and `adapters`. This directory retains dependency locks, tests,
+and the existing executable script paths. Import libraries through `agile_eval.*`;
+adding only `eval/python` to the source path does not shadow third-party `deepeval`.
 
 **Live scoring is currently disabled.** DeepEval is still available for offline parser,
 metric-contract, and fixture tests, but `run_judge` returns `UNVERIFIED` without sending
@@ -20,7 +26,7 @@ Both are now answered, on real data:
 
 **1. Can a Copilot CLI run be turned into a DeepEval trace?** Yes. `copilot -p … --output-format json` emits
 newline-delimited JSON carrying `id` / `parentId` / `timestamp` — already a span tree.
-[`adapters/copilot_trace.py`](adapters/copilot_trace.py) reconstructs the ordered tool
+[`agile_eval.adapters.copilot_trace`](../python/agile_eval/adapters/copilot_trace.py) reconstructs the ordered tool
 calls from it. DeepEval ships integrations for LangChain, OpenAI, Anthropic and others but
 none for Copilot CLI; this adapter is that missing piece.
 
@@ -62,6 +68,7 @@ python eval/deepeval/check_environment.py
 export EVAL_REQUIRE_DEEPEVAL=1
 export DEEPEVAL_TELEMETRY_OPT_OUT=1
 python -m unittest discover -s eval/pipeline/tests -p test_dependency_environment.py -v
+python -m unittest discover -s eval/pipeline/tests -p test_native_controller.py -v
 python -m pytest eval/deepeval/tests -q
 
 # measure skill usage across existing run logs — no credentials, no new runs
@@ -69,15 +76,19 @@ python eval/deepeval/report_skill_usage.py eval/pipeline/runs \
     --expect-skill architecture-decision-records
 ```
 
+Importing `agile_eval.report_skill_usage` leaves streams unchanged; its CLI `main()`
+configures UTF-8 before producing the normal report.
+
 `DEEPEVAL_TELEMETRY_OPT_OUT=1` is set in code before DeepEval is imported
-([`metrics/local_model.py`](metrics/local_model.py)), because opting out after import is
+([`agile_eval.metrics.local_model`](../python/agile_eval/metrics/local_model.py)), because opting out after import is
 too late. Set it in CI as well — belt and braces.
 
 ### Dependency lock and maintenance
 
 `requirements.txt` is the **maintainer input**, not an installation command.
 `requirements.lock.txt` is the complete transitive pip requirements closure:
-DeepEval **4.1.8**, pytest **9.1.1**, PyYAML **6.0.3**, and exact dependency versions.
+DeepEval **4.1.8**, github-copilot-sdk **1.0.22**, pytest **9.1.1**, PyYAML **6.0.3**,
+and exact dependency versions.
 Versions were retained from the working evaluation venv, not broadly upgraded.
 The exception is setuptools **84.0.0**, already present in the developer environment;
 the old venv's **65.5.0** predates Python 3.12 and references removed
@@ -91,6 +102,16 @@ native wheels have hashes for CPython 3.11/3.12 Windows `win_amd64` and Ubuntu
 Click, Typer and tqdm. Pip selects compatible wheels and fails closed otherwise.
 `requirements-yaml.lock.txt` owns the PyYAML hashes and is included by the full lock;
 the skill-quality lane uses only that lightweight file.
+
+The already-adopted SDK uses this same closure for ordinary callback unit tests,
+not a separate environment. Its added transitive pins are httpx **0.28.1**,
+httpcore **1.0.9**, python-dateutil **2.9.0.post0**, and six **1.17.0**; existing
+shared versions and platform hashes are unchanged. The tests assert the actual
+`PlanReadResult` and `PermissionDecisionReject` contracts and the SDK's declared
+CLI version **1.0.98**, without installing or launching that CLI. SDK imports
+are local to those tests; missing or incompatible dependencies fail with the
+shared-lock install command. Client construction, sockets and subprocesses are
+forbidden, and the production readiness path remains SDK-free and held.
 
 CI creates a fresh venv, downloads with `--require-hashes --only-binary=:all:`,
 installs with `--no-index`, runs `pip check`, then requires the real DeepEval import,
@@ -136,8 +157,13 @@ See [retained run provenance](../README.md#retained-run-provenance) for hash sco
 legacy handling, unavailable tool/model identities and the unsigned integrity boundary.
 This does not lift the live-verification hold.
 
-`metrics/acceptance.py` replaces the `score-judge.{sh,ps1}` twin pair with one Python
-implementation, exposed two ways:
+`agile_eval.grading` coordinates held preflight and prompt composition.
+`grading_contract` owns pure verdict normalization, `workspace_inputs` verifies fixture
+origins, and `provenance` owns retained results and their bindings, using bounded
+`file_io` primitives. These dependencies are one-way, with no provenance-to-grading import.
+`score_workspace.py` delegates without importing DeepEval; `agile_eval.metrics.acceptance`
+adapts it to the native framework. `score-judge.{sh,ps1}` and `shell_judge.py` are
+compatibility forwarders only:
 
 ```bash
 # scorer — 0 resolved / 1 failed / 2 partial / 3 unverified / 4 setup or judge error
@@ -148,25 +174,32 @@ python eval/deepeval/score_workspace.py <workspace> <acceptance.md> \
 python eval/deepeval/score_workspace.py --self-test
 ```
 
-`AcceptanceMetric` is a real DeepEval `BaseMetric` (checked with `issubclass`, because
-DeepEval type-checks with `isinstance` and duck typing is rejected), so it composes with
-`evaluate()` and the rest of the framework. Pure parsing remains importable when the
-DeepEval root package is genuinely absent. An installed package with missing internal or
-transitive modules, incompatible imports, or initialization errors fails loudly; these
-are not dependency-free environments and must not silently fall back to `object`.
+`AcceptanceMetric` is a real DeepEval `BaseMetric`, exercised through actual
+DeepEval **4.1.8** `evaluate()` in the offline integration test. Missing/broken
+dependencies fail clearly; there is no fallback `object` metric. Pure parsing in
+`agile_eval.grading_contract` and held CLI preflight remain usable without DeepEval. No positive
+workspace measurements are fabricated to demonstrate framework adoption.
+
+Native evaluation must use `CacheConfig(write_cache=False, use_cache=False)`:
+4.1.8 defaults to writing cache, and native cache keys do not bind workspace bytes.
+The integration test uses `DisplayConfig(results_folder=<owned-temp-dir>,
+inspect_after_run=False)` and an empty, credential-free HOME/config/current
+directory, with network/process denial installed **before imports**. Telemetry
+opt-out and `official=False` alone do **not** guarantee no Confident upload.
+No Confident result uploads, model calls or custom cache are used.
+API/defaults were checked against installed 4.1.8 and the official
+[`v4.1.8` configs](https://github.com/confident-ai/deepeval/blob/v4.1.8/deepeval/evaluate/configs.py).
 
 **Parity is tested, not asserted.** The verdict parser is exercised against the exact cases
 `score-judge.sh --self-test` uses. Exactly one anchored final verdict and one numbered
 PASS/FAIL/UNVERIFIED line per actual acceptance criterion are required. Missing, duplicate,
 or malformed lines produce `setup_error` (`judge_contract`), not an agent failure.
-Native PowerShell/Bash scorers and runner scoring/summary paths are tested with a local
-fake judge, without paid calls. Historical task-04 agreement does not validate the new contract.
-Fake setup proves both native shells resolve the expected launcher, preserve exact arguments
-(including spaces, Unicode and shell metacharacters), and return sentinel exit 99. A missing,
-shadowed or broken fake fails setup instead of falling back to an ambient Copilot executable.
-These are known test fakes, not sandbox probes or authorization to execute generated artifacts.
+Real Python/PowerShell/Bash entrypoints are tested for inventory, path/regex/argument
+parity, startup injection resistance, baseline/provenance integrity, dependency errors
+and held status. Old source-sliced shell execution and fake comparison tests were retired
+with the deleted runtime. No tests authorize executing generated artifacts.
 
-Two deliberate differences from the shell judge:
+Historical orientation lessons still apply:
 
 - **Its orientation is a file index rather than a dump.** The old prompt inlined file contents and told
   the grader to decide "strictly from those artifacts", so a truncated listing became
@@ -211,14 +244,22 @@ On Windows the native tests use PowerShell 7 and Git Bash; on Unix they use `pws
 `bash`. Shells run by absolute executable path (the native `Git/usr/bin/bash.exe`, not
 the PATH-extending wrapper). Utilities are individually exposed in a temporary command
 directory, never by adding a shell's host directory such as `/usr/bin` to PATH.
-The fixture keeps the active Python executable's original parent on PATH and
-its original path in the Unix fake-CLI launcher: resolving a POSIX venv's Python
-symlink first would select the base interpreter and lose the locked dependencies.
-Missing-Python tests verify interpreter absence and fake-CLI resolution in the native
-shell before checking the full ten-task setup-error summary.
-Scoring segments run as offline units with a local fake CLI. Live custom-eval is
-blocked by the sandbox hold before the mandatory human plan-approval gate, which remains
-separately required for any future live path.
+The fixture preserves the active Python executable's original parent on PATH:
+resolving a POSIX venv symlink first would lose the locked dependencies.
+Thin launchers start `run_eval.py` with `-I -S -B`; Python exposes only its selected
+interpreter's package directories, without executing `.pth` or site startup hooks.
+**Python is prerequisite to an attempt.** Without it, launchers exit 2 with a clear
+diagnostic and no artifacts. Once Python starts and selects tasks, setup failures
+retain the full selected inventory, including all ten tasks for a full suite.
+Prompt readability is checked during preflight and rechecked after staging.
+
+`deepeval` remains the only/default runner scorer. `--scorer shell|both` is retired
+with an argument error, not mapped to another backend. Current unscored percentages
+are null; no fake agreement is reported. Historical source is available at git ref
+`ccafa13e1c782220db001ac081433dca2ae1df54`, which also retains the live hold.
+ADR 0015's historical shell-retention note does not describe the current runtime.
+Waza's skills-layer responsibility is unchanged. Live evaluation stays held before
+staging, SDK imports or token reads; mandatory human plan approval remains separate.
 
 ## Findings so far
 

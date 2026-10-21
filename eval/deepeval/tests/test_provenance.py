@@ -9,9 +9,10 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-import provenance as p
-from grading import credited_status, parse_result, result_status, retained_result, write_result
+import agile_eval.provenance as p
+from agile_eval.grading_contract import parse_result
+from agile_eval.provenance import credited_status, result_status, retained_result, write_result
+from agile_eval import file_io
 
 
 @pytest.fixture
@@ -51,7 +52,7 @@ def payload(tmp_path, expected, repo, task="task-a", verdict="UNVERIFIED"):
     state = {"RESOLVED": "PASS", "FAILED": "FAIL"}.get(verdict, verdict)
     result = parse_result(f"1. {state} - synthetic evidence\nVERDICT: {verdict}", 1)
     write_result(result, path)
-    p.write_json(path.with_name(path.name + ".provenance.json"),
+    file_io.write_json(path.with_name(path.name + ".provenance.json"),
                  p.manifest(expected, [p.binding(path, expected, task, acceptance(repo, task))]))
     return path
 
@@ -145,9 +146,9 @@ def test_nonpositive_consumer_rejects_missing_or_tampered_sidecar(
     if change == "missing":
         sidecar.unlink()
     else:
-        row = p.read_json(sidecar)
+        row = file_io.read_json(sidecar)
         row["result_bindings"][0]["sha256"] = "0" * 64
-        p.write_json(sidecar, row)
+        file_io.write_json(sidecar, row)
     assert result_status(path, code, acceptance(repo)) == status
     assert credited_status(path, code, acceptance(repo), expected, "task-a") == "setup_error"
 
@@ -158,7 +159,7 @@ def test_valid_bound_partial_is_denied_by_execution_hold(repo, tmp_path):
     result = parse_result("1. PASS - done\n2. FAIL - missing\nVERDICT: PARTIAL", 2)
     path = tmp_path / "partial.json"
     write_result(result, path)
-    p.write_json(path.with_name(path.name + ".provenance.json"),
+    file_io.write_json(path.with_name(path.name + ".provenance.json"),
                  p.manifest(expected, [p.binding(path, expected, "task-a", acceptance(repo))]))
     assert result_status(path, 2, acceptance(repo)) == "partial"
     p.validate_result(path, expected, "task-a", acceptance(repo))
@@ -168,9 +169,9 @@ def test_valid_bound_partial_is_denied_by_execution_hold(repo, tmp_path):
 def test_tampered_result_fails_integrity_even_if_format_is_valid(repo, tmp_path):
     expected = context(repo)
     path = payload(tmp_path, expected, repo)
-    row = p.read_json(path)
+    row = file_io.read_json(path)
     row["reasons"] = ["diagnostic withheld"]
-    p.write_json(path, row)
+    file_io.write_json(path, row)
     assert result_status(path, 3, acceptance(repo)) == "unverified"
     with pytest.raises(ValueError, match="binding mismatch"):
         p.validate_result(path, expected, "task-a", acceptance(repo))
@@ -179,12 +180,12 @@ def test_tampered_result_fails_integrity_even_if_format_is_valid(repo, tmp_path)
 def test_summary_projection_cannot_retain_arbitrary_diagnostics(repo, tmp_path):
     expected = context(repo)
     path = payload(tmp_path, expected, repo)
-    row = p.read_json(path)
+    row = file_io.read_json(path)
     row["reasons"] = ["PRIVATE_SYNTHETIC_DIAGNOSTIC"]
     row["criteria"][0]["reason"] = "PRIVATE_SYNTHETIC_DIAGNOSTIC"
     row["raw_response"] = "PRIVATE_SYNTHETIC_DIAGNOSTIC"
-    p.write_json(path, row)
-    p.write_json(path.with_name(path.name + ".provenance.json"),
+    file_io.write_json(path, row)
+    file_io.write_json(path.with_name(path.name + ".provenance.json"),
                  p.manifest(expected, [p.binding(path, expected, "task-a", acceptance(repo))]))
     safe = retained_result(path, expected, "task-a", acceptance(repo))
     assert safe["status"] == "unverified"
@@ -198,9 +199,9 @@ def test_summary_projection_cannot_retain_arbitrary_diagnostics(repo, tmp_path):
 ])
 def test_malformed_result_fails_bounded_format_validation(repo, tmp_path, field, value):
     path = payload(tmp_path, context(repo), repo)
-    row = p.read_json(path)
+    row = file_io.read_json(path)
     row[field] = value
-    p.write_json(path, row)
+    file_io.write_json(path, row)
     assert result_status(path, 3, acceptance(repo)) == "setup_error"
 
 
@@ -209,9 +210,9 @@ def test_legacy_and_unknown_manifest_versions_never_backfilled(repo, tmp_path, v
     expected = context(repo)
     path = payload(tmp_path, expected, repo, verdict="RESOLVED")
     sidecar = path.with_name(path.name + ".provenance.json")
-    row = p.read_json(sidecar)
+    row = file_io.read_json(sidecar)
     row["schema_version"] = version
-    p.write_json(sidecar, row)
+    file_io.write_json(sidecar, row)
     before = sidecar.read_bytes()
     with pytest.raises(ValueError, match="legacy/unattributed"):
         p.validate_result(path, expected, "task-a", acceptance(repo))
@@ -221,9 +222,9 @@ def test_legacy_and_unknown_manifest_versions_never_backfilled(repo, tmp_path, v
 @pytest.mark.parametrize("version", [None, 1, 3, "2", True])
 def test_unknown_result_version_cannot_award_credit(repo, tmp_path, version):
     path = payload(tmp_path, context(repo), repo, verdict="RESOLVED")
-    row = p.read_json(path)
+    row = file_io.read_json(path)
     row["schema_version"] = version
-    p.write_json(path, row)
+    file_io.write_json(path, row)
     assert result_status(path, 0, acceptance(repo)) == "setup_error"
 
 
@@ -242,10 +243,10 @@ def test_invalid_binding_fields_fail_without_following_manifest_paths(repo, tmp_
     expected = context(repo)
     path = payload(tmp_path, expected, repo)
     sidecar = path.with_name(path.name + ".provenance.json")
-    row = p.read_json(sidecar)
+    row = file_io.read_json(sidecar)
     key = "sha256" if tamper == "hash" else tamper
     row["result_bindings"][0][key] = "../../outside/private" if tamper == "reference" else "unknown"
-    p.write_json(sidecar, row)
+    file_io.write_json(sidecar, row)
     with pytest.raises(ValueError, match="binding mismatch"):
         p.validate_result(path, expected, "task-a", acceptance(repo))
 
@@ -256,9 +257,9 @@ def test_untrusted_manifest_cannot_redefine_expected_run(repo, tmp_path):
     run.mkdir()
     changed = copy.deepcopy(expected)
     changed["run_id"] = "attacker-run"
-    p.write_json(run / p.MANIFEST, p.manifest(changed))
+    file_io.write_json(run / p.MANIFEST, p.manifest(changed))
     with pytest.raises(ValueError, match="run context changed"):
-        p.load_expected(run, p.identity(expected))
+        p.load_expected(run, file_io.identity(expected))
 
 
 def test_relevant_untracked_source_changes_fingerprint_not_unrelated_research(repo):
@@ -311,7 +312,7 @@ def test_git_dirty_observation_is_separate_from_revision_and_scoped_bytes(repo, 
 @pytest.mark.parametrize("path", ["../outside", "task/../../outside"])
 def test_output_traversal_is_explicit_failure(tmp_path, path):
     with pytest.raises(ValueError, match="traversal"):
-        p.write_json(tmp_path / path, {})
+        file_io.write_json(tmp_path / path, {})
 
 
 def test_output_symlink_never_overwrites_target(tmp_path):
@@ -320,7 +321,7 @@ def test_output_symlink_never_overwrites_target(tmp_path):
     link = tmp_path / "link.json"
     link.symlink_to(target)
     with pytest.raises(ValueError, match="symlink/reparse"):
-        p.write_json(link, {})
+        file_io.write_json(link, {})
     assert target.read_text() == "original"
 
 
@@ -332,19 +333,19 @@ def test_reparse_attribute_is_rejected(tmp_path, monkeypatch):
     def reparse(self):
         if self == path:
             return type("Attributes", (), {
-                "st_file_attributes": p.stat.FILE_ATTRIBUTE_REPARSE_POINT,
+                "st_file_attributes": file_io.stat.FILE_ATTRIBUTE_REPARSE_POINT,
                 "st_mode": original(self).st_mode,
             })()
         return original(self)
 
     monkeypatch.setattr(Path, "lstat", reparse)
     with pytest.raises(ValueError, match="reparse"):
-        p.checked_path(path)
+        file_io.checked_path(path)
 
 
 def test_bounded_result_read_returns_setup_error(repo, tmp_path, monkeypatch):
     path = payload(tmp_path, context(repo), repo)
-    monkeypatch.setattr(p, "MAX_BYTES", 10)
+    monkeypatch.setattr(file_io, "MAX_BYTES", 10)
     assert result_status(path, 3, acceptance(repo)) == "setup_error"
 
 
@@ -352,7 +353,7 @@ def test_excessive_json_nesting_is_explicit_failure(tmp_path):
     path = tmp_path / "nested.json"
     path.write_text('{"nested":' + "[" * 2000 + "0" + "]" * 2000 + "}", encoding="utf-8")
     with pytest.raises(ValueError, match="nesting"):
-        p.read_json(path)
+        file_io.read_json(path)
 
 
 def nested_json(shape, depth, leaf="0"):
@@ -369,40 +370,40 @@ def nested_json(shape, depth, leaf="0"):
 
 
 @pytest.mark.parametrize("shape", ["object", "array", "mixed"])
-@pytest.mark.parametrize("depth", [1, p.MAX_JSON_DEPTH - 1, p.MAX_JSON_DEPTH])
+@pytest.mark.parametrize("depth", [1, file_io.MAX_JSON_DEPTH - 1, file_io.MAX_JSON_DEPTH])
 def test_json_container_depth_through_limit_is_accepted(tmp_path, shape, depth):
     text = nested_json(shape, depth)
     path = tmp_path / "nested.json"
     path.write_text(text, encoding="utf-8")
 
-    assert p.read_json(path) == json.loads(text)
+    assert file_io.read_json(path) == json.loads(text)
 
 
 @pytest.mark.parametrize("shape", ["object", "array", "mixed"])
 def test_json_one_container_over_limit_is_rejected_before_decode(tmp_path, monkeypatch, shape):
     path = tmp_path / "nested.json"
-    path.write_text(nested_json(shape, p.MAX_JSON_DEPTH + 1), encoding="utf-8")
+    path.write_text(nested_json(shape, file_io.MAX_JSON_DEPTH + 1), encoding="utf-8")
 
     def unexpected_decode(*args, **kwargs):
         pytest.fail("over-depth JSON reached the runtime-dependent decoder")
 
-    monkeypatch.setattr(p.json, "loads", unexpected_decode)
+    monkeypatch.setattr(file_io.json, "loads", unexpected_decode)
     with pytest.raises(ValueError, match="nesting"):
-        p.read_json(path)
+        file_io.read_json(path)
 
 
 @pytest.mark.parametrize("leaf", [
-    "{[" * (p.MAX_JSON_DEPTH + 1),
-    "}]" * (p.MAX_JSON_DEPTH + 1),
+    "{[" * (file_io.MAX_JSON_DEPTH + 1),
+    "}]" * (file_io.MAX_JSON_DEPTH + 1),
     'escaped quote " then {[ and backslash \\',
     'backslash then quote \\" and ]}',
 ])
 def test_json_depth_ignores_string_delimiters_and_escapes(tmp_path, leaf):
-    text = nested_json("mixed", p.MAX_JSON_DEPTH, json.dumps(leaf))
+    text = nested_json("mixed", file_io.MAX_JSON_DEPTH, json.dumps(leaf))
     path = tmp_path / "nested.json"
     path.write_text(text, encoding="utf-8")
 
-    assert p.read_json(path) == json.loads(text)
+    assert file_io.read_json(path) == json.loads(text)
 
 
 @pytest.mark.parametrize("text", ['{"broken":[}', '{"broken":"unterminated}', '{"broken":"\\q"}'])
@@ -411,7 +412,7 @@ def test_json_depth_scan_does_not_replace_syntax_validation(tmp_path, text):
     path.write_text(text, encoding="utf-8")
 
     with pytest.raises(json.JSONDecodeError):
-        p.read_json(path)
+        file_io.read_json(path)
 
 
 def test_capture_failure_retains_full_denominator_without_invented_hashes(repo, tmp_path, monkeypatch):
@@ -423,13 +424,16 @@ def test_capture_failure_retains_full_denominator_without_invented_hashes(repo, 
         "--task-id", "task-a", "--task-id", "task-b", "--agent", 'injected"model',
     ])
     assert p.main() == 2
-    row = p.read_json(run / p.MANIFEST)
+    row = file_io.read_json(run / p.MANIFEST)
     assert row["attribution"] == "unavailable"
     assert row["selected_task_ids"] == ["task-a", "task-b"]
     assert "context_sha256" not in row
-    saved = p.read_json(run / "summary.json")
+    saved = file_io.read_json(run / "summary.json")
     assert saved["total"] == saved["setup_error_count"] == 2
     assert {t["status"] for t in saved["tasks"]} == {"setup_error"}
+    for key in ("resolved_pct", "partial_pct", "failed_pct"):
+        assert key in saved
+        assert saved[key] is None
     assert 'injected' not in json.dumps(saved)
 
 
@@ -442,13 +446,13 @@ def test_ignored_results_and_virtualenv_never_enter_source_scope(repo, monkeypat
     environment.mkdir()
     (environment / "pyvenv.cfg").write_text("not read", encoding="utf-8")
     (environment / "module.py").write_text("not read", encoding="utf-8")
-    original = p.read_bytes
+    original = file_io.read_bytes
 
     def scoped_read(path):
         assert excluded not in path.parents and environment not in path.parents
         return original(path)
 
-    monkeypatch.setattr(p, "read_bytes", scoped_read)
+    monkeypatch.setattr(file_io, "read_bytes", scoped_read)
     assert not any(name.startswith(("eval/results/", "eval/old-environment/"))
                    for name in p.source_files(repo))
 
@@ -464,7 +468,7 @@ def test_declared_output_tree_is_pruned_before_reads_and_traversal(repo, tmp_pat
     summary_file.write_text('{"old":1}', encoding="utf-8")
     (retained / p.MANIFEST).write_text("{}", encoding="utf-8")
     (retained / ".github/staged.py").write_text("# never read", encoding="utf-8")
-    original_read, original_walk = p.read_bytes, p.os.walk
+    original_read, original_walk = file_io.read_bytes, p.os.walk
 
     def read_source(path):
         assert output not in path.parents
@@ -475,7 +479,7 @@ def test_declared_output_tree_is_pruned_before_reads_and_traversal(repo, tmp_pat
             assert not Path(directory).is_relative_to(output)
             yield directory, dirs, names
 
-    monkeypatch.setattr(p, "read_bytes", read_source)
+    monkeypatch.setattr(file_io, "read_bytes", read_source)
     monkeypatch.setattr(p.os, "walk", walk_source)
     before = p.build_context(repo, "new-run", ["task-a"], output_root=output)["harness"]
     summary_file.write_text('{"old":2}', encoding="utf-8")
@@ -494,10 +498,25 @@ def test_declared_output_tree_is_pruned_before_reads_and_traversal(repo, tmp_pat
     ".", "eval", "plugins", "scripts", ".github", ".github/plugin",
     "eval/deepeval", "eval/pipeline", "eval/pipeline/custom-eval/tasks/task-a",
     "eval/deepeval/requirements.lock.txt",
+    "eval/python", "eval/python/agile_eval", "eval/python/agile_eval/grading.py",
 ])
 def test_output_root_cannot_conceal_authoritative_sources(repo, relative):
     with pytest.raises(ValueError, match="authoritative source"):
         p.build_context(repo, "run", ["task-a"], output_root=repo / relative)
+
+
+def test_canonical_package_source_bytes_are_bound_even_with_sibling_output(repo):
+    source_root = Path(__file__).resolve().parents[2] / "python/agile_eval"
+    package = repo / "eval/python/agile_eval"
+    shutil.copytree(source_root, package, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    output = repo / "eval/custom-output"
+    before = p.build_context(repo, "run", ["task-a"], output_root=output)["harness"]
+    source = package / "grading.py"
+    assert "eval/python/agile_eval/grading.py" in before["files"]
+    source.write_bytes(source.read_bytes() + b"\n# source identity changed\n")
+    after = p.build_context(repo, "run", ["task-a"], output_root=output)["harness"]
+    assert before["source_fingerprint"] != after["source_fingerprint"]
+    assert before["files"] != after["files"]
 
 
 def test_output_exclusions_validate_paths_before_normalizing(repo, tmp_path, monkeypatch):
@@ -534,7 +553,7 @@ def test_native_start_captures_before_manifest_and_excludes_parent_output(repo, 
         "--output-root", str(output), "--task-id", "task-a",
     ])
     assert p.main() == 0
-    context = p.read_json(run / p.MANIFEST)["context"]
+    context = file_io.read_json(run / p.MANIFEST)["context"]
     assert not any(name.startswith("eval/custom-output/") for name in context["harness"]["files"])
 
 
@@ -548,13 +567,12 @@ def test_native_start_requires_declared_parent_output_root(repo, tmp_path, monke
         argv += ["--output-root", str(tmp_path / root_argument)]
     monkeypatch.setattr(sys, "argv", argv)
     assert p.main() == 2
-    assert p.read_json(run / p.MANIFEST)["attribution"] == "unavailable"
+    assert file_io.read_json(run / p.MANIFEST)["attribution"] == "unavailable"
 
 
 @pytest.mark.parametrize("outside_tree", [False, True])
 def test_standalone_capture_excludes_outputs_before_writing(repo, monkeypatch, outside_tree):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pipeline/custom-eval"))
-    from prepare_inputs import prepare
+    from agile_eval.prepare_inputs import prepare
 
     actual_tasks = Path(__file__).resolve().parents[2] / "pipeline/custom-eval/tasks"
     task_id = "task-10-helm-to-kustomize"
@@ -576,11 +594,11 @@ def test_standalone_capture_excludes_outputs_before_writing(repo, monkeypatch, o
     with monkeypatch.context() as first:
         first.setattr(p, "build_context", capture_before_write)
         write_result(result, path, workspace=workspace, acceptance=task / "acceptance.md")
-    before = p.read_json(sidecar)["context"]["harness"]
+    before = file_io.read_json(sidecar)["context"]["harness"]
     (output / "older-run").mkdir()
     (output / "older-run/summary.json").write_text('{"retained":true}', encoding="utf-8")
     write_result(result, path, workspace=workspace, acceptance=task / "acceptance.md")
-    after = p.read_json(sidecar)["context"]["harness"]
+    after = file_io.read_json(sidecar)["context"]["harness"]
     assert after["files"] == before["files"]
     assert after["source_fingerprint"] == before["source_fingerprint"]
     assert not any(name.startswith("eval/custom-output/") for name in after["files"])
@@ -588,7 +606,7 @@ def test_standalone_capture_excludes_outputs_before_writing(repo, monkeypatch, o
     assert "eval/result.json.provenance.json" not in after["files"]
     (repo / "eval/changed.py").write_text("# real change", encoding="utf-8")
     write_result(result, path, workspace=workspace, acceptance=task / "acceptance.md")
-    assert p.read_json(sidecar)["context"]["harness"]["source_fingerprint"] != before["source_fingerprint"]
+    assert file_io.read_json(sidecar)["context"]["harness"]["source_fingerprint"] != before["source_fingerprint"]
 
 
 @pytest.mark.parametrize("parent", ["arbitrary", "ws"])
@@ -615,15 +633,15 @@ def test_standalone_cannot_infer_output_root_from_unvalidated_workspace(repo, tm
 def test_canonical_inventory_limit_covers_every_insertion(
     repo, monkeypatch, declarations, count, over_limit,
 ):
-    from grading import _canonical_baseline_files
+    from agile_eval.workspace_inputs import _canonical_baseline_files
 
     task = acceptance(repo).parent
     (task / "one.py").write_text("# explicit", encoding="utf-8")
     (task / "folder").mkdir()
     for name in ("two.py", "three.py"):
         (task / "folder" / name).write_text("# expanded", encoding="utf-8")
-    p.write_json(task / "inputs.json", {"version": 1, "inputs": declarations})
-    monkeypatch.setattr(p, "MAX_FILES", count - int(over_limit))
+    file_io.write_json(task / "inputs.json", {"version": 1, "inputs": declarations})
+    monkeypatch.setattr(file_io, "MAX_FILES", count - int(over_limit))
     if over_limit:
         with pytest.raises(ValueError, match="canonical input inventory exceeds file limit"):
             _canonical_baseline_files("task-a", task.parent)
@@ -645,9 +663,9 @@ def test_summary_binds_every_selected_terminal_task(repo, tmp_path):
     expected = context(repo)
     run = tmp_path / expected["run_id"]
     run.mkdir()
-    p.write_json(run / "summary.json", summary(expected))
+    file_io.write_json(run / "summary.json", summary(expected))
     p.finalize(run, expected)
-    row = p.read_json(run / p.MANIFEST)
+    row = file_io.read_json(run / p.MANIFEST)
     p.validate_manifest(row, expected)
     assert row["result_bindings"] == [p.binding(run / "summary.json", expected, None)]
 
@@ -666,7 +684,7 @@ def test_invalid_summary_denominator_or_status_fails(repo, tmp_path, change):
         row["skipped"] = 2
     else:
         row["run_id"] = "different"
-    p.write_json(run / "summary.json", row)
+    file_io.write_json(run / "summary.json", row)
     with pytest.raises(ValueError, match="summary|unknown task"):
         p.finalize(run, expected)
     assert not (run / p.MANIFEST).exists()
@@ -679,6 +697,6 @@ def test_summary_cannot_aggregate_unbound_legacy_credit(repo, tmp_path):
     row = summary(expected)
     row["tasks"][0]["status"] = "resolved"
     row["skipped"], row["resolved"] = 0, 1
-    p.write_json(run / "summary.json", row)
+    file_io.write_json(run / "summary.json", row)
     with pytest.raises(ValueError, match="unbound credit"):
         p.finalize(run, expected)

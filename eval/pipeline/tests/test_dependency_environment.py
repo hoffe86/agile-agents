@@ -99,7 +99,8 @@ class LockTests(unittest.TestCase):
         lock = read_lock()
         self.assertEqual(
             {canonicalize_name(req.name): str(req.specifier) for req in roots()},
-            {"deepeval": "==4.1.8", "pytest": "==9.1.1", "pyyaml": "==6.0.3"},
+            {"deepeval": "==4.1.8", "github-copilot-sdk": "==1.0.22",
+             "pytest": "==9.1.1", "pyyaml": "==6.0.3"},
         )
         for req in roots():
             self.assertEqual(lock[canonicalize_name(req.name)][0].specifier, req.specifier)

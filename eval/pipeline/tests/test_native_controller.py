@@ -3,27 +3,24 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine
-from contextlib import closing
 from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
 import shutil
-import sqlite3
 import subprocess
 import sys
 import tempfile
-from types import MappingProxyType, ModuleType
+from types import MappingProxyType
 import unittest
 from unittest.mock import patch
 
 EVAL = Path(__file__).resolve().parents[2]
 ROOT = EVAL.parent
-sys.path.insert(0, str(EVAL))
+sys.path.insert(0, str(EVAL / "python"))
 
-from authorization import BLOCKERS, InvalidRecord, sha256  # noqa: E402
-from authorization_ledger import AdmissionDenied, Ledger  # noqa: E402
-from native_controller import (  # noqa: E402
+from agile_eval.authorization import BLOCKERS, MAX_JSON_BYTES, Decision, InvalidRecord, sha256  # noqa: E402
+from agile_eval.native_controller import (  # noqa: E402
     NativeController, PermissionRejection, sanitized_runtime_spec,
     sdk_callbacks, start_native_runtime,
 )
@@ -122,33 +119,9 @@ class PendingCall:
             raise
 
 
-class FailingLedger:
-    """Required-write/close fault at the external persistence seam."""
-
-    def __init__(self, ledger: Ledger) -> None:
-        self.ledger = ledger
-        self.closes = 0
-
-    def abort_batch(self, *args: object, **kwargs: object) -> None:
-        raise OSError("synthetic-sensitive-diagnostic")
-
-    def close(self) -> None:
-        self.closes += 1
-        self.ledger.close()
-        raise OSError("synthetic-sensitive-diagnostic")
-
-
 class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.path = Path(self.temp.name) / "ledger.sqlite"
         self.envelope, self.submission, self.assessment = records()
-        self.ledger = Ledger(self.path, controller_instance_id="controller-1")
-        self.addCleanup(self.ledger.close)
-        self.ledger.register_envelope(
-            self.envelope, expected_digest=self.envelope.digest,
-            approval_reference=self.envelope.approval_reference)
         self.plan = PlanDouble(NativePlanResult(
             True, PLAN.decode("utf-8"), self.submission.plan_path))
         self.session = SessionDouble(self.submission.native_session_id, self.plan)
@@ -159,7 +132,7 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
                         "actions": ["autopilot"], "recommendedAction": "autopilot"}
 
     def make_controller(self, **changes: object) -> NativeController:
-        args = dict(session=self.session, runtime=self.runtime, ledgers=(self.ledger,),
+        args = dict(session=self.session, runtime=self.runtime,
                     submission=self.submission, controller_instance_id="controller-1",
                     native_session_id=self.submission.native_session_id,
                     plan_path=self.submission.plan_path)
@@ -170,8 +143,13 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(self.controller.terminal_reason)
         self.assertEqual(self.session.disconnects, 1)
         self.assertEqual(self.runtime.stops, 1)
-        with self.assertRaises(AdmissionDenied):
-            self.ledger.issue(self.submission, self.assessment, now=NOW)
+        self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
+
+    def attempt(self) -> Decision:
+        return self.controller.authorization.attempt(
+            self.envelope, self.submission, self.assessment,
+            expected_digest=self.envelope.digest,
+            approval_reference=self.envelope.approval_reference, now=NOW)
 
     async def watchdog(self, callback: Coroutine, *pending: PendingCall) -> object:
         # This generous test watchdog must not supply the controller's deadline.
@@ -191,8 +169,8 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
                                  "feedback": "stage4_plan_provenance_unverified"})
         self.assertNotIn("selectedAction", result)
         self.assertIsNone(self.controller.terminal_reason)
-        with closing(sqlite3.connect(self.path)) as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM grants").fetchone(), (0,))
+        self.assertEqual(self.controller.authorization.state, "UNAUTHORIZED")
+        self.assertEqual(self.controller.authorization.attempts, 0)
 
     async def test_nonempty_inline_and_summary_are_not_authority(self) -> None:
         self.request["planContent"] = "different inline plan"
@@ -284,8 +262,7 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(call.entered.is_set())
             self.assertTrue(call.cancelled.is_set())
             self.assertEqual(call.calls, 1)
-        with self.assertRaises(AdmissionDenied):
-            self.ledger.issue(self.submission, self.assessment, now=NOW)
+        self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
         self.assertEqual(await self.controller.on_exit_plan_mode_request(
             self.request, self.context),
             {"approved": False, "feedback": "controller_terminal"})
@@ -302,8 +279,7 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.runtime.force_stops, 1)
         self.assertEqual(self.controller.terminal_reason, "native_disconnected")
         self.assertEqual(self.controller.cleanup_failures, ("runtime_stop_failed",))
-        with self.assertRaises(AdmissionDenied):
-            self.ledger.issue(self.submission, self.assessment, now=NOW)
+        self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
 
     async def test_callback_cancellation_cleans_up_then_propagates(self) -> None:
         self.plan.release = asyncio.Event()
@@ -351,34 +327,59 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
             await task
         self.assert_terminal()
 
-    async def test_cleanup_faults_still_close_all_connections_and_force_stop(self) -> None:
-        joined = Ledger(self.path, controller_instance_id="controller-1", join_existing=True)
-        self.addCleanup(joined.close)
-        failed = FailingLedger(self.ledger)
-        self.controller = self.make_controller(ledgers=(failed, joined))
+    async def test_cleanup_faults_still_force_stop_and_remain_terminal(self) -> None:
         self.session.disconnect_error = OSError("synthetic-sensitive-diagnostic")
         self.runtime.stop_error = OSError("synthetic-sensitive-diagnostic")
         self.runtime.force_error = OSError("synthetic-sensitive-diagnostic")
         await self.controller.on_disconnect()
         await self.controller.on_disconnect()
-        self.assertEqual(failed.closes, 1)
         self.assertEqual(self.runtime.force_stops, 1)
         self.assertEqual(self.controller.cleanup_failures, (
-            "ledger_abort_failed", "ledger_close_failed", "session_disconnect_failed",
-            "runtime_stop_failed", "runtime_force_stop_failed"))
-        with self.assertRaises(AdmissionDenied):
-            joined.issue(self.submission, self.assessment, now=NOW)
+            "session_disconnect_failed", "runtime_stop_failed", "runtime_force_stop_failed"))
         self.assert_terminal()
 
-    async def test_terminal_abort_revokes_real_issued_grant_without_refund(self) -> None:
-        grant = self.ledger.issue(self.submission, self.assessment, now=NOW)
+    async def test_terminal_abort_preserves_used_attempt_without_refund(self) -> None:
+        self.assertEqual(self.attempt().outcome, "eligible")
         await self.controller.on_disconnect()
-        with closing(sqlite3.connect(self.path)) as db:
-            self.assertEqual(db.execute(
-                "SELECT state FROM grants WHERE grant_id=?", (grant.grant_id,)).fetchone(),
-                ("revoked",))
-            self.assertEqual(db.execute("SELECT tokens FROM attempts").fetchone(),
-                             (self.submission.budget.tokens,))
+        self.assertEqual(self.controller.authorization.state, "ABORTED")
+        self.assertEqual(self.controller.authorization.attempts, 1)
+        self.assertEqual(self.controller.authorization.reserved_budget, self.submission.budget)
+        self.assert_terminal()
+
+    async def test_invalid_job_control_record_stops_owned_runtime_on_every_callback(self) -> None:
+        for callback in ("on_exit_plan_mode_request", "on_pre_tool_use",
+                         "on_permission_request", "on_user_input_request"):
+            with self.subTest(callback=callback):
+                self.session = SessionDouble(self.submission.native_session_id, self.plan)
+                self.runtime = RuntimeDouble()
+                self.controller = self.make_controller()
+                decision = self.controller.authorization.attempt(
+                    self.envelope, self.submission, {},
+                    expected_digest=self.envelope.digest,
+                    approval_reference=self.envelope.approval_reference, now=NOW)
+                self.assertEqual(decision.outcome, "abort_batch")
+                await getattr(self.controller, callback)({}, self.context)
+                self.assertEqual(self.controller.terminal_reason, "invalid_control_record")
+                self.assert_terminal()
+        self.assertEqual(self.plan.reads, 0)
+
+    async def test_replacement_controller_cannot_inherit_used_or_aborted_state(self) -> None:
+        self.assertEqual(self.attempt().outcome, "eligible")
+        await self.controller.abort()
+        replacement = self.make_controller()
+        self.assertEqual(replacement.authorization.state, "UNAUTHORIZED")
+        self.assertEqual(replacement.authorization.attempts, 0)
+        self.assertIsNone(replacement.authorization.reserved_budget)
+        with self.assertRaises(TypeError):
+            replacement.authorization.attempt(
+                self.envelope, self.submission, self.assessment, now=NOW)
+        result = await replacement.on_exit_plan_mode_request(self.request, self.context)
+        self.assertFalse(result["approved"])
+        self.assertEqual(replacement.authorization.state, "UNAUTHORIZED")
+
+    async def test_invalid_abort_reason_still_stops_owned_runtime(self) -> None:
+        await self.controller.abort("synthetic-sensitive\ninvalid")
+        self.assertEqual(self.controller.terminal_reason, "invalid_control_record")
         self.assert_terminal()
 
     async def test_ordinary_hook_failure_returns_deny_and_aborts(self) -> None:
@@ -388,12 +389,10 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assert_terminal()
 
     async def test_hook_failure_still_returns_deny_when_cleanup_also_fails(self) -> None:
-        self.controller = self.make_controller(ledgers=(FailingLedger(self.ledger),))
         self.runtime.stop_error = OSError("synthetic-sensitive-diagnostic")
         self.runtime.force_error = OSError("synthetic-sensitive-diagnostic")
         result = await self.controller.on_pre_tool_use({}, BrokenContext())
         self.assertEqual(result["permissionDecision"], "deny")
-        self.assertIn("ledger_abort_failed", self.controller.cleanup_failures)
         self.assertIn("runtime_force_stop_failed", self.controller.cleanup_failures)
         self.assert_terminal()
 
@@ -455,37 +454,6 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, PermissionRejection())
         self.assertEqual((result.kind, result.feedback), ("reject", "execution_not_ready"))
 
-    async def test_opted_in_sdk_callbacks_wire_handlers_and_translate_rejection(self) -> None:
-        class FakePermissionDecisionReject:
-            def __init__(self, *, feedback: str) -> None:
-                self.kind = "reject"
-                self.feedback = feedback
-
-        package, rpc = ModuleType("copilot"), ModuleType("copilot.rpc")
-        rpc.PermissionDecisionReject = FakePermissionDecisionReject
-        package.rpc = rpc
-        with patch.dict(sys.modules, {"copilot": package, "copilot.rpc": rpc}):
-            callbacks = sdk_callbacks(self.controller, opt_in=True)
-            self.assertEqual(set(callbacks), {
-                "on_exit_plan_mode_request", "on_user_input_request",
-                "on_permission_request", "hooks"})
-            self.assertEqual(callbacks["on_exit_plan_mode_request"],
-                             self.controller.on_exit_plan_mode_request)
-            self.assertEqual(callbacks["on_user_input_request"],
-                             self.controller.on_user_input_request)
-            self.assertEqual(callbacks["hooks"],
-                             {"on_pre_tool_use": self.controller.on_pre_tool_use})
-            for terminal in (False, True):
-                with self.subTest(terminal=terminal):
-                    if terminal:
-                        await self.controller.on_disconnect()
-                    result = await callbacks["on_permission_request"](
-                        {"kind": "write", "approved": True}, BrokenContext())
-                    self.assertIsInstance(result, FakePermissionDecisionReject)
-                    self.assertEqual((result.kind, result.feedback),
-                                     ("reject", "execution_not_ready"))
-        self.assert_terminal()
-
     async def test_arbitrary_ask_user_approval_is_refused(self) -> None:
         result = await self.controller.on_user_input_request(
             {"question": "Approve?", "choices": ["Approve and run autonomously"],
@@ -495,9 +463,105 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
     def test_constructor_rejects_mismatched_controller_session_path(self) -> None:
         for changes in ({"controller_instance_id": "wrong"},
                         {"native_session_id": "wrong"}, {"plan_path": "/wrong"},
-                        {"ledgers": ()}, {"timeout_seconds": float("nan")}):
+                        {"timeout_seconds": float("nan")}):
             with self.subTest(changes=changes), self.assertRaises(InvalidRecord):
                 self.make_controller(**changes)
+
+
+class SdkCallbacksContractTests(unittest.IsolatedAsyncioTestCase):
+    """Actual pinned SDK types, offline; no client, transport or model calls."""
+
+    def setUp(self) -> None:
+        from importlib.metadata import PackageNotFoundError, version
+
+        install = (
+            "Install eval/deepeval/requirements.lock.txt with "
+            "python -m pip install --require-hashes --only-binary=:all: -r "
+            "eval/deepeval/requirements.lock.txt"
+        )
+        try:
+            self.assertEqual(version("github-copilot-sdk"), "1.0.22", install)
+        except PackageNotFoundError:
+            self.fail(install)
+        # The event loop's wakeup sockets already exist. Imports and callbacks
+        # must not create a transport or process, even with opt_in=True.
+        for target in ("socket.socket.__init__", "subprocess.Popen"):
+            blocker = patch(target, side_effect=AssertionError("offline contract forbids startup"))
+            mock = blocker.start()
+            self.addCleanup(blocker.stop)
+            self.addCleanup(mock.assert_not_called)
+        # Local imports leave this module's shared doubles usable in -S children.
+        try:
+            from copilot._cli_version import CLI_VERSION
+            from copilot.rpc import PlanReadResult
+        except ImportError as exc:
+            self.fail(f"{install}: {exc}")
+        self.assertEqual(CLI_VERSION, "1.0.98")
+        blocker = patch("copilot.CopilotClient",
+                        side_effect=AssertionError("offline contract forbids startup"))
+        mock = blocker.start()
+        self.addCleanup(blocker.stop)
+        self.addCleanup(mock.assert_not_called)
+        _, submission, _ = records()
+        self.plan = PlanDouble(PlanReadResult(
+            exists=True, content=PLAN.decode(), path=submission.plan_path))
+        self.session = SessionDouble(submission.native_session_id, self.plan)
+        self.runtime = RuntimeDouble()
+        self.controller = NativeController(
+            session=self.session, runtime=self.runtime, submission=submission,
+            controller_instance_id=submission.controller_instance_id,
+            native_session_id=submission.native_session_id, plan_path=submission.plan_path)
+        self.context = {"session_id": submission.native_session_id}
+        self.callbacks = sdk_callbacks(self.controller, opt_in=True)
+
+    async def test_factory_wires_handlers_and_returns_real_permission_rejection(self) -> None:
+        from copilot.generated.session_events import PermissionRequestShell
+        from copilot.rpc import PermissionDecisionReject
+
+        self.assertEqual(set(self.callbacks), {
+            "on_exit_plan_mode_request", "on_user_input_request", "on_permission_request", "hooks"})
+        self.assertEqual(self.callbacks["on_exit_plan_mode_request"],
+                         self.controller.on_exit_plan_mode_request)
+        self.assertEqual(self.callbacks["on_user_input_request"],
+                         self.controller.on_user_input_request)
+        self.assertEqual(self.callbacks["hooks"],
+                         {"on_pre_tool_use": self.controller.on_pre_tool_use})
+        request = PermissionRequestShell(
+            can_offer_session_approval=False, commands=[], full_command_text="not-executed",
+            has_write_file_redirection=False, intention="offline contract",
+            possible_paths=[], possible_urls=[])
+        for terminal in (False, True):
+            with self.subTest(terminal=terminal):
+                if terminal:
+                    await self.controller.abort()
+                result = await self.callbacks["on_permission_request"](request, self.context)
+                self.assertIs(type(result), PermissionDecisionReject)
+                self.assertEqual((result.kind, result.feedback), ("reject", "execution_not_ready"))
+        self.assertEqual(self.runtime.stops, 1)
+
+    async def test_real_plan_result_stays_held_and_other_callbacks_deny(self) -> None:
+        result = await self.callbacks["on_exit_plan_mode_request"]({}, self.context)
+        self.assertEqual(result, {"approved": False,
+                                 "feedback": "stage4_plan_provenance_unverified"})
+        denial = await self.callbacks["hooks"]["on_pre_tool_use"](
+            {"sessionId": self.session.session_id, "agentId": "writer"}, self.context)
+        self.assertEqual(denial["permissionDecision"], "deny")
+        answer = await self.callbacks["on_user_input_request"](
+            {"approved": True, "question": "Approve?"}, self.context)
+        self.assertEqual(answer, {"answer": "REFUSE: execution_not_ready", "wasFreeform": True})
+        self.assertEqual(self.controller.authorization.state, "UNAUTHORIZED")
+        self.assertEqual(self.runtime.stops, 0)
+
+    async def test_real_oversized_plan_result_aborts_and_stops(self) -> None:
+        from copilot.rpc import PlanReadResult
+
+        self.plan.result = PlanReadResult(
+            exists=True, content="é" * MAX_JSON_BYTES, path=self.plan.result.path)
+        result = await self.callbacks["on_exit_plan_mode_request"]({}, self.context)
+        self.assertEqual(result, {"approved": False, "feedback": "native_plan_binding_mismatch"})
+        self.assertEqual(self.controller.authorization.state, "ABORTED")
+        self.assertEqual(self.session.disconnects, 1)
+        self.assertEqual(self.runtime.stops, 1)
 
 
 class RuntimeConfigurationUnitTests(unittest.IsolatedAsyncioTestCase):
@@ -585,7 +649,7 @@ class RuntimeConfigurationUnitTests(unittest.IsolatedAsyncioTestCase):
         code = f"""
 import asyncio, json, sys
 from pathlib import Path
-sys.path.insert(0, {str(EVAL)!r})
+sys.path.insert(0, {str(EVAL / "python")!r})
 # Create asyncio's own wakeup socketpair before forbidding all socket activity.
 # Nothing in the module/launcher/readiness is allowed to create another socket.
 loop = asyncio.new_event_loop()
@@ -593,8 +657,8 @@ def audit(event, args):
     if event.startswith(('socket.', 'subprocess.', 'os.mkdir', 'sqlite3.connect')):
         raise AssertionError(event)
 sys.addaudithook(audit)
-import native_controller
-from authorization import live_readiness
+from agile_eval import native_controller
+from agile_eval.authorization import live_readiness
 assert 'copilot' not in sys.modules and 'deepeval' not in sys.modules
 base = Path({str(EVAL)!r}) / 'not-created-runtime'
 spec = native_controller.sanitized_runtime_spec(
@@ -616,101 +680,55 @@ print(live_readiness().canonical_bytes().decode('ascii'))
 
 
 class HeldEntrypointUnitTests(unittest.TestCase):
-    """Real shell entrypoints, controlled diagnostic doubles; no native SDK."""
+    """Diagnostic doubles target Python, which now owns the unconditional hold.
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.pwsh = shutil.which("pwsh")
-        cls.bash = (str(Path(os.environ.get("ProgramFiles", "C:/Program Files")) /
-                       "Git/usr/bin/bash.exe") if os.name == "nt" else shutil.which("bash"))
-        if not cls.pwsh or not cls.bash or not Path(cls.bash).exists():
-            raise RuntimeError("Both configured native shells are required")
+    Actual shell/startup/missing-interpreter coverage lives in test_native_scoring.
+    Mocking shell `python` used to mock only diagnostics; it now replaces the
+    entire entrypoint and cannot test that entrypoint's safety.
+    """
 
-    def run_held(self, native: str, diagnostic: str) -> None:
+    def run_held(self, diagnostic: str) -> None:
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             output = base / "must-not-stage"
-            marker = base / "must-not-start"
-            injection = base / "sitecustomize.py"
-            injection.write_text(
-                f"from pathlib import Path\nPath({str(marker)!r}).write_text('injected')\n",
-                encoding="utf-8")
-            # A plausible envelope is adjacent but has no authority.
-            envelope, submission, _ = records()
-            grant = base / "grant.json"
-            grant.write_bytes(envelope.canonical_bytes())
-            env = {k: v for k, v in os.environ.items()
-                   if k in ("SystemRoot", "WINDIR", "COMSPEC", "PATHEXT")}
-            env.update(PATH="", HOME=str(base), USERPROFILE=str(base),
-                       TEMP=str(base), TMP=str(base), GH_TOKEN="synthetic-token",
-                       COPILOT_SDK_AUTH_TOKEN="synthetic-token", EVAL_EXECUTION_READY="true",
-                       EVAL_GRANT=str(grant), EVAL_ENVELOPE=str(grant),
-                       PYTHONPATH=str(base), PYTHONSTARTUP=str(injection))
-            if diagnostic == "actual":
-                control = subprocess.run(
-                    [sys.executable, "-c", "pass"], env=env, capture_output=True,
-                    text=True, timeout=20)
-                self.assertEqual(control.returncode, 0, control.stderr)
-                self.assertTrue(marker.exists(), "startup-injection control did not fire")
-                marker.unlink()
-            if native == "powershell":
-                script = EVAL / "pipeline/run-eval.ps1"
-                python = str(Path(sys.executable)).replace("'", "''")
-                definitions = {
-                    "actual": f"function python {{ & '{python}' @args }};",
-                    "success": "function python { 'diagnostic-called'; $global:LASTEXITCODE=0 };",
-                    "error": "function python { throw 'diagnostic-failed' };",
-                    "missing": "",
-                }
-                code = (definitions[diagnostic] +
-                        f"function copilot {{ Set-Content '{marker}' 'started'; throw 'forbidden' }};"
-                        f"& '{script}' -Suite custom-eval -OutputRoot '{output}' -NoIsolation;"
-                        "exit $LASTEXITCODE")
-                command = [self.pwsh, "-NoProfile", "-NonInteractive", "-Command", code]
-            else:
-                # dirname is the only external utility used before the live hold.
-                # Copy individual utilities/DLLs, never an ambient executable PATH.
-                tools = base / "tools"
-                tools.mkdir()
-                dirname = (Path(self.bash).parent / "dirname.exe" if os.name == "nt"
-                           else Path(shutil.which("dirname")))
-                shutil.copy2(dirname, tools / dirname.name)
-                if os.name == "nt":
-                    for library in dirname.parent.glob("*.dll"):
-                        shutil.copy2(library, tools / library.name)
-                env["PATH"] = str(tools)
-                definitions = {
-                    "actual": f'python() {{ "{Path(sys.executable).as_posix()}" "$@"; }};',
-                    "success": "python() { echo diagnostic-called; return 0; };",
-                    "error": "python() { echo diagnostic-failed; return 9; };",
-                    "missing": "",
-                }
-                code = (definitions[diagnostic] +
-                        f'copilot() {{ echo started > "{marker.as_posix()}"; return 99; }};'
-                        'export -f copilot; ' +
-                        ("export -f python; " if diagnostic != "missing" else "") +
-                        f'source "{(EVAL / "pipeline/run-eval.sh").as_posix()}" '
-                        f'--suite custom-eval --output-root "{output.as_posix()}" --no-isolation')
-                command = [self.bash, "--noprofile", "--norc", "-c", code]
-            result = subprocess.run(command, env=env, capture_output=True,
+            script = """
+import sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from agile_eval import run_eval
+def diagnostic(*args, **kwargs):
+    assert args[0][1:4] == ['-I', '-S', '-B']
+    if sys.argv[3] == 'missing':
+        raise OSError('diagnostic missing')
+    if sys.argv[3] == 'error':
+        raise run_eval.subprocess.TimeoutExpired('diagnostic', 10)
+    print('diagnostic-called')
+    return run_eval.subprocess.CompletedProcess(args[0], 0)
+def deny(event, args):
+    if event.startswith(('socket.', 'os.mkdir', 'subprocess.')):
+        raise AssertionError(event)
+sys.addaudithook(deny)
+with patch.object(run_eval.subprocess, 'run', diagnostic):
+    code = run_eval.main(['--suite', 'custom-eval', '--output-root', sys.argv[2], '--no-isolation'])
+assert not any(n.startswith(('copilot', 'deepeval', 'yaml')) for n in sys.modules)
+raise SystemExit(code)
+"""
+            result = subprocess.run(
+                [sys.executable, "-I", "-S", "-B", "-c", script,
+                 str(EVAL / "python"), str(output), diagnostic], capture_output=True,
                                     text=True, encoding="utf-8", errors="replace", timeout=30)
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
             self.assertIn("live evaluation is disabled", (result.stdout + result.stderr).lower())
             self.assertFalse(output.exists())
-            self.assertFalse(marker.exists())
-            if diagnostic == "actual":
-                self.assertIn('"execution_ready":false', result.stdout)
-            elif diagnostic == "success":
+            if diagnostic == "success":
                 self.assertIn("diagnostic-called", result.stdout)
-            elif diagnostic == "error":
-                self.assertTrue("diagnostic-failed" in result.stdout or
-                                "Readiness diagnostic unavailable" in result.stderr)
+            else:
+                self.assertIn("Readiness diagnostic unavailable", result.stderr)
 
-    def test_both_nondry_runners_always_exit_two_before_staging_or_startup(self) -> None:
-        for native in ("powershell", "bash"):
-            for diagnostic in ("actual", "success", "error", "missing"):
-                with self.subTest(native=native, diagnostic=diagnostic):
-                    self.run_held(native, diagnostic)
+    def test_nondry_runner_always_exits_two_before_staging_despite_diagnostic_status(self) -> None:
+        for diagnostic in ("success", "error", "missing"):
+            with self.subTest(diagnostic=diagnostic):
+                self.run_held(diagnostic)
 
 
 if __name__ == "__main__":

@@ -9,26 +9,16 @@ Run:  python -m pytest eval/deepeval/tests -q
 
 from __future__ import annotations
 
-import sys
 import json
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from metrics.acceptance import (  # noqa: E402
-    VERDICT_EXIT,
-    VERDICT_SCORE,
-    AcceptanceMetric,
-    JudgeResult,
-    Verdict,
-    build_judge_prompt,
-    discover_plugin_dirs,
-    has_unverified,
-    parse_verdict,
-    parse_result,
-    workspace_index,
+from agile_eval.grading_contract import (
+    VERDICT_EXIT, VERDICT_SCORE, JudgeResult, Verdict, has_unverified, parse_verdict, parse_result,
+)
+from agile_eval.metrics.acceptance import (
+    AcceptanceMetric, build_judge_prompt, discover_plugin_dirs, workspace_index,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -188,7 +178,7 @@ def test_metric_reports_score_and_reason_without_calling_a_model(tmp_path, monke
     acceptance = tmp_path / "acceptance.md"
     acceptance.write_text("1. Something.")
 
-    import metrics.acceptance as mod
+    import agile_eval.metrics.acceptance as mod
 
     monkeypatch.setattr(
         mod, "run_judge",
@@ -210,7 +200,7 @@ def test_metric_surfaces_unverified_in_the_reason_without_persisting_sensitive_d
     acceptance = tmp_path / "acceptance.md"
     acceptance.write_text("1. Something.")
 
-    import metrics.acceptance as mod
+    import agile_eval.metrics.acceptance as mod
     secret = "ghp_fixtureNotARealCredential_1234567890"
 
     monkeypatch.setattr(
@@ -230,7 +220,7 @@ def test_metric_surfaces_unverified_in_the_reason_without_persisting_sensitive_d
     assert "UNVERIFIED" in metric.reason
     assert secret not in metric.reason
     result_path = tmp_path / "unverified-result.json"
-    from grading import write_result
+    from agile_eval.provenance import write_result
     write_result(metric.result, result_path)
     persisted = result_path.read_text(encoding="utf-8") + capsys.readouterr().out
     assert secret not in persisted
@@ -238,10 +228,9 @@ def test_metric_surfaces_unverified_in_the_reason_without_persisting_sensitive_d
 
 
 def test_live_judge_is_disabled_before_process_execution_even_with_sensitive_inputs(tmp_path, monkeypatch):
-    import metrics.acceptance as mod
-    from prepare_inputs import prepare
+    import agile_eval.metrics.acceptance as mod
+    from agile_eval.prepare_inputs import prepare
 
-    sys.path.insert(0, str(REPO_ROOT / "eval/pipeline/custom-eval"))
     task = REPO_ROOT / "eval/pipeline/custom-eval/tasks/task-10-helm-to-kustomize"
     workspace = tmp_path / "run/ws" / task.name
     baseline = tmp_path / "run/baseline" / task.name
@@ -259,7 +248,8 @@ def test_live_judge_is_disabled_before_process_execution_even_with_sensitive_inp
         calls.append((args, kwargs))
         raise AssertionError("live judge process must not run")
 
-    monkeypatch.setattr(mod.subprocess, "run", forbidden)
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", forbidden)
     result = mod.run_judge(workspace, acceptance, baseline_dir=baseline, timeout=1)
     assert result.verdict is Verdict.UNVERIFIED
     assert result.exit_code == 3 and result.error_kind is None

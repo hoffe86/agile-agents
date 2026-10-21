@@ -1,35 +1,29 @@
-"""Offline policy and real SQLite contracts; no SDK, DeepEval or model calls."""
+"""Offline canonical policy and single-job contracts; no SDK or model calls."""
 from __future__ import annotations
 
-from contextlib import closing
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, asdict, fields, replace
 import json
-import multiprocessing
-import os
 from pathlib import Path
-import sqlite3
-import stat
 import subprocess
 import sys
 import tempfile
+from threading import Barrier
 import unittest
 from unittest.mock import patch
 
 
 EVAL = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(EVAL))
+sys.path.insert(0, str(EVAL / "python"))
 
-from authorization import (  # noqa: E402
-    AdmissionReceipt, Assessment, BatchEnvelope, BLOCKERS, Budget, Decision, Grant,
-    Identities, InvalidRecord, Operation, PlanSubmission, Readiness, SELECTED_TASKS,
-    MAX_JSON_BYTES, TASK05, evaluate, evaluate_operation, live_readiness, sha256,
+from agile_eval.authorization import (  # noqa: E402
+    Assessment, BatchEnvelope, BLOCKERS, Budget, Decision, Identities, InvalidRecord,
+    JobAuthorization, Operation, PlanSubmission, Readiness, SELECTED_TASKS,
+    MAX_JSON_BYTES, TASK05, evaluate, live_readiness, sha256,
 )
-from authorization_ledger import AdmissionDenied, Ledger  # noqa: E402
 
 
 NOW = "2026-10-20T12:00:00Z"
-LATER = "2026-10-20T12:00:01Z"
-EXPIRED = "2026-10-20T12:01:00Z"
 PLAN = b"Read the immutable diff.patch and write only the Markdown description.\n"
 INPUT = EVAL / "pipeline/custom-eval/tasks" / TASK05 / "baseline/diff.patch"
 
@@ -48,7 +42,7 @@ def records() -> tuple[BatchEnvelope, PlanSubmission, Assessment]:
     envelope = BatchEnvelope(
         1, "batch-1", "human-approval-oct20", NOW, "2026-10-20T13:00:00Z",
         SELECTED_TASKS, (TASK05,), (identities,), operations, "independent-assessor",
-        3, 3, Budget(300, 30, 300), 60,
+        3, 3, Budget(300, 30, 300),
     )
     submission = PlanSubmission(
         1, envelope.batch_id, "run-1", "attempt-1", TASK05, "controller-1",
@@ -96,45 +90,15 @@ def mutations(submission: PlanSubmission) -> dict[str, PlanSubmission]:
     return result
 
 
-def race_consume(path: str, submission_json: bytes, grant_id: str,
-                 ready: object, start: object, results: object) -> None:
-    """Spawn-safe worker: each process owns an independent SQLite connection."""
-    try:
-        submission = PlanSubmission.from_json(submission_json)
-        with Ledger(Path(path), controller_instance_id="controller-1", join_existing=True) as ledger:
-            ready.put("ready")
-            if not start.wait(20):
-                results.put("start_timeout")
-                return
-            try:
-                ledger.consume(grant_id, current_binding=submission, now=LATER)
-                results.put("consumed")
-            except AdmissionDenied as exc:
-                results.put(str(exc))
-    except Exception as exc:
-        results.put(type(exc).__name__)
-
-
-def crash_after_consumption(path: str, submission_json: bytes, grant_id: str) -> None:
-    submission = PlanSubmission.from_json(submission_json)
-    ledger = Ledger(Path(path), controller_instance_id="controller-1", join_existing=True)
-    ledger.consume(grant_id, current_binding=submission, now=LATER)
-    # Model a response lost after durable consumption, not a clean shutdown.
-    os._exit(23)
-
-
 class RecordTests(unittest.TestCase):
     def setUp(self) -> None:
         self.envelope, self.submission, self.assessment = records()
 
     def test_strict_roundtrip_for_every_record(self) -> None:
-        grant = Grant("opaque-grant", self.submission, self.submission.digest, NOW, EXPIRED, "issued")
-        receipt = AdmissionReceipt("ledger-1", grant.grant_id, self.submission,
-                                   self.submission.digest, LATER, EXPIRED)
         values = (self.envelope, self.submission, self.assessment,
                   self.submission.identities, self.submission.budget,
                   self.submission.operations[0], Decision("block_task", ("held",)),
-                  grant, receipt, live_readiness())
+                  live_readiness())
         for value in values:
             with self.subTest(record=type(value).__name__):
                 self.assertEqual(type(value).from_json(value.canonical_bytes()), value)
@@ -146,31 +110,25 @@ class RecordTests(unittest.TestCase):
         submission = replace(self.submission, plan_path="/native/" + "東京" * 100,
                              operations=tuple(replace(o, max_bytes=1024)
                                               for o in self.submission.operations))
-        grant = Grant("grant-1", submission, submission.digest, NOW, EXPIRED, "issued")
-        receipt = AdmissionReceipt("ledger-1", grant.grant_id, submission,
-                                   submission.digest, LATER, EXPIRED)
-        for record in (submission, grant, receipt):
-            encoded = record.canonical_bytes()
-            wire = json.loads(encoded)
-            # Raw UTF-8 fits even when canonical ASCII escaping exceeds the bound.
-            compact_utf8 = json.dumps(wire, ensure_ascii=False, separators=(",", ":"))
-            self.assertLess(len(compact_utf8.encode("utf-8")), len(encoded) - 1)
-            with self.subTest(record=type(record).__name__):
-                with patch("authorization.MAX_JSON_BYTES", len(encoded)):
-                    self.assertEqual(replace(record), record)
-                    self.assertEqual(type(record).from_dict(wire), record)
-                    self.assertEqual(type(record).from_json(encoded), record)
-                    self.assertEqual(record.canonical_bytes(), encoded)
-                with patch("authorization.MAX_JSON_BYTES", len(encoded) - 1):
-                    for name, build in (
-                        ("constructor", lambda: replace(record)),
-                        ("dict", lambda: type(record).from_dict(wire)),
-                        ("json", lambda: type(record).from_json(compact_utf8)),
-                        ("canonical", record.canonical_bytes),
-                    ):
-                        with self.subTest(entrypoint=name), self.assertRaisesRegex(
-                                InvalidRecord, "^invalid_record$"):
-                            build()
+        encoded = submission.canonical_bytes()
+        wire = json.loads(encoded)
+        compact_utf8 = json.dumps(wire, ensure_ascii=False, separators=(",", ":"))
+        self.assertLess(len(compact_utf8.encode("utf-8")), len(encoded) - 1)
+        with patch("agile_eval.authorization.MAX_JSON_BYTES", len(encoded)):
+            self.assertEqual(replace(submission), submission)
+            self.assertEqual(PlanSubmission.from_dict(wire), submission)
+            self.assertEqual(PlanSubmission.from_json(encoded), submission)
+            self.assertEqual(submission.canonical_bytes(), encoded)
+        with patch("agile_eval.authorization.MAX_JSON_BYTES", len(encoded) - 1):
+            for name, build in (
+                ("constructor", lambda: replace(submission)),
+                ("dict", lambda: PlanSubmission.from_dict(wire)),
+                ("json", lambda: PlanSubmission.from_json(compact_utf8)),
+                ("canonical", submission.canonical_bytes),
+            ):
+                with self.subTest(entrypoint=name), self.assertRaisesRegex(
+                        InvalidRecord, "^invalid_record$"):
+                    build()
 
     def test_aggregate_operations_exceed_real_encoded_limit(self) -> None:
         operations = tuple(replace(self.submission.operations[0],
@@ -265,13 +223,13 @@ class PolicyTests(unittest.TestCase):
         self.envelope, self.submission, self.assessment = records()
 
     def test_matching_records_are_eligible_but_readiness_is_permanently_false(self) -> None:
-        result = evaluate(self.envelope, self.submission, self.assessment, now=NOW)
-        self.assertEqual(result, Decision("eligible", ("policy_eligible_not_execution_ready",)))
+        self.assertEqual(evaluate(self.envelope, self.submission, self.assessment, now=NOW),
+                         Decision("eligible", ("policy_eligible_not_execution_ready",)))
         self.assertEqual(live_readiness(), Readiness(False, "not_ready", BLOCKERS))
         with self.assertRaises(InvalidRecord):
             replace(live_readiness(), execution_ready=True)
         self.assertIn("native_atomic_admission_unverified", BLOCKERS)
-        self.assertIn("controller_ledger_isolation_unverified", BLOCKERS)
+        self.assertIn("controller_state_isolation_unverified", BLOCKERS)
         self.assertIn("credential_transport_unverified", BLOCKERS)
 
     def test_absent_uncertain_out_of_scope_and_mismatched_assessments_deny(self) -> None:
@@ -323,9 +281,7 @@ class PolicyTests(unittest.TestCase):
                     self.assertEqual(evaluate(self.envelope, submission, advice(submission),
                                               now=NOW).outcome, "abort_batch")
 
-    def test_operation_scope_with_fresh_advice_and_unchanged_receipt_binding(self) -> None:
-        receipt = AdmissionReceipt("ledger-1", "grant-1", self.submission,
-                                   self.submission.digest, NOW, EXPIRED)
+    def test_operation_scope_with_fresh_advice(self) -> None:
         for allowed in self.submission.operations:
             cases = (
                 ("target", replace(allowed, target=allowed.target + ".other"), False),
@@ -343,10 +299,6 @@ class PolicyTests(unittest.TestCase):
                         evaluate(self.envelope, submission, assessment, now=NOW),
                         Decision("eligible", ("policy_eligible_not_execution_ready",))
                         if fits else Decision("block_task", ("operation_out_of_scope",)))
-                    self.assertEqual(
-                        evaluate_operation(receipt, operation, self.submission, now=NOW),
-                        Decision("block_task", ("execution_not_ready",) if fits
-                                 else ("operation_out_of_scope",)))
 
     def test_nine_unsupported_tasks_stay_in_denominator_and_deny(self) -> None:
         denied = []
@@ -370,132 +322,40 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(evaluate(self.envelope, submission, advice(submission),
                                   now=NOW).reason_codes, ("budget_exceeded",))
 
-    def test_receipt_is_context_not_bearer_permission(self) -> None:
-        receipt = AdmissionReceipt("ledger-1", "grant-1", self.submission,
-                                   self.submission.digest, NOW, EXPIRED)
-        read = self.submission.operations[0]
-        self.assertEqual(evaluate_operation(receipt, read, self.submission, now=NOW),
-                         Decision("block_task", ("execution_not_ready",)))
-        self.assertEqual(evaluate_operation(receipt, replace(read, kind="shell"),
-                                             self.submission, now=NOW).reason_codes,
-                         ("operation_out_of_scope",))
-        self.assertEqual(evaluate_operation(receipt, read, self.submission,
-                                             now=EXPIRED).reason_codes, ("receipt_expired",))
-        self.assertEqual(evaluate_operation(receipt, read, self.submission,
-                                             now="invalid").outcome, "abort_batch")
-        self.assertEqual(evaluate_operation({}, read, self.submission, now=NOW).outcome,
-                         "block_task")
-        for name, binding in mutations(self.submission).items():
-            with self.subTest(field=name):
-                self.assertEqual(evaluate_operation(receipt, read, binding,
-                                                     now=NOW).outcome, "abort_batch")
 
-
-class LedgerTests(unittest.TestCase):
+class JobAuthorizationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.directory = tempfile.TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        self.path = Path(self.directory.name).resolve() / "admission.sqlite"
         self.envelope, self.submission, self.assessment = records()
-        self.ledger = self.open()
-        self.register()
+        self.job = JobAuthorization(self.submission)
 
-    def open(self, *, join: bool = False, controller: str = "controller-1") -> Ledger:
-        ledger = Ledger(self.path, controller_instance_id=controller, join_existing=join)
-        self.addCleanup(ledger.close)
-        return ledger
+    def attempt(self, **changes: object) -> Decision:
+        args = dict(envelope=self.envelope, current_binding=self.submission,
+                    assessment=self.assessment, expected_digest=self.envelope.digest,
+                    approval_reference=self.envelope.approval_reference, now=NOW)
+        args.update(changes)
+        return self.job.attempt(**args)
 
-    def register(self, envelope: BatchEnvelope | None = None, ledger: Ledger | None = None) -> None:
-        envelope = envelope or self.envelope
-        (ledger or self.ledger).register_envelope(
-            envelope, expected_digest=envelope.digest,
-            approval_reference=envelope.approval_reference)
+    def test_starts_unauthorized_and_requires_explicit_independent_approval(self) -> None:
+        self.assertEqual(self.job.state, "UNAUTHORIZED")
+        self.assertEqual(self.job.attempts, 0)
+        self.assertIsNone(self.job.reserved_budget)
+        with self.assertRaises(TypeError):
+            self.job.attempt(self.envelope, self.submission, self.assessment, now=NOW)
+        self.assertEqual(self.job.state, "UNAUTHORIZED")
+        self.assertEqual(self.attempt().outcome, "eligible")
+        self.assertEqual((self.job.state, self.job.attempts), ("USED", 1))
+        self.assertEqual(self.job.reserved_budget, self.submission.budget)
+        self.assertEqual(self.attempt().reason_codes, ("job_already_used",))
+        self.assertFalse(live_readiness().execution_ready)
 
-    def issue(self, submission: PlanSubmission | None = None) -> Grant:
-        submission = submission or self.submission
-        result = self.ledger.issue(submission, advice(submission), now=NOW)
-        self.assertIsInstance(result, Grant)
-        return result
-
-    def deny_consume(self, grant_id: str, reason: str, **kwargs: object) -> AdmissionDenied:
-        with self.assertRaisesRegex(AdmissionDenied, "^" + reason + "$") as caught:
-            self.ledger.consume(grant_id, current_binding=kwargs.get("binding", self.submission),
-                                now=kwargs.get("now", LATER))
-        return caught.exception
-
-    def test_matching_envelope_issues_and_consumes_once_with_durable_receipt(self) -> None:
-        grant = self.issue()
-        receipt = self.ledger.consume(grant.grant_id, current_binding=self.submission, now=LATER)
-        self.assertEqual(receipt.submission, self.submission)
-        self.assertEqual(receipt.ledger_id, self.ledger.ledger_id)
-        self.assertEqual(receipt.submission_digest, self.submission.digest)
-        with closing(sqlite3.connect(self.path)) as db, db:
-            state, stored = db.execute("SELECT state,receipt FROM grants").fetchone()
-        self.assertEqual(state, "consumed")
-        self.assertEqual(AdmissionReceipt.from_json(stored), receipt)
-        self.deny_consume(grant.grant_id, "grant_not_issued")
-
-    def test_oversized_grant_or_receipt_rolls_back_issuance(self) -> None:
-        envelope = replace(self.envelope, permitted_operations=tuple(
-            replace(o, max_bytes=1024) for o in self.envelope.permitted_operations))
-        submission = replace(self.submission, envelope_digest=envelope.digest,
-                             operations=envelope.permitted_operations)
-        assessment = advice(submission)
-        grant = Grant("g" * 64, submission, submission.digest,
-                      NOW, EXPIRED, "issued")
-        receipt = AdmissionReceipt(self.ledger.ledger_id, grant.grant_id, submission,
-                                   submission.digest, NOW, EXPIRED)
-        self.assertGreater(len(receipt.canonical_bytes()), len(grant.canonical_bytes()))
-        for record in (grant, receipt):
-            limit = len(record.canonical_bytes()) - 1
-            self.assertLess(len(envelope.canonical_bytes()), limit)
-            self.assertLess(len(submission.canonical_bytes()), limit)
-            with self.subTest(record=type(record).__name__), tempfile.TemporaryDirectory() as temp:
-                path = Path(temp).resolve() / "ledger.sqlite"
-                with Ledger(path, controller_instance_id="controller-1") as ledger:
-                    self.register(envelope, ledger)
-                    with patch("authorization.MAX_JSON_BYTES", limit):
-                        with self.assertRaisesRegex(AdmissionDenied, "^ledger_integrity_failure$"):
-                            ledger.issue(submission, assessment, now=NOW)
-                    with closing(sqlite3.connect(path)) as db:
-                        self.assertEqual(db.execute("SELECT COUNT(*) FROM grants").fetchone(), (0,))
-                        self.assertEqual(db.execute("SELECT COUNT(*) FROM attempts").fetchone(), (0,))
-                        self.assertEqual(db.execute("SELECT state FROM batches").fetchone(),
-                                         ("aborted",))
-
-    def test_receipt_at_encoded_limit_roundtrips_through_real_ledger(self) -> None:
-        self.envelope = replace(self.envelope, batch_id="bounded-batch", permitted_operations=tuple(
-            replace(o, max_bytes=1024) for o in self.envelope.permitted_operations))
-        self.submission = replace(self.submission, batch_id=self.envelope.batch_id,
-                                  envelope_digest=self.envelope.digest,
-                                  operations=self.envelope.permitted_operations)
-        self.register()
-        receipt = AdmissionReceipt(self.ledger.ledger_id, "g" * 64, self.submission,
-                                   self.submission.digest, LATER, EXPIRED)
-        limit = len(receipt.canonical_bytes())
-        with patch("authorization.MAX_JSON_BYTES", limit):
-            grant = self.issue()
-            actual = self.ledger.consume(grant.grant_id, current_binding=self.submission, now=LATER)
-            self.assertEqual(len(actual.canonical_bytes()), limit)
-            with closing(sqlite3.connect(self.path)) as db:
-                stored_grant, stored_receipt = db.execute(
-                    "SELECT record,receipt FROM grants").fetchone()
-            self.assertEqual(Grant.from_json(stored_grant), grant)
-            self.assertEqual(AdmissionReceipt.from_json(stored_receipt), actual)
-
-    def test_registration_requires_independent_digest_and_approval_reference(self) -> None:
+    def test_wrong_approval_identity_or_digest_is_terminal(self) -> None:
         for changes in ({"expected_digest": sha256(b"forged")},
                         {"approval_reference": "forged-adjacent-approval"}):
-            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as directory:
-                with Ledger(Path(directory).resolve() / "db",
-                            controller_instance_id="controller-1") as ledger:
-                    args = {"expected_digest": self.envelope.digest,
-                            "approval_reference": self.envelope.approval_reference}
-                    args.update(changes)
-                    with self.assertRaisesRegex(AdmissionDenied, "approval_mismatch"):
-                        ledger.register_envelope(self.envelope, **args)
-                    with self.assertRaisesRegex(AdmissionDenied, "ledger_aborted"):
-                        ledger.issue(self.submission, self.assessment, now=NOW)
+            with self.subTest(changes=changes):
+                self.job = JobAuthorization(self.submission)
+                self.assertEqual(self.attempt(**changes).reason_codes, ("approval_mismatch",))
+                self.assertEqual(self.job.state, "ABORTED")
+                self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
 
     def test_every_envelope_field_mutation_rejects_original_approval(self) -> None:
         changes = {
@@ -506,408 +366,154 @@ class LedgerTests(unittest.TestCase):
             "permitted_operations": (self.submission.operations[0],
                                      replace(self.submission.operations[1], max_bytes=8191)),
             "assessor_id": "assessor-2", "max_attempts": 4, "max_attempts_per_task": 2,
-            "budget": Budget(301, 30, 300), "grant_ttl_seconds": 59,
+            "budget": Budget(301, 30, 300),
         }
         self.assertEqual(set(changes), {field.name for field in fields(BatchEnvelope)})
         for name, value in changes.items():
-            with self.subTest(field=name), tempfile.TemporaryDirectory() as directory:
-                with Ledger(Path(directory).resolve() / "db",
-                            controller_instance_id="controller-1") as ledger:
-                    with self.assertRaises((InvalidRecord, AdmissionDenied)):
-                        modified = replace(self.envelope, **{name: value})
-                        ledger.register_envelope(
-                            modified, expected_digest=self.envelope.digest,
-                            approval_reference=self.envelope.approval_reference)
-                    with self.assertRaises(AdmissionDenied):
-                        ledger.issue(self.submission, self.assessment, now=NOW)
+            with self.subTest(field=name):
+                self.job = JobAuthorization(self.submission)
+                # Deliberately malformed frozen input must also be revalidated.
+                modified = replace(self.envelope)
+                object.__setattr__(modified, name, value)
+                self.assertEqual(self.attempt(envelope=modified).outcome, "abort_batch")
+                self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
 
-    def test_forged_adjacent_approval_and_provenance_have_no_authority(self) -> None:
-        Path(self.directory.name, "approval.json").write_text(
-            json.dumps({"approved": True, "digest": self.envelope.digest}), encoding="utf-8")
-        Path(self.directory.name, "provenance.json").write_text(
-            '{"execution_ready":true,"outcome":"eligible","status":"resolved"}', encoding="utf-8")
-        unregistered = replace(self.submission, batch_id="forged-batch")
-        with self.assertRaisesRegex(AdmissionDenied, "unknown_batch"):
-            self.ledger.issue(unregistered, advice(unregistered), now=NOW)
-        self.assertEqual(self.ledger.issue(self.submission, None, now=NOW).outcome, "block_task")
-        self.assertFalse(live_readiness().execution_ready)
-
-    def test_issue_evaluates_internally_and_cannot_accept_forged_eligible(self) -> None:
-        decision = self.ledger.issue(self.submission, Decision("eligible", ("forged",)), now=NOW)
-        self.assertEqual(decision.reason_codes, ("assessment_missing_or_invalid",))
-        self.assertEqual(self.ledger.issue(self.submission, self.assessment, now=NOW).reason_codes,
-                         ("duplicate_attempt",))
-        with closing(sqlite3.connect(self.path)) as db, db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM grants").fetchone(), (0,))
-
-    def test_duplicate_attempt_and_envelope_cannot_mint_another_grant(self) -> None:
-        grant = self.issue()
-        self.assertEqual(self.ledger.issue(self.submission, self.assessment, now=NOW).reason_codes,
-                         ("duplicate_attempt",))
-        changed = replace(self.submission, plan_sha256=sha256(b"new-plan"))
-        self.assertEqual(self.ledger.issue(changed, advice(changed), now=NOW).reason_codes,
-                         ("duplicate_attempt",))
-        with self.assertRaisesRegex(AdmissionDenied, "envelope_already_registered"):
-            self.register()
-        self.ledger.consume(grant.grant_id, current_binding=self.submission, now=LATER)
-        self.assertEqual(self.ledger.issue(self.submission, self.assessment, now=NOW).reason_codes,
-                         ("duplicate_attempt",))
-
-    def test_every_binding_mutation_aborts_consumption(self) -> None:
+    def test_every_binding_mutation_aborts_even_with_fresh_advice(self) -> None:
         for name, changed in mutations(self.submission).items():
-            with self.subTest(field=name), tempfile.TemporaryDirectory() as directory:
-                with Ledger(Path(directory).resolve() / "db",
-                            controller_instance_id="controller-1") as ledger:
-                    self.register(ledger=ledger)
-                    grant = ledger.issue(self.submission, self.assessment, now=NOW)
-                    with self.assertRaisesRegex(AdmissionDenied, "current_binding_mismatch") as caught:
-                        ledger.consume(grant.grant_id, current_binding=changed, now=LATER)
-                    self.assertEqual(caught.exception.decision.outcome, "abort_batch")
-                    with self.assertRaisesRegex(AdmissionDenied, "ledger_aborted"):
-                        ledger.consume(grant.grant_id, current_binding=self.submission, now=LATER)
+            with self.subTest(field=name):
+                self.job = JobAuthorization(self.submission)
+                self.assertEqual(self.attempt(current_binding=changed, assessment=advice(changed))
+                                 .reason_codes, ("current_binding_mismatch",))
+                self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
 
-    def test_expired_not_yet_valid_unknown_and_revoked_grants_deny(self) -> None:
-        grant = self.issue()
-        self.deny_consume(grant.grant_id, "grant_expired", now=EXPIRED)
-        self.deny_consume(grant.grant_id, "grant_expired", now="2026-10-20T11:59:59Z")
-        self.deny_consume("unknown-grant", "unknown_grant")
-        self.ledger.invalidate_attempt(self.submission.attempt_id, reason="native_transition_uncertain")
-        self.deny_consume(grant.grant_id, "grant_not_issued")
+    def test_constructor_snapshots_exact_binding(self) -> None:
+        object.__setattr__(self.submission, "plan_sha256", sha256(b"changed"))
+        self.assertEqual(self.attempt().reason_codes, ("current_binding_mismatch",))
+        with self.assertRaises(InvalidRecord):
+            JobAuthorization({})
 
-    def test_attempt_limits_include_blocked_and_revoked_attempts(self) -> None:
-        self.ledger.issue(self.submission, None, now=NOW)
-        second = replace(self.submission, attempt_id="attempt-2")
-        self.issue(second)
-        self.ledger.invalidate_attempt(second.attempt_id, reason="cancelled")
-        third = replace(self.submission, attempt_id="attempt-3")
-        self.issue(third)
-        fourth = replace(self.submission, attempt_id="attempt-4")
-        self.assertEqual(self.ledger.issue(fourth, advice(fourth), now=NOW).reason_codes,
-                         ("attempt_limit_exceeded",))
+    def test_blocked_advice_uses_attempt_and_cannot_be_replaced(self) -> None:
+        for assessment in (None, replace(self.assessment, outcome="uncertain"),
+                           replace(self.assessment, outcome="out_of_scope"),
+                           replace(self.assessment, submission_digest=sha256(b"other")),
+                           replace(self.assessment, reference="different"),
+                           replace(self.assessment, assessor_id="writer")):
+            with self.subTest(assessment=assessment):
+                self.job = JobAuthorization(self.submission)
+                self.assertEqual(self.attempt(assessment=assessment).outcome, "block_task")
+                self.assertEqual((self.job.state, self.job.attempts), ("USED", 1))
+                self.assertIsNone(self.job.reserved_budget)
+                self.assertEqual(self.attempt().reason_codes, ("job_already_used",))
 
-    def test_cumulative_budget_not_refunded_after_revocation_or_consumption(self) -> None:
-        large = replace(self.submission, budget=Budget(150, 15, 150))
-        grant = self.issue(large)
-        self.ledger.consume(grant.grant_id, current_binding=large, now=LATER)
-        second = replace(large, attempt_id="attempt-2")
-        self.issue(second)
-        self.ledger.invalidate_attempt(second.attempt_id, reason="response_lost")
-        third = replace(self.submission, attempt_id="attempt-3")
-        self.assertEqual(self.ledger.issue(third, advice(third), now=NOW).reason_codes,
-                         ("budget_exceeded",))
+    def test_expiry_and_not_yet_valid_use_attempt_without_reserving_budget(self) -> None:
+        for now in ("2026-10-20T11:59:59Z", self.envelope.valid_until):
+            with self.subTest(now=now):
+                self.job = JobAuthorization(self.submission)
+                self.assertEqual(self.attempt(now=now).reason_codes, ("envelope_time_invalid",))
+                self.assertEqual(self.job.attempts, 1)
+                self.assertIsNone(self.job.reserved_budget)
+                self.assertEqual(self.attempt().reason_codes, ("job_already_used",))
 
-    def test_each_budget_dimension_enforces_cumulative_limit(self) -> None:
+    def test_each_budget_dimension_is_bounded_and_never_refunded(self) -> None:
         for dimension in ("tokens", "aiu", "seconds"):
-            with self.subTest(dimension=dimension), tempfile.TemporaryDirectory() as directory:
-                with Ledger(Path(directory).resolve() / "db",
-                            controller_instance_id="controller-1") as ledger:
-                    self.register(ledger=ledger)
+            for excess in (0, 1):
+                with self.subTest(dimension=dimension, excess=excess):
                     budget = replace(self.submission.budget, **{
-                        dimension: getattr(self.envelope.budget, dimension)})
-                    first = replace(self.submission, budget=budget)
-                    self.assertIsInstance(ledger.issue(first, advice(first), now=NOW), Grant)
-                    second = replace(self.submission, attempt_id="attempt-2")
-                    self.assertEqual(ledger.issue(second, advice(second), now=NOW).reason_codes,
-                                     ("budget_exceeded",))
+                        dimension: getattr(self.envelope.budget, dimension) + excess})
+                    submission = replace(self.submission, budget=budget)
+                    self.job = JobAuthorization(submission)
+                    result = self.attempt(current_binding=submission, assessment=advice(submission))
+                    self.assertEqual(result.outcome, "block_task" if excess else "eligible")
+                    reserved = None if excess else budget
+                    self.assertEqual(self.job.reserved_budget, reserved)
+                    self.job.abort("response_lost")
+                    self.job.abort("cancelled")
+                    self.assertEqual((self.job.state, self.job.attempts), ("ABORTED", 1))
+                    self.assertEqual(self.job.reserved_budget, reserved)
+                    self.assertEqual(self.job.terminal_reason, "response_lost")
+                    self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
 
-    def test_grant_expiry_is_capped_by_envelope_and_attempt_duration(self) -> None:
-        for end, seconds, expected in (
-            ("2026-10-20T12:00:30Z", 100, "2026-10-20T12:00:30Z"),
-            ("2026-10-20T13:00:00Z", 10, "2026-10-20T12:00:10Z"),
-        ):
-            with self.subTest(end=end, seconds=seconds), tempfile.TemporaryDirectory() as directory:
-                with Ledger(Path(directory).resolve() / "db",
-                            controller_instance_id="controller-1") as ledger:
-                    envelope = replace(self.envelope, valid_until=end)
-                    self.register(envelope, ledger)
-                    submission = replace(self.submission, envelope_digest=envelope.digest,
-                                         budget=replace(self.submission.budget, seconds=seconds))
-                    grant = ledger.issue(submission, advice(submission), now=NOW)
-                    self.assertEqual(grant.expires_at, expected)
-                    with self.assertRaisesRegex(AdmissionDenied, "grant_expired"):
-                        ledger.consume(grant.grant_id, current_binding=submission, now=expected)
+    def test_two_local_threads_can_use_only_one_attempt(self) -> None:
+        ready = Barrier(2)
 
-    def test_policy_abort_is_persisted_and_not_just_returned(self) -> None:
-        submission = replace(self.submission, identities=replace(
-            self.submission.identities, model_id="unapproved-model"))
-        self.assertEqual(self.ledger.issue(submission, advice(submission), now=NOW).outcome,
-                         "abort_batch")
-        second = self.open(join=True)
-        with self.assertRaisesRegex(AdmissionDenied, "batch_aborted"):
-            second.issue(self.submission, self.assessment, now=NOW)
+        def attempt() -> str:
+            ready.wait(timeout=5)
+            return self.attempt().outcome
 
-    def test_abort_batch_denies_existing_and_future_grants(self) -> None:
-        grant = self.issue()
-        self.ledger.abort_batch(self.envelope.batch_id, reason="disconnect")
-        self.deny_consume(grant.grant_id, "grant_not_issued")
-        with self.assertRaisesRegex(AdmissionDenied, "batch_aborted"):
-            self.ledger.issue(replace(self.submission, attempt_id="attempt-2"),
-                              self.assessment, now=NOW)
-        with self.assertRaisesRegex(AdmissionDenied, "envelope_already_registered"):
-            self.register()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: attempt(), range(2)))
+        self.assertCountEqual(results, ["eligible", "block_task"])
+        self.assertEqual(self.job.attempts, 1)
+        self.assertEqual(self.job.reserved_budget, self.submission.budget)
 
-    def test_restart_aborts_unfinished_attempt_and_fences_old_connection(self) -> None:
-        grant = self.issue()
-        restarted = self.open(controller="controller-2")
-        with self.assertRaisesRegex(AdmissionDenied, "grant_not_issued"):
-            restarted.consume(grant.grant_id, current_binding=self.submission, now=LATER)
-        with self.assertRaisesRegex(AdmissionDenied, "batch_aborted"):
-            restarted.issue(replace(self.submission, controller_instance_id="controller-2"),
-                            self.assessment, now=NOW)
-        self.assertEqual(self.deny_consume(grant.grant_id, "controller_mismatch").decision.outcome,
-                         "abort_batch")
+    def test_invalid_control_records_latch_and_reinstantiation_restores_no_authority(self) -> None:
+        for changes in ({"envelope": {}}, {"current_binding": {}}, {"assessment": {}},
+                        {"assessment": Decision("eligible", ("forged",))},
+                        {"expected_digest": None}, {"approval_reference": "secret\ninvalid"},
+                        {"now": "invalid"}):
+            with self.subTest(changes=changes):
+                self.job = JobAuthorization(self.submission)
+                self.assertEqual(self.attempt(**changes),
+                                 Decision("abort_batch", ("invalid_control_record",)))
+                self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
+                self.job = JobAuthorization(PlanSubmission.from_json(
+                    self.submission.canonical_bytes()))
+                self.assertEqual((self.job.state, self.job.attempts), ("UNAUTHORIZED", 0))
+                with self.assertRaises(TypeError):
+                    self.job.attempt(self.envelope, self.submission, self.assessment, now=NOW)
+                # A fresh trusted approval invocation, not a restored record.
+                self.assertEqual(self.attempt().outcome, "eligible")
 
-    def test_fenced_controller_cannot_abort_replacement_batch_or_grant(self) -> None:
-        self.issue()
-        replacement = self.open(controller="controller-2")
-        envelope = replace(self.envelope, batch_id="replacement-batch")
-        self.register(envelope, replacement)
-        submission = replace(self.submission, batch_id=envelope.batch_id,
-                             envelope_digest=envelope.digest, attempt_id="replacement-attempt",
-                             controller_instance_id="controller-2")
-        grant = replacement.issue(submission, advice(submission), now=NOW)
-        self.assertIsInstance(grant, Grant)
-        with self.assertRaisesRegex(AdmissionDenied, "^controller_mismatch$"):
-            self.ledger.abort_batch(self.envelope.batch_id, reason="stale_cleanup")
-        with self.assertRaisesRegex(AdmissionDenied, "^ledger_aborted$"):
-            self.ledger.issue(self.submission, self.assessment, now=NOW)
-        with closing(sqlite3.connect(self.path)) as db:
-            self.assertEqual(db.execute("SELECT state FROM batches WHERE batch_id=?",
-                                        (envelope.batch_id,)).fetchone(), ("active",))
-            self.assertEqual(db.execute("SELECT state FROM grants WHERE grant_id=?",
-                                        (grant.grant_id,)).fetchone(), ("issued",))
-            self.assertEqual(db.execute("SELECT state FROM attempts WHERE attempt_id=?",
-                                        (submission.attempt_id,)).fetchone(), ("issued",))
-        receipt = replacement.consume(grant.grant_id, current_binding=submission, now=LATER)
-        self.assertEqual(receipt.submission, submission)
+    def test_abort_before_approval_is_terminal_even_with_invalid_reason(self) -> None:
+        self.job.abort("synthetic-sensitive\ninvalid")
+        self.assertEqual(self.job.terminal_reason, "invalid_control_record")
+        self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
+        self.assertEqual(self.job.attempts, 0)
+        self.assertIsNone(self.job.reserved_budget)
 
-    def test_process_crash_after_consumption_does_not_refund_or_resume(self) -> None:
-        grant = self.issue()
-        context = multiprocessing.get_context("spawn")
-        process = context.Process(target=crash_after_consumption, args=(
-            str(self.path), self.submission.canonical_bytes(), grant.grant_id))
-        process.start()
-        process.join(30)
-        if process.is_alive():
-            process.terminate()
-            process.join(10)
-            self.fail("crash worker did not complete")
-        self.assertEqual(process.exitcode, 23)
-        restarted = self.open(controller="controller-2")
-        with self.assertRaisesRegex(AdmissionDenied, "grant_not_issued"):
-            restarted.consume(grant.grant_id, current_binding=self.submission, now=LATER)
-        with closing(sqlite3.connect(self.path)) as db, db:
-            self.assertEqual(db.execute("SELECT state,tokens,aiu,seconds FROM attempts").fetchone(),
-                             ("consumed", 100, 10, 100))
-            self.assertEqual(db.execute("SELECT state FROM batches").fetchone(), ("aborted",))
-            self.assertIsNotNone(db.execute("SELECT receipt FROM grants").fetchone()[0])
-
-    def test_two_independent_connections_share_one_use(self) -> None:
-        grant = self.issue()
-        second = self.open(join=True)
-        second.consume(grant.grant_id, current_binding=self.submission, now=LATER)
-        self.deny_consume(grant.grant_id, "grant_not_issued")
-
-    def test_two_processes_racing_consumption_produce_exactly_one_receipt(self) -> None:
-        grant = self.issue()
-        context = multiprocessing.get_context("spawn")
-        ready, results, start = context.Queue(), context.Queue(), context.Event()
-        processes = [context.Process(target=race_consume, args=(
-            str(self.path), self.submission.canonical_bytes(), grant.grant_id,
-            ready, start, results)) for _ in range(2)]
-        try:
-            for process in processes:
-                process.start()
-            self.assertEqual([ready.get(timeout=30) for _ in processes], ["ready", "ready"])
-            start.set()
-            outcomes = [results.get(timeout=30) for _ in processes]
-            self.assertCountEqual(outcomes, ["consumed", "grant_not_issued"])
-            for process in processes:
-                process.join(30)
-                self.assertEqual(process.exitcode, 0)
-        finally:
-            start.set()
-            for process in processes:
-                if process.is_alive():
-                    process.terminate()
-                    process.join(10)
-            ready.close()
-            results.close()
-        self.deny_consume(grant.grant_id, "grant_not_issued")
-
-    def test_required_write_failure_is_terminal_and_has_bounded_error(self) -> None:
-        grant = self.issue()
-        # Fault injection into a real connection, not a mock transaction/ledger.
-        self.ledger._connection.set_authorizer(
-            lambda action, *_: sqlite3.SQLITE_DENY if action == sqlite3.SQLITE_UPDATE
-            else sqlite3.SQLITE_OK)
-        error = self.deny_consume(grant.grant_id, "ledger_integrity_failure")
-        self.assertEqual(error.decision.outcome, "abort_batch")
-        self.ledger._connection.set_authorizer(None)
-        self.deny_consume(grant.grant_id, "ledger_aborted")
-        restarted = self.open(controller="controller-2")
-        with self.assertRaisesRegex(AdmissionDenied, "grant_not_issued"):
-            restarted.consume(grant.grant_id, current_binding=self.submission, now=LATER)
-
-    def test_commit_failure_never_returns_receipt(self) -> None:
-        grant = self.issue()
-        self.ledger._connection.set_authorizer(
-            lambda action, argument, *_: sqlite3.SQLITE_DENY
-            if action == sqlite3.SQLITE_TRANSACTION and argument == "COMMIT" else sqlite3.SQLITE_OK)
-        self.deny_consume(grant.grant_id, "ledger_integrity_failure")
-        self.ledger._connection.set_authorizer(None)
-        with closing(sqlite3.connect(self.path)) as db, db:
-            self.assertEqual(db.execute("SELECT receipt FROM grants").fetchone(), (None,))
-        self.deny_consume(grant.grant_id, "ledger_aborted")
-
-    def test_corrupt_grant_and_cross_table_bindings_abort(self) -> None:
-        corruptions = (
-            ("UPDATE grants SET record=?", ('{"secret":"never-echo-this"}',)),
-            ("UPDATE grants SET submission_digest=?", (sha256(b"wrong"),)),
-            ("UPDATE grants SET assessment=?", ('{}',)),
-            ("UPDATE attempts SET task_id=?", ("different-task",)),
-            ("UPDATE attempts SET tokens=?", (99,)),
-            ("UPDATE grants SET receipt=?", ('{}',)),
-            ("PRAGMA user_version=999", ()),
-            ("DELETE FROM metadata", ()),
-            ("PRAGMA ignore_check_constraints=ON", ()),
-        )
-        for statement, parameters in corruptions:
-            with self.subTest(statement=statement), tempfile.TemporaryDirectory() as directory:
-                path = Path(directory).resolve() / "db"
-                with Ledger(path, controller_instance_id="controller-1") as ledger:
-                    self.register(ledger=ledger)
-                    grant = ledger.issue(self.submission, self.assessment, now=NOW)
-                    with closing(sqlite3.connect(path)) as db, db:
-                        db.execute(statement, parameters)
-                        if statement.startswith("PRAGMA ignore"):
-                            db.execute("UPDATE grants SET state='unknown'")
-                    with self.assertRaises(AdmissionDenied) as caught:
-                        ledger.consume(grant.grant_id, current_binding=self.submission, now=LATER)
-                    self.assertEqual(caught.exception.decision.outcome, "abort_batch")
-                    self.assertNotIn("never-echo-this", str(caught.exception))
-
-    def test_corrupt_database_and_missing_join_fail_closed(self) -> None:
-        self.ledger.close()
-        self.path.write_bytes(b"corrupt-synthetic-secret")
-        with self.assertRaisesRegex(AdmissionDenied, "^ledger_initialization_failed$"):
-            self.open()
-        with self.assertRaisesRegex(AdmissionDenied, "^ledger_initialization_failed$"):
-            Ledger(self.path.with_name("missing"), controller_instance_id="controller-1",
-                   join_existing=True)
-
-    def test_missing_live_database_and_invalid_paths_fail_closed(self) -> None:
-        grant = self.issue()
-        self.ledger._connection.close()
-        self.path.unlink()
-        self.assertEqual(self.deny_consume(grant.grant_id, "ledger_integrity_failure")
-                         .decision.outcome, "abort_batch")
-        for path in (Path("relative.sqlite"), self.path.parent,
-                     self.path.parent / ".." / "escape.sqlite"):
-            with self.subTest(path=path), self.assertRaisesRegex(
-                    AdmissionDenied, "ledger_initialization_failed"):
-                Ledger(path, controller_instance_id="controller-1")
-
-    def test_wrong_controller_join_and_issue_abort(self) -> None:
-        with self.assertRaisesRegex(AdmissionDenied, "ledger_initialization_failed"):
-            self.open(join=True, controller="controller-2")
-        submission = replace(self.submission, controller_instance_id="controller-2")
-        with self.assertRaisesRegex(AdmissionDenied, "controller_mismatch"):
-            self.ledger.issue(submission, advice(submission), now=NOW)
-        with self.assertRaisesRegex(AdmissionDenied, "ledger_aborted"):
-            self.issue()
-
-    def test_database_file_substitution_fails_closed(self) -> None:
-        grant = self.issue()
-        # Windows disallows renaming an open SQLite file: close its OS handle only.
-        # Reconnect to that same original file after moving it. The ledger retains
-        # its anchors and must detect substitution, not just a closed connection.
-        self.ledger._connection.close()
-        original = self.path.with_name("original.sqlite")
-        self.path.rename(original)
-        self.path.write_bytes(original.read_bytes())
-        self.path.chmod(0o600)
-        self.ledger._connection = sqlite3.connect(original, isolation_level=None)
-        error = self.deny_consume(grant.grant_id, "ledger_path_substituted")
-        self.assertEqual(error.decision.outcome, "abort_batch")
-
-    def test_parent_directory_substitution_fails_closed(self) -> None:
-        grant = self.issue()
-        self.ledger._connection.close()
-        parent = self.path.parent
-        moved = parent.with_name(parent.name + "-moved")
-        parent.rename(moved)
-        try:
-            parent.mkdir(mode=0o700)
-            self.path.write_bytes((moved / self.path.name).read_bytes())
-            self.path.chmod(0o600)
-            self.ledger._connection = sqlite3.connect(moved / self.path.name, isolation_level=None)
-            self.assertEqual(self.deny_consume(grant.grant_id, "ledger_path_substituted")
-                             .decision.outcome, "abort_batch")
-        finally:
-            self.ledger._connection.close()
-            self.path.unlink()
-            parent.rmdir()
-            moved.rename(parent)
-
-    def test_unsafe_sidefile_is_rejected_before_sqlite_uses_it(self) -> None:
-        grant = self.issue()
-        side = Path(str(self.path) + "-journal")
-        side.mkdir()
-        self.addCleanup(side.rmdir)
-        self.assertEqual(self.deny_consume(grant.grant_id, "unsafe_ledger_path")
-                         .decision.outcome, "abort_batch")
-
-    def test_reparse_point_is_rejected_without_following_it(self) -> None:
-        grant = self.issue()
-        original = Path.lstat
-
-        def reparse(path: Path) -> object:
-            result = original(path)
-            if path == self.path:
-                class ReparseStat:
-                    st_mode = result.st_mode
-                    st_file_attributes = 0x400
-                return ReparseStat()
-            return result
-
-        with patch.object(Path, "lstat", reparse):
-            self.assertEqual(self.deny_consume(grant.grant_id, "unsafe_ledger_path")
-                             .decision.outcome, "abort_batch")
-
-    def test_symbolic_link_is_rejected_without_following_it(self) -> None:
-        grant = self.issue()
-        original = Path.lstat
-
-        def symlink(path: Path) -> os.stat_result:
-            result = original(path)
-            if path == self.path:
-                attributes = list(result)
-                attributes[0] = stat.S_IFLNK | 0o600
-                return os.stat_result(attributes)
-            return result
-
-        # lstat fault injection is portable without Windows CreateSymbolicLink privilege.
-        with patch.object(Path, "lstat", symlink):
-            self.assertEqual(self.deny_consume(grant.grant_id, "unsafe_ledger_path")
-                             .decision.outcome, "abort_batch")
-
-    def test_hardlinked_ledger_is_rejected(self) -> None:
-        grant = self.issue()
-        alias = self.path.with_name("alias.sqlite")
-        os.link(self.path, alias)
-        self.assertEqual(self.deny_consume(grant.grant_id, "unsafe_ledger_path")
-                         .decision.outcome, "abort_batch")
-
-    def test_unknown_attempt_and_batch_do_not_create_state(self) -> None:
-        with self.assertRaisesRegex(AdmissionDenied, "unknown_attempt"):
-            self.ledger.invalidate_attempt("absent", reason="cancelled")
-        with self.assertRaisesRegex(AdmissionDenied, "unknown_batch"):
-            self.ledger.abort_batch("absent", reason="cancelled")
-        self.issue()
+    def test_policy_integrity_failure_latches_abort(self) -> None:
+        envelope = replace(self.envelope, batch_id="different-batch")
+        self.assertEqual(self.attempt(envelope=envelope, expected_digest=envelope.digest)
+                         .reason_codes, ("envelope_binding_mismatch",))
+        self.assertEqual(self.job.state, "ABORTED")
+        self.assertEqual(self.attempt().reason_codes, ("job_aborted",))
 
 
 class OfflineEntrypointTests(unittest.TestCase):
+    def test_fresh_process_does_not_restore_authority_from_adjacent_jsonl_or_results(self) -> None:
+        envelope, submission, assessment = records()
+        script = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from agile_eval.authorization import Assessment, BatchEnvelope, JobAuthorization, PlanSubmission
+envelope = BatchEnvelope.from_json(sys.argv[2])
+submission = PlanSubmission.from_json(sys.argv[3])
+assessment = Assessment.from_json(sys.argv[4])
+job = JobAuthorization(submission)
+assert job.state == 'UNAUTHORIZED' and job.attempts == 0
+assert job.reserved_budget is None
+try:
+    job.attempt(envelope, submission, assessment, now=envelope.valid_from)
+except TypeError:
+    pass
+else:
+    raise AssertionError('restored authority without independent approval')
+assert job.state == 'UNAUTHORIZED'
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("approval.json", "results.json", "audit.jsonl"):
+                Path(directory, name).write_text(json.dumps({
+                    "state": "USED", "approved": True, "execution_ready": True,
+                    "expected_digest": envelope.digest,
+                    "approval_reference": envelope.approval_reference,
+                }), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-I", "-S", "-c", script, str(EVAL / "python"),
+                 envelope.canonical_bytes().decode(), submission.canonical_bytes().decode(),
+                 assessment.canonical_bytes().decode()], cwd=directory,
+                capture_output=True, text=True, check=False, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_imports_and_readiness_work_without_site_packages_or_network(self) -> None:
         script = """
 import json, sys
@@ -916,16 +522,16 @@ def deny(event, args):
     if event.startswith(('socket.', 'subprocess.', 'sqlite3.connect')):
         raise AssertionError(event)
 sys.addaudithook(deny)
-import authorization, authorization_ledger
+from agile_eval import authorization
 assert not any(n.startswith(('copilot', 'deepeval')) for n in sys.modules)
 print(authorization.live_readiness().canonical_bytes().decode())
 """
-        result = subprocess.run([sys.executable, "-I", "-S", "-c", script, str(EVAL)],
+        result = subprocess.run([sys.executable, "-I", "-S", "-c", script, str(EVAL / "python")],
                                 capture_output=True, text=True, check=False, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(json.loads(result.stdout)["execution_ready"])
 
-    def test_readiness_cli_exits_two_without_staging_or_ledger_creation(self) -> None:
+    def test_readiness_cli_exits_two_without_staging_or_state_creation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(
                 [sys.executable, "-I", "-S", str(EVAL / "authorization.py"), "check-readiness"],

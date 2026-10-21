@@ -2,7 +2,7 @@
 
 Protocols mirror public SDK 1.0.22 surfaces, not its private dispatch machinery.
 Callback unit tests are NOT native mediation, Stage 4 or OS isolation evidence.
-There is deliberately no approved/exit_only branch, grant consumption or resume.
+There is deliberately no approved/exit_only branch, live admission or resume.
 """
 from __future__ import annotations
 
@@ -15,11 +15,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol, TypedDict
 
-from authorization import (
-    InvalidRecord, MAX_JSON_BYTES, PlanSubmission, Readiness, identifier,
+from agile_eval.authorization import (
+    InvalidRecord, JobAuthorization, MAX_JSON_BYTES, PlanSubmission, Readiness, identifier,
     live_readiness, sha256,
 )
-from authorization_ledger import Ledger
 
 
 class PlanReadResult(Protocol):
@@ -76,36 +75,39 @@ class PermissionRejection:
 class NativeController:
     """One immutable submission and owned session; all routes remain denied.
 
-    All owned ledger connections must be supplied, including join_existing ones.
     Ownership is a trusted construction precondition, not a workspace assertion.
     A session lock serializes callbacks, NOT native plan-read-to-tool execution.
     """
 
     def __init__(
         self, *, session: NativeSession, runtime: OwnedRuntime,
-        ledgers: tuple[Ledger, ...], submission: PlanSubmission,
+        submission: PlanSubmission,
         controller_instance_id: str, native_session_id: str, plan_path: str,
         timeout_seconds: float = 5.0,
     ) -> None:
         submission.__post_init__()
         if (submission.controller_instance_id != identifier(controller_instance_id) or
                 submission.native_session_id != identifier(native_session_id) or
-                submission.plan_path != plan_path or not ledgers or
+                submission.plan_path != plan_path or
                 not math.isfinite(timeout_seconds) or timeout_seconds <= 0):
             raise InvalidRecord()
         self._session, self._runtime = session, runtime
-        self._ledgers = tuple(ledgers)
+        self._authorization = JobAuthorization(submission)
         self._submission = submission
         self._session_id, self._plan_path = native_session_id, plan_path
         self._timeout = timeout_seconds
         self._lock = asyncio.Lock()
-        self._terminal_reason: str | None = None
         self._cleanup_task: asyncio.Task[None] | None = None
         self._cleanup_failures: list[str] = []
 
     @property
     def terminal_reason(self) -> str | None:
-        return self._terminal_reason
+        return self._authorization.terminal_reason
+
+    @property
+    def authorization(self) -> JobAuthorization:
+        """Trusted job-local state, never serialized or exposed as an agent tool."""
+        return self._authorization
 
     @property
     def cleanup_failures(self) -> tuple[str, ...]:
@@ -117,19 +119,7 @@ class NativeController:
             raise InvalidRecord()
 
     async def _cleanup(self) -> None:
-        # Persistence can fail: still close EVERY owned connection and stop the
-        # owned runtime. Never echo exceptions, which can contain credentials.
-        for ledger in self._ledgers:
-            try:
-                ledger.abort_batch(self._submission.batch_id,
-                                   reason=self._terminal_reason)
-            except Exception:
-                self._cleanup_failures.append("ledger_abort_failed")
-            finally:
-                try:
-                    ledger.close()
-                except Exception:
-                    self._cleanup_failures.append("ledger_close_failed")
+        # Stop only the owned runtime. Never echo potentially sensitive exceptions.
         try:
             await asyncio.wait_for(self._session.disconnect(), self._timeout)
         except (Exception, asyncio.CancelledError):
@@ -150,7 +140,7 @@ class NativeController:
         force-stop fails, cleanup_failures exposes uncertainty; state stays terminal.
         """
         if self._cleanup_task is None:
-            self._terminal_reason = identifier(reason)
+            self._authorization.abort(reason)
             self._cleanup_task = asyncio.create_task(self._cleanup())
         cancelled = False
         while not self._cleanup_task.done():
@@ -170,14 +160,16 @@ class NativeController:
     ) -> PlanRefusal:
         try:
             async with self._lock:
-                if self._terminal_reason:
+                if self.terminal_reason:
+                    await self.abort()
                     return {"approved": False, "feedback": "controller_terminal"}
                 self._check_session(context)
                 # Neither inline planContent (even nonempty) nor summary is authority.
                 result = await asyncio.wait_for(
                     self._session.rpc.plan.read(), self._timeout)
                 self._check_session(context)  # a disconnect/replacement during read
-                if self._terminal_reason:
+                if self.terminal_reason:
+                    await self.abort()
                     return {"approved": False, "feedback": "controller_terminal"}
                 if (result.exists is not True or type(result.content) is not str or
                         result.path != self._plan_path or
@@ -204,7 +196,8 @@ class NativeController:
         reason = "execution_not_ready"
         try:
             async with self._lock:
-                if self._terminal_reason:
+                if self.terminal_reason:
+                    await self.abort()
                     reason = "controller_terminal"
                 else:
                     self._check_session(context)
@@ -229,11 +222,15 @@ class NativeController:
         self, request: object, context: Mapping[str, object],
     ) -> PermissionRejection:
         # Independent of pre-tool hooks, plan callbacks, and arbitrary request text.
+        if self.terminal_reason:
+            await self.abort()
         return PermissionRejection()
 
     async def on_user_input_request(
         self, request: Mapping[str, object], context: Mapping[str, object],
     ) -> UserRefusal:
+        if self.terminal_reason:
+            await self.abort()
         return {"answer": "REFUSE: execution_not_ready", "wasFreeform": True}
 
 

@@ -9,14 +9,11 @@ when DeepEval is absent so the schema guard stays runnable on its own.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from adapters.copilot_trace import (  # noqa: E402
+from agile_eval.adapters.copilot_trace import (
     SKILL_TOOL_NAME,
     parse_log,
     parse_log_text,
@@ -138,8 +135,8 @@ def test_tool_correctness_measures_skill_bypass(deepeval_module):
     from deepeval.metrics import ToolCorrectnessMetric
     from deepeval.test_case import LLMTestCase, ToolCall
 
-    from adapters.copilot_trace import to_deepeval_tools
-    from metrics.local_model import stub_model
+    from agile_eval.adapters.copilot_trace import to_deepeval_tools
+    from agile_eval.metrics.local_model import stub_model
 
     invoked = parse_log(FIXTURE)
     bypassed = parse_log_text(

@@ -1,7 +1,7 @@
 # Scoring rubric
 
 Outcome evidence and harness execution status are distinct. The contract shared by the
-native shell judge and DeepEval is [`../grading.py`](../grading.py); judge doctrine is
+native shell judge and DeepEval is [`agile_eval.grading_contract`](../python/agile_eval/grading_contract.py); judge doctrine is
 [`acceptance-grading`](../../plugins/agile-agents-core/skills/acceptance-grading/SKILL.md).
 
 ## Status and exit policy
@@ -46,7 +46,7 @@ judge prose. Detailed evidence/reasons exist only in the in-memory grading resul
 
 ## Original inputs and custom tasks
 
-`prepare_inputs.py` validates profiles and `inputs.json`, stages canonical inputs, and
+`agile_eval.prepare_inputs` validates profiles and `inputs.json`, stages canonical inputs, and
 creates hashed snapshots in the canonical sibling `baseline/<task-id>/`, outside
 `ws/<task-id>/`. Scorers validate both the snapshot inventory and manifest hashes against
 the repository fixture, not a workspace claim of authority. Workspace-local
@@ -67,7 +67,7 @@ invent an Ingress or assert a pass. If the literal comparison cannot be establis
 mark UNVERIFIED with this reason. Other native tool gaps are equally explicit.
 
 Both offline prompt builders include the same `acceptance-grading` skill content from
-the selected core plugin using the shared renderer in `grading.py`; the shell template
+the selected core plugin using the shared renderer in `agile_eval.grading`; the shell template
 does not duplicate its doctrine. Missing doctrine is an error, not a fallback to priors.
 No prompt authorizes host execution. Live verification remains disabled until a
 separately verified credential-free OS worker boundary is available; a disposable

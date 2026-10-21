@@ -11,15 +11,14 @@ import yaml
 
 CUSTOM_EVAL = Path(__file__).resolve().parents[1]
 TASKS = CUSTOM_EVAL / "tasks"
-sys.path.insert(0, str(CUSTOM_EVAL))
-
-from prepare_inputs import SetupError, prepare, prepare_many, validate_profile  # noqa: E402
+from agile_eval.prepare_inputs import SetupError, prepare, prepare_many, validate_profile
 
 
 @pytest.fixture
 def scratch(tmp_path):
     task = tmp_path / "task"
     task.mkdir()
+    (task / "prompt.md").write_text("Produce the requested output.\n", encoding="utf-8")
     (task / "baseline").mkdir()
     (task / "baseline" / "source.txt").write_text("original\n", encoding="utf-8")
     (task / "solution-profile.yaml").write_text(
@@ -63,6 +62,26 @@ quality_gates:
         encoding="utf-8",
     )
     return task
+
+
+def test_prompt_disappearing_after_preflight_returns_full_setup_inventory(scratch, tmp_path, monkeypatch):
+    from agile_eval import prepare_inputs
+
+    suite = tmp_path / "suite"
+    for task_id in ("task-a", "task-b"):
+        shutil.copytree(scratch, suite / "tasks" / task_id)
+    original = prepare_inputs._stage
+
+    def stage(plan):
+        (suite / "tasks/task-b/prompt.md").unlink(missing_ok=True)
+        return original(plan)
+
+    monkeypatch.setattr(prepare_inputs, "_stage", stage)
+    result = prepare_many(suite, tmp_path / "run", ["task-a", "task-b"])
+    assert result["status"] == "setup_error"
+    assert [task["task_id"] for task in result["tasks"]] == ["task-a", "task-b"]
+    assert all(task["status"] == "not_prepared" for task in result["tasks"])
+    assert "prompt.md disappeared" in result["errors"][0]["errors"][0]
 
 
 def test_all_shipped_profiles_have_required_context_and_real_check_blocks():

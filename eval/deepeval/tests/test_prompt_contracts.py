@@ -1,23 +1,18 @@
-"""Both offline judge prompt paths include one authority, without executing artifacts."""
+"""Domain and metric prompt paths include one authority, without executing artifacts."""
 
 from __future__ import annotations
 
 import shutil
-import sys
 from pathlib import Path
 
 import pytest
 
+from agile_eval.grading import load_grading_doctrine
+from agile_eval.metrics.acceptance import build_judge_prompt as metric_prompt
+from agile_eval.metrics.acceptance import discover_plugin_dirs
+from agile_eval.grading import build_grading_prompt as domain_prompt
+
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "eval"))
-sys.path.insert(0, str(ROOT / "eval/pipeline"))
-sys.path.insert(0, str(ROOT / "eval/deepeval"))
-
-from grading import load_grading_doctrine  # noqa: E402
-from metrics.acceptance import build_judge_prompt as metric_prompt  # noqa: E402
-from metrics.acceptance import discover_plugin_dirs  # noqa: E402
-from shell_judge import build_judge_prompt as shell_prompt  # noqa: E402
-
 TEMPLATE = ROOT / "eval/pipeline/references/judge-prompt.md"
 CORE = ROOT / "plugins/agile-agents-core"
 SKILL = Path("skills/acceptance-grading/SKILL.md")
@@ -37,18 +32,18 @@ def assert_prompt_safety(prompt):
 def test_both_prompt_paths_include_the_exact_authoritative_doctrine():
     plugins = discover_plugin_dirs(ROOT)
     doctrine = load_grading_doctrine(plugins)
-    shell = shell_prompt("1. criterion", "- evidence", "originals", plugin_dirs=plugins)
+    domain = domain_prompt("1. criterion", "- evidence", "originals", plugin_dirs=plugins)
     metric = metric_prompt("1. criterion", "- evidence", "originals", plugin_dirs=plugins)
-    assert shell == metric
+    assert domain == metric
     assert doctrine == (CORE / SKILL).read_text(encoding="utf-8")
-    assert shell.count(doctrine) == 1
-    assert_prompt_safety(shell)
+    assert domain.count(doctrine) == 1
+    assert_prompt_safety(domain)
     # A thin template must not restate the lifecycle, sandbox or verdict doctrine.
     assert TEMPLATE.read_text(encoding="utf-8").count("{{GRADING_DOCTRINE}}") == 1
     assert "VERDICT:" not in TEMPLATE.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("builder", [shell_prompt, metric_prompt])
+@pytest.mark.parametrize("builder", [domain_prompt, metric_prompt])
 def test_prompt_reads_doctrine_relative_to_selected_installed_plugin_not_cwd(tmp_path, monkeypatch, builder):
     installed = tmp_path / "installed/core"
     (installed / SKILL).parent.mkdir(parents=True)
@@ -61,7 +56,7 @@ def test_prompt_reads_doctrine_relative_to_selected_installed_plugin_not_cwd(tmp
     assert_prompt_safety(prompt)
 
 
-@pytest.mark.parametrize("builder", [shell_prompt, metric_prompt])
+@pytest.mark.parametrize("builder", [domain_prompt, metric_prompt])
 def test_missing_doctrine_fails_closed_without_ambient_plugin_fallback(tmp_path, builder):
     with pytest.raises(ValueError, match="exactly one acceptance-grading"):
         builder("1. criterion", "- evidence", plugin_dirs=[tmp_path])
@@ -72,7 +67,7 @@ def test_ambiguous_doctrine_roots_are_not_silently_selected(tmp_path):
     (other / SKILL).parent.mkdir(parents=True)
     shutil.copyfile(CORE / SKILL, other / SKILL)
     with pytest.raises(ValueError, match="exactly one acceptance-grading"):
-        shell_prompt("1. criterion", "- evidence", plugin_dirs=[CORE, other])
+        domain_prompt("1. criterion", "- evidence", plugin_dirs=[CORE, other])
 
 
 @pytest.mark.parametrize("replacement", ["", "{{GRADING_DOCTRINE}}\n{{GRADING_DOCTRINE}}"])
@@ -82,11 +77,11 @@ def test_removing_or_duplicating_required_doctrine_reference_is_rejected(tmp_pat
         "{{GRADING_DOCTRINE}}", replacement,
     ), encoding="utf-8")
     with pytest.raises(ValueError, match="doctrine and each evidence placeholder exactly once"):
-        shell_prompt("1. criterion", "- evidence", prompt_template=mutated)
+        domain_prompt("1. criterion", "- evidence", prompt_template=mutated)
 
 
 def test_disposable_directory_as_execution_permission_mutation_is_detected():
-    prompt = shell_prompt("1. criterion", "- evidence")
+    prompt = domain_prompt("1. criterion", "- evidence")
     mutated = prompt.replace(
         "Do not run build, test, lint, render, or other workspace-provided commands on the host.",
         "Verify builds/tests/render equivalence using native commands in the disposable workspace.",
@@ -95,7 +90,7 @@ def test_disposable_directory_as_execution_permission_mutation_is_detected():
         assert_prompt_safety(mutated)
 
 
-@pytest.mark.parametrize("builder", [shell_prompt, metric_prompt])
+@pytest.mark.parametrize("builder", [domain_prompt, metric_prompt])
 def test_evidence_placeholders_are_literal_not_recursive_instructions(builder):
     prompt = builder("1. Keep {{ARTIFACTS}} literal", "{{ORIGINALS}}", "{{GRADING_DOCTRINE}}")
     assert "1. Keep {{ARTIFACTS}} literal" in prompt

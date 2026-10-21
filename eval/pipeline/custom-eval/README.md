@@ -15,7 +15,9 @@ profile, and versioned input declaration:
 | `inputs.json` | Versioned list of required baseline inputs and their workspace destinations |
 | `baseline/` | Minimal synthetic or task-directed source inputs; never includes the requested answer |
 
-`run-eval.ps1` and `run-eval.sh` both call `prepare_inputs.py` in dry-run mode. It validates every
+`run-eval.ps1` and `run-eval.sh` both use `agile_eval.prepare_inputs` in dry-run mode
+([implementation](../../python/agile_eval/prepare_inputs.py)); the local `prepare_inputs.py`
+path remains an executable delegate. It validates every
 selected profile and every declared source/destination path before creating workspaces,
 then stages the input files and both profile copies. Missing or unsafe inputs produce a
 structured `setup_error` and exit 2 before any agent or judge invocation. `--dry-run`

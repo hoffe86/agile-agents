@@ -6,7 +6,6 @@ import hashlib
 import json
 import re
 import shutil
-import sys
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -16,11 +15,8 @@ import yaml
 CUSTOM_EVAL = Path(__file__).resolve().parents[1]
 ROOT = CUSTOM_EVAL.parents[2]
 TASKS = CUSTOM_EVAL / "tasks"
-sys.path.insert(0, str(CUSTOM_EVAL))
-sys.path.insert(0, str(ROOT / "eval"))
-
-from prepare_inputs import SetupError, prepare, validate_profile  # noqa: E402
-from grading import immutable_inputs  # noqa: E402
+from agile_eval.prepare_inputs import SetupError, prepare, validate_profile
+from agile_eval.workspace_inputs import immutable_inputs
 
 TASK04 = TASKS / "task-04-adr-library-tradeoff"
 TASK07 = TASKS / "task-07-test-coverage-uplift"

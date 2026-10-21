@@ -22,7 +22,12 @@ os.environ.setdefault("DEEPEVAL_DISABLE_PROGRESS_BAR", "1")
 
 
 def configure_offline() -> None:
-    """Force the no-telemetry, no-cloud posture. Safe to call repeatedly."""
+    """Disable telemetry, not uploads. Call before any DeepEval import.
+
+    Native evaluation must also run with an empty credential-free HOME/config,
+    both cache flags disabled and owned local report paths. Neither this flag
+    nor evaluate(official=False) is a no-upload guarantee.
+    """
     os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "1"
 
 
