@@ -319,8 +319,18 @@ The [`Eval · pipeline outcome`](../.github/workflows/eval-pipeline-outcome.yml)
 `runs/` as an artifact.
 
 Selecting `dry_run: false` fails closed before staging or invoking a CLI. No Copilot secret is
-needed or exposed, and the workflow does not install Copilot. Live execution remains disabled
+needed or exposed, and the ordinary harness job does not install Copilot. Live execution remains disabled
 until a verified OS sandbox exists; human plan approval remains a separate mandatory gate.
+
+The separate `native_only` boolean defaults to **false**. Setting it to **true** runs only
+no-model native boundary qualification on hosted Ubuntu/Python 3.12, using the existing
+hash lock (SDK 1.0.24) and publisher-managed CLI 1.0.101. The job requires installed
+Bubblewrap/slirp4netns and working user/network namespaces; missing support fails rather
+than changing host security policy. It passes no credentials or model prompts, retains
+only sanitized check results in job logs, and removes its temporary provisioning.
+This mode produces no benchmark grades, percentages, or run artifacts. A passing primitive
+check does **not** verify actual Stage 4/delegation fidelity or release the controller's
+live hold. Keep `dry_run: true`; suite/filter/threshold inputs are not used in native mode.
 
 Outputs land in `runs/<run-id>/` where `<run-id>` is
 `YYYYMMDD-HHMMSS-<suite>-<unique-suffix>`. Treat the uniqueness suffix as opaque:

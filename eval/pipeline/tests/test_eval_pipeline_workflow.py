@@ -10,10 +10,13 @@ import sys
 import tempfile
 import unittest
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "eval-pipeline-outcome.yml"
 RUN_EVAL = ROOT / "eval" / "pipeline" / "run-eval.sh"
+SKILLS_WORKFLOW = ROOT / ".github" / "workflows" / "eval-skills.yml"
 
 
 def _run_blocks(workflow_text):
@@ -104,6 +107,8 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.workflow_text = WORKFLOW.read_text(encoding="utf-8")
+        # BaseLoader preserves GitHub's YAML `on` key (not YAML 1.1 boolean True).
+        cls.workflow = yaml.load(cls.workflow_text, Loader=yaml.BaseLoader)
         cls.run_blocks = _run_blocks(cls.workflow_text)
         if len(cls.run_blocks) < 2:
             raise AssertionError("expected harness and summary shell blocks")
@@ -112,7 +117,8 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         self.assertRegex(self.workflow_text, r"(?m)^permissions:\n  contents: read$")
         self.assertRegex(
             self.workflow_text,
-            r"(?s)uses: actions/checkout@v4\n        with:\n          persist-credentials: false",
+            r"(?s)uses: actions/checkout@[0-9a-f]{40} # v4\.3\.1\n"
+            r"        with:\n          persist-credentials: false",
         )
 
     def test_shell_blocks_do_not_interpolate_workflow_inputs(self):
@@ -128,8 +134,120 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(
             declared,
-            {"suite", "task_filter", "pass_threshold", "dry_run"},
+            {"suite", "task_filter", "pass_threshold", "dry_run", "native_only"},
         )
+
+    def test_default_remains_offline_and_native_requires_explicit_boolean_opt_in(self):
+        self.assertEqual(set(self.workflow["on"]), {"workflow_dispatch"})
+        inputs = self.workflow["on"]["workflow_dispatch"]["inputs"]
+        self.assertEqual(inputs["dry_run"]["type"], "boolean")
+        self.assertEqual(inputs["dry_run"]["default"], "true")
+        self.assertEqual(inputs["native_only"]["type"], "boolean")
+        self.assertEqual(inputs["native_only"]["default"], "false")
+        jobs = self.workflow["jobs"]
+        self.assertEqual(
+            jobs["pipeline-outcome"]["if"],
+            "${{ github.event_name == 'workflow_dispatch' && !inputs.native_only }}",
+        )
+        self.assertEqual(
+            jobs["native-qualification"]["if"],
+            "${{ github.event_name == 'workflow_dispatch' && inputs.native_only }}",
+        )
+        self.assertNotIn("needs", jobs["pipeline-outcome"])
+        self.assertNotIn("needs", jobs["native-qualification"])
+
+    def test_native_job_is_bounded_and_does_not_grade_or_inherit_credentials(self):
+        job = self.workflow["jobs"]["native-qualification"]
+        self.assertEqual(job["runs-on"], "ubuntu-24.04")
+        self.assertEqual(job["timeout-minutes"], "15")
+        self.assertNotIn("environment", job)
+        text = repr(job["steps"]) + repr(job.get("env", {}))
+        for forbidden in (
+            "secrets.", "github.token", "GH_TOKEN", "GITHUB_TOKEN", "inputs.",
+            "run-eval", "summary.json", "GITHUB_STEP_SUMMARY", "upload-artifact@",
+            "continue-on-error", "sudo ", "sysctl ", "apparmor_parser", "--version --",
+        ):
+            self.assertNotIn(forbidden, text)
+        steps = {step.get("name"): step for step in job["steps"]}
+        native = steps["Execute no-model native boundary checks"]
+        self.assertEqual(native["timeout-minutes"], "5")
+        self.assertIn("env -i PATH=/usr/bin:/bin", native["run"])
+        self.assertIn("COPILOT_SKIP_CLI_DOWNLOAD=1", native["run"])
+        self.assertIn("--run-native --runtime-path", native["run"])
+        self.assertIn(
+            '"$COPILOT_CLI_EXTRACT_DIR/prebuilds/linux-x64/copilot-runtime"',
+            native["run"],
+        )
+        self.assertNotIn("||", native["run"])
+        self.assertNotIn("--version", native["run"])
+        self.assertEqual(steps["Remove qualification provisioning"]["if"], "always()")
+        self.assertIn('"$COPILOT_CLI_EXTRACT_DIR"', steps["Remove qualification provisioning"]["run"])
+
+    def test_native_provisioning_reuses_hash_lock_and_publisher_pin(self):
+        job = self.workflow["jobs"]["native-qualification"]
+        steps = {step.get("name"): step for step in job["steps"]}
+        self.assertIn(
+            'COPILOT_CLI_EXTRACT_DIR=$RUNNER_TEMP/native-runtime-1.0.101',
+            steps["Set qualification paths"]["run"],
+        )
+        download = steps["Download hash-verified evaluation wheels"]["run"]
+        install = steps["Install evaluation wheels without an index"]["run"]
+        for command in (download, install):
+            self.assertIn("--require-hashes --only-binary=:all:", command)
+            self.assertIn("--requirement eval/deepeval/requirements.lock.txt", command)
+            self.assertNotIn("--upgrade", command)
+        self.assertIn("--isolated download --index-url https://pypi.org/simple", download)
+        self.assertIn("--isolated install --no-index", install)
+        self.assertEqual(
+            steps["Provision the publisher-pinned runtime"]["run"],
+            '"$EVAL_PYTHON" -m copilot download-runtime',
+        )
+        self.assertIn("-m pip check", steps["Check the installed dependency closure"]["run"])
+        self.assertIn(
+            "test_native_runtime_integration.py",
+            steps["Offline native qualification contracts"]["run"],
+        )
+        prerequisites = steps["Require native host prerequisites"]["run"]
+        self.assertIn("bwrap slirp4netns", prerequisites)
+        self.assertIn("bwrap --unshare-user --unshare-net", prerequisites)
+        self.assertIn("exit 1", prerequisites)
+
+    def test_manual_workflow_actions_are_immutable_and_checkout_has_no_saved_token(self):
+        for job in self.workflow["jobs"].values():
+            for step in job["steps"]:
+                if "uses" not in step:
+                    continue
+                self.assertRegex(step["uses"], r"^actions/[\w-]+@[a-f0-9]{40}$")
+                if step["uses"].startswith("actions/checkout@"):
+                    self.assertEqual(step["with"]["persist-credentials"], "false")
+
+    def test_ordinary_ci_collects_offline_contracts_without_native_execution(self):
+        workflow = yaml.load(SKILLS_WORKFLOW.read_text("utf-8"), Loader=yaml.BaseLoader)
+        job = workflow["jobs"]["runtime-contracts"]
+        matches = [
+            step for step in job["steps"]
+            if "test_native_runtime_integration.py" in step.get("run", "")
+        ]
+        self.assertEqual(len(matches), 1)
+        self.assertNotIn("if", matches[0])
+        self.assertEqual(
+            matches[0]["run"],
+            "python -m unittest discover -s eval/pipeline/tests "
+            "-p test_native_runtime_integration.py -v",
+        )
+        for step in job["steps"]:
+            self.assertNotIn("--run-native", step.get("run", ""))
+
+    def test_missing_host_prerequisite_fails_closed_without_provisioning(self):
+        bash = _find_bash()
+        if not bash:
+            self.skipTest("bash is not installed")
+        steps = self.workflow["jobs"]["native-qualification"]["steps"]
+        preflight = next(step["run"] for step in steps
+                         if step.get("name") == "Require native host prerequisites")
+        result = _run_bash(bash, "command() { return 1; }\n" + preflight, {})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("native prerequisite missing: bwrap", result.stdout)
 
     def test_harness_passes_tainted_filter_as_a_literal_argument(self):
         bash = _find_bash()

@@ -277,7 +277,9 @@ add-a-task contract in [`eval/README.md`](eval/README.md); composition rationale
 **Run it** locally with `eval/pipeline/run-eval.ps1` (Windows) / `eval/pipeline/run-eval.sh` (POSIX), or on demand
 via the [`Eval · pipeline outcome`](.github/workflows/eval-pipeline-outcome.yml) workflow (`workflow_dispatch` → pick suite,
 task-filter, threshold; `summary.json` lands in the run summary and `eval/pipeline/runs/` is uploaded as
-an artifact).
+an artifact). The separate, default-off `native_only` input runs no-model boundary
+qualification instead, with sanitized check logs and no grades or run artifacts.
+It does not release the live controller hold; see [CI modes](eval/README.md#ci-on-demand).
 
 **Layered evaluation.** This outcome eval is the top of a pyramid ([ADR 0008](docs/adr/0008-layered-evaluation-strategy.md)):
 a free, deterministic **L0 trajectory eval** ([`eval/pipeline/trajectory/`](eval/pipeline/trajectory/README.md))
