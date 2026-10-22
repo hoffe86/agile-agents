@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -241,6 +242,67 @@ class TrajectoryContractTests(unittest.TestCase):
         events = successful_run()
         events[4]["outcome"] = "skipped"
         self.assertIn("schema-valid", failures(events))
+
+    def test_accepts_equal_milliseconds_and_forward_second_boundary(self):
+        events = successful_run()
+        events[4]["timestamp"] = "2026-10-06T08:00:04.999Z"
+        events[5]["timestamp"] = "2026-10-06T08:00:04.999Z"
+        events[6]["timestamp"] = "2026-10-06T08:00:05.000Z"
+        self.assertEqual(failures(events), set())
+
+    def test_rejects_one_millisecond_regression_outside_phase_windows(self):
+        for earlier, later in (
+            ("2026-10-06T08:00:04.123Z", "2026-10-06T08:00:04.122Z"),
+            ("2026-10-06T08:00:05.000Z", "2026-10-06T08:00:04.999Z"),
+        ):
+            with self.subTest(earlier=earlier, later=later):
+                events = successful_run()
+                events[4]["timestamp"] = earlier
+                events[5]["timestamp"] = later
+                original = json.dumps(events)
+                self.assertEqual(failures(events), {"chronological-timestamps"})
+                self.assertEqual(json.dumps(events), original)
+
+    def test_emitter_failure_retains_original_timestamp_evidence(self):
+        integration = EmitterIntegrationTests(
+            "test_real_emitters_produce_a_valid_supervisor_only_run")
+        emitted_lines = []
+        emitters = []
+        timestamps = {
+            4: "2026-10-06T08:00:04.123Z",
+            5: "2026-10-06T08:00:04.122Z",
+        }
+
+        def emit_fixture(emitter, kind, phase, base, outcome, payload):
+            index = len(emitted_lines)
+            item = event(kind, phase, index)
+            item["timestamp"] = timestamps.get(index, item["timestamp"])
+            if outcome is not None:
+                item["outcome"] = outcome
+            if payload is not None:
+                item["payload"] = payload
+            line = json.dumps(item)
+            emitted_lines.append(line)
+            emitters.append(emitter)
+            run_dir = base / RUN_ID
+            run_dir.mkdir(exist_ok=True)
+            with (run_dir / "events.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+            return subprocess.CompletedProcess([emitter], 0, stdout="", stderr="")
+
+        with patch.object(integration, "require_emitters"), patch.object(
+            integration, "emit", side_effect=emit_fixture,
+        ):
+            with self.assertRaises(AssertionError) as raised:
+                integration.test_real_emitters_produce_a_valid_supervisor_only_run()
+
+        diagnostic = str(raised.exception)
+        self.assertIn("chronological-timestamps", diagnostic)
+        self.assertIn(f"Emitter calls (in order): {emitters!r}", diagnostic)
+        self.assertIn(
+            "Emitted JSONL (original append order):\n" + "\n".join(emitted_lines),
+            diagnostic,
+        )
 
     def test_rejects_reversed_and_overlapping_phase_windows(self):
         reversed_window = successful_run()
@@ -564,7 +626,13 @@ class EmitterIntegrationTests(unittest.TestCase):
 
             lines = (base / RUN_ID / "events.jsonl").read_text(encoding="utf-8").splitlines()
             produced = [json.loads(line) for line in lines]
-            self.assertEqual(failures(produced), set())
+            # The temporary log is deleted on failure too; retain the actual
+            # timestamp evidence rather than just the failed check's name.
+            self.assertEqual(
+                failures(produced), set(),
+                f"Emitter calls (in order): {[item[0] for item in events]!r}\n"
+                "Emitted JSONL (original append order):\n" + "\n".join(lines),
+            )
             self.assertTrue(all(item["agent"] == "dev-lead" for item in produced))
 
     def test_both_emitters_reject_worker_owned_events(self):
