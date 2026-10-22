@@ -106,8 +106,21 @@ jobs:
           echo "COPILOT_CLI_EXTRACT_DIR=$RUNNER_TEMP/native-runtime-1.0.101" >> "$GITHUB_ENV"
           echo "EVAL_PYTHON=$RUNNER_TEMP/eval-venv/bin/python" >> "$GITHUB_ENV"
 
-      # Check the ordinary hosted image; never change AppArmor/sysctl or use sudo
-      # to make the sandbox pass. Network proxy prerequisites are checked by the SDK.
+      # Official Linux prerequisites; Noble package pins verified 2026-10-22.
+      # sudo is only for apt provisioning, never sandbox execution or policy changes.
+      - name: Install native host prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          apt-cache policy bubblewrap slirp4netns
+          sudo apt-get install --yes --no-install-recommends \
+            bubblewrap=0.9.0-1ubuntu0.3 slirp4netns=1.2.1-1build2
+          dpkg-query --show --showformat='${Package}=${Version}\n' bubblewrap slirp4netns
+
+      # This bwrap probe is only a prerequisite, not proof of native isolation.
+      # Never change AppArmor/sysctl or elevate the probe after a policy denial.
+      # SDK support and effective boundaries remain mandatory in the native driver.
       - name: Require native host prerequisites
         shell: bash
         run: |

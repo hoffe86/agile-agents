@@ -324,9 +324,21 @@ until a verified OS sandbox exists; human plan approval remains a separate manda
 
 The separate `native_only` boolean defaults to **false**. Setting it to **true** runs only
 no-model native boundary qualification on hosted Ubuntu/Python 3.12, using the existing
-hash lock (SDK 1.0.24) and publisher-managed CLI 1.0.101. The job requires installed
-Bubblewrap/slirp4netns and working user/network namespaces; missing support fails rather
-than changing host security policy. It passes no credentials or model prompts, retains
+hash lock (SDK 1.0.24) and publisher-managed CLI 1.0.101. Before checking host support,
+the job installs only the [official Linux prerequisites](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/using-local-sandboxing#prerequisites)
+using the ephemeral Ubuntu 24.04 runner's normal `sudo apt-get` provisioning:
+`bubblewrap=0.9.0-1ubuntu0.3` (Noble updates/security, main) and
+`slirp4netns=1.2.1-1build2` (Noble release, universe). These exact versions were
+verified against Ubuntu's primary archive on 2026-10-22
+([Bubblewrap](https://api.launchpad.net/1.0/ubuntu/+archive/primary/+binarypub/249852446),
+[slirp4netns](https://api.launchpad.net/1.0/ubuntu/+archive/primary/+binarypub/207474824));
+APT source/version policy and installed versions are logged. An unavailable pin fails
+closed rather than selecting an unreviewed version. No SDK/CLI/DeepEval pins change.
+The unprivileged `bwrap` user/network namespace probe is only a prerequisite check,
+not isolation proof: the unchanged native driver still requires SDK host support and
+actual file/network/environment canaries. Missing support or OS-policy denial stops
+the job; no AppArmor/sysctl, setuid, or other security-policy workaround is permitted.
+The job passes no credentials or model prompts, retains
 only sanitized check results in job logs, and removes its temporary provisioning.
 This mode produces no benchmark grades, percentages, or run artifacts. A passing primitive
 check does **not** verify actual Stage 4/delegation fidelity or release the controller's

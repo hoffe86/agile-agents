@@ -165,9 +165,13 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         for forbidden in (
             "secrets.", "github.token", "GH_TOKEN", "GITHUB_TOKEN", "inputs.",
             "run-eval", "summary.json", "GITHUB_STEP_SUMMARY", "upload-artifact@",
-            "continue-on-error", "sudo ", "sysctl ", "apparmor_parser", "--version --",
+            "continue-on-error", "sysctl ", "apparmor_parser", "--version --",
+            "chmod ", "setcap ", "--privileged", "session.send", "send_and_wait",
         ):
             self.assertNotIn(forbidden, text)
+        for step in job["steps"]:
+            if step.get("name") != "Install native host prerequisites":
+                self.assertNotIn("sudo ", step.get("run", ""))
         steps = {step.get("name"): step for step in job["steps"]}
         native = steps["Execute no-model native boundary checks"]
         self.assertEqual(native["timeout-minutes"], "5")
@@ -212,6 +216,52 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         self.assertIn("bwrap --unshare-user --unshare-net", prerequisites)
         self.assertIn("exit 1", prerequisites)
 
+    def test_native_host_packages_are_pinned_and_installed_before_checks(self):
+        steps = self.workflow["jobs"]["native-qualification"]["steps"]
+        names = [step.get("name") for step in steps]
+        provision = next(step for step in steps
+                         if step.get("name") == "Install native host prerequisites")
+        self.assertEqual(provision["shell"], "bash")
+        self.assertNotIn("if", provision)
+        self.assertEqual(
+            provision["run"].splitlines(),
+            [
+                "set -euo pipefail",
+                "sudo apt-get update",
+                "apt-cache policy bubblewrap slirp4netns",
+                "sudo apt-get install --yes --no-install-recommends \\",
+                "  bubblewrap=0.9.0-1ubuntu0.3 slirp4netns=1.2.1-1build2",
+                "dpkg-query --show --showformat='${Package}=${Version}\\n' "
+                "bubblewrap slirp4netns",
+            ],
+        )
+        ordered = [
+            "Install native host prerequisites", "Require native host prerequisites",
+            "Create a clean evaluation environment",
+            "Download hash-verified evaluation wheels",
+            "Install evaluation wheels without an index",
+            "Check the installed dependency closure",
+            "Provision the publisher-pinned runtime",
+            "Offline native qualification contracts",
+            "Execute no-model native boundary checks",
+        ]
+        self.assertEqual([names.index(name) for name in ordered],
+                         sorted(names.index(name) for name in ordered))
+        for step in steps:
+            if step.get("name") in ordered:
+                self.assertNotIn("if", step)
+                self.assertNotIn("continue-on-error", step)
+                self.assertNotIn("||", step["run"])
+        prerequisites = next(step["run"] for step in steps
+                             if step.get("name") == "Require native host prerequisites")
+        self.assertIn(
+            "if ! bwrap --unshare-user --unshare-net --ro-bind / / -- /usr/bin/true; then\n"
+            '  echo "::error::native prerequisite failed: Bubblewrap user/network namespaces"\n'
+            "  exit 1\nfi",
+            prerequisites,
+        )
+        self.assertNotRegex(prerequisites, r"(?m)^\s*(?:sudo\s+)?unshare\s")
+
     def test_manual_workflow_actions_are_immutable_and_checkout_has_no_saved_token(self):
         for job in self.workflow["jobs"].values():
             for step in job["steps"]:
@@ -238,7 +288,7 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         for step in job["steps"]:
             self.assertNotIn("--run-native", step.get("run", ""))
 
-    def test_missing_host_prerequisite_fails_closed_without_provisioning(self):
+    def test_missing_host_prerequisite_fails_closed_before_sdk_provisioning(self):
         bash = _find_bash()
         if not bash:
             self.skipTest("bash is not installed")
