@@ -713,6 +713,8 @@ The stage identifies the probe: `native_toolset` is the `bash` request;
   requires explicit `denied`/`rejected`, observed file absence, and no positive
   output evidence. An unreadable file state fails closed.
 
+File-check failures retain `native_file_positive_control_failed`, `protected_canary_leaked`, or `permission_session_mismatch` through both report boundaries, with the original stage and prior passed checks.
+
 The outer process validates every diagnostic key and value. Raw results, errors,
 stdout, logs, paths and tokens are not reported. The original failure reason,
 prior passed checks and cleanup rules remain in force. Successful stdout is

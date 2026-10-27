@@ -309,6 +309,90 @@ class NativeEntrypointTests(unittest.TestCase):
         })
 
 
+class NativeFileFailureDiagnosticTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Execute the real exception handler with synthetic errors only. No
+        # coroutine, event loop or SDK runtime is needed for this report contract.
+        tree = ast.parse(inspect.getsource(native.native_checks))
+        checks = next(node for node in tree.body[0].body if isinstance(node, ast.Try))
+        handler = ast.Try(
+            body=ast.parse("raise error").body, handlers=checks.handlers,
+            orelse=[], finalbody=[],
+        )
+        cls.handler = compile(
+            ast.fix_missing_locations(ast.Module(body=[handler], type_ignores=[])),
+            native.__file__, "exec",
+        )
+
+    def setUp(self):
+        self.report = {
+            "status": "fail", "check": "native_file_denial",
+            "sdk": native.SDK_VERSION, "publisher_cli": native.CLI_VERSION,
+            "runtime": native.CLI_VERSION, "protocol": 3,
+            "passed": ["runtime_identity", "session_startup", "native_toolset",
+                       "plan_refusal_and_exit_only"],
+        }
+
+    def test_file_failure_codes_survive_inner_and_outer_reports(self):
+        for code in (
+            "native_file_positive_control_failed",
+            "protected_canary_leaked",
+            "permission_session_mismatch",
+        ):
+            with self.subTest(code=code):
+                report = dict(self.report)
+                namespace = {**vars(native), "report": report, "error": native.CheckFailure(code)}
+                exec(self.handler, namespace)
+                process = Mock(pid=12345, returncode=1)
+                process.communicate.return_value = (json.dumps({
+                    **report, "error": "synthetic-sensitive-error",
+                    "result": {"textResultForLlm": "synthetic-sensitive-file-content"},
+                    "path": "/synthetic-sensitive-path", "stdout": "synthetic-sensitive-output",
+                    "denial_result": {"kind": "failure"}, "missing_tools": ["task"],
+                }), None)
+                with patch.object(native.subprocess, "Popen", return_value=process):
+                    with patch.object(native, "kill_owned_group") as kill:
+                        with redirect_stdout(io.StringIO()) as output:
+                            status = native.run_bounded(Path("/synthetic/runtime"))
+                expected = {**self.report, "reason": code}
+                self.assertEqual(report, expected)
+                self.assertEqual(status, 1)
+                self.assertEqual(json.loads(output.getvalue()), expected)
+                self.assertNotIn("sensitive", output.getvalue())
+                kill.assert_called_once_with(process)
+
+    def test_unknown_error_text_is_not_printed_by_inner_or_outer_reports(self):
+        for error, reason in (
+            (native.CheckFailure("ghp_synthetic_secret_not_a_token"), "assertion_failed"),
+            (RuntimeError("ghp_synthetic_secret_not_a_token"), "operation_failed"),
+        ):
+            with self.subTest(error_type=type(error).__name__):
+                report = dict(self.report)
+                namespace = {**vars(native), "report": report, "error": error}
+                with redirect_stdout(io.StringIO()) as output:
+                    exec(self.handler, namespace)
+                    self.assertEqual(output.getvalue(), "")
+                    process = Mock(pid=12345, returncode=1)
+                    process.communicate.return_value = (json.dumps(report), None)
+                    with patch.object(native.subprocess, "Popen", return_value=process):
+                        with patch.object(native, "kill_owned_group"):
+                            status = native.run_bounded(Path("/synthetic/runtime"))
+                expected = {**self.report, "reason": reason}
+                self.assertEqual(report, expected)
+                self.assertEqual(status, 1)
+                self.assertEqual(json.loads(output.getvalue()), expected)
+                self.assertNotIn("ghp_synthetic_secret_not_a_token", output.getvalue())
+
+    def test_outer_report_rejects_unknown_file_failure_reason_and_raw_result(self):
+        report = native.safe_failure_report(json.dumps({
+            **self.report, "reason": "ghp_synthetic_secret_not_a_token",
+            "error": "synthetic-sensitive-error",
+            "result": {"textResultForLlm": "synthetic-sensitive-file-content"},
+        }))
+        self.assertEqual(report, self.report)
+
+
 class NativeDenialDiagnosticTests(unittest.TestCase):
     def test_documented_sdk_kinds_and_wire_objects_keep_explicit_denial_semantics(self):
         from copilot.rpc import ToolResultExpanded, ToolResultType

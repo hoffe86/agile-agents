@@ -227,6 +227,8 @@ FAILURE_REASONS = (
     "native_tools_missing", "bypass_request_not_denied",
     "native_hook_session_attribution_missing", "explicit_native_denial_required",
     "unexpected_authentication",
+    "native_file_positive_control_failed", "protected_canary_leaked",
+    "permission_session_mismatch",
 )
 
 
