@@ -213,7 +213,8 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         )
         prerequisites = steps["Require native host prerequisites"]["run"]
         self.assertIn("bwrap slirp4netns", prerequisites)
-        self.assertIn("bwrap --unshare-user --unshare-net", prerequisites)
+        self.assertIn('if ! command -v "$executable"; then', prerequisites)
+        self.assertIn("if [[ ! -x /usr/bin/python3 ]]; then", prerequisites)
         self.assertIn("exit 1", prerequisites)
 
     def test_native_host_packages_are_pinned_and_installed_before_checks(self):
@@ -254,13 +255,16 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
                 self.assertNotIn("||", step["run"])
         prerequisites = next(step["run"] for step in steps
                              if step.get("name") == "Require native host prerequisites")
-        self.assertIn(
-            "if ! bwrap --unshare-user --unshare-net --ro-bind / / -- /usr/bin/true; then\n"
-            '  echo "::error::native prerequisite failed: Bubblewrap user/network namespaces"\n'
-            "  exit 1\nfi",
-            prerequisites,
-        )
         self.assertNotRegex(prerequisites, r"(?m)^\s*(?:sudo\s+)?unshare\s")
+
+    def test_workflow_does_not_execute_bwrap_directly(self):
+        # Package/availability checks are allowed; Copilot owns backend execution.
+        for job in self.workflow["jobs"].values():
+            for step in job["steps"]:
+                command = step.get("run", "").replace(
+                    "for executable in bwrap slirp4netns; do", ""
+                )
+                self.assertNotRegex(command, r"\bbwrap\b")
 
     def test_manual_workflow_actions_are_immutable_and_checkout_has_no_saved_token(self):
         for job in self.workflow["jobs"].values():

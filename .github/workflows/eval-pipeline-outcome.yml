@@ -118,9 +118,9 @@ jobs:
             bubblewrap=0.9.0-1ubuntu0.3 slirp4netns=1.2.1-1build2
           dpkg-query --show --showformat='${Package}=${Version}\n' bubblewrap slirp4netns
 
-      # This bwrap probe is only a prerequisite, not proof of native isolation.
-      # Never change AppArmor/sysctl or elevate the probe after a policy denial.
-      # SDK support and effective boundaries remain mandatory in the native driver.
+      # Check availability only; Copilot owns sandbox lifecycle/policy through MXC.
+      # The SDK native driver must verify host support and effective boundaries.
+      # Never change AppArmor/sysctl or elevate execution after a policy denial.
       - name: Require native host prerequisites
         shell: bash
         run: |
@@ -132,11 +132,6 @@ jobs:
           done
           if [[ ! -x /usr/bin/python3 ]]; then
             echo "::error::native prerequisite missing: /usr/bin/python3"
-            exit 1
-          fi
-          bwrap --version
-          if ! bwrap --unshare-user --unshare-net --ro-bind / / -- /usr/bin/true; then
-            echo "::error::native prerequisite failed: Bubblewrap user/network namespaces"
             exit 1
           fi
 

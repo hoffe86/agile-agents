@@ -334,10 +334,26 @@ verified against Ubuntu's primary archive on 2026-10-22
 [slirp4netns](https://api.launchpad.net/1.0/ubuntu/+archive/primary/+binarypub/207474824));
 APT source/version policy and installed versions are logged. An unavailable pin fails
 closed rather than selecting an unreviewed version. No SDK/CLI/DeepEval pins change.
-The unprivileged `bwrap` user/network namespace probe is only a prerequisite check,
-not isolation proof: the unchanged native driver still requires SDK host support and
-actual file/network/environment canaries. Missing support or OS-policy denial stops
-the job; no AppArmor/sysctl, setuid, or other security-policy workaround is permitted.
+The workflow checks executable availability, including `/usr/bin/python3`, but does
+not invoke `bwrap` directly. [Copilot owns sandbox lifecycle and policy through
+MXC](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/about-cloud-and-local-sandboxes#how-local-sandboxing-works);
+[MXC uses Bubblewrap by default on Linux](https://github.com/microsoft/mxc).
+No direct MXC dependency or wrapper is needed. The unchanged native driver uses
+`sandbox_config` and `client.rpc.sandbox.get_host_support()` to check runtime
+capabilities, and still requires actual file/network/environment canaries. Current
+documentation describes the integration, not proof that the locked SDK/CLI pair
+works on this host. Missing support or OS-policy denial fails the job; no
+AppArmor/sysctl, setuid, or other security-policy workaround is permitted.
+
+Run [40478427043](https://github.com/hoffe86/agile-agents/actions/runs/40478427043)
+installed both pinned packages, then the former direct namespace probe failed with
+`loopback: Failed RTM_NEWADDR: Operation not permitted`. The native SDK never
+started. That ad hoc probe was not established as equivalent to MXC's invocation.
+Removing it removes duplicated code; it does **not** resolve the host denial or
+authorize a retry through the SDK or another backend. Real native validation remains
+blocked until policy/prerequisites are resolved or an authorized environment is
+available.
+
 The job passes no credentials or model prompts, retains
 only sanitized check results in job logs, and removes its temporary provisioning.
 This mode produces no benchmark grades, percentages, or run artifacts. A passing primitive
