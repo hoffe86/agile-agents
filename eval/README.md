@@ -683,6 +683,16 @@ The actual selected SDK source supports `session.rpc.tools.execute(...)` without
 turn and retains the isolated delegation tool names. Source availability is not
 proof of their runtime enforcement or agent/model fidelity.
 
+The opt-in `pipeline/tests/native_runtime_integration.py` driver reports
+`missing_tools` on `native_toolset` / `native_tools_missing` failures. This is a
+sorted, deduplicated subset of its fixed required names, not a raw tool inventory.
+Other failure stages and successful reports do not include this field.
+SDK `ToolSet` filters registered tools; it does not register them.
+`get_current_metadata()` reports the session's current initialized tools.
+Missing names alone do not establish a mode, catalog, authentication, or runtime
+defect. Empty plugin/agent/skill roots do not test harness fidelity.
+All required capabilities, denial checks, and readiness holds remain unchanged.
+
 | Check on this Windows host | Result / evidence boundary |
 |---|---|
 | Official package/release identity, wheel hash, exact offline restore, `pip check` | Passed; only the SDK version changed in the Python closure |

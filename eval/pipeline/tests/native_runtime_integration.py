@@ -34,6 +34,10 @@ RPC_TIMEOUT = 15
 OUTER_TIMEOUT = 180
 CANARY_NAME = "AGILE_NATIVE_AMBIENT_CANARY"
 PLAN = "# Synthetic plan\n\nDo not execute anything. Exit plan mode only.\n"
+REQUIRED_NATIVE_TOOLS = (
+    "ask_user", "exit_plan_mode", "list_agents", "read_agent",
+    "skill", "task", "view", "write_agent",
+)
 
 
 class CheckFailure(Exception):
@@ -43,6 +47,14 @@ class CheckFailure(Exception):
 def require(condition: bool, code: str) -> None:
     if not condition:
         raise CheckFailure(code)
+
+
+def require_native_tools(names: set[str], report: dict) -> None:
+    # Only fixed expected names enter the report, never the runtime inventory.
+    missing = [name for name in REQUIRED_NATIVE_TOOLS if name not in names]
+    if missing:
+        report["missing_tools"] = missing
+        raise CheckFailure("native_tools_missing")
 
 
 def check_prerequisites(runtime: Path) -> None:
@@ -173,6 +185,13 @@ def safe_failure_report(output: str) -> dict:
             report["check"] = candidate["check"]
             if candidate.get("reason") in FAILURE_REASONS:
                 report["reason"] = candidate["reason"]
+            if (candidate.get("check") == "native_toolset"
+                    and candidate.get("reason") == "native_tools_missing"
+                    and isinstance(candidate.get("missing_tools"), list)):
+                report["missing_tools"] = [
+                    name for name in REQUIRED_NATIVE_TOOLS
+                    if name in candidate["missing_tools"]
+                ]
             report["passed"] = [item for item in CHECKS
                                 if item in candidate.get("passed", [])]
             if candidate.get("sdk") == SDK_VERSION and candidate.get("publisher_cli") == CLI_VERSION:
@@ -313,8 +332,8 @@ async def native_checks(runtime: Path, root: Path) -> dict:
         await bounded(session.rpc.tools.initialize_and_validate())
         metadata_result = await bounded(session.rpc.tools.get_current_metadata())
         names = {tool.name for tool in metadata_result.tools or []}
-        require({"task", "read_agent", "write_agent", "list_agents", "skill",
-                 "ask_user", "exit_plan_mode", "view"} <= names, "native_tools_missing")
+        # ToolSet is a filter, not registration; metadata is the current snapshot.
+        require_native_tools(names, report)
         require(names <= set(BUILTIN_TOOLS_ISOLATED) | {"view"},
                 "unexpected_worker_capability")
         require(all(not tool.mcp_server_name for tool in metadata_result.tools),

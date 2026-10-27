@@ -171,5 +171,107 @@ class NativeEntrypointTests(unittest.TestCase):
         })
 
 
+class NativeToolDiagnosticTests(unittest.TestCase):
+    def test_complete_required_inventory_adds_no_diagnostic(self):
+        report = {}
+        native.require_native_tools(set(native.REQUIRED_NATIVE_TOOLS), report)
+        self.assertEqual(report, {})
+
+    def test_success_stdout_shape_excludes_failure_diagnostics(self):
+        report = {
+            "status": "pass", "check": "bounded_cleanup",
+            "sdk": native.SDK_VERSION, "publisher_cli": native.CLI_VERSION,
+            "runtime": native.CLI_VERSION, "protocol": 3, "passed": list(native.CHECKS),
+        }
+        process = Mock(pid=12345, returncode=0)
+        process.communicate.return_value = (
+            json.dumps({**report, "missing_tools": ["task"]}), None,
+        )
+        with patch.object(native.subprocess, "Popen", return_value=process):
+            with patch.object(native, "kill_owned_group"):
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 0)
+        self.assertEqual(json.loads(output.getvalue()), report)
+
+    def test_empty_inventory_still_requires_all_eight_capabilities(self):
+        report = {}
+        with self.assertRaisesRegex(native.CheckFailure, "^native_tools_missing$"):
+            native.require_native_tools(set(), report)
+        self.assertEqual(report["missing_tools"], [
+            "ask_user", "exit_plan_mode", "list_agents", "read_agent",
+            "skill", "task", "view", "write_agent",
+        ])
+
+    def test_missing_names_survive_outer_failure_with_identity_and_passed_checks(self):
+        report = {
+            "status": "fail", "check": "native_toolset", "reason": "native_tools_missing",
+            "sdk": native.SDK_VERSION, "publisher_cli": native.CLI_VERSION,
+            "runtime": native.CLI_VERSION, "protocol": 3,
+            "passed": ["runtime_identity", "session_startup"],
+        }
+        names = set(native.REQUIRED_NATIVE_TOOLS) - {"skill", "exit_plan_mode"}
+        names.add("synthetic-sensitive-runtime-name")
+        with self.assertRaises(native.CheckFailure):
+            native.require_native_tools(names, report)
+        process = Mock(pid=12345, returncode=1)
+        process.communicate.return_value = (json.dumps(report), None)
+        with patch.object(native.subprocess, "Popen", return_value=process):
+            with patch.object(native, "kill_owned_group") as kill:
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 1)
+        self.assertEqual(report["missing_tools"], ["exit_plan_mode", "skill"])
+        self.assertEqual(json.loads(output.getvalue()), report)
+        self.assertNotIn("sensitive", output.getvalue())
+        kill.assert_called_once_with(process)
+
+    def test_missing_names_are_allowlisted_sorted_and_deduplicated(self):
+        report = native.safe_failure_report(json.dumps({
+            "check": "native_toolset", "reason": "native_tools_missing",
+            "missing_tools": [
+                "skill", "synthetic-sensitive-name", "view", "skill", "ask_user",
+                "prefix-task-suffix", None, {"task": "synthetic"}, ["task"],
+            ],
+        }))
+        self.assertEqual(report, {
+            "status": "fail", "check": "native_toolset", "reason": "native_tools_missing",
+            "passed": [], "missing_tools": ["ask_user", "skill", "view"],
+        })
+
+    def test_non_list_diagnostic_does_not_infer_names_or_lose_passed_checks(self):
+        for missing in (None, 1, "task skill", {"task": True}):
+            with self.subTest(missing=missing):
+                report = native.safe_failure_report(json.dumps({
+                    "check": "native_toolset", "reason": "native_tools_missing",
+                    "missing_tools": missing, "passed": ["runtime_identity"],
+                }))
+                self.assertEqual(report, {
+                    "status": "fail", "check": "native_toolset",
+                    "reason": "native_tools_missing", "passed": ["runtime_identity"],
+                })
+
+    def test_diagnostic_is_omitted_for_other_stages_or_reasons(self):
+        for check, reason in (
+            ("bounded_cleanup", "operation_failed"),
+            ("session_startup", "native_tools_missing"),
+            ("native_toolset", "operation_failed"),
+        ):
+            with self.subTest(check=check, reason=reason):
+                report = native.safe_failure_report(json.dumps({
+                    "check": check, "reason": reason, "missing_tools": ["task"],
+                }))
+                self.assertEqual(report, {
+                    "status": "fail", "check": check, "reason": reason, "passed": [],
+                })
+
+    def test_diagnostic_cannot_make_malformed_child_report_valid(self):
+        for candidate in (None, [], "task", {"missing_tools": ["task"]}):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(native.safe_failure_report(json.dumps(candidate)), {
+                    "status": "fail", "check": "invalid_child_report",
+                })
+
+
 if __name__ == "__main__":
     unittest.main()
