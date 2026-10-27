@@ -715,6 +715,46 @@ The stage identifies the probe: `native_toolset` is the `bash` request;
 
 File-check failures retain `native_file_positive_control_failed`, `protected_canary_leaked`, or `permission_session_mismatch` through both report boundaries, with the original stage and prior passed checks.
 
+Run [40518050911](https://github.com/hoffe86/agile-agents/actions/runs/40518050911)
+passed the first four stages, then failed the allowed-file positive control;
+it did not reach the protected-file read. The driver had no approval path for a
+fixture read that required permission: both auto-approval flags were false and
+the callback rejected every request. It had already verified `INTERACTIVE` mode
+after `exit_only`, and the positive fixture existed before session creation.
+
+The callback now returns `PermissionDecisionApproveOnce` only for a typed
+`PermissionRequestRead` of the exact host-created `workspace/readable.txt`, during
+that positive probe and for the owned SDK session. The requested path must match
+exactly; any supplied resolved path must also match, and the fixture must still
+resolve to the same regular file. Protected, outside, traversal, symlink-alias,
+malformed/multiple-path and other permission requests are rejected. Managed
+approval, sandbox bypass and sandbox path-grant requests are also rejected.
+No directory grant, blanket read/tool approval, or sandbox policy change is used.
+The approval window closes in `finally` before the protected probe.
+
+This uses the pinned
+[`PermissionRequestRead`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/session_events.py#L8493-L8550)
+and
+[`PermissionDecisionApproveOnce`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L32751-L32773)
+contracts. The SDK supplies callback session identity in
+[`session.py`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/session.py#L3401-L3452).
+The public
+[`permissions.paths`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L67860-L67890)
+API can list exact approvals but its add operation grants a **directory**; it
+does not provide an exact-file read grant setter. These three local source files
+were byte-for-byte checked against official v1.0.24.
+
+The previous report did not contain the positive read's result kind or callback
+decision, so the callback defect is verified, but its role in that hosted failure
+still needs native confirmation. If the marker is still absent, `positive_read`
+reports only `kind` (the same fixed kinds as above, plus `absent`/`unrecognized`)
+and `permission` (`not_requested`, `approved`, `rejected`, or `mixed`). It never
+reports response content. The marker-in-JSON assertion is unchanged; so are the
+subsequent explicit protected-file denial, canary-absence and nonempty,
+all-matching permission-session assertions. The latter covers all callbacks in
+the check, not a requirement that protected-file denial itself invoke a callback.
+Native policy may deny that request before callback dispatch.
+
 The outer process validates every diagnostic key and value. Raw results, errors,
 stdout, logs, paths and tokens are not reported. The original failure reason,
 prior passed checks and cleanup rules remain in force. Successful stdout is
@@ -735,7 +775,8 @@ lists the five kinds and describes execution of a **currently offered** tool.
 The existing parser already matches that shape. This source does not establish
 that requesting an unavailable `bash` tool must produce an explicit permission
 denial, or that direct host RPC and agent calls have identical enforcement.
-The hosted failure's cause remains unknown until an authorized run reports it.
+The earlier shell-result uncertainty is separate from the positive-read failure
+reported by run 40518050911.
 No accepted denial values, native tool grants, or live-readiness holds changed.
 
 The driver now supplies the native activation conditions, without custom tools:

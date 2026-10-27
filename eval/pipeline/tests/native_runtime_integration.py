@@ -162,6 +162,20 @@ def require_denial(result: object, report: dict | None = None, *,
     require(denied, "explicit_native_denial_required")
 
 
+def require_positive_read(result: object, decisions: list[str], report: dict) -> None:
+    wire = result if isinstance(result, dict) else result.to_dict()
+    if "native-readable-canary" in json.dumps(wire):
+        return
+    kind = wire.get("resultType")
+    report["positive_read"] = {
+        "kind": (kind if kind in TOOL_RESULT_KINDS else
+                 "absent" if "resultType" not in wire else "unrecognized"),
+        "permission": ("not_requested" if not decisions else
+                       decisions[0] if len(set(decisions)) == 1 else "mixed"),
+    }
+    raise CheckFailure("native_file_positive_control_failed")
+
+
 def kill_owned_group(process: subprocess.Popen) -> None:
     """The child is a new session leader; no process enumeration or name kills."""
     try:
@@ -266,6 +280,16 @@ def safe_failure_report(output: str) -> dict:
                     key: diagnostic[key] for key, values in allowed.items()
                     if diagnostic.get(key) in values
                 }
+            if (candidate.get("check") == "native_file_denial"
+                    and candidate.get("reason") == "native_file_positive_control_failed"
+                    and isinstance(candidate.get("positive_read"), dict)):
+                diagnostic = candidate["positive_read"]
+                report["positive_read"] = {
+                    key: diagnostic[key] for key, values in {
+                        "kind": (*TOOL_RESULT_KINDS, "absent", "unrecognized"),
+                        "permission": ("not_requested", "approved", "rejected", "mixed"),
+                    }.items() if diagnostic.get(key) in values
+                }
             report["passed"] = [item for item in CHECKS
                                 if item in candidate.get("passed", [])]
             if candidate.get("sdk") == SDK_VERSION and candidate.get("publisher_cli") == CLI_VERSION:
@@ -287,13 +311,13 @@ async def native_checks(runtime: Path, root: Path) -> dict:
     from copilot import BUILTIN_TOOLS_ISOLATED, CopilotClient, RuntimeConnection, ToolSet
     from copilot.client import ManagedSettings, ManagedSettingsPermissions
     from copilot.rpc import (
-        ModeSetRequest, PermissionDecisionReject,
+        ModeSetRequest, PermissionDecisionApproveOnce, PermissionDecisionReject,
         PermissionPathsConfig, PermissionsConfigureParams, PermissionsSetModeRequest,
         PlanUpdateRequest, SandboxConfig, SandboxConfigUserPolicy,
         SandboxConfigUserPolicyFilesystem, SandboxConfigUserPolicyNetwork,
         ShellExecuteUserRequestedRequest, ToolsExecuteRequest,
     )
-    from copilot.session_events import PermissionMode, SessionMode
+    from copilot.session_events import PermissionMode, PermissionRequestRead, SessionMode
 
     report = {"status": "fail", "sdk": SDK_VERSION, "publisher_cli": CLI_VERSION,
               "check": CHECKS[0], "passed": []}
@@ -301,6 +325,8 @@ async def native_checks(runtime: Path, root: Path) -> dict:
     session = None
     callback_results = []
     permission_sessions = []
+    positive_read_pending = False
+    positive_read_decisions = []
     hook_sessions = []
     model_activity = asyncio.Event()
     plan_phase = False
@@ -312,9 +338,32 @@ async def native_checks(runtime: Path, root: Path) -> dict:
     async def bounded(awaitable):
         return await asyncio.wait_for(awaitable, RPC_TIMEOUT)
 
-    def permission(_request, context):
+    def permission(request, context):
         permission_sessions.append(context.get("session_id"))
-        return PermissionDecisionReject(feedback="native_check_denied")
+        decision = PermissionDecisionReject(feedback="native_check_denied")
+        # SDK 1.0.24 permissions.paths.add grants directories, not individual files.
+        # Approve only this typed, single-path request, never toolArgs or agentId.
+        if (positive_read_pending and context.get("session_id") == session_id
+                and type(request) is PermissionRequestRead
+                and type(request.path) is str and request.path == str(readable_path)
+                and request.resolved_path in (None, str(readable_path))
+                and (request.managed_approval_required is None
+                     or request.managed_approval_required is False)
+                and (request.request_sandbox_bypass is None
+                     or request.request_sandbox_bypass is False)
+                and request.request_sandbox_bypass_reason is None
+                and request.sandbox_path_grant is None):
+            try:
+                # The host-created fixture must still be a regular file at the
+                # same canonical path, not a replacement symlink or directory.
+                if readable_path.resolve(strict=True) == readable_path and readable_path.is_file():
+                    decision = PermissionDecisionApproveOnce()
+            except (OSError, RuntimeError):
+                pass  # An unreadable/unresolvable fixture does not authorize access.
+        if positive_read_pending:
+            positive_read_decisions.append(
+                "approved" if isinstance(decision, PermissionDecisionApproveOnce) else "rejected")
+        return decision
 
     def pre_tool(data, context):
         hook_sessions.append((data.get("sessionId"), context.get("session_id")))
@@ -350,6 +399,7 @@ async def native_checks(runtime: Path, root: Path) -> dict:
         protected = root / "protected" / "control-plane.txt"
         protected.write_text(uuid.uuid4().hex, encoding="utf-8")
         (workspace / "readable.txt").write_text("native-readable-canary", encoding="utf-8")
+        readable_path = (workspace / "readable.txt").resolve(strict=True)
         client = CopilotClient(
             connection=RuntimeConnection.for_stdio(path=str(runtime)),
             mode="empty", env=isolated_environment(root), github_token=None,
@@ -486,11 +536,13 @@ async def native_checks(runtime: Path, root: Path) -> dict:
         report["passed"].append(report["check"])
 
         report["check"] = "native_file_denial"
-        readable = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
-            name="view", arguments={"path": str(workspace / "readable.txt")})))
-        require("native-readable-canary" in json.dumps(
-            readable if isinstance(readable, dict) else readable.to_dict()),
-            "native_file_positive_control_failed")
+        positive_read_pending = True
+        try:
+            readable = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
+                name="view", arguments={"path": str(readable_path)})))
+        finally:
+            positive_read_pending = False
+        require_positive_read(readable, positive_read_decisions, report)
         denied = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
             name="view", arguments={"path": str(protected)})))
         require_denial(denied, report)

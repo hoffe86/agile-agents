@@ -309,6 +309,239 @@ class NativeEntrypointTests(unittest.TestCase):
         })
 
 
+class NativePositiveReadPermissionTests(unittest.TestCase):
+    """Run the actual synchronous callback with pinned SDK types, never a loop."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tree = ast.parse(inspect.getsource(native.native_checks))
+        cls.imports = [node for node in cls.tree.body[0].body
+                       if isinstance(node, ast.ImportFrom) and node.module.startswith("copilot")]
+        callback = next(node for node in cls.tree.body[0].body
+                        if isinstance(node, ast.FunctionDef) and node.name == "permission")
+        cls.callback_code = compile(ast.Module(body=[callback], type_ignores=[]),
+                                    native.__file__, "exec")
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name).resolve()
+        self.workspace = self.root / "workspace"
+        self.workspace.mkdir()
+        self.fixture = self.workspace / "readable.txt"
+        self.fixture.write_text("native-readable-canary", encoding="utf-8")
+        self.protected = self.root / "protected.txt"
+        self.protected.write_text("synthetic-protected-canary", encoding="utf-8")
+        self.namespace = {
+            **vars(native), "session_id": "owned-session", "readable_path": self.fixture,
+            "positive_read_pending": True, "positive_read_decisions": [],
+            "permission_sessions": [],
+        }
+        exec(compile(ast.Module(body=self.imports, type_ignores=[]), native.__file__, "exec"),
+             self.namespace)
+        exec(self.callback_code, self.namespace)
+        self.permission = self.namespace["permission"]
+        self.context = {"session_id": "owned-session"}
+
+    def request(self, **overrides):
+        from copilot.session_events import PermissionRequestRead
+
+        return PermissionRequestRead(**{
+            "intention": "Read synthetic fixture", "path": str(self.fixture), **overrides,
+        })
+
+    def assert_rejected(self, request, context=None):
+        from copilot.rpc import PermissionDecisionReject
+
+        decision = self.permission(request, self.context if context is None else context)
+        self.assertIs(type(decision), PermissionDecisionReject)
+        self.assertEqual(decision.to_dict(), {
+            "kind": "reject", "feedback": "native_check_denied",
+        })
+
+    def test_exact_typed_fixture_read_is_approved_once_and_session_is_recorded(self):
+        from copilot.rpc import PermissionDecisionApproveOnce
+
+        for resolved in (None, str(self.fixture)):
+            with self.subTest(resolved=resolved):
+                decision = self.permission(self.request(resolved_path=resolved), self.context)
+                self.assertIs(type(decision), PermissionDecisionApproveOnce)
+                self.assertEqual(decision.to_dict(), {"kind": "approve-once"})
+        self.assertEqual(self.namespace["permission_sessions"], ["owned-session"] * 2)
+        self.assertEqual(self.namespace["positive_read_decisions"], ["approved"] * 2)
+
+    def test_fixture_approval_is_confined_to_positive_read_and_owned_session(self):
+        self.namespace["positive_read_pending"] = False
+        self.assert_rejected(self.request())
+        self.assertEqual(self.namespace["positive_read_decisions"], [])
+        self.namespace["positive_read_pending"] = True
+        for context in ({}, {"session_id": "other", "agentId": "owned-session"}):
+            with self.subTest(context=context):
+                self.assert_rejected(self.request(), context)
+        self.assertEqual(self.namespace["permission_sessions"], ["owned-session", None, "other"])
+        self.assertEqual(self.namespace["positive_read_decisions"], ["rejected"] * 2)
+
+    def test_protected_outside_sibling_directory_and_traversal_paths_are_rejected(self):
+        for path in (
+            self.protected, self.root / "outside.txt", self.workspace / "other.txt",
+            self.workspace, self.workspace / "readable.txt.extra",
+            self.workspace / ".." / "workspace" / "readable.txt",
+            self.workspace / ".." / "protected.txt", "readable.txt",
+            str(self.fixture) + "/../readable.txt",
+        ):
+            with self.subTest(path=str(path)):
+                self.assert_rejected(self.request(path=str(path)))
+
+    def test_malformed_and_multiple_paths_are_not_reduced_to_one_allowed_path(self):
+        for path in (
+            None, 1, True, [], [str(self.fixture)],
+            [str(self.fixture), str(self.protected)], {"path": str(self.fixture)},
+            str(self.fixture) + "\0", str(self.fixture) + "\n" + str(self.protected),
+        ):
+            with self.subTest(path_type=type(path).__name__):
+                self.assert_rejected(self.request(path=path))
+
+    def test_unknown_permission_types_and_tool_arguments_cannot_authorize_read(self):
+        from copilot.session_events import PermissionRequestWrite
+
+        wire = {"kind": "read", "path": str(self.fixture), "agentId": "owned-session",
+                "toolArgs": {"path": str(self.fixture)}}
+        for request in (
+            None, wire, SimpleNamespace(**wire),
+            {**wire, "paths": [str(self.fixture), str(self.protected)]},
+            PermissionRequestWrite.from_dict({
+                "kind": "write", "intention": "Synthetic write", "fileName": str(self.fixture),
+                "canOfferSessionApproval": False, "diff": "",
+            }),
+        ):
+            with self.subTest(request_type=type(request).__name__):
+                self.assert_rejected(request)
+
+    def test_resolved_path_mismatch_bypass_and_managed_approval_are_rejected(self):
+        for overrides in (
+            {"resolved_path": str(self.protected)},
+            {"resolved_path": [str(self.fixture), str(self.protected)]},
+            {"managed_approval_required": True}, {"managed_approval_required": "false"},
+            {"request_sandbox_bypass": True}, {"request_sandbox_bypass": 0},
+            {"request_sandbox_bypass_reason": "approved"},
+            {"sandbox_path_grant": {"path": str(self.fixture)}},
+        ):
+            with self.subTest(field=next(iter(overrides))):
+                self.assert_rejected(self.request(**overrides))
+
+    def test_symlink_alias_and_fixture_symlink_replacement_are_rejected(self):
+        # Model canonical resolution rather than require Windows symlink privileges.
+        with patch.object(Path, "resolve", return_value=self.fixture):
+            self.assert_rejected(self.request(path=str(self.workspace / "alias.txt")))
+        with patch.object(Path, "resolve", return_value=self.protected):
+            self.assert_rejected(self.request())
+
+    def test_missing_directory_or_unresolvable_fixture_is_rejected(self):
+        self.fixture.unlink()
+        self.assert_rejected(self.request())
+        self.fixture.mkdir()
+        self.assert_rejected(self.request())
+        for error in (PermissionError("synthetic"), RuntimeError("symlink loop")):
+            with self.subTest(error_type=type(error).__name__):
+                with patch.object(Path, "resolve", side_effect=error):
+                    self.assert_rejected(self.request())
+
+    def test_auto_approval_and_bypass_remain_disabled_without_extra_path_grants(self):
+        calls = [node for node in ast.walk(self.tree) if isinstance(node, ast.Call)]
+        config = next(node for node in calls
+                      if ast.unparse(node.func) == "PermissionsConfigureParams")
+        params = eval(compile(ast.Expression(config), native.__file__, "eval"), {
+            **self.namespace, "workspace": self.workspace,
+        })
+        self.assertEqual(params.to_dict(), {
+            "approveAllReadPermissionRequests": False, "approveAllToolPermissionRequests": False,
+            "paths": {"unrestricted": False, "includeTempDirectory": False,
+                      "workspacePath": str(self.workspace)},
+        })
+        sandbox = next(node for node in calls if ast.unparse(node.func) == "SandboxConfig")
+        policy = eval(compile(ast.Expression(sandbox), native.__file__, "eval"), {
+            **self.namespace, "root": self.root,
+        })
+        self.assertEqual(policy.to_dict(), {
+            "enabled": True, "allowBypass": False, "allowDevToolAccess": False,
+            "userPolicy": {
+                "filesystem": {"deniedPaths": [str(self.root / "protected")]},
+                "network": {"allowOutbound": False, "allowLocalNetwork": False},
+            },
+        })
+
+    def test_positive_read_window_closes_before_protected_read_even_on_error(self):
+        body = next(node for node in self.tree.body[0].body if isinstance(node, ast.Try)).body
+        window = next(node for node in body if isinstance(node, ast.Try) and node.finalbody)
+        self.assertIn("name='view', arguments={'path': str(readable_path)}", ast.unparse(window))
+        for node in window.finalbody:
+            exec(compile(ast.Module(body=[node], type_ignores=[]), native.__file__, "exec"),
+                 self.namespace)
+        self.assertFalse(self.namespace["positive_read_pending"])
+        calls = [node for node in ast.walk(self.tree) if isinstance(node, ast.Call)]
+        positive = next(node for node in calls if ast.unparse(node.func) == "require_positive_read")
+        protected = next(node for node in calls if ast.unparse(node.func) == "ToolsExecuteRequest"
+                         and "str(protected)" in ast.unparse(node))
+        self.assertLess(window.end_lineno, positive.lineno)
+        self.assertLess(positive.lineno, protected.lineno)
+        self.assertIn("require_denial(denied, report)", ast.unparse(self.tree))
+        self.assertIn("'protected_canary_leaked'", ast.unparse(self.tree))
+        self.assertIn("permission_sessions and all((value == session_id",
+                      ast.unparse(self.tree))
+
+
+class NativePositiveReadDiagnosticTests(unittest.TestCase):
+    def test_real_marker_is_required_in_wire_or_sdk_result_without_reporting_content(self):
+        from copilot.rpc import ToolResultExpanded
+
+        wire = {"resultType": "success", "textResultForLlm": "native-readable-canary"}
+        for result in (wire, ToolResultExpanded.from_dict(wire)):
+            with self.subTest(result_type=type(result).__name__):
+                report = {}
+                native.require_positive_read(result, ["approved"], report)
+                self.assertEqual(report, {})
+
+    def test_marker_absence_fails_with_fixed_kind_and_callback_decision_only(self):
+        for kind, expected in (("rejected", "rejected"), ("success", "success"),
+                               ("synthetic-sensitive-error", "unrecognized")):
+            for decisions, permission in (([], "not_requested"), (["approved"], "approved"),
+                                           (["rejected"], "rejected"),
+                                           (["approved", "rejected"], "mixed")):
+                with self.subTest(kind=expected, permission=permission):
+                    report = {"check": "native_file_denial",
+                              "reason": "native_file_positive_control_failed"}
+                    with self.assertRaisesRegex(native.CheckFailure,
+                                                "^native_file_positive_control_failed$"):
+                        native.require_positive_read({
+                            "resultType": kind, "textResultForLlm": "synthetic-sensitive-content",
+                        }, decisions, report)
+                    safe = native.safe_failure_report(json.dumps(report))
+                    self.assertEqual(safe["positive_read"], {"kind": expected, "permission": permission})
+                    self.assertNotIn("sensitive", json.dumps(safe))
+
+    def test_missing_result_kind_is_reported_as_absent_not_denial(self):
+        report = {}
+        with self.assertRaises(native.CheckFailure):
+            native.require_positive_read({}, [], report)
+        self.assertEqual(report, {"positive_read": {"kind": "absent", "permission": "not_requested"}})
+
+    def test_outer_report_filters_positive_read_keys_values_and_context(self):
+        for check, reason in (("native_file_denial", "native_file_positive_control_failed"),
+                              ("native_file_denial", "protected_canary_leaked"),
+                              ("native_toolset", "native_file_positive_control_failed")):
+            with self.subTest(check=check, reason=reason):
+                report = native.safe_failure_report(json.dumps({
+                    "check": check, "reason": reason, "positive_read": {
+                        "kind": "rejected", "permission": "synthetic-sensitive-value",
+                        "result": "synthetic-sensitive-content", "path": "synthetic-sensitive-path",
+                    },
+                }))
+                self.assertEqual(report.get("positive_read"),
+                                 {"kind": "rejected"} if reason == "native_file_positive_control_failed"
+                                 and check == "native_file_denial" else None)
+                self.assertNotIn("sensitive", json.dumps(report))
+
+
 class NativeFileFailureDiagnosticTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
