@@ -335,7 +335,10 @@ class NativePositiveReadPermissionTests(unittest.TestCase):
         self.namespace = {
             **vars(native), "session_id": "owned-session", "readable_path": self.fixture,
             "positive_read_pending": True, "positive_read_decisions": [],
-            "permission_sessions": [],
+            "permission_sessions": [], "protected_read_pending": False,
+            "protected": self.protected, "protected_observation": {
+                "callback": "not_requested", "callback_session": "not_requested",
+            },
         }
         exec(compile(ast.Module(body=self.imports, type_ignores=[]), native.__file__, "exec"),
              self.namespace)
@@ -489,6 +492,248 @@ class NativePositiveReadPermissionTests(unittest.TestCase):
         self.assertIn("permission_sessions and all((value == session_id",
                       ast.unparse(self.tree))
 
+    def test_protected_observations_do_not_reuse_prior_positive_approval(self):
+        self.permission(self.request(), self.context)
+        observation = self.namespace["protected_observation"]
+        self.assertEqual(observation, {
+            "callback": "not_requested", "callback_session": "not_requested",
+        })
+        self.namespace["positive_read_pending"] = False
+        self.namespace["protected_read_pending"] = True
+        self.assert_rejected(self.request(path=str(self.protected)))
+        self.assertEqual(observation, {
+            "callback": "rejected_exact_read", "callback_session": "match",
+        })
+        self.assertEqual(self.namespace["positive_read_decisions"], ["approved"])
+
+    def test_unknown_protected_callbacks_are_rejected_and_not_labelled_exact_reads(self):
+        self.namespace["positive_read_pending"] = False
+        self.namespace["protected_read_pending"] = True
+        for request in (None, {"kind": "read", "path": str(self.protected)},
+                        self.request(), self.request(path=str(self.protected),
+                                                     resolved_path=str(self.fixture))):
+            with self.subTest(request_type=type(request).__name__):
+                self.assert_rejected(request)
+                self.assertEqual(self.namespace["protected_observation"]["callback"],
+                                 "rejected_other")
+        self.assert_rejected(self.request(path=str(self.protected)))
+        self.assertEqual(self.namespace["protected_observation"]["callback"], "mixed")
+
+    def test_protected_callback_session_mismatch_is_sticky_and_window_scoped(self):
+        self.namespace["positive_read_pending"] = False
+        self.namespace["protected_read_pending"] = True
+        self.assert_rejected(self.request(path=str(self.protected)), {})
+        self.assert_rejected(self.request(path=str(self.protected)))
+        self.assertEqual(self.namespace["protected_observation"]["callback_session"], "mismatch")
+        self.namespace["protected_read_pending"] = False
+        self.assert_rejected(None)
+        self.assertEqual(self.namespace["protected_observation"]["callback"], "rejected_exact_read")
+
+
+class NativeProtectedReadTests(unittest.TestCase):
+    """Execute the actual probe statements with RPC stubs, never an event loop."""
+
+    @classmethod
+    def setUpClass(cls):
+        tree = ast.parse(inspect.getsource(native.native_checks))
+        # Match the existing synchronous callback/handler contract technique.
+        # Strip only await syntax; all branches, checks and finally blocks stay.
+        class Synchronous(ast.NodeTransformer):
+            def visit_Await(self, node):
+                return self.visit(node.value)
+
+            def visit_AsyncFunctionDef(self, node):
+                return ast.FunctionDef(
+                    name=node.name, args=node.args, body=[self.visit(x) for x in node.body],
+                    decorator_list=[], returns=node.returns, type_comment=None,
+                )
+
+        inspector = next(node for node in tree.body[0].body
+                         if isinstance(node, ast.AsyncFunctionDef)
+                         and node.name == "inspect_protected_policy")
+        probe = next(node for node in ast.walk(tree) if isinstance(node, ast.Try)
+                     and any(isinstance(child, ast.Call)
+                             and ast.unparse(child.func) == "protected_canary_present"
+                             for statement in node.body for child in ast.walk(statement))
+                     and any(isinstance(child, ast.Call)
+                             and ast.unparse(child.func) == "inspect_protected_policy"
+                             for handler in node.handlers for child in ast.walk(handler)))
+        cls.probe = compile(ast.fix_missing_locations(Synchronous().visit(
+            ast.Module(body=[probe], type_ignores=[]))), native.__file__, "exec")
+        cls.inspector = compile(ast.fix_missing_locations(Synchronous().visit(
+            ast.Module(body=[inspector], type_ignores=[]))), native.__file__, "exec")
+        cls.imports = [node for node in tree.body[0].body
+                       if isinstance(node, ast.ImportFrom) and node.module.startswith("copilot")]
+
+    def setUp(self):
+        from copilot.rpc import PermissionPathsAllowedCheckResult, SandboxEnforcementStatus
+
+        self.observation = {
+            "callback": "not_requested", "callback_session": "not_requested",
+            "marker": "unknown", "text_shape": "unknown",
+            "allowed_directory": "not_run", "sandbox_blocked": "not_run",
+        }
+        self.report = {"check": "native_file_denial", "protected_read": self.observation}
+        self.execute = Mock()
+        self.path_check = Mock(return_value=PermissionPathsAllowedCheckResult(allowed=False))
+        self.sandbox_check = Mock(return_value=SandboxEnforcementStatus(blocked=False, required=False))
+        self.namespace = {
+            **vars(native), "bounded": lambda result: result,
+            "session_id": "owned-session", "permission_sessions": ["owned-session"],
+            "protected_read_pending": True, "protected_marker": "synthetic-protected-canary",
+            "protected": Path("/synthetic/protected/control-plane.txt"),
+            "protected_observation": self.observation, "report": self.report,
+            "session": SimpleNamespace(rpc=SimpleNamespace(
+                tools=SimpleNamespace(execute=self.execute),
+                permissions=SimpleNamespace(paths=SimpleNamespace(
+                    is_path_within_allowed_directories=self.path_check)),
+                sandbox=SimpleNamespace(get_enforcement_status=self.sandbox_check),
+            )),
+        }
+        exec(compile(ast.Module(body=self.imports, type_ignores=[]), native.__file__, "exec"),
+             self.namespace)
+        exec(self.inspector, self.namespace)
+
+    def run_probe(self, result):
+        self.execute.return_value = result
+        exec(self.probe, self.namespace)
+
+    def test_leaked_canary_takes_priority_over_every_result_kind(self):
+        from copilot.rpc import ToolResultExpanded
+
+        for kind in native.TOOL_RESULT_KINDS:
+            wire = {"resultType": kind, "textResultForLlm": self.namespace["protected_marker"]}
+            for result in (wire, ToolResultExpanded.from_dict(wire)):
+                with self.subTest(kind=kind, shape=type(result).__name__):
+                    with self.assertRaisesRegex(native.CheckFailure, "^protected_canary_leaked$"):
+                        self.run_probe(result)
+                    self.assertEqual(self.observation["marker"], "present")
+                    self.assertEqual(self.observation["text_shape"], "string")
+                    self.assertFalse(self.namespace["protected_read_pending"])
+                    self.assertNotIn("denial_result", self.report)
+
+    def test_canary_in_structured_output_is_not_hidden_by_safe_text(self):
+        wire = {"resultType": "denied", "textResultForLlm": "",
+                "structuredContent": {"content": self.namespace["protected_marker"]}}
+        with self.assertRaisesRegex(native.CheckFailure, "^protected_canary_leaked$"):
+            self.run_probe(wire)
+
+    def test_generic_failure_stays_unknown_with_complete_safe_policy_diagnostic(self):
+        with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+            self.run_probe({"resultType": "failure", "textResultForLlm": "sensitive-native-error"})
+        self.assertEqual(self.observation, {
+            "callback": "not_requested", "callback_session": "not_requested",
+            "marker": "absent", "text_shape": "string",
+            "allowed_directory": "no", "sandbox_blocked": "no",
+        })
+        self.assertEqual(self.report["denial_result"], {"shape": "mapping", "kind": "failure"})
+        self.assertEqual(self.path_check.call_args.args[0].to_dict(), {
+            "path": str(self.namespace["protected"]),
+        })
+        self.sandbox_check.assert_called_once_with()
+        self.assertNotIn("sensitive", json.dumps(self.report))
+
+    def test_callback_rejection_and_policy_flags_cannot_turn_failure_into_pass(self):
+        self.observation.update(callback="rejected_exact_read", callback_session="match")
+        self.sandbox_check.return_value = SimpleNamespace(blocked=True)
+        with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+            self.run_probe({"resultType": "failure", "textResultForLlm": ""})
+        self.assertEqual(self.observation["sandbox_blocked"], "yes")
+
+    def test_explicit_denial_without_canary_still_passes_without_extra_inspections(self):
+        from copilot.rpc import ToolResultExpanded
+
+        for kind in ("denied", "rejected"):
+            wire = {"resultType": kind, "textResultForLlm": ""}
+            for result in (wire, ToolResultExpanded.from_dict(wire)):
+                with self.subTest(kind=kind, shape=type(result).__name__):
+                    self.run_probe(result)
+                    self.assertEqual(self.observation["marker"], "absent")
+        self.path_check.assert_not_called()
+        self.sandbox_check.assert_not_called()
+
+    def test_malformed_timeout_success_and_unknown_results_remain_failures(self):
+        for result in (None, [], {}, {"result": {"resultType": "denied"}},
+                       {"resultType": "success"}, {"resultType": "timeout"},
+                       {"resultType": ["denied"]}, {"resultType": "sensitive-code"},
+                       {"resultType": "denied", "textResultForLlm": object()}):
+            with self.subTest(result_type=type(result).__name__):
+                with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+                    self.run_probe(result)
+
+    def test_policy_inspection_errors_never_replace_leak_or_native_failure(self):
+        self.path_check.side_effect = TimeoutError("sensitive-error")
+        self.sandbox_check.side_effect = RuntimeError("sensitive-error")
+        with self.assertRaisesRegex(native.CheckFailure, "^protected_canary_leaked$"):
+            self.run_probe({"resultType": "failure",
+                            "textResultForLlm": self.namespace["protected_marker"]})
+        self.assertEqual(self.observation["allowed_directory"], "timeout")
+        self.assertEqual(self.observation["sandbox_blocked"], "operation_failed")
+        self.assertNotIn("sensitive", json.dumps(self.report))
+
+    def test_malformed_policy_booleans_are_unknown_not_denial_evidence(self):
+        for value in (None, 0, 1, "false", [], {}):
+            with self.subTest(value_type=type(value).__name__):
+                self.path_check.return_value = SimpleNamespace(allowed=value)
+                self.sandbox_check.return_value = SimpleNamespace(blocked=value)
+                with self.assertRaises(native.CheckFailure):
+                    self.run_probe({"resultType": "failure", "textResultForLlm": ""})
+                self.assertEqual(self.observation["allowed_directory"], "unknown")
+                self.assertEqual(self.observation["sandbox_blocked"], "unknown")
+
+    def test_native_rpc_errors_close_window_and_keep_original_error_for_classification(self):
+        for error in (TimeoutError("synthetic"), RuntimeError("authentication required"),
+                      RuntimeError("synthetic-native-error")):
+            with self.subTest(error_type=type(error).__name__):
+                self.execute.side_effect = error
+                self.namespace["protected_read_pending"] = True
+                with self.assertRaises(type(error)) as caught:
+                    self.run_probe(None)
+                self.assertIs(caught.exception, error)
+                self.assertFalse(self.namespace["protected_read_pending"])
+                self.assertEqual(self.observation["marker"], "unknown")
+
+    def test_outer_report_retains_only_bounded_protected_diagnostics(self):
+        for reason in ("explicit_native_denial_required", "protected_canary_leaked",
+                       "timeout", "authentication_required", "operation_failed"):
+            with self.subTest(reason=reason):
+                candidate = {**self.report, "reason": reason, "protected_read": {
+                    **self.observation, "marker": "present", "text_shape": "string",
+                    "allowed_directory": "no", "sandbox_blocked": "yes",
+                    "raw": "sensitive-result", "path": "sensitive-path",
+                }}
+                safe = native.safe_failure_report(json.dumps(candidate))
+                self.assertEqual(safe["protected_read"], {
+                    **self.observation, "marker": "present", "text_shape": "string",
+                    "allowed_directory": "no", "sandbox_blocked": "yes",
+                })
+                self.assertNotIn("sensitive", json.dumps(safe))
+
+    def test_outer_report_rejects_bad_diagnostic_values_and_wrong_context(self):
+        for value in (True, 1, None, [], {}, "sensitive-value"):
+            with self.subTest(value_type=type(value).__name__):
+                safe = native.safe_failure_report(json.dumps({
+                    **self.report, "reason": "explicit_native_denial_required",
+                    "protected_read": dict.fromkeys(self.observation, value),
+                }))
+                self.assertEqual(safe["protected_read"], {})
+        for check, reason in (("native_toolset", "explicit_native_denial_required"),
+                              ("bounded_cleanup", "operation_failed"),
+                              ("native_file_denial", "native_file_positive_control_failed"),
+                              ("native_file_denial", "sensitive-reason")):
+            with self.subTest(check=check, reason=reason):
+                safe = native.safe_failure_report(json.dumps({
+                    "check": check, "reason": reason, "protected_read": self.observation,
+                }))
+                self.assertNotIn("protected_read", safe)
+
+    def test_explicit_denial_cannot_hide_missing_or_wrong_callback_session(self):
+        for sessions in ([], ["other-session"], ["owned-session", None]):
+            with self.subTest(sessions=sessions):
+                self.namespace["permission_sessions"] = sessions
+                with self.assertRaisesRegex(native.CheckFailure, "^permission_session_mismatch$"):
+                    self.run_probe({"resultType": "denied", "textResultForLlm": ""})
+
 
 class NativePositiveReadDiagnosticTests(unittest.TestCase):
     def test_real_marker_is_required_in_wire_or_sdk_result_without_reporting_content(self):
@@ -566,6 +811,30 @@ class NativeFileFailureDiagnosticTests(unittest.TestCase):
             "passed": ["runtime_identity", "session_startup", "native_toolset",
                        "plan_refusal_and_exit_only"],
         }
+
+    def test_protected_leak_assertion_precedes_result_kind_assertion(self):
+        # Also runs against the original driver: its kind-first order hides leaks.
+        tree = ast.parse(inspect.getsource(native.native_checks))
+        checks = sorted((
+            node for node in ast.walk(tree) if isinstance(node, ast.Call)
+            and ((ast.unparse(node.func) == "require_denial"
+                  and ast.unparse(node.args[0]) == "denied")
+                 or (ast.unparse(node.func) == "require"
+                     and ast.literal_eval(node.args[1]) == "protected_canary_leaked"))
+        ), key=lambda node: node.lineno)
+        self.assertEqual(len(checks), 2)
+        statements = ast.fix_missing_locations(ast.Module(
+            body=[ast.Expr(value=node) for node in checks], type_ignores=[]))
+        for kind in native.TOOL_RESULT_KINDS:
+            with self.subTest(kind=kind):
+                namespace = {
+                    **vars(native), "report": {}, "protected_observation": {},
+                    "protected_marker": "synthetic-protected-canary",
+                    "protected": Mock(read_text=Mock(return_value="synthetic-protected-canary")),
+                    "denied": {"resultType": kind, "textResultForLlm": "synthetic-protected-canary"},
+                }
+                with self.assertRaisesRegex(native.CheckFailure, "^protected_canary_leaked$"):
+                    exec(compile(statements, native.__file__, "exec"), namespace)
 
     def test_file_failure_codes_survive_inner_and_outer_reports(self):
         for code in (

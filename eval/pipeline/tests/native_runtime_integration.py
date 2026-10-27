@@ -176,6 +176,21 @@ def require_positive_read(result: object, decisions: list[str], report: dict) ->
     raise CheckFailure("native_file_positive_control_failed")
 
 
+def protected_canary_present(result: object, marker: str, observation: dict) -> bool:
+    """Inspect all returned fields before judging the outcome; never report content."""
+    wire = (result.to_dict() if callable(getattr(result, "to_dict", None)) else result)
+    text = wire.get("textResultForLlm") if isinstance(wire, dict) else None
+    observation["text_shape"] = (
+        "string" if isinstance(text, str) else "absent" if text is None else "other")
+    try:
+        present = marker in json.dumps(wire)
+    except (TypeError, ValueError):
+        observation["marker"] = "unknown"
+        raise CheckFailure("explicit_native_denial_required") from None
+    observation["marker"] = "present" if present else "absent"
+    return present
+
+
 def kill_owned_group(process: subprocess.Popen) -> None:
     """The child is a new session leader; no process enumeration or name kills."""
     try:
@@ -290,6 +305,27 @@ def safe_failure_report(output: str) -> dict:
                         "permission": ("not_requested", "approved", "rejected", "mixed"),
                     }.items() if diagnostic.get(key) in values
                 }
+            if (candidate.get("check") == "native_file_denial"
+                    and candidate.get("reason") in (
+                        "explicit_native_denial_required", "protected_canary_leaked",
+                        "permission_session_mismatch", "timeout",
+                        "authentication_required", "operation_failed", "assertion_failed",
+                    )
+                    and isinstance(candidate.get("protected_read"), dict)):
+                diagnostic = candidate["protected_read"]
+                report["protected_read"] = {
+                    key: diagnostic[key] for key, values in {
+                        "callback": ("not_requested", "rejected_exact_read",
+                                     "rejected_other", "mixed"),
+                        "callback_session": ("not_requested", "match", "mismatch"),
+                        "marker": ("present", "absent", "unknown"),
+                        "text_shape": ("string", "absent", "other", "unknown"),
+                        "allowed_directory": ("yes", "no", "unknown", "not_run",
+                                              "timeout", "operation_failed"),
+                        "sandbox_blocked": ("yes", "no", "unknown", "not_run",
+                                            "timeout", "operation_failed"),
+                    }.items() if diagnostic.get(key) in values
+                }
             report["passed"] = [item for item in CHECKS
                                 if item in candidate.get("passed", [])]
             if candidate.get("sdk") == SDK_VERSION and candidate.get("publisher_cli") == CLI_VERSION:
@@ -312,7 +348,8 @@ async def native_checks(runtime: Path, root: Path) -> dict:
     from copilot.client import ManagedSettings, ManagedSettingsPermissions
     from copilot.rpc import (
         ModeSetRequest, PermissionDecisionApproveOnce, PermissionDecisionReject,
-        PermissionPathsConfig, PermissionsConfigureParams, PermissionsSetModeRequest,
+        PermissionPathsAllowedCheckParams, PermissionPathsConfig,
+        PermissionsConfigureParams, PermissionsSetModeRequest,
         PlanUpdateRequest, SandboxConfig, SandboxConfigUserPolicy,
         SandboxConfigUserPolicyFilesystem, SandboxConfigUserPolicyNetwork,
         ShellExecuteUserRequestedRequest, ToolsExecuteRequest,
@@ -327,6 +364,12 @@ async def native_checks(runtime: Path, root: Path) -> dict:
     permission_sessions = []
     positive_read_pending = False
     positive_read_decisions = []
+    protected_read_pending = False
+    protected_observation = {
+        "callback": "not_requested", "callback_session": "not_requested",
+        "marker": "unknown", "text_shape": "unknown",
+        "allowed_directory": "not_run", "sandbox_blocked": "not_run",
+    }
     hook_sessions = []
     model_activity = asyncio.Event()
     plan_phase = False
@@ -363,7 +406,38 @@ async def native_checks(runtime: Path, root: Path) -> dict:
         if positive_read_pending:
             positive_read_decisions.append(
                 "approved" if isinstance(decision, PermissionDecisionApproveOnce) else "rejected")
+        if protected_read_pending:
+            # Observation of this callback, NOT proof the runtime applied its answer.
+            exact = (type(request) is PermissionRequestRead
+                     and type(request.path) is str and request.path == str(protected)
+                     and request.resolved_path in (None, str(protected)))
+            observed = "rejected_exact_read" if exact else "rejected_other"
+            previous = protected_observation["callback"]
+            protected_observation["callback"] = (
+                observed if previous in ("not_requested", observed) else "mixed")
+            if context.get("session_id") != session_id:
+                protected_observation["callback_session"] = "mismatch"
+            elif protected_observation["callback_session"] == "not_requested":
+                protected_observation["callback_session"] = "match"
         return decision
+
+    async def inspect_protected_policy():
+        # Public, read-only SDK 1.0.24 inspections. Neither is a per-tool denial
+        # verdict. Keep each bounded and never replace the original probe failure.
+        for key, operation, field in (
+            ("allowed_directory",
+             lambda: session.rpc.permissions.paths.is_path_within_allowed_directories(
+                 PermissionPathsAllowedCheckParams(path=str(protected))), "allowed"),
+            ("sandbox_blocked", session.rpc.sandbox.get_enforcement_status, "blocked"),
+        ):
+            try:
+                result = await bounded(operation())
+                value = getattr(result, field, None)
+                protected_observation[key] = (
+                    "yes" if value is True else "no" if value is False else "unknown")
+            except Exception as exc:
+                protected_observation[key] = (
+                    "timeout" if isinstance(exc, TimeoutError) else "operation_failed")
 
     def pre_tool(data, context):
         hook_sessions.append((data.get("sessionId"), context.get("session_id")))
@@ -397,7 +471,8 @@ async def native_checks(runtime: Path, root: Path) -> dict:
     try:
         workspace = root / "workspace"
         protected = root / "protected" / "control-plane.txt"
-        protected.write_text(uuid.uuid4().hex, encoding="utf-8")
+        protected_marker = uuid.uuid4().hex
+        protected.write_text(protected_marker, encoding="utf-8")
         (workspace / "readable.txt").write_text("native-readable-canary", encoding="utf-8")
         readable_path = (workspace / "readable.txt").resolve(strict=True)
         client = CopilotClient(
@@ -543,14 +618,24 @@ async def native_checks(runtime: Path, root: Path) -> dict:
         finally:
             positive_read_pending = False
         require_positive_read(readable, positive_read_decisions, report)
-        denied = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
-            name="view", arguments={"path": str(protected)})))
-        require_denial(denied, report)
-        require(protected.read_text("utf-8") not in json.dumps(
-            denied if isinstance(denied, dict) else denied.to_dict()),
-            "protected_canary_leaked")
-        require(permission_sessions and all(value == session_id for value in permission_sessions),
-                "permission_session_mismatch")
+        report["protected_read"] = protected_observation
+        protected_read_pending = True
+        try:
+            try:
+                denied = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
+                    name="view", arguments={"path": str(protected)})))
+            finally:
+                protected_read_pending = False
+            # A leaked marker is a hard failure even for failure/denied/rejected.
+            # Use the original marker, not a possibly changed file after execution.
+            require(not protected_canary_present(denied, protected_marker, protected_observation),
+                    "protected_canary_leaked")
+            require_denial(denied, report)
+            require(permission_sessions and all(value == session_id for value in permission_sessions),
+                    "permission_session_mismatch")
+        except Exception:
+            await inspect_protected_policy()
+            raise
         report["passed"].append(report["check"])
 
         report["check"] = "native_process_sandbox"

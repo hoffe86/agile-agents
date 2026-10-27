@@ -744,21 +744,73 @@ API can list exact approvals but its add operation grants a **directory**; it
 does not provide an exact-file read grant setter. These three local source files
 were byte-for-byte checked against official v1.0.24.
 
-The previous report did not contain the positive read's result kind or callback
-decision, so the callback defect is verified, but its role in that hosted failure
-still needs native confirmation. If the marker is still absent, `positive_read`
+Run [40521978568](https://github.com/hoffe86/agile-agents/actions/runs/40521978568)
+then passed the positive control and returned `{shape: mapping, kind: failure}`
+for the protected `view` request. It failed at `native_file_denial` with
+`explicit_native_denial_required`. This is not evidence of missing authentication:
+the allowed native read worked. It is also not yet proof of policy denial.
+If the positive marker is absent in a future run, `positive_read`
 reports only `kind` (the same fixed kinds as above, plus `absent`/`unrecognized`)
 and `permission` (`not_requested`, `approved`, `rejected`, or `mixed`). It never
-reports response content. The marker-in-JSON assertion is unchanged; so are the
-subsequent explicit protected-file denial, canary-absence and nonempty,
-all-matching permission-session assertions. The latter covers all callbacks in
+reports response content. The positive marker-in-JSON assertion is unchanged.
+The protected marker is now checked **before** the result kind, against the
+original host-created marker. Returned protected content is a hard
+`protected_canary_leaked` failure, including when the kind is `failure`, `denied`
+or `rejected`. A changed fixture cannot change the expected marker.
+Explicit denial and nonempty, all-matching permission-session assertions remain.
+The latter covers all callbacks in
 the check, not a requirement that protected-file denial itself invoke a callback.
 Native policy may deny that request before callback dispatch.
+
+#### Protected-file contract and bounded diagnostics
+
+The fixture remains outside the workspace, under the exact directory supplied to
+`sandbox_config.user_policy.filesystem.denied_paths`. The separate
+[`PermissionPathsConfig`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L42665)
+still restricts paths to the workspace, excludes the temp directory, and grants
+no extra directories. Neither policy nor callback authorization is changed.
+
+The pinned `ToolResultExpanded` schema below has `resultType`,
+`textResultForLlm`, optional string `error`, and untyped `structuredContent`.
+It has **no typed filesystem-policy denial code**. The public
+[`managed-settings permission evaluator`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L54766)
+takes URL operations; it is not a filesystem verdict API.
+These contracts do not establish which result kind CLI 1.0.101 uses when
+`view` hits a denied filesystem path before a permission callback.
+Generic `failure` remains a failed check, not an accepted denial. No English
+error-text matching, private runtime API, or invented structured code is used.
+
+Once the protected probe starts, failures can also report `protected_read`:
+
+| Field | Fixed values / meaning |
+|---|---|
+| `callback` | `not_requested`, `rejected_exact_read`, `rejected_other`, `mixed`; only callbacks during the protected probe, never the prior fixture approval |
+| `callback_session` | `not_requested`, `match`, `mismatch`; a mismatch remains recorded |
+| `marker` | `present`, `absent`, `unknown`; scans the serialized result, including structured fields; unknown serialization cannot pass |
+| `text_shape` | `string`, `absent`, `other`, `unknown`; no text is reported |
+| `allowed_directory` | `yes` / `no` from native `permissions.paths.is_path_within_allowed_directories` |
+| `sandbox_blocked` | `yes` / `no` from native `sandbox.get_enforcement_status().blocked` |
+
+The last two fields can instead be `not_run`, `unknown` (malformed value),
+`timeout`, or `operation_failed`. Both inspections are public, read-only RPCs.
+They run only after a protected-probe failure, each under the existing 15-second
+RPC limit and 180-second outer deadline. Their errors do not replace the original
+probe error. The callback window closes in `finally`, including on RPC failure.
+
+[`Directory membership`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L67860-L67877)
+is **not** a tool authorization verdict.
+[`Sandbox blocked`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L15588)
+means an enforcement failure permanently blocked the session; it does **not**
+mean this path matched `denied_paths`. A recorded callback rejection is not proof
+that the runtime applied that answer. None of these observations can turn
+`failure` into a pass. They distinguish the remaining cases in one next authorized
+native check without exposing raw output. The CLI's actual protected-read cause
+remains **unknown**; no native run was made for this change.
 
 The outer process validates every diagnostic key and value. Raw results, errors,
 stdout, logs, paths and tokens are not reported. The original failure reason,
 prior passed checks and cleanup rules remain in force. Successful stdout is
-unchanged. For example, **if** the response is a mapping with kind `failure`,
+unchanged. For the **bash probe**, if the response is a mapping with kind `failure`,
 text without the marker, and an absent file, the new field is exactly:
 
 ```json
