@@ -21,10 +21,12 @@ from importlib import metadata
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import uuid
 
 
@@ -38,6 +40,30 @@ SHELL_OUTPUT_MARKER = "native-unexpected-shell"
 TOOL_RESULT_KINDS = ("denied", "failure", "rejected", "success", "timeout")
 POSITIVE_READ_CALL_ID = "native-positive-read"
 PROTECTED_READ_CALL_ID = "native-protected-read"
+ERROR_INPUT_LIMIT = 4096
+ERROR_TEXT_LIMIT = 2048
+CHILD_REPORT_LIMIT = 32768
+ERROR_SUPPRESSIONS = (
+    "context_missing", "malformed", "oversized", "empty",
+    "credential_material", "unrecognized_path",
+)
+# Defense in depth, NOT a complete secret detector. The primary constraint is
+# the credential-free child environment and host-owned synthetic fixtures.
+CREDENTIAL_ENV_NAME = re.compile(
+    r"token|secret|password|passwd|credential|api_?key|private_?key|access_?key|"
+    r"(?:^|_)key(?:$|_)|authorization|connection_?string|sas", re.IGNORECASE)
+CREDENTIAL_MATERIAL = re.compile(
+    r"\b(?:bearer|basic)\s+\S+|"
+    r"\b[\w-]*(?:token|secret|password|passwd|credential|api[_-]?key|"
+    r"access[_-]?key|account[_-]?key|private[_-]?key|authorization|signature|sig)"
+    r"[\w-]*[\"']?\s*[:=]\s*\S+|"
+    r"[a-z][a-z0-9+.-]*://[^\s/]+@|"
+    r"-----BEGIN [^\r\n]*PRIVATE KEY-----|"
+    r"\b(?:gh[pousr]_|github_pat_|sk-|xox[baprs]-|AKIA|ASIA|AIza)[a-z0-9_-]+|"
+    r"\beyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+",
+    re.IGNORECASE,
+)
+ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))")
 # SDK 1.0.24 session_events.RemediationAction; codes are open strings, not enums.
 COMPLETION_REMEDIATIONS = (
     "sign_in", "switch_account", "show_account", "review_sandbox_policy",
@@ -55,7 +81,7 @@ TRUSTED_SKILL_DIRECTORY = (
 
 
 class CheckFailure(Exception):
-    """Only fixed, non-sensitive failure codes cross the subprocess boundary."""
+    """Only fixed, non-sensitive failure codes are used as exception messages."""
 
 
 def _event_field(value: object, name: str, wire_name: str | None = None) -> object:
@@ -183,6 +209,73 @@ def isolated_environment(root: Path) -> dict[str, str]:
     }
 
 
+def _scrub_native_error(text: object, *, root: Path | None,
+                        protected_marker: str | None) -> dict:
+    """One synthetic error string, rechecked by the parent; never stringify objects."""
+    if root is None or not protected_marker:
+        return {"suppressed": "context_missing"}
+    if type(text) is not str:
+        return {"suppressed": "malformed"}
+    if len(text) > ERROR_INPUT_LIMIT:
+        return {"suppressed": "oversized"}
+    # Scan before normalization, path replacement or truncation, then scan again
+    # after removing controls so split tokens/canaries cannot be reconstructed.
+    clean = "".join(char for char in ANSI_ESCAPE.sub("", text)
+                    if unicodedata.category(char)[0] != "C" and char not in "\u2028\u2029")
+    secrets = tuple(value for name, value in os.environ.items()
+                    if value and CREDENTIAL_ENV_NAME.search(name))
+    for candidate in (text, clean):
+        require(protected_marker not in candidate, "protected_canary_leaked")
+        if (any(value in candidate for value in secrets)
+                or CREDENTIAL_MATERIAL.search(candidate)):
+            return {"suppressed": "credential_material"}
+    paths = [
+        (str(root), "[synthetic]"),
+        (str(Path(__file__).resolve().parents[3]), "[repo]"),
+        (tempfile.gettempdir(), "[temp]"),
+    ]
+    for name, label in (
+        ("GITHUB_WORKSPACE", "[repo]"), ("RUNNER_WORKSPACE", "[runner]"),
+        ("RUNNER_TEMP", "[temp]"), ("HOME", "[home]"), ("USERPROFILE", "[home]"),
+        ("TMPDIR", "[temp]"), ("TEMP", "[temp]"), ("TMP", "[temp]"),
+    ):
+        value = os.environ.get(name)
+        if value and Path(value).is_absolute():
+            paths.append((value, label))
+    # Longest first so /tmp does not consume the more specific synthetic root.
+    for path, label in sorted(paths, key=lambda item: len(item[0]), reverse=True):
+        clean = clean.replace(path, label).replace(path.replace("\\", "/"), label)
+    # Unrecognized absolute paths are not assumed safe runner paths.
+    if re.search(r"(?<![\w\]/])/(?!/)[\w.]|[a-zA-Z]:[\\/]|\\\\", clean):
+        return {"suppressed": "unrecognized_path"}
+    clean = clean.replace("::", ": :").strip()
+    if not clean:
+        return {"suppressed": "empty"}
+    if len(clean) > ERROR_INPUT_LIMIT:
+        return {"suppressed": "oversized"}
+    # Keep the bounded candidate intact across the private pipe: the parent
+    # must scan its own credential values BEFORE any truncation could split one.
+    return {"text": clean}
+
+
+def _protected_error(result: object, *, root: Path, protected_marker: str) -> dict:
+    # Pinned ToolsApi.execute returns raw wire JSON, not an arbitrary SDK object.
+    # Never inspect/serialize content, metadata, events, arguments or session logs.
+    if type(result) is not dict or result.get("resultType") != "failure":
+        return {"suppressed": "malformed"}
+    error, fallback = result.get("error"), result.get("textResultForLlm")
+    for value in (error, fallback):
+        if value is not None and type(value) is not str:
+            return {"suppressed": "malformed"}
+        if type(value) is str and len(value) > ERROR_INPUT_LIMIT:
+            return {"suppressed": "oversized"}
+    source = "error" if error and error.strip() else "textResultForLlm"
+    scrubbed = _scrub_native_error(
+        error if source == "error" else fallback or "",
+        root=root, protected_marker=protected_marker)
+    return {"source": source, **scrubbed} if "text" in scrubbed else scrubbed
+
+
 def require_denial(result: object, report: dict | None = None, *,
                    shell_canary: Path | None = None) -> None:
     # 1.0.24 ToolsApi.execute is annotated as a dataclass but returns wire JSON.
@@ -267,6 +360,10 @@ def run_bounded(runtime: Path) -> int:
         root = Path(directory)
         for name in ("home", "tmp", "state", "workspace", "protected"):
             (root / name).mkdir()
+        # Retain the ORIGINAL marker outside the child. Never trust a marker
+        # supplied in its report or reread a potentially changed fixture afterward.
+        protected_marker = uuid.uuid4().hex
+        (root / "protected" / "control-plane.txt").write_text(protected_marker, encoding="utf-8")
         env = isolated_environment(root)
         env[CANARY_NAME] = uuid.uuid4().hex  # synthetic; intentionally NOT in SDK env
         process = subprocess.Popen(
@@ -285,6 +382,7 @@ def run_bounded(runtime: Path) -> int:
             kill_owned_group(process)
             process.communicate(timeout=5)
         try:
+            require(len(output) <= CHILD_REPORT_LIMIT, "invalid_child_report")
             report = json.loads(output)
             # Never relay arbitrary stdout/tracebacks, even on malformed child output.
             require(isinstance(report, dict), "invalid_child_report")
@@ -296,10 +394,10 @@ def run_bounded(runtime: Path) -> int:
                     and report.get("runtime") == CLI_VERSION
                     and type(report.get("protocol")) is int and report["protocol"] > 0,
                     "native_check_failed")
-        except (ValueError, CheckFailure):
+        except (ValueError, RecursionError, CheckFailure):
             # A failed child already uses fixed stage/reason codes; retain only
             # allowlisted diagnostics, not its raw output.
-            report = safe_failure_report(output)
+            report = safe_failure_report(output, root=root, protected_marker=protected_marker)
             print(json.dumps(report, sort_keys=True))
             return 1
         print(json.dumps({key: report[key] for key in (
@@ -324,8 +422,11 @@ FAILURE_REASONS = (
 )
 
 
-def safe_failure_report(output: str) -> dict:
+def safe_failure_report(output: str, *, root: Path | None = None,
+                        protected_marker: str | None = None) -> dict:
     report = {"status": "fail", "check": "invalid_child_report"}
+    if type(output) is not str or len(output) > CHILD_REPORT_LIMIT:
+        return report
     try:
         candidate = json.loads(output)
         if isinstance(candidate, dict) and candidate.get("check") in (
@@ -415,6 +516,31 @@ def safe_failure_report(output: str) -> dict:
                         if safe.get("correlation") == "match":
                             safe.pop("correlation")
                     report["protected_completion"] = safe
+                if (candidate.get("status") == "fail"
+                        and candidate.get("reason") == "explicit_native_denial_required"
+                        and report.get("denial_result") == {"shape": "mapping", "kind": "failure"}
+                        and report["protected_read"].get("marker") == "absent"
+                        and "protected_error" in candidate):
+                    error = candidate["protected_error"]
+                    safe_error = {"suppressed": "malformed"}
+                    if type(error) is dict:
+                        if (set(error) == {"suppressed"}
+                                and error["suppressed"] in ERROR_SUPPRESSIONS):
+                            safe_error = {"suppressed": error["suppressed"]}
+                        elif (set(error) == {"source", "text"}
+                              and error["source"] in ("error", "textResultForLlm")):
+                            try:
+                                safe_error = _scrub_native_error(
+                                    error["text"], root=root, protected_marker=protected_marker)
+                            except CheckFailure:
+                                report["reason"] = "protected_canary_leaked"
+                                report["protected_read"]["marker"] = "present"
+                                safe_error = None
+                            if safe_error is not None and "text" in safe_error:
+                                safe_error["source"] = error["source"]
+                                safe_error["text"] = safe_error["text"][:ERROR_TEXT_LIMIT]
+                    if safe_error is not None:
+                        report["protected_error"] = safe_error
             report["passed"] = [item for item in CHECKS
                                 if item in candidate.get("passed", [])]
             if candidate.get("sdk") == SDK_VERSION and candidate.get("publisher_cli") == CLI_VERSION:
@@ -422,7 +548,7 @@ def safe_failure_report(output: str) -> dict:
             if (candidate.get("runtime") == CLI_VERSION
                     and type(candidate.get("protocol")) is int and candidate["protocol"] > 0):
                 report.update(runtime=CLI_VERSION, protocol=candidate["protocol"])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         pass
     return report
 
@@ -563,8 +689,7 @@ async def native_checks(runtime: Path, root: Path) -> dict:
     try:
         workspace = root / "workspace"
         protected = root / "protected" / "control-plane.txt"
-        protected_marker = uuid.uuid4().hex
-        protected.write_text(protected_marker, encoding="utf-8")
+        protected_marker = protected.read_text(encoding="utf-8")
         (workspace / "readable.txt").write_text("native-readable-canary", encoding="utf-8")
         readable_path = (workspace / "readable.txt").resolve(strict=True)
         client = CopilotClient(
@@ -725,7 +850,15 @@ async def native_checks(runtime: Path, root: Path) -> dict:
             # Use the original marker, not a possibly changed file after execution.
             require(not protected_canary_present(denied, protected_marker, protected_observation),
                     "protected_canary_leaked")
-            require_denial(denied, report)
+            try:
+                require_denial(denied, report)
+            except CheckFailure:
+                # Only this exact owned direct result, after the all-field marker
+                # check, may supply text. Generic failure remains a failed check.
+                if type(denied) is dict and denied.get("resultType") == "failure":
+                    report["protected_error"] = _protected_error(
+                        denied, root=root, protected_marker=protected_marker)
+                raise
             require(permission_sessions and all(value == session_id for value in permission_sessions),
                     "permission_session_mismatch")
         except Exception:

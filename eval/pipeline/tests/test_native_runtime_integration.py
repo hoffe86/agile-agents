@@ -172,6 +172,42 @@ class NativeActivationTests(unittest.TestCase):
                          ["native-positive-read", "native-protected-read"])
         self.assertNotEqual(native.POSITIVE_READ_CALL_ID, native.PROTECTED_READ_CALL_ID)
 
+    def test_actual_sdk_client_environment_excludes_parent_credentials_and_canary(self):
+        creation = next(node for node in self.calls if ast.unparse(node.func) == "CopilotClient")
+        capture = Mock()
+        root = Path("/synthetic")
+        namespace = {**self.sdk_namespace, "CopilotClient": capture, "root": root,
+                     "runtime": Path("/synthetic/runtime"), "workspace": root / "workspace"}
+        with patch.dict(native.os.environ, {
+            "GITHUB_TOKEN": "invented-opaque-value", "ACTIONS_RUNTIME_TOKEN": "invented-ci-value",
+            native.CANARY_NAME: "synthetic-ambient-canary",
+        }):
+            eval(compile(ast.Expression(creation), native.__file__, "eval"), namespace)
+        options = capture.call_args.kwargs
+        self.assertEqual(options["env"], native.isolated_environment(root))
+        self.assertNotIn("invented-opaque-value", options["env"].values())
+        self.assertNotIn("ACTIONS_RUNTIME_TOKEN", options["env"])
+        self.assertNotIn(native.CANARY_NAME, options["env"])
+        self.assertIsNone(options["github_token"])
+        self.assertFalse(options["use_logged_in_user"])
+
+    def test_child_reads_original_owned_fixture_before_constructing_sdk_client(self):
+        body = next(node for node in self.tree.body[0].body if isinstance(node, ast.Try)).body
+        client = next(node for node in self.calls if ast.unparse(node.func) == "CopilotClient")
+        setup = [node for node in body if node.lineno < client.lineno]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "workspace").mkdir()
+            (root / "protected").mkdir()
+            fixture = root / "protected" / "control-plane.txt"
+            original = "a" * 32
+            fixture.write_text(original, encoding="utf-8")
+            namespace = {**vars(native), "root": root}
+            exec(compile(ast.Module(body=setup, type_ignores=[]), native.__file__, "exec"),
+                 namespace)
+            self.assertEqual(namespace["protected_marker"], original)
+            self.assertEqual(fixture.read_text(encoding="utf-8"), original)
+
 
 class NativeCompletionDiagnosticTests(unittest.TestCase):
     def setUp(self):
@@ -530,6 +566,7 @@ class NativeEntrypointTests(unittest.TestCase):
         process.communicate.return_value = (json.dumps({
             **expected, "protected_completion": {"error": "sensitive"},
             "protected_read": {"marker": "absent"},
+            "protected_error": {"source": "error", "text": "sensitive"},
         }), None)
         with patch.object(native.subprocess, "Popen", return_value=process):
             with patch.object(native, "kill_owned_group"):
@@ -605,6 +642,296 @@ class NativeEntrypointTests(unittest.TestCase):
         self.assertEqual(native.safe_failure_report("synthetic-sensitive-diagnostic"), {
             "status": "fail", "check": "invalid_child_report",
         })
+
+
+class NativeErrorTextTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path("/synthetic")
+        self.marker = "synthetic-protected-marker"
+        # All environment values in these tests are invented, never CI secrets.
+        self.environment = patch.dict(native.os.environ, {}, clear=True)
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+
+    def scrub(self, text):
+        return native._scrub_native_error(text, root=self.root, protected_marker=self.marker)
+
+    def candidate(self, error):
+        return {
+            "status": "fail", "check": "native_file_denial",
+            "reason": "explicit_native_denial_required",
+            "denial_result": {"shape": "mapping", "kind": "failure"},
+            "protected_read": {"marker": "absent"},
+            "protected_error": error,
+        }
+
+    def outer(self, candidate):
+        return native.safe_failure_report(
+            json.dumps(candidate), root=self.root, protected_marker=self.marker)
+
+    def test_pinned_error_string_precedes_text_fallback_without_reading_other_fields(self):
+        from copilot.rpc import ToolResultExpanded
+
+        wire = ToolResultExpanded.from_dict({
+            "resultType": "failure", "textResultForLlm": "not-the-error",
+            "error": "Synthetic filesystem policy could not initialize",
+        }).to_dict()
+        wire.update(sessionLog=object(), contents=object(), structuredContent=object(),
+                    toolTelemetry=object())
+        diagnostic = native._protected_error(
+            wire, root=self.root, protected_marker=self.marker)
+        self.assertEqual(diagnostic, {
+            "source": "error", "text": "Synthetic filesystem policy could not initialize",
+        })
+        self.assertEqual(self.outer(self.candidate(diagnostic))["protected_error"], diagnostic)
+
+    def test_missing_null_empty_and_whitespace_error_use_same_scrubbed_fallback(self):
+        for fields in ({}, {"error": None}, {"error": ""}, {"error": " \n\t"}):
+            with self.subTest(fields=fields):
+                diagnostic = native._protected_error({
+                    "resultType": "failure", "textResultForLlm": "Synthetic read unavailable",
+                    **fields,
+                }, root=self.root, protected_marker=self.marker)
+                self.assertEqual(diagnostic, {
+                    "source": "textResultForLlm", "text": "Synthetic read unavailable",
+                })
+
+    def test_malformed_mixed_fields_do_not_fall_back_or_stringify(self):
+        class NoString:
+            def __str__(self):
+                raise AssertionError("must not stringify")
+
+            def __repr__(self):
+                raise AssertionError("must not repr")
+
+        for value in (True, 1, [], {}, NoString()):
+            for field in ("error", "textResultForLlm"):
+                with self.subTest(value_type=type(value).__name__, field=field):
+                    diagnostic = native._protected_error({
+                        "resultType": "failure", "error": "Synthetic error",
+                        "textResultForLlm": "Synthetic fallback", field: value,
+                    }, root=self.root, protected_marker=self.marker)
+                    self.assertEqual(diagnostic, {"suppressed": "malformed"})
+        self.assertEqual(native._protected_error(
+            NoString(), root=self.root, protected_marker=self.marker),
+            {"suppressed": "malformed"})
+
+    def test_full_candidate_is_scanned_before_truncation_or_path_redaction(self):
+        prefix = "x" * native.ERROR_TEXT_LIMIT
+        with self.assertRaisesRegex(native.CheckFailure, "^protected_canary_leaked$"):
+            self.scrub(prefix + self.marker)
+        with patch.dict(native.os.environ, {"GITHUB_TOKEN": "synthetic-known-value"}):
+            self.assertEqual(self.scrub(prefix + "synthetic-known-value"),
+                             {"suppressed": "credential_material"})
+            self.assertEqual(self.scrub(str(self.root / "synthetic-known-value")),
+                             {"suppressed": "credential_material"})
+        self.assertEqual(self.scrub(prefix + " Bearer synthetic-value"),
+                         {"suppressed": "credential_material"})
+
+    def test_known_environment_credentials_are_suppressed_without_forwarding_them(self):
+        for name in ("GITHUB_TOKEN", "GH_TOKEN", "COPILOT_GITHUB_TOKEN",
+                     "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+                     "AZURE_CLIENT_SECRET", "OPENAI_API_KEY", "AZURE_OPENAI_KEY", "SERVICE_PASSWORD",
+                     "AWS_SECRET_ACCESS_KEY", "SERVICE_CONNECTION_STRING"):
+            with self.subTest(name=name):
+                with patch.dict(native.os.environ, {name: "invented-opaque-value"}):
+                    self.assertEqual(self.scrub("failure: invented-opaque-value"),
+                                     {"suppressed": "credential_material"})
+                    env = native.isolated_environment(self.root)
+                    self.assertNotIn(name, env)
+                    self.assertNotIn("invented-opaque-value", env.values())
+
+    def test_credential_patterns_suppress_the_entire_error_in_child_and_parent(self):
+        for text in (
+            "Bearer invented", "Authorization: Basic invented", "Authorization: invented",
+            "token=synthetic", '"access_token": "synthetic"', "api-key: synthetic",
+            "password=synthetic", "AccountKey=synthetic", "sig=synthetic",
+            "https://invented:invented@example.invalid/path",
+            "-----BEGIN PRIVATE KEY-----\ninvented",
+            "-----BEGIN RSA PRIVATE KEY-----\ninvented",
+            "ghp_" + "synthetic" * 5, "github_pat_" + "synthetic" * 5,
+            "sk-" + "synthetic" * 5, "AKIA" + "SYNTHETIC" * 3,
+            "AIza" + "synthetic" * 5, "xoxb-" + "synthetic" * 5,
+            "eyJsynthetic.eyJsynthetic.synthetic",
+            "Be\x00arer invented", "to\u202eken=synthetic", "Be\x1b[31marer invented",
+        ):
+            with self.subTest(case=text[:12]):
+                self.assertEqual(self.scrub(text), {"suppressed": "credential_material"})
+                safe = self.outer(self.candidate({"source": "error", "text": text}))
+                self.assertEqual(safe["protected_error"], {"suppressed": "credential_material"})
+                self.assertNotIn(text, json.dumps(safe))
+
+    def test_controls_ansi_and_workflow_commands_cannot_be_echoed_as_commands(self):
+        text = "\x1b[31mSynthetic\n::error::failed\r\t\x00\x7f\u0085\u202e\u2028\u2029"
+        diagnostic = self.scrub(text)
+        self.assertEqual(diagnostic, {"text": "Synthetic: :error: :failed"})
+        safe = self.outer(self.candidate({"source": "error", "text": text}))
+        self.assertEqual(safe["protected_error"]["text"], diagnostic["text"])
+        self.assertNotIn("::", json.dumps(safe))
+        self.assertNotIn("\n", json.dumps(safe))
+
+    def test_known_synthetic_repo_runner_home_and_temp_paths_are_labelled(self):
+        with patch.dict(native.os.environ, {
+            "GITHUB_WORKSPACE": str(Path("/repo").absolute()),
+            "RUNNER_WORKSPACE": str(Path("/runner").absolute()),
+            "RUNNER_TEMP": str(Path("/runner-temp").absolute()),
+            "HOME": str(Path("/runner-home").absolute()),
+        }):
+            text = " | ".join(str(path) for path in (
+                self.root / "protected" / "control-plane.txt",
+                Path("/repo/file.py").absolute(), Path("/runner/job").absolute(),
+                Path("/runner-temp/scratch").absolute(), Path("/runner-home/config").absolute(),
+                Path(native.__file__).resolve().parents[3] / "eval",
+                Path(tempfile.gettempdir()) / "scratch",
+            ))
+            result = self.scrub(text)
+        expected = " | ".join((
+            "[synthetic]/protected/control-plane.txt", "[repo]/file.py",
+            "[runner]/job", "[temp]/scratch", "[home]/config",
+            "[repo]/eval", "[temp]/scratch",
+        )).replace("/", native.os.sep)
+        self.assertEqual(result, {"text": expected})
+        self.assertEqual(self.scrub("cannot read /unrecognized-private/file"),
+                         {"suppressed": "unrecognized_path"})
+
+    def test_limits_empty_context_and_bad_types_suppress_without_partial_output(self):
+        self.assertEqual(self.scrub("x" * native.ERROR_INPUT_LIMIT),
+                         {"text": "x" * native.ERROR_INPUT_LIMIT})
+        self.assertEqual(self.outer(self.candidate({
+            "source": "error", "text": "x" * native.ERROR_INPUT_LIMIT,
+        }))["protected_error"]["text"], "x" * native.ERROR_TEXT_LIMIT)
+        self.assertEqual(self.scrub("x" * (native.ERROR_INPUT_LIMIT + 1)),
+                         {"suppressed": "oversized"})
+        self.assertEqual(self.scrub(" \n\t"), {"suppressed": "empty"})
+        self.assertEqual(self.scrub(None), {"suppressed": "malformed"})
+        self.assertEqual(native._scrub_native_error(
+            "Synthetic", root=None, protected_marker=self.marker),
+            {"suppressed": "context_missing"})
+        self.assertEqual(native._scrub_native_error(
+            "Synthetic", root=self.root, protected_marker=None),
+            {"suppressed": "context_missing"})
+        for field in ("error", "textResultForLlm"):
+            diagnostic = native._protected_error({
+                "resultType": "failure", "error": "Synthetic", "textResultForLlm": "",
+                field: "x" * (native.ERROR_INPUT_LIMIT + 1),
+            }, root=self.root, protected_marker=self.marker)
+            self.assertEqual(diagnostic, {"suppressed": "oversized"})
+
+    def test_parent_revalidates_bounds_structure_and_original_marker(self):
+        for diagnostic in (None, [], "synthetic", {"text": "synthetic"},
+                           {"source": "sessionLog", "text": "synthetic"},
+                           {"source": "error", "text": "synthetic", "extra": "private"},
+                           {"source": "error", "text": []},
+                           {"suppressed": "untrusted-reason"}):
+            with self.subTest(diagnostic_type=type(diagnostic).__name__):
+                self.assertEqual(self.outer(self.candidate(diagnostic))["protected_error"],
+                                 {"suppressed": "malformed"})
+        safe = self.outer(self.candidate({
+            "source": "error", "text": "x" * (native.ERROR_INPUT_LIMIT + 1),
+        }))
+        self.assertEqual(safe["protected_error"], {"suppressed": "oversized"})
+        safe = self.outer(self.candidate({
+            "source": "error", "text": "x" * native.ERROR_TEXT_LIMIT + self.marker,
+        }))
+        self.assertEqual(safe["reason"], "protected_canary_leaked")
+        self.assertEqual(safe["protected_read"]["marker"], "present")
+        self.assertNotIn("protected_error", safe)
+        self.assertNotIn(self.marker, json.dumps(safe))
+        self.assertEqual(native.safe_failure_report(" " * (native.CHILD_REPORT_LIMIT + 1)), {
+            "status": "fail", "check": "invalid_child_report",
+        })
+
+    def test_parent_requires_exact_failure_context_and_never_uses_child_context(self):
+        diagnostic = {"source": "error", "text": "Synthetic error"}
+        for overrides in (
+            {"check": "native_toolset"}, {"check": "bounded_cleanup"},
+            {"reason": "native_file_positive_control_failed"}, {"reason": "protected_canary_leaked"},
+            {"reason": "permission_session_mismatch"}, {"status": "pass"},
+            {"denial_result": {"shape": "mapping", "kind": "denied"}},
+            {"protected_read": {"marker": "unknown"}}, {"protected_read": {"marker": "present"}},
+        ):
+            with self.subTest(overrides=overrides):
+                self.assertNotIn("protected_error", self.outer({
+                    **self.candidate(diagnostic), **overrides,
+                }))
+        safe = native.safe_failure_report(json.dumps({
+            **self.candidate(diagnostic), "root": "/synthetic", "protected_marker": "forged",
+        }))
+        self.assertEqual(safe["protected_error"], {"suppressed": "context_missing"})
+
+    def test_outer_retains_original_root_marker_even_if_child_replaces_fixture(self):
+        original = []
+
+        def launch(_args, **options):
+            root = Path(options["cwd"]).parent
+            fixture = root / "protected" / "control-plane.txt"
+            original.append(fixture.read_text(encoding="utf-8"))
+            fixture.write_text("replacement", encoding="utf-8")
+            self.assertNotIn("GITHUB_TOKEN", options["env"])
+            self.assertNotIn("invented-opaque-value", options["env"].values())
+            payload = self.candidate({
+                "source": "error", "text": "x" * native.ERROR_TEXT_LIMIT + original[0],
+            })
+            payload.update(root="forged", protected_marker="replacement")
+            process = Mock(pid=12345, returncode=1)
+            process.communicate.return_value = (json.dumps(payload), None)
+            return process
+
+        with patch.dict(native.os.environ, {"GITHUB_TOKEN": "invented-opaque-value"}):
+            with patch.object(native.subprocess, "Popen", side_effect=launch):
+                with patch.object(native, "kill_owned_group"):
+                    with redirect_stdout(io.StringIO()) as output:
+                        status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 1)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["reason"], "protected_canary_leaked")
+        self.assertNotIn("protected_error", report)
+        self.assertNotIn(original[0], output.getvalue())
+
+    def test_outer_stdout_renders_meaningful_error_as_one_json_line_and_remains_failure(self):
+        process = Mock(pid=12345, returncode=1)
+        process.communicate.return_value = (json.dumps(self.candidate({
+            "source": "error", "text": "Synthetic filesystem policy could not initialize",
+        })), None)
+        with patch.object(native.subprocess, "Popen", return_value=process):
+            with patch.object(native, "kill_owned_group"):
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 1)
+        self.assertEqual(len(output.getvalue().splitlines()), 1)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["reason"], "explicit_native_denial_required")
+        self.assertEqual(report["protected_error"]["text"],
+                         "Synthetic filesystem policy could not initialize")
+
+    def test_outer_rescans_forged_child_text_for_parent_only_credential_before_truncation(self):
+        process = Mock(pid=12345, returncode=1)
+        process.communicate.return_value = (json.dumps(self.candidate({
+            "source": "error",
+            "text": "x" * native.ERROR_TEXT_LIMIT + "invented-parent-only-value",
+        })), None)
+        with patch.dict(native.os.environ, {"GITHUB_TOKEN": "invented-parent-only-value"}):
+            with patch.object(native.subprocess, "Popen", return_value=process):
+                with patch.object(native, "kill_owned_group"):
+                    with redirect_stdout(io.StringIO()) as output:
+                        status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue())["protected_error"],
+                         {"suppressed": "credential_material"})
+        self.assertNotIn("invented-parent-only-value", output.getvalue())
+
+    def test_child_does_not_split_parent_only_secret_before_parent_can_scan_it(self):
+        secret = "invented-parent-only-value"
+        # Model the real minimal child environment: it does not know this value.
+        diagnostic = native._protected_error({
+            "resultType": "failure", "textResultForLlm": "",
+            "error": "x" * (native.ERROR_TEXT_LIMIT - 5) + secret,
+        }, root=self.root, protected_marker=self.marker)
+        self.assertTrue(diagnostic["text"].endswith(secret))
+        with patch.dict(native.os.environ, {"GITHUB_TOKEN": secret}):
+            report = self.outer(self.candidate(diagnostic))
+        self.assertEqual(report["protected_error"], {"suppressed": "credential_material"})
+        self.assertNotIn(secret[:5], json.dumps(report))
 
 
 class NativePositiveReadPermissionTests(unittest.TestCase):
@@ -880,6 +1207,7 @@ class NativeProtectedReadTests(unittest.TestCase):
             "protected_completion": native._ProtectedReadCompletion(),
             "session_id": "owned-session", "permission_sessions": ["owned-session"],
             "protected_read_pending": True, "protected_marker": "synthetic-protected-canary",
+            "root": Path("/synthetic"),
             "protected": Path("/synthetic/protected/control-plane.txt"),
             "protected_observation": self.observation, "report": self.report,
             "session": SimpleNamespace(rpc=SimpleNamespace(
@@ -930,7 +1258,55 @@ class NativeProtectedReadTests(unittest.TestCase):
             "path": str(self.namespace["protected"]),
         })
         self.sandbox_check.assert_called_once_with()
-        self.assertNotIn("sensitive", json.dumps(self.report))
+        # Plain synthetic error text is now an additive diagnostic, not denial
+        # evidence. No arbitrary result fields become public with it.
+        self.assertEqual(self.report["protected_error"], {
+            "source": "textResultForLlm", "text": "sensitive-native-error",
+        })
+
+    def test_error_field_canary_precedes_kind_and_capture_even_beyond_text_limit(self):
+        from copilot.rpc import ToolResultExpanded
+
+        for kind in native.TOOL_RESULT_KINDS:
+            for prefix in ("", "x" * native.ERROR_TEXT_LIMIT, "x" * native.ERROR_INPUT_LIMIT):
+                wire = {"resultType": kind, "textResultForLlm": "Access denied",
+                        "error": prefix + self.namespace["protected_marker"]}
+                for result in (wire, ToolResultExpanded.from_dict(wire)):
+                    with self.subTest(kind=kind, prefix_length=len(prefix),
+                                      shape=type(result).__name__):
+                        with self.assertRaisesRegex(native.CheckFailure, "^protected_canary_leaked$"):
+                            self.run_probe(result)
+                        self.assertNotIn("protected_error", self.report)
+                        self.assertNotIn("denial_result", self.report)
+
+    def test_direct_generic_error_is_explained_but_never_accepted_as_denial(self):
+        with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+            self.run_probe({
+                "resultType": "failure", "textResultForLlm": "unused synthetic text",
+                "error": "Access denied: filesystem policy rejected the synthetic read",
+                "structuredContent": "not-for-output", "sessionLog": "not-for-output",
+                "toolTelemetry": {"private": "not-for-output"},
+            })
+        self.assertEqual(self.report["protected_error"], {
+            "source": "error",
+            "text": "Access denied: filesystem policy rejected the synthetic read",
+        })
+        self.assertNotIn("not-for-output", json.dumps(self.report))
+        self.assertEqual(self.report["denial_result"]["kind"], "failure")
+
+    def test_non_generic_results_and_rpc_exceptions_never_supply_error_text(self):
+        for kind in ("denied", "rejected"):
+            self.run_probe({"resultType": kind, "textResultForLlm": "",
+                            "error": "not-for-output"})
+            self.assertNotIn("protected_error", self.report)
+        for kind in ("success", "timeout", "unrecognized"):
+            with self.assertRaises(native.CheckFailure):
+                self.run_probe({"resultType": kind, "error": "not-for-output"})
+            self.assertNotIn("protected_error", self.report)
+        self.execute.side_effect = RuntimeError("not-for-output")
+        with self.assertRaises(RuntimeError):
+            self.run_probe(None)
+        self.assertNotIn("protected_error", self.report)
 
     def test_callback_rejection_and_policy_flags_cannot_turn_failure_into_pass(self):
         self.observation.update(callback="rejected_exact_read", callback_session="match")

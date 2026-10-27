@@ -787,7 +787,7 @@ Once the protected probe starts, failures can also report `protected_read`:
 | `callback` | `not_requested`, `rejected_exact_read`, `rejected_other`, `mixed`; only callbacks during the protected probe, never the prior fixture approval |
 | `callback_session` | `not_requested`, `match`, `mismatch`; a mismatch remains recorded |
 | `marker` | `present`, `absent`, `unknown`; scans the serialized result, including structured fields; unknown serialization cannot pass |
-| `text_shape` | `string`, `absent`, `other`, `unknown`; no text is reported |
+| `text_shape` | `string`, `absent`, `other`, `unknown`; no text in this field |
 | `allowed_directory` | `yes` / `no` from native `permissions.paths.is_path_within_allowed_directories` |
 | `sandbox_blocked` | `yes` / `no` from native `sandbox.get_enforcement_status().blocked` |
 
@@ -813,7 +813,7 @@ subsequently passed the allowed read but again returned protected-read
 the marker was `absent`, and both `allowed_directory` and `sandbox_blocked` were
 `no`. That still does not establish a denial or its cause.
 
-The next diagnostic supplies distinct fixed synthetic `tool_call_id` values for
+The driver supplies distinct fixed synthetic `tool_call_id` values for
 the positive and protected `view` requests, using the public
 [`ToolsExecuteRequest`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L20692-L20717)
 correlation field. The existing session callback observes public
@@ -862,8 +862,68 @@ This diagnostic is locally validated only. A repeat hosted check requires separa
 publication/dispatch authorization; no new hosted evidence or root-cause claim is
 made here. `live_readiness: false` and all production-execution holds remain intact.
 
-The outer process validates every diagnostic key and value. Raw results, errors,
-stdout, logs, paths and tokens are not reported. The original failure reason,
+Run [40539957771](https://github.com/hoffe86/agile-agents/actions/runs/40539957771)
+again returned generic protected-read `failure` after the positive read passed,
+without an observed completion callback. That still leaves the cause unknown.
+
+The opt-in `--run-native` synthetic driver now adds **bounded, redacted failure
+diagnostics in public logs**, not a confidential artifact or an encryption layer.
+Only the exact protected `view` request's direct wire result with kind `failure`
+can add `protected_error`. A nonempty string `error` takes precedence; only when
+it is absent/null/blank does `textResultForLlm` supply the explanation. Both use
+the same scrubber. Exceptions, completion messages, other calls, arguments,
+metadata, structured content and session logs never supply this text.
+
+For example, an invented synthetic failure could render:
+
+```json
+{"protected_error":{"source":"error","text":"Synthetic filesystem policy could not initialize"}}
+```
+
+The information-flow limits are:
+
+- The existing explicit minimal environments for the driver child and SDK runtime
+  remain unchanged: **CI/service credential values are not forwarded**. Fixtures
+  must contain only synthetic data; **never put real secrets in a fixture**.
+- The parent creates the protected fixture and retains its original random marker
+  independently of child output or subsequent file changes. The existing all-field
+  canary check (including `error`) precedes result-kind checks and error capture.
+  A detected marker is `protected_canary_leaked`, with **no error body**, even if
+  the result says `denied` or `rejected`.
+- Error strings above **4,096 characters** are suppressed entirely. Within that
+  limit, the entire candidate is scanned before any path redaction or truncation,
+  both before and after ANSI/control removal. The bounded candidate crosses only
+  the private child pipe intact; **only the parent truncates**, after checking its
+  own environment, so truncation cannot hide a known credential spanning the cut.
+  Public output text is at most **2,048 characters**. Known credential values from
+  each process's relevant environment
+  and credential-looking material (including authorization headers, token
+  assignments, credential URLs, private keys and common provider token forms)
+  suppress the **entire text**, rather than attempting to remove just the secret.
+- Known synthetic, repository, runner, home and temporary roots become fixed
+  labels. Unrecognized absolute paths suppress the text. ANSI/control characters
+  are removed, workflow-command delimiters are neutralized, and output is one
+  JSON-encoded report, never a raw multiline error echo.
+- Malformed/mixed error fields and unusable input produce only a fixed
+  `suppressed` reason (`context_missing`, `malformed`, `oversized`, `empty`,
+  `credential_material`, or `unrecognized_path`). No arbitrary object is
+  stringified for this diagnostic. The outer process independently checks the
+  failure context, diagnostic structure, text limits and content using its own
+  original marker and environment; child reports over **32,768 characters**
+  are rejected without relaying them.
+
+Pattern matching is defense in depth, **not guaranteed secret recognition**.
+The reduced data available to the child, synthetic-only fixtures and narrowly
+selected error field are essential constraints, not substitutes for one another.
+This is not a general logging facility and does not change the production runner.
+Even text saying “access denied” cannot make generic `failure` an accepted denial.
+Success stdout, permissions, grants, readiness holds and model-call behavior are
+unchanged. No hosted rerun was performed for this diagnostic; publication and
+dispatch still require separate explicit authorization.
+
+The outer process validates every diagnostic key and value. Raw results,
+unsanitized errors, stdout, session logs and credential material are not relayed.
+The original failure reason (except a newly detected protected-marker leak),
 prior passed checks and cleanup rules remain in force. Successful stdout is
 unchanged. For the **bash probe**, if the response is a mapping with kind `failure`,
 text without the marker, and an absent file, the new field is exactly:
