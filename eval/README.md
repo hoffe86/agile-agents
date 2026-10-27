@@ -692,6 +692,50 @@ SDK `ToolSet` filters registered tools; it does not register them.
 Missing names alone do not establish a mode, catalog, authentication, or runtime
 defect.
 
+For `explicit_native_denial_required`, the driver also reports `denial_result`.
+The stage identifies the probe: `native_toolset` is the `bash` request;
+`native_file_denial` is the protected-file `view` request.
+
+- `shape` is `mapping`, `object` (has `result_type`), or `other`.
+- `kind` is one of the pinned SDK's `denied`, `failure`, `rejected`, `success`,
+  or `timeout` values. A missing field is `absent`; any other value, including
+  null, is `unrecognized`. Unknown strings and nested envelopes are not interpreted
+  as denial and are never echoed.
+- Only the bash probe adds `canary_file` (`present`, `absent`, `unknown`) and
+  `command_execution` (`observed`, `not_observed`, `unknown`). It requests a
+  bounded write of the fixed output marker to a unique file in the owned temporary
+  workspace, followed by the same marker on stdout. The marker is split in the
+  command text, so a command echo alone is not positive execution evidence.
+  A created file or marker in `textResultForLlm` means `observed` and fails the
+  check, even if the result claims denial. Missing/malformed result text or an
+  unreadable file state leaves execution `unknown` unless positive evidence exists.
+  **Neither `not_observed` nor file absence proves non-execution.** Passing still
+  requires explicit `denied`/`rejected`, observed file absence, and no positive
+  output evidence. An unreadable file state fails closed.
+
+The outer process validates every diagnostic key and value. Raw results, errors,
+stdout, logs, paths and tokens are not reported. The original failure reason,
+prior passed checks and cleanup rules remain in force. Successful stdout is
+unchanged. For example, **if** the response is a mapping with kind `failure`,
+text without the marker, and an absent file, the new field is exactly:
+
+```json
+{"denial_result":{"shape":"mapping","kind":"failure","canary_file":"absent","command_execution":"not_observed"}}
+```
+
+The installed SDK source was compared with official **v1.0.24**:
+[`ToolsApi.execute`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L67665-L67674)
+returns the wire result directly;
+[`ToolResultExpanded`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L41785-L41866)
+maps top-level `resultType` to `result_type`;
+[`ToolResultType` / `ToolsExecuteRequest`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L20681-L20718)
+lists the five kinds and describes execution of a **currently offered** tool.
+The existing parser already matches that shape. This source does not establish
+that requesting an unavailable `bash` tool must produce an explicit permission
+denial, or that direct host RPC and agent calls have identical enforcement.
+The hosted failure's cause remains unknown until an authorized run reports it.
+No accepted denial values, native tool grants, or live-readiness holds changed.
+
 The driver now supplies the native activation conditions, without custom tools:
 
 - `on_user_input_request` enables the native user-input callback and always returns

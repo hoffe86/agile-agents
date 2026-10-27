@@ -33,6 +33,9 @@ CLI_VERSION = "1.0.101"
 RPC_TIMEOUT = 15
 OUTER_TIMEOUT = 180
 CANARY_NAME = "AGILE_NATIVE_AMBIENT_CANARY"
+SHELL_OUTPUT_MARKER = "native-unexpected-shell"
+# SDK 1.0.24 generated/rpc.py: ToolResultType (not all kinds are denials).
+TOOL_RESULT_KINDS = ("denied", "failure", "rejected", "success", "timeout")
 PLAN = "# Synthetic plan\n\nDo not execute anything. Exit plan mode only.\n"
 REQUIRED_NATIVE_TOOLS = (
     "ask_user", "exit_plan_mode", "list_agents", "read_agent",
@@ -117,13 +120,46 @@ def isolated_environment(root: Path) -> dict[str, str]:
     }
 
 
-def require_denial(result: object) -> None:
+def require_denial(result: object, report: dict | None = None, *,
+                   shell_canary: Path | None = None) -> None:
     # 1.0.24 ToolsApi.execute is annotated as a dataclass but returns wire JSON.
     # Normalize the documented result shape, not arbitrary errors into success.
-    kind = (result.get("resultType") if isinstance(result, dict)
-            else getattr(result, "result_type", None))
+    missing = object()
+    kind = (result.get("resultType", missing) if isinstance(result, dict)
+            else getattr(result, "result_type", missing))
     kind = getattr(kind, "value", kind)
-    require(kind in ("denied", "rejected"), "explicit_native_denial_required")
+    diagnostic = {
+        "shape": ("mapping" if isinstance(result, dict) else
+                  "object" if hasattr(result, "result_type") else "other"),
+        "kind": (kind if kind in TOOL_RESULT_KINDS else
+                 "absent" if kind is missing else "unrecognized"),
+    }
+    denied = kind in ("denied", "rejected")
+    if shell_canary is not None:
+        # Never serialize the result or search error/log text for execution proof.
+        text = (result.get("textResultForLlm") if isinstance(result, dict)
+                else getattr(result, "text_result_for_llm", None))
+        try:
+            shell_canary.lstat()
+            canary_file = "present"
+        except FileNotFoundError:
+            canary_file = "absent"
+        except OSError:
+            canary_file = "unknown"
+        output_observed = isinstance(text, str) and SHELL_OUTPUT_MARKER in text
+        diagnostic.update(
+            canary_file=canary_file,
+            command_execution=(
+                "observed" if output_observed or canary_file == "present" else
+                "not_observed" if isinstance(text, str) and canary_file == "absent"
+                else "unknown"),
+        )
+        # Absence alone is NOT proof. Still require explicit denial, and fail on
+        # positive execution evidence even if the result claims denial.
+        denied = denied and canary_file == "absent" and not output_observed
+    if not denied and report is not None:
+        report["denial_result"] = diagnostic
+    require(denied, "explicit_native_denial_required")
 
 
 def kill_owned_group(process: subprocess.Popen) -> None:
@@ -211,6 +247,23 @@ def safe_failure_report(output: str) -> dict:
                     name for name in REQUIRED_NATIVE_TOOLS
                     if name in candidate["missing_tools"]
                 ]
+            if (candidate.get("check") in ("native_toolset", "native_file_denial")
+                    and candidate.get("reason") == "explicit_native_denial_required"
+                    and isinstance(candidate.get("denial_result"), dict)):
+                diagnostic = candidate["denial_result"]
+                allowed = {
+                    "shape": ("mapping", "object", "other"),
+                    "kind": (*TOOL_RESULT_KINDS, "absent", "unrecognized"),
+                }
+                if candidate["check"] == "native_toolset":
+                    allowed.update(
+                        canary_file=("present", "absent", "unknown"),
+                        command_execution=("observed", "not_observed", "unknown"),
+                    )
+                report["denial_result"] = {
+                    key: diagnostic[key] for key, values in allowed.items()
+                    if diagnostic.get(key) in values
+                }
             report["passed"] = [item for item in CHECKS
                                 if item in candidate.get("passed", [])]
             if candidate.get("sdk") == SDK_VERSION and candidate.get("publisher_cli") == CLI_VERSION:
@@ -376,11 +429,19 @@ async def native_checks(runtime: Path, root: Path) -> dict:
                 "bypass_request_not_denied")
         mode = await bounded(session.rpc.permissions.get_mode())
         require(mode.mode == PermissionMode.MANUAL, "bypass_mode_not_denied")
-        # Even direct host tool RPC must respect the offered worker tool set.
-        # A generic failure (including missing auth) must NOT count as denial.
+        # Probe the direct host RPC; ToolSet filtering is not a permission
+        # guarantee. An unsupported-tool/auth failure is NOT explicit denial.
+        shell_canary = workspace / f".native-shell-{uuid.uuid4().hex}"
+        require(not shell_canary.exists(), "shell_canary_not_fresh")
+        # Split the fixed output marker so an echoed command is not execution
+        # evidence. Write at most one small file in the owned temporary workspace.
+        shell_command = (
+            "printf '%s%s' native-unexpected- shell > " + shlex.quote(str(shell_canary))
+            + "; printf '%s%s' native-unexpected- shell"
+        )
         shell_denied = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
-            name="bash", arguments={"command": "printf native-unexpected-shell"})))
-        require_denial(shell_denied)
+            name="bash", arguments={"command": shell_command})))
+        require_denial(shell_denied, report, shell_canary=shell_canary)
         report["passed"].append(report["check"])
 
         report["check"] = "plan_refusal_and_exit_only"
@@ -430,7 +491,7 @@ async def native_checks(runtime: Path, root: Path) -> dict:
             "native_file_positive_control_failed")
         denied = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
             name="view", arguments={"path": str(protected)})))
-        require_denial(denied)
+        require_denial(denied, report)
         require(protected.read_text("utf-8") not in json.dumps(
             denied if isinstance(denied, dict) else denied.to_dict()),
             "protected_canary_leaked")

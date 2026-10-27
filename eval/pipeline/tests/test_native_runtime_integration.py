@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -306,6 +307,228 @@ class NativeEntrypointTests(unittest.TestCase):
         self.assertEqual(native.safe_failure_report("synthetic-sensitive-diagnostic"), {
             "status": "fail", "check": "invalid_child_report",
         })
+
+
+class NativeDenialDiagnosticTests(unittest.TestCase):
+    def test_documented_sdk_kinds_and_wire_objects_keep_explicit_denial_semantics(self):
+        from copilot.rpc import ToolResultExpanded, ToolResultType
+
+        self.assertEqual(native.metadata.version("github-copilot-sdk"), native.SDK_VERSION)
+        self.assertEqual(tuple(kind.value for kind in ToolResultType), native.TOOL_RESULT_KINDS)
+        for kind in ToolResultType:
+            wire = {"resultType": kind.value, "textResultForLlm": ""}
+            for result, shape in ((wire, "mapping"),
+                                  (ToolResultExpanded.from_dict(wire), "object")):
+                with self.subTest(kind=kind, shape=shape):
+                    report = {}
+                    if kind in (ToolResultType.DENIED, ToolResultType.REJECTED):
+                        native.require_denial(result, report)
+                        self.assertEqual(report, {})
+                    else:
+                        with self.assertRaisesRegex(native.CheckFailure,
+                                                    "^explicit_native_denial_required$"):
+                            native.require_denial(result, report)
+                        self.assertEqual(report["denial_result"],
+                                         {"shape": shape, "kind": kind.value})
+
+    def test_malformed_and_nested_results_are_not_guessed_as_denial(self):
+        for result, shape, kind in (
+            ({}, "mapping", "absent"),
+            ({"result": {"resultType": "denied"}}, "mapping", "absent"),
+            ({"result_type": "denied"}, "mapping", "absent"),
+            ({"resultType": None}, "mapping", "unrecognized"),
+            ({"resultType": ["denied"]}, "mapping", "unrecognized"),
+            ({"resultType": {"value": "denied"}}, "mapping", "unrecognized"),
+            ({"resultType": "tool_not_found"}, "mapping", "unrecognized"),
+            ({"resultType": "authentication_required"}, "mapping", "unrecognized"),
+            ({"resultType": "ghp_synthetic_secret_not_a_token"}, "mapping", "unrecognized"),
+            (None, "other", "absent"), ([], "other", "absent"),
+            ("ghp_synthetic_secret_not_a_token", "other", "absent"),
+        ):
+            with self.subTest(shape=shape, kind=kind):
+                report = {}
+                with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+                    native.require_denial(result, report)
+                self.assertEqual(report, {"denial_result": {"shape": shape, "kind": kind}})
+
+    def test_canary_output_is_positive_evidence_even_when_result_claims_denial(self):
+        from copilot.rpc import ToolResultExpanded
+
+        with tempfile.TemporaryDirectory() as directory:
+            canary = Path(directory) / "not-created"
+            for kind in ("success", "failure", "denied", "rejected"):
+                wire = {"resultType": kind, "textResultForLlm": native.SHELL_OUTPUT_MARKER}
+                for result in (wire, ToolResultExpanded.from_dict(wire)):
+                    with self.subTest(kind=kind, shape=type(result).__name__):
+                        report = {}
+                        with self.assertRaisesRegex(native.CheckFailure,
+                                                    "^explicit_native_denial_required$"):
+                            native.require_denial(result, report, shell_canary=canary)
+                        self.assertEqual(report["denial_result"]["command_execution"], "observed")
+                        self.assertEqual(report["denial_result"]["canary_file"], "absent")
+
+    def test_created_canary_is_positive_evidence_without_returned_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            canary = Path(directory) / "created-by-test-not-shell"
+            canary.write_text(native.SHELL_OUTPUT_MARKER, encoding="utf-8")
+            report = {}
+            with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+                native.require_denial({"resultType": "denied"}, report, shell_canary=canary)
+        self.assertEqual(report["denial_result"], {
+            "shape": "mapping", "kind": "denied",
+            "canary_file": "present", "command_execution": "observed",
+        })
+
+    def test_absent_canary_requires_explicit_denial_not_generic_failure_or_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            canary = Path(directory) / "not-created"
+            for kind in native.TOOL_RESULT_KINDS:
+                with self.subTest(kind=kind):
+                    report = {}
+                    result = {"resultType": kind, "textResultForLlm": ""}
+                    if kind in ("denied", "rejected"):
+                        native.require_denial(result, report, shell_canary=canary)
+                        self.assertEqual(report, {})
+                    else:
+                        with self.assertRaises(native.CheckFailure):
+                            native.require_denial(result, report, shell_canary=canary)
+                        self.assertEqual(report["denial_result"]["canary_file"], "absent")
+                        self.assertEqual(report["denial_result"]["command_execution"], "not_observed")
+
+    def test_unreadable_canary_state_fails_closed_without_leaking_error(self):
+        report = {}
+        with patch.object(Path, "lstat", side_effect=PermissionError("synthetic-sensitive-path")):
+            with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+                native.require_denial({"resultType": "denied", "textResultForLlm": ""},
+                                      report, shell_canary=Path("/synthetic"))
+        self.assertEqual(report["denial_result"], {
+            "shape": "mapping", "kind": "denied",
+            "canary_file": "unknown", "command_execution": "unknown",
+        })
+
+    def test_missing_or_malformed_output_leaves_execution_unknown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for text in (None, [native.SHELL_OUTPUT_MARKER], {"stdout": native.SHELL_OUTPUT_MARKER}):
+                with self.subTest(text_type=type(text).__name__):
+                    report = {}
+                    with self.assertRaises(native.CheckFailure):
+                        native.require_denial(
+                            {"resultType": "failure", "textResultForLlm": text},
+                            report, shell_canary=Path(directory) / "absent",
+                        )
+                    self.assertEqual(report["denial_result"]["command_execution"], "unknown")
+
+    def test_echoed_request_and_error_text_are_not_execution_evidence(self):
+        import shlex
+
+        tree = ast.parse(inspect.getsource(native.native_checks))
+        assignments = {node.targets[0].id: node.value for node in ast.walk(tree)
+                       if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)}
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            canary = eval(compile(ast.Expression(assignments["shell_canary"]), native.__file__, "eval"),
+                          {"workspace": workspace, "uuid": native.uuid})
+            command = eval(compile(ast.Expression(assignments["shell_command"]), native.__file__, "eval"),
+                           {"shell_canary": canary, "shlex": shlex})
+            self.assertEqual(canary.parent, workspace)
+            self.assertRegex(canary.name, r"^\.native-shell-[0-9a-f]{32}$")
+            self.assertFalse(canary.exists())
+            self.assertEqual(command, "printf '%s%s' native-unexpected- shell > "
+                             + shlex.quote(str(canary)) + "; printf '%s%s' native-unexpected- shell")
+            self.assertNotIn(native.SHELL_OUTPUT_MARKER, command)
+            # Parse only. Never execute the command, a coroutine, or an SDK client.
+            self.assertIn("require_denial(shell_denied, report, shell_canary=shell_canary)",
+                          ast.unparse(tree))
+            self.assertIn("ToolsExecuteRequest(name='bash', arguments={'command': shell_command})",
+                          ast.unparse(tree))
+            report = {}
+            with self.assertRaises(native.CheckFailure):
+                native.require_denial({
+                    "resultType": "failure", "textResultForLlm": command,
+                    "error": native.SHELL_OUTPUT_MARKER, "sessionLog": native.SHELL_OUTPUT_MARKER,
+                }, report, shell_canary=canary)
+        self.assertEqual(report["denial_result"]["command_execution"], "not_observed")
+
+    def test_failure_crosses_outer_boundary_with_only_fixed_labels_and_prior_checks(self):
+        report = {
+            "status": "fail", "check": "native_toolset", "reason": "explicit_native_denial_required",
+            "sdk": native.SDK_VERSION, "publisher_cli": native.CLI_VERSION,
+            "runtime": native.CLI_VERSION, "protocol": 3,
+            "passed": ["runtime_identity", "session_startup"],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(native.CheckFailure):
+                native.require_denial({
+                    "resultType": "failure", "textResultForLlm": "ghp_synthetic_secret_not_a_token",
+                    "error": "synthetic-sensitive-path", "stdout": "synthetic-sensitive-output",
+                }, report, shell_canary=Path(directory) / "absent")
+        expected = {**report, "denial_result": {
+            "shape": "mapping", "kind": "failure",
+            "canary_file": "absent", "command_execution": "not_observed",
+        }}
+        process = Mock(pid=12345, returncode=1)
+        process.communicate.return_value = (json.dumps(report), None)
+        with patch.object(native.subprocess, "Popen", return_value=process):
+            with patch.object(native, "kill_owned_group") as kill:
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue()), expected)
+        kill.assert_called_once_with(process)
+
+    def test_outer_boundary_filters_diagnostic_keys_values_types_and_context(self):
+        for check, reason, expected in (
+            ("native_toolset", "explicit_native_denial_required",
+             {"shape": "mapping", "kind": "unrecognized", "canary_file": "absent"}),
+            ("native_file_denial", "explicit_native_denial_required",
+             {"shape": "mapping", "kind": "unrecognized"}),
+            ("bounded_cleanup", "operation_failed", None),
+            ("native_toolset", "native_tools_missing", None),
+        ):
+            for execution in ("ghp_synthetic_secret_not_a_token", True, None, ["observed"], {"x": 1}):
+                with self.subTest(check=check, execution_type=type(execution).__name__):
+                    report = native.safe_failure_report(json.dumps({
+                        "check": check, "reason": reason, "passed": ["runtime_identity"],
+                        "denial_result": {
+                            "shape": "mapping", "kind": "unrecognized", "canary_file": "absent",
+                            "command_execution": execution, "raw": "synthetic-sensitive-text",
+                        },
+                    }))
+                    self.assertEqual(report.get("denial_result"), expected)
+                    self.assertEqual(report["passed"], ["runtime_identity"])
+        for diagnostic in (None, [], "synthetic-sensitive-text", 1):
+            report = native.safe_failure_report(json.dumps({
+                "check": "native_toolset", "reason": "explicit_native_denial_required",
+                "denial_result": diagnostic,
+            }))
+            self.assertNotIn("denial_result", report)
+
+    def test_file_denial_has_no_shell_evidence_and_keeps_original_failure(self):
+        report = {"check": "native_file_denial", "reason": "explicit_native_denial_required"}
+        with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+            native.require_denial({"resultType": "failure"}, report)
+        self.assertEqual(native.safe_failure_report(json.dumps(report)), {
+            "status": "fail", "check": "native_file_denial",
+            "reason": "explicit_native_denial_required", "passed": [],
+            "denial_result": {"shape": "mapping", "kind": "failure"},
+        })
+
+    def test_success_stdout_still_excludes_denial_diagnostics(self):
+        report = {
+            "status": "pass", "check": "bounded_cleanup",
+            "sdk": native.SDK_VERSION, "publisher_cli": native.CLI_VERSION,
+            "runtime": native.CLI_VERSION, "protocol": 3, "passed": list(native.CHECKS),
+        }
+        process = Mock(pid=12345, returncode=0)
+        process.communicate.return_value = (
+            json.dumps({**report, "denial_result": {"kind": "failure"}}), None,
+        )
+        with patch.object(native.subprocess, "Popen", return_value=process):
+            with patch.object(native, "kill_owned_group"):
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 0)
+        self.assertEqual(json.loads(output.getvalue()), report)
 
 
 class NativeToolDiagnosticTests(unittest.TestCase):
