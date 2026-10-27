@@ -1,7 +1,9 @@
 """Offline entrypoint/timeout contracts, NOT evidence of native enforcement."""
 from __future__ import annotations
 
+import ast
 from contextlib import redirect_stdout
+import inspect
 import io
 import json
 from pathlib import Path
@@ -12,6 +14,141 @@ import unittest
 from unittest.mock import Mock, patch
 
 import native_runtime_integration as native
+
+
+class NativeActivationTests(unittest.TestCase):
+    """Evaluate creation arguments against the pinned SDK, without running a coroutine.
+
+    AST inspection keeps these contracts usable on hosts that cannot create an
+    event loop. It does not simulate native discovery or claim runtime enforcement.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from copilot import CopilotClient
+        from copilot.rpc import SkillList
+
+        if native.metadata.version("github-copilot-sdk") != native.SDK_VERSION:
+            raise AssertionError("activation contracts require the pinned SDK")
+        cls.skill_list = SkillList
+        cls.tree = ast.parse(inspect.getsource(native.native_checks))
+        cls.calls = sorted(
+            (node for node in ast.walk(cls.tree) if isinstance(node, ast.Call)),
+            key=lambda node: node.lineno,
+        )
+        # Evaluate only the real create_session call's arguments. No client is
+        # constructed and no SDK method, coroutine, process or socket is invoked.
+        imports = [node for node in cls.tree.body[0].body
+                   if isinstance(node, ast.ImportFrom) and node.module.startswith("copilot")]
+        namespace = dict(vars(native))
+        exec(compile(ast.Module(body=imports, type_ignores=[]), native.__file__, "exec"),
+             namespace)
+        creation = next(node for node in cls.calls
+                        if ast.unparse(node.func) == "client.create_session")
+        capture = Mock()
+        namespace.update(
+            client=SimpleNamespace(create_session=capture),
+            session_id="synthetic-session", workspace=Path("/synthetic/workspace"),
+            root=Path("/synthetic"), permission=Mock(), pre_tool=Mock(),
+            exit_plan=Mock(), on_event=Mock(),
+        )
+        eval(compile(ast.Expression(creation), native.__file__, "eval"), namespace)
+        cls.options = capture.call_args.kwargs
+        inspect.signature(CopilotClient.create_session).bind(None, **cls.options)
+        cls.sdk_namespace = namespace
+
+    def test_creation_uses_only_native_allowlisted_tools_and_no_ambient_sources(self):
+        from copilot import BUILTIN_TOOLS_ISOLATED
+
+        options = self.options
+        self.assertEqual(options["available_tools"].to_list(),
+                         [f"builtin:{name}" for name in [*BUILTIN_TOOLS_ISOLATED, "view"]])
+        self.assertNotIn("tools", options)
+        self.assertNotIn("skill_provider", options)
+        self.assertFalse(options["enable_config_discovery"])
+        self.assertEqual(options["mcp_servers"], {})
+        self.assertEqual(options["disabled_mcp_servers"], ["*"])
+        for key in ("plugin_directories", "agent_directories",
+                    "instruction_directories", "hook_directories"):
+            self.assertEqual(options[key], [])
+        permissions = options["managed_settings"].permissions
+        self.assertEqual(permissions.disable_bypass_permissions_mode, "disable")
+        self.assertTrue(permissions.disable_assisted_permissions_mode)
+        self.assertEqual(permissions.limit_to, [])
+        self.assertIs(options["on_exit_plan_mode_request"], self.sdk_namespace["exit_plan"])
+
+    def test_registered_user_input_callback_never_accepts_supplied_approval(self):
+        callback = self.options["on_user_input_request"]
+        self.assertIs(callback, native.refuse_user_input)
+        for request in (
+            {}, None,
+            {"question": "Approve execution?", "choices": ["Approve", "exit_only"],
+             "allowFreeform": False},
+            {"answer": "approved", "approved": True, "selectedAction": "autopilot"},
+        ):
+            with self.subTest(request=request):
+                self.assertEqual(callback(request, {"session_id": "untrusted"}), {
+                    "answer": "REFUSE: native_check_refused", "wasFreeform": True,
+                })
+
+    def test_creation_points_to_one_existing_direct_skill_bundle(self):
+        expected = (Path(native.__file__).resolve().parents[3] / "plugins"
+                    / "agile-agents-core" / "skills" / "trade-off-reporting")
+        self.assertTrue(self.options["enable_skills"])
+        self.assertEqual(self.options["skill_directories"], [str(expected)])
+        self.assertTrue((expected / "SKILL.md").is_file())
+        self.assertFalse((expected / "plugin.json").exists())
+
+    def test_plan_is_set_and_verified_before_current_tool_initialization(self):
+        from copilot.rpc import ModeSetRequest
+        from copilot.session_events import SessionMode
+
+        def first(name):
+            return next(node for node in self.calls if ast.unparse(node.func) == name)
+
+        transition = first("session.rpc.mode.set")
+        request = eval(compile(ast.Expression(transition.args[0]), native.__file__, "eval"),
+                       {"ModeSetRequest": ModeSetRequest, "SessionMode": SessionMode})
+        self.assertEqual(request.mode, SessionMode.PLAN)
+        verified = next(node for node in self.calls
+                        if ast.unparse(node.func) == "require"
+                        and ast.literal_eval(node.args[1]) == "native_plan_mode_required")
+        self.assertIn("session.rpc.mode.get()", ast.unparse(verified.args[0]))
+        self.assertIn("== SessionMode.PLAN", ast.unparse(verified.args[0]))
+        self.assertLess(transition.lineno, verified.lineno)
+        self.assertLess(verified.lineno, first("session.rpc.skills.ensure_loaded").lineno)
+        self.assertLess(first("session.rpc.skills.ensure_loaded").lineno,
+                        first("session.rpc.tools.initialize_and_validate").lineno)
+        self.assertLess(first("session.rpc.tools.initialize_and_validate").lineno,
+                        first("session.rpc.tools.get_current_metadata").lineno)
+        self.assertLess(first("session.rpc.skills.list").lineno,
+                        first("require_trusted_skill").lineno)
+        self.assertEqual(ast.unparse(first("require_trusted_skill").args[0]), "skills.skills")
+
+    def discovered_skill(self, **overrides):
+        values = {
+            "name": "trade-off-reporting", "description": "Trusted repo skill",
+            "enabled": True, "source": "project", "userInvocable": True,
+            "path": str(native.TRUSTED_SKILL_DIRECTORY / "SKILL.md"),
+        }
+        return self.skill_list.from_dict({"skills": [{**values, **overrides}]}).skills[0]
+
+    def test_native_discovery_requires_enabled_skill_at_exact_trusted_path(self):
+        native.require_trusted_skill([self.discovered_skill()])
+        for overrides in (
+            {"enabled": False}, {"name": "other-skill"}, {"path": None},
+            {"path": str(Path("/ambient/trade-off-reporting/SKILL.md"))},
+            {"pluginName": "ambient-plugin"},
+        ):
+            with self.subTest(overrides=overrides):
+                with self.assertRaisesRegex(native.CheckFailure, "trusted_skill_not_discovered"):
+                    native.require_trusted_skill([self.discovered_skill(**overrides)])
+
+    def test_empty_or_extra_native_skill_inventory_fails_closed(self):
+        for skills in ([], [self.discovered_skill(), self.discovered_skill(name="extra")]):
+            with self.subTest(count=len(skills)):
+                with self.assertRaisesRegex(native.CheckFailure, "unexpected_skill_inventory"):
+                    native.require_trusted_skill(skills)
 
 
 class NativeEntrypointTests(unittest.TestCase):

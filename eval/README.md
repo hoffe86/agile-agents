@@ -690,7 +690,45 @@ Other failure stages and successful reports do not include this field.
 SDK `ToolSet` filters registered tools; it does not register them.
 `get_current_metadata()` reports the session's current initialized tools.
 Missing names alone do not establish a mode, catalog, authentication, or runtime
-defect. Empty plugin/agent/skill roots do not test harness fidelity.
+defect.
+
+The driver now supplies the native activation conditions, without custom tools:
+
+- `on_user_input_request` enables the native user-input callback and always returns
+  a fixed freeform refusal; question text or offered choices cannot approve execution.
+  SDK 1.0.24 serializes this as `requestUserInput` in
+  [`client.py`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/client.py#L2795-L2799).
+- It enters and verifies `SessionMode.PLAN` **before** initializing/querying the
+  current tool set. This follows the pinned
+  [mode-handler example](https://github.com/github/copilot-sdk/blob/v1.0.24/python/e2e/test_mode_handlers_e2e.py);
+  the later actual-plan read, digest-bound refusal and `exit_only`/no-autoexecution
+  assertions are unchanged.
+- `enable_skills=True` is paired with the absolute path to the existing
+  `plugins/agile-agents-core/skills/trade-off-reporting` directory. The pinned
+  [customization-location contract](https://github.com/github/copilot-sdk/blob/v1.0.24/docs/features/customization-locations.md#file-formats-and-precedence)
+  supports a **direct `SKILL.md` bundle**, so neither a parent skill directory nor
+  a new fixture/plugin is needed. The driver awaits `skills.ensure_loaded()` and
+  requires `skills.list()` to contain exactly that enabled skill at its expected
+  file path, without a plugin source. These are native discovery RPCs, not
+  injected metadata or a custom skill provider.
+
+Ambient configuration discovery remains off; plugin, agent, instruction and hook
+roots remain empty, and the isolated builtin allowlist plus `view` is unchanged.
+Explicit skill roots are not general filesystem grants, but the pinned contract
+does give active local skills read-only resource access to their contributing SDK
+directory. Only this one repository-controlled skill bundle is trusted here.
+No skill invocation, model turn, full core-plugin loading, or harness fidelity is
+claimed. Offline contracts check creation arguments against the pinned SDK signature,
+refusal behavior, discovery validation and PLAN-before-metadata ordering without
+creating an event loop or starting a runtime:
+
+```console
+python -B -m unittest discover -s eval/pipeline/tests -p test_native_runtime_integration.py -v
+```
+
+The configuration repair is not a successful native-host qualification: the changed
+driver still requires execution in approved native CI after publication. The existing
+Windows loop stall and sandbox-denial restrictions are not bypassed.
 All required capabilities, denial checks, and readiness holds remain unchanged.
 
 | Check on this Windows host | Result / evidence boundary |

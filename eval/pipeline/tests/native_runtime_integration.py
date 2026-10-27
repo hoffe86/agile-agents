@@ -38,6 +38,10 @@ REQUIRED_NATIVE_TOOLS = (
     "ask_user", "exit_plan_mode", "list_agents", "read_agent",
     "skill", "task", "view", "write_agent",
 )
+TRUSTED_SKILL_DIRECTORY = (
+    Path(__file__).resolve().parents[3]
+    / "plugins" / "agile-agents-core" / "skills" / "trade-off-reporting"
+)
 
 
 class CheckFailure(Exception):
@@ -55,6 +59,21 @@ def require_native_tools(names: set[str], report: dict) -> None:
     if missing:
         report["missing_tools"] = missing
         raise CheckFailure("native_tools_missing")
+
+
+def refuse_user_input(_request: object, _context: object) -> dict:
+    """Expose native ask_user without accepting approval from question/choice text."""
+    return {"answer": "REFUSE: native_check_refused", "wasFreeform": True}
+
+
+def require_trusted_skill(skills: list) -> None:
+    """Require native discovery, not just a skill tool name or supplied metadata."""
+    require(len(skills) == 1, "unexpected_skill_inventory")
+    skill = skills[0]
+    require(skill.name == TRUSTED_SKILL_DIRECTORY.name and skill.enabled is True
+            and bool(skill.path)
+            and Path(skill.path).resolve() == TRUSTED_SKILL_DIRECTORY / "SKILL.md"
+            and not skill.plugin_name, "trusted_skill_not_discovered")
 
 
 def check_prerequisites(runtime: Path) -> None:
@@ -299,10 +318,14 @@ async def native_checks(runtime: Path, root: Path) -> dict:
             session_id=session_id, working_directory=str(workspace),
             config_directory=str(root / "state"), enable_config_discovery=False,
             mcp_servers={}, disabled_mcp_servers=["*"],
-            plugin_directories=[], agent_directories=[], skill_directories=[],
+            plugin_directories=[], agent_directories=[],
+            # SDK 1.0.24 customization-locations: a direct SKILL.md bundle is
+            # supported. Trust only this directory, not the core plugin/skills root.
+            skill_directories=[str(TRUSTED_SKILL_DIRECTORY)],
             instruction_directories=[], hook_directories=[], enable_skills=True,
             available_tools=ToolSet().add_builtin([*BUILTIN_TOOLS_ISOLATED, "view"]),
             on_permission_request=permission, hooks={"on_pre_tool_use": pre_tool},
+            on_user_input_request=refuse_user_input,
             on_exit_plan_mode_request=exit_plan, on_event=on_event,
             managed_settings=ManagedSettings(permissions=ManagedSettingsPermissions(
                 disable_bypass_permissions_mode="disable",
@@ -329,6 +352,12 @@ async def native_checks(runtime: Path, root: Path) -> dict:
         report["passed"].append(report["check"])
 
         report["check"] = "native_toolset"
+        # exit_plan_mode is mode-dependent; query a PLAN snapshot, not the
+        # initial interactive tool set. No prompt or automatic continuation.
+        await bounded(session.rpc.mode.set(ModeSetRequest(mode=SessionMode.PLAN)))
+        require(await bounded(session.rpc.mode.get()) == SessionMode.PLAN,
+                "native_plan_mode_required")
+        await bounded(session.rpc.skills.ensure_loaded())
         await bounded(session.rpc.tools.initialize_and_validate())
         metadata_result = await bounded(session.rpc.tools.get_current_metadata())
         names = {tool.name for tool in metadata_result.tools or []}
@@ -338,6 +367,8 @@ async def native_checks(runtime: Path, root: Path) -> dict:
                 "unexpected_worker_capability")
         require(all(not tool.mcp_server_name for tool in metadata_result.tools),
                 "ambient_mcp_tools")
+        skills = await bounded(session.rpc.skills.list())
+        require_trusted_skill(skills.skills)
         # Unsupported RPC/auth/timeout is a failure, never a substitute for denial.
         bypass = await bounded(session.rpc.permissions.set_mode(
             PermissionsSetModeRequest(mode=PermissionMode.ALLOW_ALL)))
