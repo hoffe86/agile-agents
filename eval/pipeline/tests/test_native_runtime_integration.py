@@ -17,6 +17,14 @@ from unittest.mock import Mock, patch
 import native_runtime_integration as native
 
 
+def completion_event(call_id=native.PROTECTED_READ_CALL_ID, **data):
+    return {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "timestamp": "2026-01-01T00:00:00Z", "type": "tool.execution_complete",
+        "data": {"toolCallId": call_id, "success": False, **data},
+    }
+
+
 class NativeActivationTests(unittest.TestCase):
     """Evaluate creation arguments against the pinned SDK, without running a coroutine.
 
@@ -151,6 +159,256 @@ class NativeActivationTests(unittest.TestCase):
                 with self.assertRaisesRegex(native.CheckFailure, "unexpected_skill_inventory"):
                     native.require_trusted_skill(skills)
 
+    def test_native_reads_use_distinct_fixed_call_ids_in_pinned_wire_requests(self):
+        requests = [node for node in self.calls
+                    if ast.unparse(node.func) == "ToolsExecuteRequest"
+                    and any(key.arg == "name" and ast.literal_eval(key.value) == "view"
+                            for key in node.keywords)]
+        namespace = {**self.sdk_namespace, "readable_path": Path("/synthetic/readable"),
+                     "protected": Path("/synthetic/protected")}
+        wire = [eval(compile(ast.Expression(node), native.__file__, "eval"),
+                     namespace).to_dict() for node in requests]
+        self.assertEqual([item["toolCallId"] for item in wire],
+                         ["native-positive-read", "native-protected-read"])
+        self.assertNotEqual(native.POSITIVE_READ_CALL_ID, native.PROTECTED_READ_CALL_ID)
+
+
+class NativeCompletionDiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        self.completion = native._ProtectedReadCompletion()
+        self.completion.active = True
+
+    def safe_report(self, diagnostic):
+        return native.safe_failure_report(json.dumps({
+            "check": "native_file_denial", "reason": "explicit_native_denial_required",
+            "protected_read": {}, "protected_completion": diagnostic,
+        }))
+
+    def test_actual_python_typed_event_matches_and_only_retains_safe_fields(self):
+        from copilot.session_events import (
+            SessionEventType, ToolExecutionCompleteData, session_event_from_dict,
+        )
+
+        event = session_event_from_dict(completion_event(
+            error={"message": "sensitive-message /private/path", "code": "sensitive-code",
+                   "remediation": "review_sandbox_policy"},
+            result={"content": "sensitive-protected-content"},
+            toolTelemetry={"private": "sensitive-metadata"},
+        ))
+        self.assertIs(event.type, SessionEventType.TOOL_EXECUTION_COMPLETE)
+        self.assertIsInstance(event.data, ToolExecutionCompleteData)
+        self.completion.observe(event)
+        expected = {
+            "event": "seen", "correlation": "match", "success": False,
+            "error": "present", "code": "present", "remediation": "review_sandbox_policy",
+        }
+        self.assertEqual(self.completion.diagnostic, expected)
+        self.assertEqual(self.safe_report(expected)["protected_completion"], expected)
+        self.assertNotIn("sensitive", json.dumps(self.safe_report(expected)))
+
+    def test_remediation_allowlist_exactly_matches_pinned_python_enum(self):
+        from copilot.session_events import RemediationAction, session_event_from_dict
+
+        self.assertEqual(set(native.COMPLETION_REMEDIATIONS),
+                         {item.value for item in RemediationAction})
+        for remediation in RemediationAction:
+            with self.subTest(remediation=remediation.value):
+                completion = native._ProtectedReadCompletion()
+                completion.active = True
+                completion.observe(session_event_from_dict(completion_event(
+                    error={"message": "sensitive-message", "remediation": remediation.value})))
+                self.assertEqual(completion.diagnostic["remediation"], remediation.value)
+                self.assertEqual(self.safe_report(completion.diagnostic)["protected_completion"],
+                                 completion.diagnostic)
+
+    def test_absence_and_internal_sandbox_events_are_not_denial_evidence(self):
+        expected = dict(self.completion.diagnostic)
+        self.completion.observe({
+            "type": "sandbox.decision",
+            "data": {"toolCallId": native.PROTECTED_READ_CALL_ID, "success": False,
+                     "error": {"remediation": "review_sandbox_policy"}},
+        })
+        self.assertEqual(self.completion.diagnostic, expected)
+        self.assertEqual(self.safe_report(expected)["protected_completion"], expected)
+        self.assertEqual(expected["event"], "not_seen")
+        self.assertEqual(expected["success"], "unknown")
+
+    def test_positive_and_unrelated_completions_never_supply_protected_error_details(self):
+        for call_id in (native.POSITIVE_READ_CALL_ID, "sensitive-unrelated-id"):
+            with self.subTest(call_id=call_id):
+                self.completion.observe(completion_event(
+                    call_id, error={"message": "sensitive", "code": "sensitive",
+                                    "remediation": "review_sandbox_policy"}))
+                self.assertEqual(self.completion.diagnostic, {
+                    "event": "seen", "correlation": "mismatch", "success": "unknown",
+                    "error": "unknown", "code": "unknown", "remediation": "absent",
+                })
+
+    def test_matching_event_supersedes_nonmatches_and_late_events_cannot_contaminate_it(self):
+        self.completion.observe(completion_event(native.POSITIVE_READ_CALL_ID, success=True))
+        self.completion.observe(completion_event(
+            error={"message": "sensitive", "remediation": "review_sandbox_policy"}))
+        expected = dict(self.completion.diagnostic)
+        for call_id in (native.POSITIVE_READ_CALL_ID, "unrelated",
+                        native.PROTECTED_READ_CALL_ID, None):
+            self.completion.observe(completion_event(
+                call_id, success=True, error={"message": "sensitive", "remediation": "sign_in"}))
+        self.assertEqual(self.completion.diagnostic, expected)
+        self.assertEqual(expected["correlation"], "match")
+        self.assertIs(expected["success"], False)
+        self.assertEqual(expected["remediation"], "review_sandbox_policy")
+
+    def test_inactive_window_ignores_matching_events_before_and_after_probe(self):
+        self.completion.active = False
+        expected = dict(self.completion.diagnostic)
+        self.completion.observe(completion_event())
+        self.assertEqual(self.completion.diagnostic, expected)
+        self.completion.active = True
+        self.completion.observe(completion_event(success=True))
+        expected = dict(self.completion.diagnostic)
+        self.completion.active = False
+        self.completion.observe(completion_event(error={"message": "sensitive"}))
+        self.assertEqual(self.completion.diagnostic, expected)
+
+    def test_missing_and_malformed_correlation_never_attributes_details(self):
+        for call_id, expected in ((None, "absent"), ("", "absent"), ([], "unrecognized"),
+                                  ({}, "unrecognized"), (True, "unrecognized"),
+                                  (1, "unrecognized")):
+            with self.subTest(call_id_type=type(call_id).__name__):
+                completion = native._ProtectedReadCompletion()
+                completion.active = True
+                completion.observe(completion_event(
+                    call_id, success=True, error={"message": "sensitive", "code": "sensitive"}))
+                self.assertEqual(completion.diagnostic, {
+                    "event": "seen", "correlation": expected, "success": "unknown",
+                    "error": "unknown", "code": "unknown", "remediation": "absent",
+                })
+        self.completion.observe({"type": "tool.execution_complete", "data": {}})
+        self.assertEqual(self.completion.diagnostic["correlation"], "absent")
+        self.assertEqual(self.completion.diagnostic["error"], "unknown")
+
+    def test_malformed_events_are_bounded_and_do_not_raise(self):
+        for event in (None, {}, [], "sensitive", {"type": []},
+                      {"type": "tool.execution_complete"},
+                      {"type": "tool.execution_complete", "data": "sensitive"}):
+            self.completion.observe(event)
+        self.assertEqual(self.completion.diagnostic, {
+            "event": "seen", "correlation": "absent", "success": "unknown",
+            "error": "unknown", "code": "unknown", "remediation": "absent",
+        })
+        for _ in range(200):
+            self.completion.observe(completion_event("sensitive-unrelated-id" * 100))
+        self.assertEqual(len(self.completion.diagnostic), 6)
+        self.assertLess(len(json.dumps(self.completion.diagnostic)), 200)
+        self.assertFalse(hasattr(self.completion, "__dict__"))
+        self.assertNotIn("sensitive", json.dumps(self.completion.diagnostic))
+
+    def test_only_strict_boolean_success_and_allowlisted_remediation_survive(self):
+        for value in (None, 0, 1, "true", "sensitive", [], {}):
+            with self.subTest(value_type=type(value).__name__):
+                completion = native._ProtectedReadCompletion()
+                completion.active = True
+                completion.observe(completion_event(
+                    success=value, error={"message": "sensitive", "remediation": value}))
+                self.assertEqual(completion.diagnostic["success"], "unknown")
+                self.assertEqual(completion.diagnostic["remediation"],
+                                 "absent" if value is None else "unrecognized")
+                self.assertNotIn("sensitive", json.dumps(self.safe_report(completion.diagnostic)))
+        self.completion.observe(completion_event(success=True))
+        self.assertIs(self.completion.diagnostic["success"], True)
+        self.assertEqual(self.completion.diagnostic["error"], "absent")
+        self.assertEqual(self.completion.diagnostic["code"], "absent")
+        self.assertIs(self.safe_report(self.completion.diagnostic)["protected_completion"]["success"],
+                      True)
+
+    def test_error_and_code_are_presence_only_even_for_malformed_values(self):
+        for error, code in ((None, "absent"), ({}, "absent"),
+                            ("sensitive", "absent"), ([], "absent"),
+                            ({"code": None}, "absent"), ({"code": ""}, "present"),
+                            ({"code": {"sensitive": "value"}}, "present")):
+            with self.subTest(error_type=type(error).__name__):
+                completion = native._ProtectedReadCompletion()
+                completion.active = True
+                completion.observe(completion_event(error=error))
+                self.assertEqual(completion.diagnostic["error"],
+                                 "absent" if error is None else "present")
+                self.assertEqual(completion.diagnostic["code"], code)
+                self.assertNotIn("sensitive", json.dumps(completion.diagnostic))
+
+    def test_observer_never_reads_message_result_arguments_or_metadata(self):
+        class Error:
+            code = "sensitive"
+            remediation = None
+
+            def __getattr__(self, _name):
+                raise AssertionError("accessed forbidden error field")
+
+        class Data:
+            tool_call_id = native.PROTECTED_READ_CALL_ID
+            success = False
+            error = Error()
+
+            def __getattr__(self, _name):
+                raise AssertionError("accessed forbidden completion field")
+
+        self.completion.observe(SimpleNamespace(type="tool.execution_complete", data=Data()))
+        self.assertEqual(self.completion.diagnostic["code"], "present")
+
+    def test_failure_boundary_rejects_malicious_fields_and_nonboolean_success(self):
+        for value in (0, 1, None, [], {}, "sensitive"):
+            with self.subTest(value_type=type(value).__name__):
+                safe = self.safe_report({
+                    "event": "seen", "correlation": "match", "success": value,
+                    "error": value, "code": value, "remediation": value,
+                    "message": "sensitive-message", "arguments": {"path": "sensitive-path"},
+                    "result": "sensitive-content", "metadata": "sensitive-metadata",
+                })["protected_completion"]
+                self.assertEqual(safe, {"event": "seen", "correlation": "match"})
+        self.assertNotIn("protected_completion", self.safe_report([]))
+
+    def test_failure_boundary_does_not_attribute_forged_uncorrelated_errors(self):
+        for event, correlation in (("not_seen", "match"), ("seen", "mismatch"),
+                                   ("seen", "absent"), ("seen", "unrecognized"),
+                                   ("sensitive", "sensitive")):
+            with self.subTest(event=event, correlation=correlation):
+                safe = self.safe_report({
+                    "event": event, "correlation": correlation, "success": False,
+                    "error": "present", "code": "present", "remediation": "sign_in",
+                })["protected_completion"]
+                self.assertEqual(safe["success"], "unknown")
+                self.assertEqual(safe["error"], "unknown")
+                self.assertEqual(safe["code"], "unknown")
+                self.assertEqual(safe["remediation"], "absent")
+                self.assertNotIn("sensitive", json.dumps(safe))
+
+    def test_completion_is_only_reported_for_protected_probe_failure_context(self):
+        for check, reason in (("native_toolset", "explicit_native_denial_required"),
+                              ("native_file_denial", "native_file_positive_control_failed"),
+                              ("native_file_denial", "sensitive"),
+                              ("bounded_cleanup", "operation_failed")):
+            with self.subTest(check=check, reason=reason):
+                safe = native.safe_failure_report(json.dumps({
+                    "check": check, "reason": reason, "protected_read": {},
+                    "protected_completion": self.completion.diagnostic,
+                }))
+                self.assertNotIn("protected_completion", safe)
+
+    def test_registered_handler_keeps_model_activity_checks_and_routes_completion(self):
+        tree = ast.parse(inspect.getsource(native.native_checks))
+        handler = next(node for node in tree.body[0].body
+                       if isinstance(node, ast.FunctionDef) and node.name == "on_event")
+        activity = Mock()
+        namespace = {**vars(native), "model_activity": activity,
+                     "protected_completion": self.completion}
+        exec(compile(ast.Module(body=[handler], type_ignores=[]), native.__file__, "exec"),
+             namespace)
+        namespace["on_event"](completion_event())
+        activity.set.assert_not_called()
+        self.assertEqual(self.completion.diagnostic["correlation"], "match")
+        for kind in ("assistant.turn_start", "assistant.message", "assistant.message_delta"):
+            namespace["on_event"](SimpleNamespace(type=SimpleNamespace(value=kind)))
+        self.assertEqual(activity.set.call_count, 3)
+
 
 class NativeEntrypointTests(unittest.TestCase):
     def test_import_does_not_import_sdk_or_create_event_loop(self):
@@ -263,6 +521,46 @@ class NativeEntrypointTests(unittest.TestCase):
                     status = native.run_bounded(Path("/synthetic/runtime"))
         self.assertEqual(status, 0)
         kill.assert_called_once_with(process)
+
+    def test_success_stdout_shape_is_unchanged_even_with_extra_child_diagnostics(self):
+        expected = {"status": "pass", "check": "bounded_cleanup",
+                    "sdk": native.SDK_VERSION, "publisher_cli": native.CLI_VERSION,
+                    "runtime": native.CLI_VERSION, "protocol": 3, "passed": list(native.CHECKS)}
+        process = Mock(pid=12345, returncode=0)
+        process.communicate.return_value = (json.dumps({
+            **expected, "protected_completion": {"error": "sensitive"},
+            "protected_read": {"marker": "absent"},
+        }), None)
+        with patch.object(native.subprocess, "Popen", return_value=process):
+            with patch.object(native, "kill_owned_group"):
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 0)
+        self.assertEqual(json.loads(output.getvalue()), expected)
+        self.assertNotIn("sensitive", output.getvalue())
+
+    def test_failure_stdout_retains_only_safe_correlated_completion_summary(self):
+        process = Mock(pid=12345, returncode=1)
+        completion = {
+            "event": "seen", "correlation": "match", "success": False,
+            "error": "present", "code": "present", "remediation": "review_sandbox_policy",
+        }
+        process.communicate.return_value = (json.dumps({
+            "status": "fail", "check": "native_file_denial",
+            "reason": "explicit_native_denial_required", "protected_read": {},
+            "protected_completion": {
+                **completion, "message": "sensitive-message", "result": "sensitive-content",
+                "toolCallId": "sensitive-id", "arguments": {"path": "sensitive-path"},
+                "metadata": "sensitive-metadata",
+            },
+        }), None)
+        with patch.object(native.subprocess, "Popen", return_value=process):
+            with patch.object(native, "kill_owned_group"):
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue())["protected_completion"], completion)
+        self.assertNotIn("sensitive", output.getvalue())
 
     def test_zero_exit_with_incomplete_checks_is_not_green(self):
         process = Mock(pid=12345, returncode=0)
@@ -579,6 +877,7 @@ class NativeProtectedReadTests(unittest.TestCase):
         self.sandbox_check = Mock(return_value=SandboxEnforcementStatus(blocked=False, required=False))
         self.namespace = {
             **vars(native), "bounded": lambda result: result,
+            "protected_completion": native._ProtectedReadCompletion(),
             "session_id": "owned-session", "permission_sessions": ["owned-session"],
             "protected_read_pending": True, "protected_marker": "synthetic-protected-canary",
             "protected": Path("/synthetic/protected/control-plane.txt"),
@@ -733,6 +1032,101 @@ class NativeProtectedReadTests(unittest.TestCase):
                 self.namespace["permission_sessions"] = sessions
                 with self.assertRaisesRegex(native.CheckFailure, "^permission_session_mismatch$"):
                     self.run_probe({"resultType": "denied", "textResultForLlm": ""})
+
+    def test_correlated_sandbox_remediation_does_not_accept_generic_wire_failure(self):
+        completion = self.namespace["protected_completion"]
+
+        def execute(request):
+            self.assertEqual(request.tool_call_id, native.PROTECTED_READ_CALL_ID)
+            completion.observe(completion_event(
+                error={"message": "sensitive", "code": "sensitive",
+                       "remediation": "review_sandbox_policy"}))
+            return {"resultType": "failure", "textResultForLlm": ""}
+
+        self.execute.side_effect = execute
+        with self.assertRaisesRegex(native.CheckFailure, "^explicit_native_denial_required$"):
+            self.run_probe(None)
+        self.assertEqual(self.report["denial_result"]["kind"], "failure")
+        self.assertEqual(self.report["protected_completion"]["correlation"], "match")
+        self.assertEqual(self.report["protected_completion"]["remediation"], "review_sandbox_policy")
+        self.assertFalse(completion.active)
+
+    def test_completion_during_existing_inspection_is_captured_then_snapshot_is_frozen(self):
+        completion = self.namespace["protected_completion"]
+
+        def inspect_path(_request):
+            completion.observe(completion_event(
+                error={"message": "sensitive", "remediation": "review_sandbox_policy"}))
+            return SimpleNamespace(allowed=False)
+
+        self.path_check.side_effect = inspect_path
+        with self.assertRaises(native.CheckFailure):
+            self.run_probe({"resultType": "failure"})
+        snapshot = dict(self.report["protected_completion"])
+        completion.observe(completion_event(native.POSITIVE_READ_CALL_ID, success=True))
+        completion.observe(completion_event(success=True))
+        self.assertFalse(completion.active)
+        self.assertEqual(self.report["protected_completion"], snapshot)
+        self.assertIsNot(self.report["protected_completion"], completion.diagnostic)
+        self.assertEqual(snapshot["correlation"], "match")
+        self.assertIs(snapshot["success"], False)
+
+    def test_rpc_timeout_with_no_completion_reports_unknown_not_denial(self):
+        self.execute.side_effect = TimeoutError("sensitive")
+        with self.assertRaises(TimeoutError):
+            self.run_probe(None)
+        self.assertEqual(self.report["protected_completion"], {
+            "event": "not_seen", "correlation": "absent", "success": "unknown",
+            "error": "unknown", "code": "unknown", "remediation": "absent",
+        })
+        self.assertFalse(self.namespace["protected_completion"].active)
+        self.assertNotIn("sensitive", json.dumps(self.report))
+
+    def test_late_positive_completion_during_probe_does_not_supply_protected_error(self):
+        completion = self.namespace["protected_completion"]
+
+        def execute(_request):
+            completion.observe(completion_event(
+                native.POSITIVE_READ_CALL_ID, error={"message": "sensitive",
+                                                    "remediation": "sign_in"}))
+            return {"resultType": "failure"}
+
+        self.execute.side_effect = execute
+        with self.assertRaises(native.CheckFailure):
+            self.run_probe(None)
+        self.assertEqual(self.report["protected_completion"]["correlation"], "mismatch")
+        self.assertEqual(self.report["protected_completion"]["error"], "unknown")
+        self.assertEqual(self.report["protected_completion"]["remediation"], "absent")
+
+    def test_completion_metadata_never_changes_leak_priority_for_any_result_kind(self):
+        completion = self.namespace["protected_completion"]
+
+        def execute(_request):
+            completion.observe(completion_event(
+                error={"message": "sensitive", "remediation": "review_sandbox_policy"}))
+            return {"resultType": kind, "textResultForLlm": self.namespace["protected_marker"]}
+
+        self.execute.side_effect = execute
+        for kind in native.TOOL_RESULT_KINDS:
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(native.CheckFailure, "^protected_canary_leaked$"):
+                    self.run_probe(None)
+                self.assertNotIn("denial_result", self.report)
+                self.assertEqual(self.report["protected_completion"]["correlation"], "match")
+
+    def test_successful_probe_does_not_add_completion_diagnostics(self):
+        completion = self.namespace["protected_completion"]
+
+        def execute(_request):
+            completion.observe(completion_event(success=False))
+            return {"resultType": "denied", "textResultForLlm": ""}
+
+        self.execute.side_effect = execute
+        self.run_probe(None)
+        self.assertNotIn("protected_completion", self.report)
+        self.assertFalse(completion.active)
+        self.path_check.assert_not_called()
+        self.sandbox_check.assert_not_called()
 
 
 class NativePositiveReadDiagnosticTests(unittest.TestCase):

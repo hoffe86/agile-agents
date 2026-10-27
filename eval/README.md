@@ -807,6 +807,61 @@ that the runtime applied that answer. None of these observations can turn
 native check without exposing raw output. The CLI's actual protected-read cause
 remains **unknown**; no native run was made for this change.
 
+Run [40528535235](https://github.com/hoffe86/agile-agents/actions/runs/40528535235)
+subsequently passed the allowed read but again returned protected-read
+`{shape: mapping, kind: failure}`. The protected callback was `not_requested`,
+the marker was `absent`, and both `allowed_directory` and `sandbox_blocked` were
+`no`. That still does not establish a denial or its cause.
+
+The next diagnostic supplies distinct fixed synthetic `tool_call_id` values for
+the positive and protected `view` requests, using the public
+[`ToolsExecuteRequest`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L20692-L20717)
+correlation field. The existing session callback observes public
+`tool.execution_complete` events without changing its model-activity checks.
+Only a protected-probe failure can add `protected_completion`:
+
+| Field | Fixed values / meaning |
+|---|---|
+| `event` | `seen` / `not_seen`; whether **any** public completion was observed during the diagnostic window, not necessarily the protected call |
+| `correlation` | `match` for the protected call ID; `mismatch` for a different string ID; `absent` for missing/null/empty ID; `unrecognized` for malformed ID |
+| `success` | Strict JSON boolean from a matching event, otherwise `unknown`; integers and strings are not booleans |
+| `error` | `present` / `absent` for a matching event's non-null error field, otherwise `unknown` |
+| `code` | `present` / `absent` for a matching event's non-null error-code field, otherwise `unknown`; **never the code value** |
+| `remediation` | Only pinned `RemediationAction` values: `sign_in`, `switch_account`, `show_account`, `review_sandbox_policy`, `allow_sandbox_outbound`, `rewind_conversation`; otherwise `absent` / `unrecognized` |
+
+These are observations, **not actions to perform or permission to widen policy**.
+The installed Python 1.0.24 `SessionEvent`, `ToolExecutionCompleteData`,
+`ToolExecutionCompleteError` and `RemediationAction` shapes were inspected and
+tested against the pinned package; the
+[publisher completion/error contract](https://github.com/github/copilot-sdk/blob/v1.0.24/nodejs/src/generated/session-events.ts#L8238-L8250)
+defines an open string code, not a closed denial-code allowlist. No raw message,
+result, content, arguments, path, call ID, code value or metadata is retained in
+the diagnostic. The outer process independently filters its keys, types and
+values and prevents uncorrelated details from being attributed to the probe.
+
+The diagnostic window starts immediately before protected execution and ends
+after the existing failure-only policy inspections (or immediately on success).
+It stores one fixed-size summary: the first matching completion wins, even over
+earlier nonmatches; later positive, unrelated or duplicate events cannot overwrite
+it. Without a match, correlation precedence is `mismatch`, `unrecognized`, then
+`absent`, and error/success details remain unknown. Events before the window and
+after its frozen failure snapshot are ignored.
+
+Direct `tools.execute` RPCs may emit no public completion, or delivery may arrive
+after this window. SDK 1.0.24 exposes no public completion-draining mechanism;
+`get_events()` retrieves full session history, not a drain. No history collection,
+extra wait, timer, polling, model request or private event dependency is added.
+`not_seen` is therefore **unknown**, never evidence of denial. Internal ephemeral
+`sandbox.decision` events are ignored: policy inspection is not proof that a
+verdict was honored and may indicate a permitted bypass. Even a correlated
+`success: false` with `review_sandbox_policy` cannot turn generic RPC `failure`
+into an accepted denial. Protected-marker leakage still wins over **every**
+result kind, and successful output remains unchanged.
+
+This diagnostic is locally validated only. A repeat hosted check requires separate
+publication/dispatch authorization; no new hosted evidence or root-cause claim is
+made here. `live_readiness: false` and all production-execution holds remain intact.
+
 The outer process validates every diagnostic key and value. Raw results, errors,
 stdout, logs, paths and tokens are not reported. The original failure reason,
 prior passed checks and cleanup rules remain in force. Successful stdout is

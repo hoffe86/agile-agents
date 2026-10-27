@@ -36,6 +36,13 @@ CANARY_NAME = "AGILE_NATIVE_AMBIENT_CANARY"
 SHELL_OUTPUT_MARKER = "native-unexpected-shell"
 # SDK 1.0.24 generated/rpc.py: ToolResultType (not all kinds are denials).
 TOOL_RESULT_KINDS = ("denied", "failure", "rejected", "success", "timeout")
+POSITIVE_READ_CALL_ID = "native-positive-read"
+PROTECTED_READ_CALL_ID = "native-protected-read"
+# SDK 1.0.24 session_events.RemediationAction; codes are open strings, not enums.
+COMPLETION_REMEDIATIONS = (
+    "sign_in", "switch_account", "show_account", "review_sandbox_policy",
+    "allow_sandbox_outbound", "rewind_conversation",
+)
 PLAN = "# Synthetic plan\n\nDo not execute anything. Exit plan mode only.\n"
 REQUIRED_NATIVE_TOOLS = (
     "ask_user", "exit_plan_mode", "list_agents", "read_agent",
@@ -49,6 +56,62 @@ TRUSTED_SKILL_DIRECTORY = (
 
 class CheckFailure(Exception):
     """Only fixed, non-sensitive failure codes cross the subprocess boundary."""
+
+
+def _event_field(value: object, name: str, wire_name: str | None = None) -> object:
+    # Read individual public fields; never serialize an event or retain its payload.
+    return (value.get(wire_name or name) if isinstance(value, dict)
+            else getattr(value, name, None))
+
+
+class _ProtectedReadCompletion:
+    """One bounded summary, never an event collection or an authorization verdict."""
+
+    __slots__ = ("active", "diagnostic")
+
+    def __init__(self) -> None:
+        self.active = False
+        self.diagnostic = {
+            "event": "not_seen", "correlation": "absent", "success": "unknown",
+            "error": "unknown", "code": "unknown", "remediation": "absent",
+        }
+
+    def observe(self, event: object) -> None:
+        kind = _event_field(event, "type")
+        kind = getattr(kind, "value", kind)
+        if (not self.active or kind != "tool.execution_complete"
+                or self.diagnostic["correlation"] == "match"):
+            return
+        self.diagnostic["event"] = "seen"
+        data = _event_field(event, "data")
+        call_id = _event_field(data, "tool_call_id", "toolCallId")
+        if type(call_id) is str and call_id == PROTECTED_READ_CALL_ID:
+            correlation = "match"
+        elif call_id is None or (type(call_id) is str and not call_id):
+            correlation = "absent"
+        else:
+            correlation = "mismatch" if type(call_id) is str else "unrecognized"
+        # A match supersedes other observations; unrelated/uncorrelated errors
+        # never become protected-read details. First match wins, including late
+        # duplicates. Nonmatches have deterministic precedence, not last-wins.
+        ranks = ("absent", "unrecognized", "mismatch", "match")
+        if ranks.index(correlation) > ranks.index(self.diagnostic["correlation"]):
+            self.diagnostic["correlation"] = correlation
+        if correlation != "match":
+            return
+        success = _event_field(data, "success")
+        error = _event_field(data, "error")
+        remediation = _event_field(error, "remediation")
+        remediation = getattr(remediation, "value", remediation)
+        self.diagnostic.update(
+            success=success if type(success) is bool else "unknown",
+            error="absent" if error is None else "present",
+            code="absent" if _event_field(error, "code") is None else "present",
+            remediation=(
+                remediation if type(remediation) is str
+                and remediation in COMPLETION_REMEDIATIONS else
+                "absent" if remediation is None else "unrecognized"),
+        )
 
 
 def require(condition: bool, code: str) -> None:
@@ -326,6 +389,32 @@ def safe_failure_report(output: str) -> dict:
                                             "timeout", "operation_failed"),
                     }.items() if diagnostic.get(key) in values
                 }
+                completion = candidate.get("protected_completion")
+                if isinstance(completion, dict):
+                    # Validate again at the subprocess boundary. In particular,
+                    # JSON 0/1 must never pass as boolean success.
+                    safe = {
+                        key: completion[key] for key, values in {
+                            "event": ("seen", "not_seen"),
+                            "correlation": ("match", "mismatch", "absent", "unrecognized"),
+                            "success": ("unknown",),
+                            "error": ("present", "absent", "unknown"),
+                            "code": ("present", "absent", "unknown"),
+                            "remediation": (*COMPLETION_REMEDIATIONS, "absent", "unrecognized"),
+                        }.items() if type(completion.get(key)) is str
+                        and completion[key] in values
+                    }
+                    if safe.get("event") == "seen" and safe.get("correlation") == "match":
+                        if type(completion.get("success")) is bool:
+                            safe["success"] = completion["success"]
+                    else:
+                        # Even forged child output cannot attach another call's
+                        # error/remediation to the protected request.
+                        safe.update(success="unknown", error="unknown",
+                                    code="unknown", remediation="absent")
+                        if safe.get("correlation") == "match":
+                            safe.pop("correlation")
+                    report["protected_completion"] = safe
             report["passed"] = [item for item in CHECKS
                                 if item in candidate.get("passed", [])]
             if candidate.get("sdk") == SDK_VERSION and candidate.get("publisher_cli") == CLI_VERSION:
@@ -365,6 +454,7 @@ async def native_checks(runtime: Path, root: Path) -> dict:
     positive_read_pending = False
     positive_read_decisions = []
     protected_read_pending = False
+    protected_completion = _ProtectedReadCompletion()
     protected_observation = {
         "callback": "not_requested", "callback_session": "not_requested",
         "marker": "unknown", "text_shape": "unknown",
@@ -448,9 +538,11 @@ async def native_checks(runtime: Path, root: Path) -> dict:
         return None  # Never a blanket approval or command-prefix allowlist.
 
     def on_event(event):
-        kind = getattr(event.type, "value", event.type)
+        kind = _event_field(event, "type")
+        kind = getattr(kind, "value", kind)
         if kind in ("assistant.turn_start", "assistant.message", "assistant.message_delta"):
             model_activity.set()
+        protected_completion.observe(event)
 
     async def exit_plan(_request, context):
         nonlocal consumed
@@ -614,16 +706,19 @@ async def native_checks(runtime: Path, root: Path) -> dict:
         positive_read_pending = True
         try:
             readable = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
-                name="view", arguments={"path": str(readable_path)})))
+                name="view", arguments={"path": str(readable_path)},
+                tool_call_id=POSITIVE_READ_CALL_ID)))
         finally:
             positive_read_pending = False
         require_positive_read(readable, positive_read_decisions, report)
         report["protected_read"] = protected_observation
         protected_read_pending = True
         try:
+            protected_completion.active = True
             try:
                 denied = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
-                    name="view", arguments={"path": str(protected)})))
+                    name="view", arguments={"path": str(protected)},
+                    tool_call_id=PROTECTED_READ_CALL_ID)))
             finally:
                 protected_read_pending = False
             # A leaked marker is a hard failure even for failure/denied/rejected.
@@ -635,7 +730,13 @@ async def native_checks(runtime: Path, root: Path) -> dict:
                     "permission_session_mismatch")
         except Exception:
             await inspect_protected_policy()
+            report["protected_completion"] = dict(protected_completion.diagnostic)
             raise
+        finally:
+            # No public SDK event-drain contract exists for direct tools.execute.
+            # Include delivery during existing inspections, but never wait/poll,
+            # fetch history, or let cleanup events mutate the failure snapshot.
+            protected_completion.active = False
         report["passed"].append(report["check"])
 
         report["check"] = "native_process_sandbox"
