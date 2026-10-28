@@ -103,7 +103,7 @@ jobs:
       - name: Set qualification paths
         shell: bash
         run: |
-          echo "COPILOT_CLI_EXTRACT_DIR=$RUNNER_TEMP/native-runtime-1.0.101" >> "$GITHUB_ENV"
+          echo "COPILOT_CLI_EXTRACT_DIR=$RUNNER_TEMP/native-runtime-1.0.105" >> "$GITHUB_ENV"
           echo "EVAL_PYTHON=$RUNNER_TEMP/eval-venv/bin/python" >> "$GITHUB_ENV"
 
       # Official Linux prerequisites; Noble package pins verified 2026-10-22.
@@ -138,7 +138,7 @@ jobs:
       - name: Create a clean evaluation environment
         run: python -m venv "$RUNNER_TEMP/eval-venv"
 
-      # Trusted provisioning only: unchanged lock and publisher-managed runtime hashes.
+      # Trusted provisioning only: reviewed SDK 1.0.28 lock and publisher-managed runtime 1.0.105 hashes.
       - name: Download hash-verified evaluation wheels
         run: >-
           "$EVAL_PYTHON" -m pip --isolated download --index-url https://pypi.org/simple

@@ -4,7 +4,7 @@
 # free metric into one that silently needs an LLM.
 deepeval==4.1.8
 # Already-adopted native callback types, exercised offline by ordinary unit tests.
-github-copilot-sdk==1.0.24
+github-copilot-sdk==1.0.28
 pytest==9.1.1
 # Fixture staging and immutable-input verification tests (not a model dependency).
 PyYAML==6.0.3

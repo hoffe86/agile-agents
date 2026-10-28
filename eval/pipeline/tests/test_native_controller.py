@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 from collections.abc import Coroutine
 from dataclasses import dataclass, replace
 import json
@@ -11,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -29,7 +30,7 @@ from test_authorization import NOW, PLAN, records  # noqa: E402
 
 @dataclass
 class NativePlanResult:
-    """Same attribute contract as SDK 1.0.24 rpc.PlanReadResult."""
+    """Same attribute contract as SDK 1.0.28 rpc.PlanReadResult."""
 
     exists: bool
     content: str | None
@@ -454,6 +455,34 @@ class CallbackUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, PermissionRejection())
         self.assertEqual((result.kind, result.feedback), ("reject", "execution_not_ready"))
 
+    async def test_claimed_supervisor_and_correlated_command_cannot_authorize_shell(self) -> None:
+        # Caller-supplied role/correlation strings are not native role evidence.
+        command = "bash plugins/agile-agents-core/skills/run-event-log/scripts/emit-event.sh"
+        request = {
+            "sessionId": self.session.session_id, "agentId": "dev-lead",
+            "agentType": "dev-lead", "toolCallId": "claimed-call",
+            "toolName": "bash", "toolArgs": {"command": command},
+        }
+        denial = await self.controller.on_pre_tool_use(request, self.context)
+        self.assertEqual(denial, {"permissionDecision": "deny",
+                                 "permissionDecisionReason": "operation_route_unverified"})
+        permission = await self.controller.on_permission_request(
+            {"kind": "shell", "fullCommandText": command, "toolCallId": "claimed-call",
+             "requestSandboxBypass": True, "agentId": "dev-lead"}, self.context)
+        self.assertEqual(permission, PermissionRejection())
+        self.assertEqual(self.controller.authorization.attempts, 0)
+
+    async def test_offline_eligibility_cannot_authorize_exit_only_or_continuation(self) -> None:
+        self.assertEqual(self.attempt().outcome, "eligible")
+        result = await self.controller.on_exit_plan_mode_request(
+            {"actions": ["exit_only"], "recommendedAction": "exit_only",
+             "approved": True, "selectedAction": "exit_only"}, self.context)
+        self.assertEqual(result, {"approved": False,
+                                 "feedback": "stage4_plan_provenance_unverified"})
+        self.assertEqual(self.controller.authorization.state, "USED")
+        self.assertEqual(self.controller.authorization.attempts, 1)
+        self.assertEqual(self.attempt().reason_codes, ("job_already_used",))
+
     async def test_arbitrary_ask_user_approval_is_refused(self) -> None:
         result = await self.controller.on_user_input_request(
             {"question": "Approve?", "choices": ["Approve and run autonomously"],
@@ -480,7 +509,7 @@ class SdkCallbacksContractTests(unittest.IsolatedAsyncioTestCase):
             "eval/deepeval/requirements.lock.txt"
         )
         try:
-            self.assertEqual(version("github-copilot-sdk"), "1.0.24", install)
+            self.assertEqual(version("github-copilot-sdk"), "1.0.28", install)
         except PackageNotFoundError:
             self.fail(install)
         # The event loop's wakeup sockets already exist. Imports and callbacks
@@ -496,7 +525,7 @@ class SdkCallbacksContractTests(unittest.IsolatedAsyncioTestCase):
             from copilot.rpc import PlanReadResult
         except ImportError as exc:
             self.fail(f"{install}: {exc}")
-        self.assertEqual(CLI_VERSION, "1.0.101")
+        self.assertEqual(CLI_VERSION, "1.0.105")
         blocker = patch("copilot.CopilotClient",
                         side_effect=AssertionError("offline contract forbids startup"))
         mock = blocker.start()
@@ -565,6 +594,113 @@ class SdkCallbacksContractTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SdkConfigurationContractTests(unittest.TestCase):
+    def test_pinned_sdk_serializes_disabled_autopilot_without_dropping_zero(self) -> None:
+        import inspect
+        import textwrap
+        import copilot.client as client
+        from copilot.rpc import AutopilotOptions
+
+        base = Path(tempfile.gettempdir()) / "not-created-autopilot-contract"
+        spec = sanitized_runtime_spec(
+            {}, home=base / "home", config=base / "config", temp=base / "tmp",
+            workspace=base / "workspace", trusted_path=(base / "bin",))
+        # Execute only the SDK's pure configuration serialization statement,
+        # never create_session, a coroutine, client, event loop or transport.
+        tree = ast.parse(textwrap.dedent(inspect.getsource(client.CopilotClient.create_session)))
+        statement, = [
+            node for node in tree.body[0].body
+            if isinstance(node, ast.If) and ast.unparse(node.test) == "autopilot is not None"
+        ]
+        namespace = {**vars(client), "autopilot": spec.session_options()["autopilot"],
+                     "payload": {}}
+        with (patch("subprocess.Popen", side_effect=AssertionError("offline contract")),
+              patch("socket.socket.__init__", side_effect=AssertionError("offline contract")),
+              patch.object(client, "CopilotClient", side_effect=AssertionError("offline contract"))):
+            exec(compile(ast.Module(body=[statement], type_ignores=[]), "<sdk-config>", "exec"),
+                 namespace)
+        wire = namespace["payload"]["autopilot"]
+        self.assertEqual(wire, {"continuationEnabled": False, "maxContinues": 0})
+        self.assertEqual(AutopilotOptions.from_dict(wire).to_dict(), wire)
+
+    def test_pinned_sdk_role_and_permission_contracts_do_not_supply_authorization_join(self) -> None:
+        from dataclasses import fields
+        from copilot.session import PermissionInvocation, PreToolUseHookInput
+        from copilot.session_events import PermissionRequestShell
+        from copilot.rpc import ToolsExecuteRequest
+
+        # Deliberately pin the gap: a changed SDK contract requires reassessment,
+        # not an automatically enabled approval path.
+        self.assertEqual(set(PermissionInvocation.__annotations__),
+                         {"session_id", "managed_settings_enabled", "prompt_request"})
+        self.assertTrue({"agentId", "agentType", "parentAgentId"} <=
+                        set(PreToolUseHookInput.__annotations__))
+        self.assertNotIn("toolCallId", PreToolUseHookInput.__annotations__)
+        self.assertIsNone(PermissionRequestShell.__dataclass_fields__["tool_call_id"].default)
+        self.assertNotIn("agent_id", {field.name for field in fields(PermissionRequestShell)})
+        self.assertEqual({field.name for field in fields(ToolsExecuteRequest)},
+                         {"arguments", "name", "tool_call_id"})
+
+    def test_pinned_sdk_injects_client_token_after_explicit_environment_replacement(self) -> None:
+        import inspect
+        import textwrap
+        import copilot.client as client
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(client.CopilotClient._start_cli_server)))
+        body = tree.body[0].body
+        start, = [index for index, node in enumerate(body)
+                  if isinstance(node, ast.Assign)
+                  and ast.unparse(node.targets[0]) == "conn_env"]
+        # Only the three environment-selection/injection statements run, using
+        # invented values. No runtime, credential discovery or auth RPC executes.
+        statements = body[start:start + 3]
+        self.assertEqual(ast.unparse(statements[-1].test), "opts.github_token")
+        environment = {"LANG": "C"}
+        namespace = {**vars(client), "conn": None,
+                     "opts": SimpleNamespace(env=environment, github_token="synthetic-token")}
+        with (patch("subprocess.Popen", side_effect=AssertionError("offline contract")),
+              patch("socket.socket.__init__", side_effect=AssertionError("offline contract")),
+              patch.object(client, "CopilotClient", side_effect=AssertionError("offline contract")),
+              patch.dict(os.environ, {"GITHUB_TOKEN": "synthetic-ambient"}, clear=True)):
+            exec(compile(ast.Module(body=statements, type_ignores=[]), "<sdk-env>", "exec"),
+                 namespace)
+        self.assertEqual(environment, {"LANG": "C"})
+        self.assertEqual(namespace["env"],
+                         {"LANG": "C", "COPILOT_SDK_AUTH_TOKEN": "synthetic-token"})
+
+    def test_publisher_pair_uses_protocol_three_and_complete_stable_runtime_assets(self) -> None:
+        from importlib.metadata import version
+
+        with (
+            patch("socket.socket.__init__",
+                  side_effect=AssertionError("offline contract")) as socket_start,
+            patch("subprocess.Popen",
+                  side_effect=AssertionError("offline contract")) as process_start,
+            patch("copilot.CopilotClient",
+                  side_effect=AssertionError("offline contract")) as client_start,
+        ):
+            from copilot._cli_version import (
+                CLI_VERSION, get_download_url, get_release_asset_name,
+            )
+            from copilot._sdk_protocol_version import SDK_PROTOCOL_VERSION
+
+            self.assertEqual(version("github-copilot-sdk"), "1.0.28")
+            self.assertEqual(CLI_VERSION, "1.0.105")
+            self.assertEqual(SDK_PROTOCOL_VERSION, 3)
+            # Pure metadata helpers only: no runtime download, discovery or startup.
+            with patch.dict(os.environ, {}, clear=True):
+                for platform in ("win32-x64", "linux-x64"):
+                    with self.subTest(platform=platform):
+                        asset = get_release_asset_name(CLI_VERSION, platform)
+                        self.assertEqual(asset, f"github-copilot-1.0.105-{platform}.tgz")
+                        self.assertEqual(
+                            get_download_url(CLI_VERSION, asset),
+                            "https://github.com/github/copilot-cli/releases/download/"
+                            f"v1.0.105/{asset}",
+                        )
+            socket_start.assert_not_called()
+            process_start.assert_not_called()
+            client_start.assert_not_called()
+
     def test_runtime_options_bind_to_selected_sdk_without_startup(self) -> None:
         import inspect
 
@@ -639,10 +775,31 @@ class RuntimeConfigurationUnitTests(unittest.IsolatedAsyncioTestCase):
             "enable_session_store": False, "enable_session_telemetry": False,
             "skip_embedding_retrieval": True, "enable_skills": False,
             "plugin_directories": [], "mcp_servers": {}, "available_tools": [],
+            "agent_directories": [], "skill_directories": [],
+            "instruction_directories": [], "hook_directories": [],
+            "autopilot": {"continuation_enabled": False, "max_continues": 0},
         })
         changed = spec.session_options()
         changed["mcp_servers"]["remote"] = "not-authority"
         self.assertEqual(spec.session_options()["mcp_servers"], {})
+
+    def test_session_guards_are_fresh_and_cannot_be_broadened_by_previous_options(self) -> None:
+        spec = self.spec({})
+        changed = spec.session_options()
+        changed["autopilot"].update(continuation_enabled=True, max_continues=5)
+        changed["agent_directories"].append("/untrusted/agents")
+        changed["skill_directories"].append("/untrusted/skills")
+        changed["instruction_directories"].append("/untrusted/instructions")
+        changed["hook_directories"].append("/untrusted/hooks")
+        changed["available_tools"].append("bash")
+        fresh = spec.session_options()
+        self.assertEqual(fresh["autopilot"],
+                         {"continuation_enabled": False, "max_continues": 0})
+        self.assertEqual(fresh["agent_directories"], [])
+        self.assertEqual(fresh["skill_directories"], [])
+        self.assertEqual(fresh["instruction_directories"], [])
+        self.assertEqual(fresh["hook_directories"], [])
+        self.assertEqual(fresh["available_tools"], [])
 
     async def test_launcher_always_not_ready(self) -> None:
         result = await start_native_runtime(self.spec({}))
@@ -694,7 +851,9 @@ base = Path({str(EVAL)!r}) / 'not-created-runtime'
 spec = native_controller.sanitized_runtime_spec(
     {{}}, home=base / 'home', config=base / 'config', temp=base / 'tmp',
     workspace=base / 'work', trusted_path=(base / 'bin',))
+assert spec.session_options()['autopilot'] == {{'continuation_enabled': False, 'max_continues': 0}}
 assert not loop.run_until_complete(native_controller.start_native_runtime(spec)).execution_ready
+assert 'copilot' not in sys.modules and 'deepeval' not in sys.modules
 loop.close()
 print(live_readiness().canonical_bytes().decode('ascii'))
 """

@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import ast
-from contextlib import redirect_stdout
+from contextlib import nullcontext, redirect_stdout
+from dataclasses import replace
 import inspect
 import io
 import json
@@ -23,6 +24,34 @@ def completion_event(call_id=native.PROTECTED_READ_CALL_ID, **data):
         "timestamp": "2026-01-01T00:00:00Z", "type": "tool.execution_complete",
         "data": {"toolCallId": call_id, "success": False, **data},
     }
+
+
+def file_policy_fixture(root):
+    """Synthetic completed evidence, not native enforcement or SDK execution."""
+    (root / "workspace").mkdir()
+    (root / "protected").mkdir()
+    target = root / "workspace" / "comparison.txt"
+    target.write_text("comparison-fixture-marker", encoding="utf-8")
+    (root / "protected" / "control-plane.txt").write_text(
+        "protected-fixture-marker", encoding="utf-8")
+    return [
+        native._FilePolicyControl(
+            "permit", "permit-session", target, (),
+            {"resultType": "success", "textResultForLlm": "comparison-fixture-marker"},
+            "approved", False, False, True),
+        native._FilePolicyControl(
+            "native_deny", "native-session", target, (str(target),),
+            {"resultType": "failure", "textResultForLlm": "", "error": native.FILE_POLICY_ERROR},
+            "not_requested", False, False, True),
+        native._FilePolicyControl(
+            "missing", "missing-session", target.with_name("comparison-missing.txt"), (),
+            {"resultType": "failure", "textResultForLlm": "", "error": native.MISSING_FILE_ERROR},
+            "approved", False, False, True),
+        native._FilePolicyControl(
+            "callback_deny", "callback-session", target, (),
+            {"resultType": "denied", "textResultForLlm": "", "error": "Callback refused"},
+            "rejected", False, False, True),
+    ]
 
 
 class NativeActivationTests(unittest.TestCase):
@@ -1093,7 +1122,8 @@ class NativePositiveReadPermissionTests(unittest.TestCase):
         self.assertEqual(policy.to_dict(), {
             "enabled": True, "allowBypass": False, "allowDevToolAccess": False,
             "userPolicy": {
-                "filesystem": {"deniedPaths": [str(self.root / "protected")]},
+                "filesystem": {
+                    "deniedPaths": [str(self.root / "protected" / "control-plane.txt")]},
                 "network": {"allowOutbound": False, "allowLocalNetwork": False},
             },
         })
@@ -1154,6 +1184,21 @@ class NativePositiveReadPermissionTests(unittest.TestCase):
         self.assert_rejected(None)
         self.assertEqual(self.namespace["protected_observation"]["callback"], "rejected_exact_read")
 
+    def test_protected_bypass_or_path_grant_is_rejected_and_invalidates_exact_observation(self):
+        self.namespace["positive_read_pending"] = False
+        self.namespace["protected_read_pending"] = True
+        for change in (
+            {"request_sandbox_bypass": True}, {"request_sandbox_bypass": 0},
+            {"request_sandbox_bypass_reason": "bypass"},
+            {"managed_approval_required": True}, {"managed_approval_required": 0},
+            {"sandbox_path_grant": {}},
+        ):
+            with self.subTest(change=change):
+                self.namespace["protected_observation"]["callback"] = "not_requested"
+                self.assert_rejected(self.request(path=str(self.protected), **change))
+                self.assertEqual(self.namespace["protected_observation"]["callback"],
+                                 "rejected_other")
+
 
 class NativeProtectedReadTests(unittest.TestCase):
     """Execute the actual probe statements with RPC stubs, never an event loop."""
@@ -1210,6 +1255,7 @@ class NativeProtectedReadTests(unittest.TestCase):
             "root": Path("/synthetic"),
             "protected": Path("/synthetic/protected/control-plane.txt"),
             "protected_observation": self.observation, "report": self.report,
+            "file_qualification": None,
             "session": SimpleNamespace(rpc=SimpleNamespace(
                 tools=SimpleNamespace(execute=self.execute),
                 permissions=SimpleNamespace(paths=SimpleNamespace(
@@ -1224,6 +1270,42 @@ class NativeProtectedReadTests(unittest.TestCase):
     def run_probe(self, result):
         self.execute.return_value = result
         exec(self.probe, self.namespace)
+
+    def qualified_probe(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name).resolve()
+        controls = file_policy_fixture(root)
+        identity = SimpleNamespace(version=native.CLI_VERSION, protocol_version=3)
+        qualification = native.qualify_file_policy(native.SDK_VERSION, identity, root, controls)
+        self.namespace.update(
+            file_qualification=qualification, identity=identity, root=root,
+            protected=root / "protected" / "control-plane.txt",
+            protected_marker=qualification.protected_marker)
+        return controls[1].result
+
+    def test_exact_failure_requires_fresh_qualification_not_diagnostics_or_event_absence(self):
+        wire = self.qualified_probe()
+        self.run_probe(wire)
+        self.assertNotIn("protected_error", self.report)
+        self.path_check.assert_not_called()
+        self.sandbox_check.assert_not_called()
+        self.assertFalse(self.namespace["protected_completion"].active)
+        self.namespace["file_qualification"] = None
+        with self.assertRaisesRegex(native.CheckFailure, "explicit_native_denial_required"):
+            self.run_probe(wire)
+
+    def test_qualified_probe_still_rejects_wrong_session_other_callback_and_leaks(self):
+        wire = self.qualified_probe()
+        self.namespace["permission_sessions"] = ["other-session"]
+        with self.assertRaisesRegex(native.CheckFailure, "permission_session_mismatch"):
+            self.run_probe(wire)
+        self.namespace["permission_sessions"] = ["owned-session"]
+        self.observation["callback"] = "rejected_other"
+        with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+            self.run_probe(wire)
+        with self.assertRaisesRegex(native.CheckFailure, "protected_canary_leaked"):
+            self.run_probe({**wire, "nested": [self.namespace["protected_marker"]]})
 
     def test_leaked_canary_takes_priority_over_every_result_kind(self):
         from copilot.rpc import ToolResultExpanded
@@ -2123,9 +2205,9 @@ class NativeFileComparisonTests(unittest.TestCase):
                 tools=SimpleNamespace(initialize_and_validate=initialize, execute=execute)),
         )
 
-    def run_comparison(self):
+    def run_comparison(self, controls=None):
         coroutine = native.compare_native_file_policy(
-            self.client, self.root, self.report, self.bounded, self.on_event)
+            self.client, self.root, self.report, self.bounded, self.on_event, controls=controls)
         try:
             coroutine.send(None)
         except StopIteration as completed:
@@ -2203,8 +2285,8 @@ class NativeFileComparisonTests(unittest.TestCase):
         self.assertLess(source.index("await compare_native_file_policy("),
                         source.index("require_positive_read("))
         self.assertLess(source.index("await compare_native_file_policy("),
-                        source.index("require_denial(comparison_result, report)"))
-        self.assertLess(source.index("require_denial(comparison_result, report)"),
+                        source.index("file_qualification = qualify_file_policy("))
+        self.assertLess(source.index("file_qualification = qualify_file_policy("),
                         source.index('report["check"] = "native_toolset"'))
         self.assertIn("await asyncio.wait_for(awaitable, RPC_TIMEOUT)", source)
 
@@ -2215,6 +2297,53 @@ class NativeFileComparisonTests(unittest.TestCase):
                 operations = [operation for name, operation, _ in self.calls if name == case]
                 self.assertEqual(operations[-3:], ["abort", "disconnect", "delete"])
         self.assertEqual(self.report["comparison_cleanup"], "complete")
+
+    def test_private_controls_are_raw_and_released_only_after_complete_cleanup(self):
+        controls = []
+        self.overrides["missing"] = {
+            "resultType": "failure", "textResultForLlm": "", "error": native.MISSING_FILE_ERROR,
+        }
+        self.run_comparison(controls)
+        self.assertEqual([item.case for item in controls], list(native.COMPARISON_CASES))
+        self.assertEqual(controls[1].result["error"], native.FILE_POLICY_ERROR)
+        self.assertEqual(controls[1].path, self.target)
+        self.assertEqual(controls[1].denied_paths, (str(self.target),))
+        self.assertEqual(controls[0].result["textResultForLlm"], self.marker)
+        self.assertEqual([op for case, op, _ in self.calls if case == "callback_deny"][-3:],
+                         ["abort", "disconnect", "delete"])
+        # Sanitized/public observations are not classifier inputs.
+        self.report["file_comparison"].clear()
+        qualification = native.qualify_file_policy(
+            native.SDK_VERSION, SimpleNamespace(version=native.CLI_VERSION, protocol_version=3),
+            self.root, controls)
+        self.assertEqual(qualification.comparison_marker, self.marker)
+
+    def test_remaining_protected_probe_uses_the_same_native_policy_with_only_target_changed(self):
+        self.run_comparison()
+        tree = ast.parse(inspect.getsource(native.native_checks))
+        imports = [node for node in tree.body[0].body
+                   if isinstance(node, ast.ImportFrom) and node.module.startswith("copilot")]
+        namespace = {**vars(native), "root": self.root}
+        exec(compile(ast.Module(body=imports, type_ignores=[]), native.__file__, "exec"), namespace)
+        config = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                      and ast.unparse(node.func) == "SandboxConfig")
+        main_policy = eval(compile(ast.Expression(config), native.__file__, "eval"), namespace)
+        expected = self.options[1]["sandbox_config"].to_dict()
+        expected["userPolicy"]["filesystem"]["deniedPaths"] = [
+            str(self.root / "protected" / "control-plane.txt")]
+        self.assertEqual(main_policy.to_dict(), expected)
+
+    def test_failed_or_incomplete_controls_never_release_private_evidence(self):
+        for case in native.COMPARISON_CASES:
+            for operation in ("execute", "abort", "disconnect", "delete"):
+                with self.subTest(case=case, operation=operation):
+                    self.options.clear()
+                    self.calls.clear()
+                    controls = []
+                    self.fault = (case, operation)
+                    with self.assertRaises((TimeoutError, native.CheckFailure)):
+                        self.run_comparison(controls)
+                    self.assertEqual(controls, [])
 
     def test_native_leak_has_priority_over_every_result_kind_and_stops_controls(self):
         for kind in native.TOOL_RESULT_KINDS:
@@ -2581,6 +2710,304 @@ class NativeFileComparisonTests(unittest.TestCase):
                     status = native.run_bounded(Path("/synthetic/runtime"))
         self.assertEqual(status, 0)
         self.assertEqual(json.loads(output.getvalue()), expected)
+
+
+class NativeFilePolicyQualificationTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name).resolve()
+        self.controls = file_policy_fixture(self.root)
+        self.identity = SimpleNamespace(version=native.CLI_VERSION, protocol_version=3)
+        self.target = self.root / "protected" / "control-plane.txt"
+        self.wire = dict(self.controls[1].result)
+
+    def qualify(self, controls=None, sdk=native.SDK_VERSION, identity=None):
+        return native.qualify_file_policy(
+            sdk, self.identity if identity is None else identity, self.root,
+            self.controls if controls is None else controls)
+
+    def classify(self, qualification, result=None, **overrides):
+        values = {
+            "sdk": native.SDK_VERSION, "identity": self.identity, "tool": "view",
+            "target": self.target, "denied_paths": (str(self.target),),
+        }
+        native.require_qualified_file_refusal(
+            self.wire if result is None else result, qualification, **(values | overrides))
+
+    def test_complete_candidate_matrix_qualifies_only_observed_file_policy_refusal(self):
+        qualification = self.qualify()
+        self.assertEqual(qualification.pin, ("1.0.28", "1.0.105", 3))
+        self.classify(qualification)
+        # This specific raw error remains a generic failure outside qualification.
+        with self.assertRaisesRegex(native.CheckFailure, "explicit_native_denial_required"):
+            native.require_denial(self.wire)
+
+    def test_old_unknown_missing_and_malformed_runtime_profiles_never_qualify(self):
+        for sdk, identity in (
+            ("1.0.24", self.identity), ("next", self.identity), (None, self.identity),
+            (native.SDK_VERSION, SimpleNamespace(version="1.0.101", protocol_version=3)),
+            (native.SDK_VERSION, SimpleNamespace(version=native.CLI_VERSION)),
+            (native.SDK_VERSION, SimpleNamespace(protocol_version=3)),
+            (native.SDK_VERSION, SimpleNamespace(version=native.CLI_VERSION, protocol_version=True)),
+            (native.SDK_VERSION, SimpleNamespace(version=native.CLI_VERSION, protocol_version=4)),
+            (native.SDK_VERSION, SimpleNamespace(version=native.CLI_VERSION, protocol_version="3")),
+            (native.SDK_VERSION, {}),
+        ):
+            with self.subTest(sdk=sdk, identity=identity):
+                with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                    self.qualify(sdk=sdk, identity=identity)
+
+    def test_controls_cannot_be_missing_reordered_repeated_or_public_diagnostics(self):
+        for controls in (
+            [], self.controls[:-1], list(reversed(self.controls)),
+            [self.controls[0]] * 4, self.controls + [self.controls[0]],
+            [{"kind": "failure", "sandbox_error_exact": True}] * 4,
+        ):
+            with self.subTest(controls=controls):
+                with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                    self.qualify(controls)
+
+    def test_each_control_independently_requires_owned_scope_and_matching_policy(self):
+        for index in range(4):
+            for change in (
+                {"session_id": ""}, {"session_id": []}, {"tool": "bash"},
+                {"path": self.target}, {"denied_paths": ("unexpected",)},
+                {"callback_other": True}, {"callback_session_mismatch": True},
+                {"allowed_directory": False}, {"allowed_directory": 1},
+            ):
+                with self.subTest(index=index, change=change):
+                    controls = self.controls.copy()
+                    controls[index] = replace(controls[index], **change)
+                    with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                        self.qualify(controls)
+        controls = self.controls.copy()
+        controls[1] = replace(controls[1], session_id=controls[0].session_id)
+        with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+            self.qualify(controls)
+
+    def test_each_control_independently_falsifies_the_expected_result(self):
+        for index in range(4):
+            for result in (
+                {}, {"resultType": "timeout", "textResultForLlm": ""},
+                {"resultType": "failure", "textResultForLlm": "", "error": "command not found"},
+                {"resultType": "success", "textResultForLlm": "no marker"},
+            ):
+                with self.subTest(index=index, result=result):
+                    controls = self.controls.copy()
+                    controls[index] = replace(controls[index], result=result)
+                    with self.assertRaises(native.CheckFailure):
+                        self.qualify(controls)
+
+    def test_negative_control_error_collisions_fail_even_with_other_valid_controls(self):
+        for index, error in ((2, native.FILE_POLICY_ERROR), (3, native.FILE_POLICY_ERROR),
+                             (3, native.MISSING_FILE_ERROR)):
+            with self.subTest(index=index, error=error):
+                controls = self.controls.copy()
+                controls[index] = replace(
+                    controls[index], result={**controls[index].result, "error": error})
+                with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                    self.qualify(controls)
+
+    def test_positive_marker_in_metadata_or_failure_is_not_a_successful_read(self):
+        for result in (
+            {"resultType": "success", "textResultForLlm": "", "metadata": "comparison-fixture-marker"},
+            {"resultType": "failure", "textResultForLlm": "comparison-fixture-marker"},
+            {"resultType": "success", "textResultForLlm": "comparison-fixture-marker",
+             "error": native.FILE_POLICY_ERROR},
+        ):
+            with self.subTest(result=result):
+                controls = self.controls.copy()
+                controls[0] = replace(controls[0], result=result)
+                with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                    self.qualify(controls)
+
+    def test_positive_approval_and_callback_rejection_must_actually_be_observed(self):
+        for index, callback in (
+            (0, "not_requested"), (0, "rejected"), (1, "rejected"),
+            (2, "rejected"), (3, "not_requested"), (3, "approved"),
+        ):
+            with self.subTest(index=index, callback=callback):
+                controls = self.controls.copy()
+                controls[index] = replace(controls[index], callback=callback)
+                with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                    self.qualify(controls)
+
+    def test_native_deny_requires_no_callback_not_approval_rejection_or_mixed(self):
+        for callback in ("approved", "rejected", "mixed"):
+            with self.subTest(callback=callback):
+                controls = self.controls.copy()
+                controls[1] = replace(controls[1], callback=callback)
+                with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                    self.qualify(controls)
+        self.classify(self.qualify())
+
+    def test_raw_exact_error_only_not_sanitized_substrings_or_text_fallback(self):
+        qualification = self.qualify()
+        for result in (
+            {"resultType": "failure", "textResultForLlm": native.FILE_POLICY_ERROR},
+            {**self.wire, "error": " " + native.FILE_POLICY_ERROR},
+            {**self.wire, "error": native.FILE_POLICY_ERROR + "\n"},
+            {**self.wire, "error": "\x1b[31m" + native.FILE_POLICY_ERROR},
+            {**self.wire, "error": "Is a sandbox denied path.\x00"},
+            {**self.wire, "error": None},
+            {**self.wire, "error": native.MISSING_FILE_ERROR},
+        ):
+            with self.subTest(result=result):
+                with self.assertRaisesRegex(native.CheckFailure, "explicit_native_denial_required"):
+                    self.classify(qualification, result)
+
+    def test_every_nonfailure_kind_and_malformed_shape_is_rejected(self):
+        qualification = self.qualify()
+        for result in (
+            *({**self.wire, "resultType": kind}
+              for kind in ("denied", "rejected", "timeout", "success", "other", None, [])),
+            {**self.wire, "textResultForLlm": []}, {**self.wire, "error": {}},
+            {"resultType": "failure", "error": native.FILE_POLICY_ERROR}, [], "failure",
+            {**self.wire, "textResultForLlm": "x" * native.CHILD_REPORT_LIMIT},
+            {**self.wire, "metadata": object()},
+        ):
+            with self.subTest(result_type=type(result)):
+                with self.assertRaises(native.CheckFailure):
+                    self.classify(qualification, result)
+
+    def test_canaries_precede_malformed_shape_kind_error_and_wrong_version(self):
+        qualification = self.qualify()
+        for marker in (qualification.protected_marker, qualification.comparison_marker):
+            with self.subTest(marker=marker):
+                with self.assertRaisesRegex(native.CheckFailure, "protected_canary_leaked"):
+                    self.classify(qualification, {"resultType": [], "nested": {"value": marker}},
+                                  sdk="unknown")
+        for index in range(4):
+            with self.subTest(index=index):
+                controls = self.controls.copy()
+                controls[index] = replace(controls[index], result={
+                    "resultType": [], "nested": qualification.protected_marker})
+                with self.assertRaisesRegex(native.CheckFailure, "protected_canary_leaked"):
+                    self.qualify(controls)
+
+    def test_protected_reuse_is_bound_to_runtime_tool_target_and_exact_file_policy(self):
+        qualification = self.qualify()
+        for changes in (
+            {"sdk": "1.0.24"}, {"identity": SimpleNamespace(version="1.0.101", protocol_version=3)},
+            {"tool": "read_file"}, {"tool": "bash"},
+            {"target": self.root / "workspace" / "comparison.txt"},
+            {"denied_paths": ()}, {"denied_paths": (str(self.target.parent),)},
+        ):
+            with self.subTest(changes=changes):
+                with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                    self.classify(qualification, **changes)
+        with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+            self.classify(None)
+
+    def test_replaced_fixture_bytes_invalidate_qualification(self):
+        qualification = self.qualify()
+        self.target.write_text("changed", encoding="utf-8")
+        with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+            self.classify(qualification)
+        self.target.write_text(qualification.protected_marker, encoding="utf-8")
+        (self.root / "workspace" / "comparison.txt").write_text("changed", encoding="utf-8")
+        with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+            self.classify(qualification)
+        comparison = self.root / "workspace" / "comparison.txt"
+        comparison.write_text(qualification.comparison_marker, encoding="utf-8")
+        original_resolve = Path.resolve
+        with patch.object(Path, "resolve", autospec=True, side_effect=lambda path, **kwargs:
+                          self.target if path == comparison else original_resolve(path, **kwargs)):
+            with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                self.classify(qualification)
+
+    def test_missing_control_fixture_must_remain_absent_and_markers_nonempty_distinct(self):
+        qualification = self.qualify()
+        missing = self.root / "workspace" / "comparison-missing.txt"
+        missing.write_text("unexpected", encoding="utf-8")
+        with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+            self.qualify()
+        with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+            self.classify(qualification)
+        missing.unlink()
+        for marker in ("", "comparison-fixture-marker"):
+            with self.subTest(marker=marker):
+                self.target.write_text(marker, encoding="utf-8")
+                with self.assertRaisesRegex(native.CheckFailure, "file_policy_unqualified"):
+                    self.qualify()
+
+    def test_parent_diagnostics_never_export_private_qualification_or_raw_controls(self):
+        public = native.safe_failure_report(json.dumps({
+            "status": "fail", "check": "native_file_denial", "reason": "file_policy_unqualified",
+            "controls": [{"result": self.wire, "path": str(self.target)}],
+            "qualification": {"marker": "protected-fixture-marker"},
+            "raw": "sensitive-output",
+        }))
+        self.assertEqual(public, {
+            "status": "fail", "check": "native_file_denial",
+            "reason": "file_policy_unqualified", "passed": [],
+        })
+
+
+class NativeProcessQualificationRouteTests(unittest.TestCase):
+    def test_host_support_cannot_award_process_pass_or_use_obsolete_execution_route(self):
+        source = inspect.getsource(native.native_checks)
+        self.assertNotIn("execute_user_requested", source)
+        self.assertNotIn("socket.create_connection", source)
+        self.assertNotIn("native-sandbox-check-ok", source)
+        tree = ast.parse(source)
+        body = next(node for node in tree.body[0].body if isinstance(node, ast.Try)).body
+        start = next(index for index, node in enumerate(body)
+                     if isinstance(node, ast.Assign)
+                     and ast.unparse(node) == "report['check'] = 'native_process_sandbox'")
+        class Synchronous(ast.NodeTransformer):
+            def visit_Await(self, node):
+                return self.visit(node.value)
+
+            def visit_AsyncWith(self, node):
+                return ast.With(items=node.items, body=[self.visit(item) for item in node.body])
+
+        stage = compile(ast.fix_missing_locations(Synchronous().visit(
+            ast.Module(body=body[start:], type_ignores=[]))), native.__file__, "exec")
+        for supported, reason in (
+            (True, "process_descriptor_incompatible"),
+            (False, "sandbox_host_support_required"),
+        ):
+            with self.subTest(supported=supported):
+                report = {"passed": []}
+                support = SimpleNamespace(supported=supported, capabilities=[
+                    SimpleNamespace(name="shell", supported=True),
+                    SimpleNamespace(name="denied_paths", supported=True),
+                ])
+                namespace = {
+                    **vars(native), "report": report, "bounded": lambda value: value,
+                    "root": Path("/synthetic"), "on_event": Mock(),
+                    "asyncio": SimpleNamespace(timeout=lambda value: nullcontext(
+                        SimpleNamespace(expired=lambda: False))),
+                    "qualify_native_processes": Mock(
+                        side_effect=native.CheckFailure("process_descriptor_incompatible")),
+                    "client": SimpleNamespace(rpc=SimpleNamespace(
+                        sandbox=SimpleNamespace(get_host_support=lambda: support))),
+                }
+                with self.assertRaisesRegex(native.CheckFailure, reason):
+                    exec(stage, namespace)
+                self.assertEqual(report, {"passed": [], "check": "native_process_sandbox"})
+                self.assertEqual(namespace["qualify_native_processes"].call_count, int(supported))
+
+    def test_process_failure_is_bounded_and_never_relays_endpoint_command_or_pids(self):
+        public = native.safe_failure_report(json.dumps({
+            "status": "fail", "check": "native_process_sandbox",
+            "reason": "process_descriptor_incompatible", "passed": ["native_file_denial"],
+            "endpoint": "not-for-output", "command": "not-for-output", "pids": [123],
+        }))
+        self.assertEqual(public, {
+            "status": "fail", "check": "native_process_sandbox",
+            "reason": "process_descriptor_incompatible", "passed": ["native_file_denial"],
+        })
+
+
+def load_tests(loader, tests, pattern):
+    # Keep the existing hosted contract-test entrypoint; no pipeline edit needed.
+    import native_process_contracts
+
+    tests.addTests(loader.loadTestsFromModule(native_process_contracts))
+    return tests
 
 
 if __name__ == "__main__":

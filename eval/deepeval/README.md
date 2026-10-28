@@ -87,7 +87,7 @@ too late. Set it in CI as well — belt and braces.
 
 `requirements.txt` is the **maintainer input**, not an installation command.
 `requirements.lock.txt` is the complete transitive pip requirements closure:
-DeepEval **4.1.8**, github-copilot-sdk **1.0.24**, pytest **9.1.1**, PyYAML **6.0.3**,
+DeepEval **4.1.8**, github-copilot-sdk **1.0.28**, pytest **9.1.1**, PyYAML **6.0.3**,
 and exact dependency versions.
 Versions were retained from the working evaluation venv, not broadly upgraded.
 The exception is setuptools **84.0.0**, already present in the developer environment;
@@ -108,7 +108,7 @@ not a separate environment. Its added transitive pins are httpx **0.28.1**,
 httpcore **1.0.9**, python-dateutil **2.9.0.post0**, and six **1.17.0**; existing
 shared versions and platform hashes are unchanged. The tests assert the actual
 `PlanReadResult` and `PermissionDecisionReject` contracts and the SDK's declared
-CLI runtime version **1.0.101**, without installing or launching that runtime in
+CLI runtime version **1.0.105** and protocol **3**, without installing or launching that runtime in
 unit tests. SDK imports
 are local to those tests; missing or incompatible dependencies fail with the
 shared-lock install command. Client construction, sockets and subprocesses are
@@ -118,8 +118,96 @@ SDK signature without constructing a client. SDK 1.0.24 removed
 `enable_github_cache_store`; that obsolete keyword is no longer emitted.
 This is API compatibility, **not** evidence that a cache or sandbox is isolated.
 
-The **2026-10-21** upgrade changes only the SDK root and wheel hash; DeepEval and
-the remaining closure are unchanged. Latest stable versions were checked against
+#### Current stable pair (2026-10-28)
+
+The **2026-10-28** upgrade changes only SDK **1.0.24 → 1.0.28** and its wheel hash.
+DeepEval **4.1.8**, every other package version, platform marker and wheel hash
+are unchanged. Both downloaded SDK wheels have identical `Requires-Dist` entries:
+`python-dateutil>=2.9.0.post0`, `pydantic>=2.11`, `httpx>=0.24.0`, and optional
+`opentelemetry-api>=1.0.0; extra == "telemetry"`. No new dependency or manager.
+
+Latest stable was rechecked against the official
+[SDK latest release API](https://api.github.com/repos/github/copilot-sdk/releases/latest),
+[SDK v1.0.28 release](https://github.com/github/copilot-sdk/releases/tag/v1.0.28),
+[PyPI latest metadata](https://pypi.org/pypi/github-copilot-sdk/json),
+[PyPI 1.0.28 metadata](https://pypi.org/pypi/github-copilot-sdk/1.0.28/json),
+and [CLI latest release API](https://api.github.com/repos/github/copilot-cli/releases/latest).
+The downloaded `github_copilot_sdk-1.0.28-py3-none-any.whl` SHA-256 matches PyPI:
+`191e4b7f22a5a3842504ec9ee92f88abc4cf3aecca4ab04e2d359aa307436dd1`.
+Although SDK release prose mentions snapshot **1.0.105-1**, the **published wheel**
+pins stable **1.0.105** in `_cli_version.py` and protocol **3** in
+`_sdk_protocol_version.py`. The wheel, not that prose, selects the runtime.
+
+Use the SDK's `python -m copilot download-runtime` utility in trusted provisioning
+with a private `COPILOT_CLI_EXTRACT_DIR`. It selects the complete matching native
+package (`copilot-runtime` / `copilot-runtime.exe` plus `runtime.node`), not a
+standalone interactive CLI. The [v1.0.105 release](https://github.com/github/copilot-cli/releases/tag/v1.0.105)
+asset digests agree with its
+[SHA256SUMS.txt](https://github.com/github/copilot-cli/releases/download/v1.0.105/SHA256SUMS.txt):
+
+| Runtime asset | Publisher SHA-256 |
+|---|---|
+| `github-copilot-1.0.105-win32-x64.tgz` | `2dbd898b12d71e7c2c467adb5df113c8e4ad940d552aceec0599c86f7ba0af94` |
+| `github-copilot-1.0.105-linux-x64.tgz` | `be20f4a2a68fc24da149f6328aa4993309b8d0d13faeea9e22bd065d23ef03b2` |
+
+These are publisher runtime checksums, **not a claim of local runtime download
+or startup** during this upgrade. No ambient/global CLI was changed.
+The stable runtime includes the publisher's
+[1.0.102](https://github.com/github/copilot-cli/releases/tag/v1.0.102) fixes for
+sandboxed commands lasting over 10 seconds and subagent permissions, and
+[1.0.104](https://github.com/github/copilot-cli/releases/tag/v1.0.104) attached-task
+waiting fix. Release notes do not prove D1/D2 or this harness's denial semantics.
+
+Offline tests bind the held controller and four comparison sessions to the real
+1.0.28 APIs without client construction/startup. The general denial predicate
+still rejects generic `failure`. The qualification-only file classifier now
+requires fresh same-run controls and the exact pinned raw result, not historical
+evidence or sanitized diagnostics; see the
+[current qualification contract](../README.md#same-run-file-policy-qualification).
+The process stage now uses disposable native `tools.execute` sessions with
+exact-command one-shot permissions, paired filesystem policies, a fixed
+proxy-aware public HTTPS HEAD positive/negative, and attached-process
+normal/cancel/timeout cleanup controls. See the
+[current process qualification contract](../README.md#native-process-qualification)
+for the matrix, budgets and fail-closed limitations. These implementation and
+offline contract tests are **not hosted enforcement evidence**; candidate hosted
+qualification and production readiness remain unverified/held. No production
+role policy or auth path is introduced.
+The infrastructure-owned workflow now uses `native-runtime-1.0.105` in its
+extraction directory, with its provisioning comment identifying SDK 1.0.28/runtime
+1.0.105. The exact-pin regression passes; all **15/15** workflow contracts pass.
+No workflow was dispatched, and candidate hosted qualification has not run.
+
+Validation on Windows CPython **3.11.9** used the existing private evaluation venv,
+after updating the manifest: hash-verified `pip download`, an offline
+`install --dry-run --ignore-installed`, then `install --no-index --require-hashes
+--only-binary=:all:` and `pip check`. Installed-distribution comparison changed
+**only** `github-copilot-sdk` from 1.0.24 to 1.0.28.
+All four supported wheel targets downloaded successfully: Windows `win_amd64`
+and Ubuntu `manylinux` x86_64, CPython 3.11/3.12. All **106 downloaded wheel files**
+matched the retained lock hashes. Their actual `METADATA`, compatible tags,
+`Requires-Python`, target markers and transitive extras were checked independently:
+**73 packages on Windows / 72 on Ubuntu** (Windows-only `colorama`).
+This proves artifact/closure compatibility, not native Ubuntu/Python 3.12 execution.
+All **148** unchanged native contracts, **47** controller tests and **15** dependency
+tests passed, as did `python scripts/run-repo-checks.py lint`.
+The earlier coding validation totaled **845/846** passing, with only the workflow
+extraction-path assertion failing. That included **155** script tests and **14/15**
+workflow contracts; separately completing the configured suites after that
+fail-fast boundary passed **33** authorization tests, **36** trajectory tests and
+**397** pytest tests with `EVAL_REQUIRE_DEEPEVAL=1` and telemetry opt-out.
+After the workflow edit, the infrastructure author reran all **15/15** workflow
+contracts and both configured gates, `python scripts/run-repo-checks.py lint`
+and `python scripts/run-repo-checks.py unit`: both exited **0**, with
+**301 unittest + 397 pytest = 698 tests** passing in the unit gate.
+All selected local checks now pass; the sole earlier failure is cleared.
+This is not a new native Windows or Ubuntu/Python 3.12 runtime qualification.
+Native SDK startup was not attempted.
+
+#### Historical restoration (2026-10-21; not current-pair evidence)
+
+The **2026-10-21** upgrade changed only the SDK root and wheel hash; DeepEval and
+the remaining closure were unchanged. Latest stable versions **at that time** were checked against
 [PyPI JSON](https://pypi.org/pypi/github-copilot-sdk/1.0.24/json) and the
 [SDK v1.0.24 release](https://github.com/github/copilot-sdk/releases/tag/v1.0.24),
 and against [npm metadata](https://registry.npmjs.org/@github%2fcopilot/1.0.101)
@@ -144,14 +232,16 @@ The matching published pins establish the publisher-selected pair; successful
 RPC, sandbox and delegated-agent compatibility are **not yet measured**.
 See [bounded qualification and its blockers](../README.md#approved-boundaries-and-bounded-qualification-2026-10-21).
 
-Upgrade validation used the existing private Windows CPython **3.11.9** environment:
+That earlier upgrade validation used the existing private Windows CPython **3.11.9** environment:
 hash-verified wheel download, exact offline dry-run/restore and `pip check` passed.
 The new universal SDK wheel's `Requires-Python` and active `Requires-Dist` entries
 fit the unchanged lock under Windows/Ubuntu CPython 3.11/3.12 marker environments.
 A bounded full Ubuntu 3.11 wheel download timed out after 220 seconds; the
-remaining full cross-target downloads were not attempted. Thus this upgrade does
+remaining full cross-target downloads were not attempted. Thus that upgrade did
 **not** claim renewed full four-target download or native Ubuntu/Python 3.12
 execution evidence. The platform hashes were preserved, not regenerated.
+
+#### Installation and maintenance gates
 
 CI creates a fresh venv, downloads with `--require-hashes --only-binary=:all:`,
 installs with `--no-index`, runs `pip check`, then requires the real DeepEval import,

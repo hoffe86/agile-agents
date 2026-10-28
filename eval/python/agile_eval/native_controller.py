@@ -1,6 +1,6 @@
 """Held native callback boundary. No SDK import, discovery or startup on import.
 
-Protocols mirror public SDK 1.0.24 surfaces, not its private dispatch machinery.
+Protocols mirror public SDK 1.0.28 surfaces, not its private dispatch machinery.
 Callback unit tests are NOT native mediation, Stage 4 or OS isolation evidence.
 There is deliberately no approved/exit_only branch, live admission or resume.
 """
@@ -270,6 +270,8 @@ class RuntimeSpec:
 
         No plugins/MCP/tools are enabled in the held candidate. In particular,
         an empty tool list is not used as revocation of an existing runtime.
+        Disable automatic continuations explicitly: SDK 1.0.28 defaults new
+        sessions to five. This is not D2 approval or an exclusive-session proof.
         """
         return {
             "working_directory": self.working_directory,
@@ -280,6 +282,11 @@ class RuntimeSpec:
             "enable_session_store": False, "enable_session_telemetry": False,
             "skip_embedding_retrieval": True, "enable_skills": False,
             "plugin_directories": [], "mcp_servers": {}, "available_tools": [],
+            # Explicit discovery roots are independent of config discovery.
+            # No invented role roster or inherited custom-agent tool grants.
+            "agent_directories": [], "skill_directories": [],
+            "instruction_directories": [], "hook_directories": [],
+            "autopilot": {"continuation_enabled": False, "max_continues": 0},
         }
 
 
@@ -331,7 +338,7 @@ async def start_native_runtime(
 ) -> Readiness:
     """Held launcher: no SDK import/client, token discovery, files or process.
 
-    SDK 1.0.24 injects client github_token into COPILOT_SDK_AUTH_TOKEN *after*
+    SDK 1.0.28 injects client github_token into COPILOT_SDK_AUTH_TOKEN *after*
     env replacement. Reject that option, including empty strings, before startup.
     No per-session token/proxy workaround. No caller-supplied readiness switch.
     """

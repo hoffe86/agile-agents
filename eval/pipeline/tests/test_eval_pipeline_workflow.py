@@ -191,7 +191,7 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         job = self.workflow["jobs"]["native-qualification"]
         steps = {step.get("name"): step for step in job["steps"]}
         self.assertIn(
-            'COPILOT_CLI_EXTRACT_DIR=$RUNNER_TEMP/native-runtime-1.0.101',
+            'COPILOT_CLI_EXTRACT_DIR=$RUNNER_TEMP/native-runtime-1.0.105',
             steps["Set qualification paths"]["run"],
         )
         download = steps["Download hash-verified evaluation wheels"]["run"]
