@@ -1989,5 +1989,599 @@ class NativeToolDiagnosticTests(unittest.TestCase):
                 })
 
 
+class NativeFileComparisonTests(unittest.TestCase):
+    """Execute the coroutine with immediate typed RPC doubles, never an event loop."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name).resolve()
+        (self.root / "workspace").mkdir()
+        (self.root / "protected").mkdir()
+        self.target = self.root / "workspace" / "comparison.txt"
+        self.marker = "invented-comparison-marker"
+        self.target.write_text(self.marker, encoding="utf-8")
+        (self.root / "protected" / "control-plane.txt").write_text(
+            "invented-protected-marker", encoding="utf-8")
+        self.report = {"status": "fail", "check": "native_file_denial",
+                       "reason": "explicit_native_denial_required"}
+        self.options = []
+        self.calls = []
+        self.decisions = {}
+        self.in_bound = False
+        self.fault = None
+        self.overrides = {}
+        self.noise = None
+        self.native_callback = False
+        self.callback_control_requests = True
+        self.allowed = True
+        self.on_event = Mock()
+        self.client = SimpleNamespace(create_session=self.create_session,
+                                      delete_session=self.delete_session)
+
+    async def bounded(self, awaitable):
+        self.assertFalse(self.in_bound)
+        self.in_bound = True
+        try:
+            return await awaitable
+        finally:
+            self.in_bound = False
+
+    def record(self, case, operation, value=None):
+        self.assertTrue(self.in_bound, f"unbounded RPC: {operation}")
+        self.calls.append((case, operation, value))
+        if self.fault == (case, operation):
+            raise TimeoutError("invented timeout, never relay")
+
+    async def delete_session(self, session_id):
+        case = next(native.COMPARISON_CASES[i] for i, options in enumerate(self.options)
+                    if options["session_id"] == session_id)
+        self.record(case, "delete", session_id)
+
+    async def create_session(self, **options):
+        from copilot import CopilotClient
+        from copilot.rpc import (
+            ModeSetRequest, PermissionDecisionReject, PermissionPathsAllowedCheckParams,
+            PermissionPathsAllowedCheckResult, PermissionsConfigureParams,
+            PermissionsGetModeResult, ToolResultExpanded, ToolsExecuteRequest,
+        )
+        from copilot.session_events import PermissionMode, PermissionRequestRead, SessionMode
+
+        inspect.signature(CopilotClient.create_session).bind(None, **options)
+        case = native.COMPARISON_CASES[len(self.options)]
+        self.options.append(options)
+        self.record(case, "create", options["session_id"])
+        callback = options["on_permission_request"]
+        context = {"session_id": options["session_id"]}
+
+        async def configure(request):
+            self.assertIs(type(request), PermissionsConfigureParams)
+            self.record(case, "configure", request.to_dict())
+
+        async def set_mode(request):
+            self.assertIs(type(request), ModeSetRequest)
+            self.record(case, "set_mode", request.to_dict())
+
+        async def mode():
+            self.record(case, "get_mode")
+            return SessionMode.PLAN
+
+        async def permission_mode():
+            self.record(case, "get_permission_mode")
+            return PermissionsGetModeResult(mode=PermissionMode.MANUAL)
+
+        async def allowed(request):
+            self.assertIs(type(request), PermissionPathsAllowedCheckParams)
+            self.record(case, "allowed", request.to_dict())
+            return PermissionPathsAllowedCheckResult(allowed=self.allowed)
+
+        async def initialize():
+            self.record(case, "initialize")
+            # Requests outside execution must never get a grant.
+            result = callback(PermissionRequestRead(intention="fixture", path=str(self.target)), context)
+            self.assertIs(type(result), PermissionDecisionReject)
+
+        async def execute(request):
+            self.assertIs(type(request), ToolsExecuteRequest)
+            self.record(case, "execute", request.to_dict())
+            if self.noise is not None:
+                self.noise(case, callback, context, request)
+            if ((case != "native_deny" or self.native_callback)
+                    and (case != "callback_deny" or self.callback_control_requests)):
+                decision = callback(PermissionRequestRead(
+                    intention="fixture", path=request.arguments["path"]), context)
+                self.decisions[case] = decision.to_dict()
+            wire = self.overrides.get(case, {
+                "permit": {"resultType": "success", "textResultForLlm": self.marker},
+                "native_deny": {"resultType": "failure", "textResultForLlm": "",
+                                "error": "Is a sandbox denied path."},
+                "missing": {"resultType": "failure", "textResultForLlm": "",
+                            "error": "Synthetic file does not exist"},
+                "callback_deny": {"resultType": "denied", "textResultForLlm": "",
+                                  "error": "Synthetic callback refusal"},
+            }[case])
+            # Canonical wire JSON is what pinned ToolsApi.execute actually returns.
+            if isinstance(wire, dict) and wire.get("resultType") in native.TOOL_RESULT_KINDS:
+                return ToolResultExpanded.from_dict(wire).to_dict()
+            return wire
+
+        async def abort():
+            self.record(case, "abort")
+
+        async def disconnect():
+            self.record(case, "disconnect")
+            result = callback(PermissionRequestRead(intention="fixture", path=str(self.target)), context)
+            self.assertIs(type(result), PermissionDecisionReject)
+
+        return SimpleNamespace(
+            session_id=options["session_id"], abort=abort, disconnect=disconnect,
+            rpc=SimpleNamespace(
+                permissions=SimpleNamespace(
+                    configure=configure, get_mode=permission_mode,
+                    paths=SimpleNamespace(is_path_within_allowed_directories=allowed)),
+                mode=SimpleNamespace(set=set_mode, get=mode),
+                tools=SimpleNamespace(initialize_and_validate=initialize, execute=execute)),
+        )
+
+    def run_comparison(self):
+        coroutine = native.compare_native_file_policy(
+            self.client, self.root, self.report, self.bounded, self.on_event)
+        try:
+            coroutine.send(None)
+        except StopIteration as completed:
+            return completed.value
+        finally:
+            coroutine.close()
+        self.fail("offline doubles must not suspend or create an event loop")
+
+    def public_report(self):
+        return native.safe_failure_report(
+            json.dumps(self.report), root=self.root, protected_marker="invented-protected-marker",
+            comparison_marker=self.marker)
+
+    def test_same_file_and_bytes_with_only_denied_paths_policy_difference(self):
+        self.native_callback = True
+        self.run_comparison()
+        self.assertEqual(self.target.read_text(encoding="utf-8"), self.marker)
+        permit, deny = self.options[:2]
+        self.assertNotEqual(permit["session_id"], deny["session_id"])
+        comparable = lambda options: {
+            key: value.to_dict() if callable(getattr(value, "to_dict", None)) else
+            value.to_list() if key == "available_tools" else value
+            for key, value in options.items()
+            if key not in ("session_id", "on_permission_request")
+        }
+        a, b = comparable(permit), comparable(deny)
+        self.assertEqual(a["sandbox_config"]["userPolicy"]["filesystem"]["deniedPaths"], [])
+        self.assertEqual(b["sandbox_config"]["userPolicy"]["filesystem"]["deniedPaths"],
+                         [str(self.target)])
+        b["sandbox_config"]["userPolicy"]["filesystem"]["deniedPaths"] = []
+        self.assertEqual(a, b)
+        requests = [value for _, operation, value in self.calls if operation == "execute"]
+        self.assertEqual(requests[0], requests[1])
+        self.assertEqual(self.decisions["permit"], {"kind": "approve-once"})
+        self.assertEqual(self.decisions["native_deny"], self.decisions["permit"])
+        configured = [value for _, operation, value in self.calls if operation == "configure"]
+        self.assertEqual(configured, [configured[0]] * 4)
+        self.assertEqual(self.report["file_comparison"]["permit"]["allowed_directory"], "yes")
+        self.assertEqual(self.report["file_comparison"]["native_deny"]["allowed_directory"], "yes")
+
+    def test_missing_and_callback_controls_are_separate_and_do_not_claim_native_denial(self):
+        self.run_comparison()
+        cases = self.report["file_comparison"]
+        self.assertEqual(cases["native_deny"]["callback"], "not_requested")
+        self.assertTrue(cases["native_deny"]["sandbox_error_exact"])
+        self.assertEqual(cases["missing"]["target"], "absent_file")
+        self.assertEqual(cases["missing"]["callback"], "approved")
+        self.assertFalse(cases["missing"]["sandbox_error_exact"])
+        self.assertEqual(cases["callback_deny"]["callback"], "rejected")
+        self.assertEqual(self.decisions["callback_deny"], {
+            "kind": "reject", "feedback": "native_check_denied",
+        })
+        self.assertFalse(cases["callback_deny"]["sandbox_error_exact"])
+        self.assertEqual(self.options[2]["sandbox_config"], self.options[0]["sandbox_config"])
+        self.assertEqual(self.options[3]["sandbox_config"], self.options[0]["sandbox_config"])
+        self.assertFalse((self.root / "workspace" / "comparison-missing.txt").exists())
+        self.assertNotIn(self.marker, json.dumps(self.public_report()))
+        self.assertNotIn(str(self.root), json.dumps(self.public_report()))
+
+    def test_all_controls_finish_but_original_generic_failure_gate_still_fails(self):
+        self.overrides["native_deny"] = {
+            "resultType": "failure", "textResultForLlm": "", "error": "Unrelated synthetic failure",
+        }
+        result = self.run_comparison()
+        self.assertEqual(list(self.report["file_comparison"]), list(native.COMPARISON_CASES))
+        self.assertFalse(self.report["file_comparison"]["native_deny"]["sandbox_error_exact"])
+        with self.assertRaisesRegex(native.CheckFailure, "explicit_native_denial_required"):
+            native.require_denial(result)
+        self.assertEqual(self.public_report()["status"], "fail")
+
+    def test_comparison_is_wired_before_old_tool_and_file_gates(self):
+        source = inspect.getsource(native.native_checks)
+        self.assertLess(source.index("await compare_native_file_policy("),
+                        source.index('report["check"] = "native_toolset"'))
+        self.assertLess(source.index("await compare_native_file_policy("),
+                        source.index("require_positive_read("))
+        self.assertLess(source.index("await compare_native_file_policy("),
+                        source.index("require_denial(comparison_result, report)"))
+        self.assertLess(source.index("require_denial(comparison_result, report)"),
+                        source.index('report["check"] = "native_toolset"'))
+        self.assertIn("await asyncio.wait_for(awaitable, RPC_TIMEOUT)", source)
+
+    def test_all_owned_sessions_are_aborted_disconnected_deleted_on_completion(self):
+        self.run_comparison()
+        for case in native.COMPARISON_CASES:
+            with self.subTest(case=case):
+                operations = [operation for name, operation, _ in self.calls if name == case]
+                self.assertEqual(operations[-3:], ["abort", "disconnect", "delete"])
+        self.assertEqual(self.report["comparison_cleanup"], "complete")
+
+    def test_native_leak_has_priority_over_every_result_kind_and_stops_controls(self):
+        for kind in native.TOOL_RESULT_KINDS:
+            with self.subTest(kind=kind):
+                self.options.clear()
+                self.calls.clear()
+                self.overrides["native_deny"] = {
+                    "resultType": kind, "textResultForLlm": "", "error": self.marker,
+                }
+                with self.assertRaisesRegex(native.CheckFailure, "^comparison_canary_leaked$"):
+                    self.run_comparison()
+                self.assertEqual(len(self.options), 2)
+                self.assertEqual([op for case, op, _ in self.calls if case == "native_deny"][-3:],
+                                 ["abort", "disconnect", "delete"])
+                self.assertNotIn(self.marker, json.dumps(self.report))
+
+    def test_missing_positive_and_malformed_results_stop_fail_closed(self):
+        for wire in (
+            {"resultType": "failure", "textResultForLlm": "", "error": "not readable"},
+            {"resultType": "success", "textResultForLlm": "not the marker"},
+            {"resultType": "unknown"}, None,
+        ):
+            with self.subTest(wire=wire):
+                self.options.clear()
+                self.overrides["permit"] = wire
+                with self.assertRaises(native.CheckFailure):
+                    self.run_comparison()
+                self.assertEqual(len(self.options), 1)
+
+    def test_timeout_at_every_new_rpc_still_deletes_owned_id_and_stops(self):
+        for operation in ("create", "configure", "set_mode", "get_mode",
+                          "get_permission_mode", "initialize", "allowed", "execute"):
+            with self.subTest(operation=operation):
+                self.options.clear()
+                self.calls.clear()
+                self.fault = ("permit", operation)
+                with self.assertRaises(TimeoutError):
+                    self.run_comparison()
+                self.assertEqual(len(self.options), 1)
+                self.assertEqual(self.calls[-1][:2], ("permit", "delete"))
+                if operation != "create":
+                    self.assertEqual([op for _, op, _ in self.calls][-3:],
+                                     ["abort", "disconnect", "delete"])
+
+    def run_wire_comparison(self, case, wire):
+        # ToolsApi.execute returns raw wire data. Preserve the existing typed
+        # fixture's callback/bookkeeping, but bypass its result normalization.
+        self.options.clear()
+        self.calls.clear()
+
+        async def create_session(**options):
+            session = await self.create_session(**options)
+            current_case = native.COMPARISON_CASES[len(self.options) - 1]
+            execute = session.rpc.tools.execute
+
+            async def execute_wire(request):
+                result = await execute(request)
+                return wire if current_case == case else result
+
+            session.rpc.tools.execute = execute_wire
+            return session
+
+        with patch.object(self.client, "create_session", side_effect=create_session):
+            return self.run_comparison()
+
+    def assert_wire_failure(self, case, wire, reason):
+        with self.assertRaisesRegex(native.CheckFailure, f"^{reason}$"):
+            self.run_wire_comparison(case, wire)
+        completed_cases = native.COMPARISON_CASES[:native.COMPARISON_CASES.index(case) + 1]
+        self.assertEqual(list(self.report["file_comparison"]), list(completed_cases))
+        self.assertEqual(len(self.options), len(completed_cases))
+        self.assertEqual(
+            [(name, op) for name, op, _ in self.calls
+             if op in ("abort", "disconnect", "delete")],
+            [(name, op) for name in completed_cases for op in ("abort", "disconnect", "delete")])
+        self.assertNotIn("kind", self.report["file_comparison"][case])
+        self.assertNotIn("error", self.report["file_comparison"][case])
+        self.assertEqual(self.report["comparison_cleanup"],
+                         "failed" if self.fault is not None else "complete")
+
+    def test_malformed_wire_fields_fail_closed_in_every_control(self):
+        invalid_fields = (
+            [(field, value) for field in ("textResultForLlm", "resultType")
+             for value in (None, [], {}, False, 7)]
+            + [("resultType", "unknown")]
+            + [("error", value) for value in ([], {"unexpected": "shape"}, False, 7)]
+        )
+        for case in native.COMPARISON_CASES:
+            for field, value in invalid_fields:
+                with self.subTest(case=case, field=field, value=value):
+                    wire = {"resultType": "success" if case == "permit" else "failure",
+                            "textResultForLlm": self.marker if case == "permit" else "",
+                            field: value}
+                    self.assert_wire_failure(case, wire, "comparison_malformed_result")
+
+    def test_missing_required_wire_fields_fail_closed_in_every_control(self):
+        for case in native.COMPARISON_CASES:
+            for field in ("resultType", "textResultForLlm"):
+                with self.subTest(case=case, field=field):
+                    wire = {"resultType": "success" if case == "permit" else "failure",
+                            "textResultForLlm": self.marker if case == "permit" else ""}
+                    del wire[field]
+                    self.assert_wire_failure(case, wire, "comparison_malformed_result")
+
+    def test_explicit_denied_malformed_wire_cannot_reach_denial_gate(self):
+        for case in native.COMPARISON_CASES:
+            for fields in ({"textResultForLlm": []}, {"error": {"unexpected": "shape"}}):
+                with self.subTest(case=case, fields=fields):
+                    wire = {"resultType": "denied", "textResultForLlm": "", **fields}
+                    # Demonstrate why comparison validation must precede the
+                    # unchanged classification-only qualification predicate.
+                    native.require_denial(wire)
+                    self.assert_wire_failure(case, wire, "comparison_malformed_result")
+
+    def test_comparison_canary_in_malformed_wire_precedes_validation(self):
+        for case in ("native_deny", "missing", "callback_deny"):
+            for field in ("textResultForLlm", "error", "resultType", "structuredContent"):
+                with self.subTest(case=case, field=field):
+                    wire = {"resultType": "denied", "textResultForLlm": [],
+                            field: {"nested": [self.marker]}}
+                    self.assert_wire_failure(case, wire, "comparison_canary_leaked")
+
+    def test_protected_canary_in_malformed_wire_precedes_validation_in_every_control(self):
+        for case in native.COMPARISON_CASES:
+            for field in ("textResultForLlm", "error", "resultType", "structuredContent"):
+                with self.subTest(case=case, field=field):
+                    wire = {"resultType": "denied", "textResultForLlm": [],
+                            field: {"nested": ["invented-protected-marker", self.marker]}}
+                    self.assert_wire_failure(case, wire, "protected_canary_leaked")
+
+    def test_optional_wire_error_absent_null_or_string_is_valid_in_every_control(self):
+        from copilot.rpc import ToolResultExpanded
+
+        self.assertEqual(native.metadata.version("github-copilot-sdk"), native.SDK_VERSION)
+        for case in native.COMPARISON_CASES:
+            for fields in ({}, {"error": None}, {"error": ""}, {"error": "Synthetic failure"}):
+                with self.subTest(case=case, fields=fields):
+                    kind = ("success" if case == "permit" else
+                            "denied" if case == "callback_deny" else "failure")
+                    wire = {"resultType": kind,
+                            "textResultForLlm": self.marker if case == "permit" else "", **fields}
+                    parsed = ToolResultExpanded.from_dict(wire)
+                    self.assertEqual(parsed.error, fields.get("error"))
+                    self.run_wire_comparison(case, wire)
+                    self.assertEqual(list(self.report["file_comparison"]), list(native.COMPARISON_CASES))
+                    self.assertEqual(self.report["file_comparison"][case]["kind"], kind)
+                    self.assertEqual(self.report["comparison_cleanup"], "complete")
+
+    def test_malformed_wire_failure_survives_cleanup_timeouts_in_every_control(self):
+        for case in native.COMPARISON_CASES:
+            for operation in ("abort", "disconnect", "delete"):
+                with self.subTest(case=case, operation=operation):
+                    self.fault = (case, operation)
+                    self.assert_wire_failure(
+                        case, {"resultType": "denied", "textResultForLlm": [],
+                               "error": {"unexpected": "shape"}}, "comparison_malformed_result")
+
+    def test_cleanup_timeout_attempts_remaining_cleanup_and_is_not_success(self):
+        for operation in ("abort", "disconnect", "delete"):
+            with self.subTest(operation=operation):
+                self.options.clear()
+                self.calls.clear()
+                self.fault = ("permit", operation)
+                with self.assertRaisesRegex(native.CheckFailure, "^comparison_cleanup_failed$"):
+                    self.run_comparison()
+                self.assertEqual([op for _, op, _ in self.calls][-3:],
+                                 ["abort", "disconnect", "delete"])
+                self.assertEqual(self.report["comparison_cleanup"], "failed")
+                self.assertEqual(len(self.options), 1)
+
+    def test_absent_callback_cannot_masquerade_as_callback_denial(self):
+        self.callback_control_requests = False
+        with self.assertRaisesRegex(native.CheckFailure, "^comparison_control_failed$"):
+            self.run_comparison()
+        self.assertEqual(self.report["file_comparison"]["callback_deny"]["callback"], "not_requested")
+        self.assertEqual(self.calls[-1][:2], ("callback_deny", "delete"))
+
+    def test_allowed_directory_mismatch_stops_before_read(self):
+        self.allowed = False
+        with self.assertRaisesRegex(native.CheckFailure, "^comparison_control_failed$"):
+            self.run_comparison()
+        self.assertNotIn("execute", [op for _, op, _ in self.calls])
+
+    def test_late_cross_phase_callback_is_rejected_without_contaminating_next_case(self):
+        from copilot.session_events import PermissionRequestRead
+
+        def late(case, _callback, _context, _request):
+            if case == "native_deny":
+                previous = self.options[0]
+                decision = previous["on_permission_request"](
+                    PermissionRequestRead(intention="late", path=str(self.target)),
+                    {"session_id": previous["session_id"]})
+                self.assertEqual(decision.to_dict()["kind"], "reject")
+        self.noise = late
+        self.run_comparison()
+        self.assertEqual(self.report["file_comparison"]["permit"]["callback"], "approved")
+        self.assertEqual(self.report["file_comparison"]["native_deny"]["callback"], "not_requested")
+
+    def test_active_wrong_session_noise_is_rejected_and_separately_recorded(self):
+        from copilot.session_events import PermissionRequestRead
+
+        def noise(_case, callback, _context, request):
+            decision = callback(PermissionRequestRead(
+                intention="noise", path=request.arguments["path"]), {"session_id": "unowned"})
+            self.assertEqual(decision.to_dict()["kind"], "reject")
+        self.noise = noise
+        with self.assertRaisesRegex(native.CheckFailure, "^comparison_control_failed$"):
+            self.run_comparison()
+        case = self.report["file_comparison"]["permit"]
+        self.assertEqual(case["callback"], "approved")
+        self.assertTrue(case["callback_other"])
+        self.assertTrue(case["callback_session_mismatch"])
+
+    def test_bypass_grants_and_non_target_requests_are_never_approved(self):
+        from copilot.session_events import PermissionRequestRead
+
+        for overrides in (
+            {"path": str(self.root)}, {"resolved_path": str(self.root)},
+            {"request_sandbox_bypass": True}, {"managed_approval_required": True},
+            {"request_sandbox_bypass_reason": "invented"},
+            {"sandbox_path_grant": {}}, {"request_sandbox_bypass": 0},
+        ):
+            with self.subTest(overrides=overrides):
+                self.options.clear()
+                def noise(_case, callback, context, _request):
+                    decision = callback(PermissionRequestRead(**{
+                        "intention": "noise", "path": str(self.target), **overrides,
+                    }), context)
+                    self.assertEqual(decision.to_dict()["kind"], "reject")
+                self.noise = noise
+                with self.assertRaisesRegex(native.CheckFailure, "^comparison_control_failed$"):
+                    self.run_comparison()
+
+    def test_synthetic_errors_are_redacted_bounded_and_rescanned_by_parent(self):
+        self.overrides["native_deny"] = {
+            "resultType": "failure", "textResultForLlm": "",
+            "error": str(self.target) + "\n::error::" + "x" * 2500,
+        }
+        self.run_comparison()
+        error = self.public_report()["file_comparison"]["native_deny"]["error"]
+        self.assertEqual(len(error["text"]), native.ERROR_TEXT_LIMIT)
+        self.assertNotIn(str(self.root), error["text"])
+        self.assertNotIn("::", error["text"])
+        self.report["file_comparison"]["native_deny"]["error"] = {
+            "source": "error", "text": "x" * 2045 + "invented-parent-only-value",
+        }
+        with patch.dict(native.os.environ, {"GITHUB_TOKEN": "invented-parent-only-value"}):
+            self.assertEqual(self.public_report()["file_comparison"]["native_deny"]["error"],
+                             {"suppressed": "credential_material"})
+
+    def test_parent_original_marker_cannot_be_replaced_by_child_report(self):
+        self.run_comparison()
+        self.report["file_comparison"]["native_deny"]["error"] = {
+            "source": "error", "text": self.marker,
+        }
+        self.report["comparison_marker"] = "invented-replacement"
+        public = self.public_report()
+        self.assertEqual(public["reason"], "comparison_canary_leaked")
+        self.assertNotIn(self.marker, json.dumps(public))
+        self.assertNotIn("comparison_marker", public)
+
+    def test_parent_rejects_malformed_and_unknown_diagnostic_values(self):
+        self.report["file_comparison"] = {
+            "permit": {"kind": [], "marker_present": 1, "read_success": "true",
+                       "callback": "raw", "denied_paths": [str(self.target)],
+                       "error": {"source": "raw", "text": "never relay"}, "raw": self.marker},
+            "unexpected": {"error": self.marker},
+        }
+        self.assertEqual(self.public_report()["file_comparison"], {
+            "permit": {"error": {"suppressed": "malformed"}},
+        })
+
+    def test_leaks_in_text_and_nested_result_fields_stop_before_kind_checks(self):
+        for field in ("textResultForLlm", "sessionLog", "structuredContent", "toolTelemetry"):
+            with self.subTest(field=field):
+                self.options.clear()
+                self.overrides["native_deny"] = {
+                    "resultType": "failure", "textResultForLlm": "",
+                    field: self.marker if field in ("textResultForLlm", "sessionLog")
+                    else {"nested": [self.marker]},
+                }
+                with self.assertRaisesRegex(native.CheckFailure, "^comparison_canary_leaked$"):
+                    self.run_comparison()
+                self.assertEqual(len(self.options), 2)
+
+    def test_present_missing_fixture_is_not_an_io_error_control(self):
+        (self.root / "workspace" / "comparison-missing.txt").write_text(
+            "invented fixture", encoding="utf-8")
+        with self.assertRaisesRegex(native.CheckFailure, "^comparison_control_failed$"):
+            self.run_comparison()
+        self.assertEqual(self.options, [])
+
+    def test_explicit_missing_path_denial_is_not_an_ordinary_io_failure_control(self):
+        self.overrides["missing"] = {"resultType": "denied", "textResultForLlm": ""}
+        with self.assertRaisesRegex(native.CheckFailure, "^comparison_control_failed$"):
+            self.run_comparison()
+        self.assertEqual(len(self.options), 3)
+        self.assertEqual(self.calls[-1][:2], ("missing", "delete"))
+
+    def test_new_sessions_have_no_ambient_sources_hooks_or_bypass_permissions(self):
+        self.run_comparison()
+        for options in self.options:
+            with self.subTest(session=len(options)):
+                self.assertFalse(options["enable_config_discovery"])
+                self.assertFalse(options["enable_skills"])
+                self.assertEqual(options["available_tools"].to_list(), ["builtin:view"])
+                self.assertEqual(options["mcp_servers"], {})
+                self.assertEqual(options["disabled_mcp_servers"], ["*"])
+                for key in ("plugin_directories", "agent_directories", "skill_directories",
+                            "instruction_directories", "hook_directories"):
+                    self.assertEqual(options[key], [])
+                for key in ("hooks", "github_token", "github_token_provider", "provider", "tools"):
+                    self.assertNotIn(key, options)
+                self.assertFalse(options["sandbox_config"].allow_bypass)
+                self.assertFalse(options["sandbox_config"].allow_dev_tool_access)
+                self.assertFalse(options["sandbox_config"].user_policy.network.allow_outbound)
+                self.assertFalse(options["sandbox_config"].user_policy.network.allow_local_network)
+                permissions = options["managed_settings"].permissions
+                self.assertEqual(permissions.disable_bypass_permissions_mode, "disable")
+                self.assertTrue(permissions.disable_assisted_permissions_mode)
+                self.assertEqual(permissions.limit_to, [])
+
+    def test_parent_keeps_original_comparison_marker_even_if_fixture_changes(self):
+        originals = []
+
+        def launch(_arguments, **kwargs):
+            fixture = kwargs["cwd"] / "comparison.txt"
+            original = fixture.read_text(encoding="utf-8")
+            originals.append(original)
+            fixture.write_text("invented-replacement", encoding="utf-8")
+            self.assertNotIn(original, kwargs["env"].values())
+            self.assertNotIn("GITHUB_TOKEN", kwargs["env"])
+            process = Mock(pid=12345, returncode=1)
+            process.communicate.return_value = (json.dumps({
+                "status": "fail", "check": "native_file_denial",
+                "reason": "explicit_native_denial_required",
+                "file_comparison": {"native_deny": {
+                    "error": {"source": "error", "text": original},
+                }},
+            }), None)
+            return process
+
+        with patch.object(native.subprocess, "Popen", side_effect=launch):
+            with patch.object(native, "kill_owned_group") as kill:
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue())["reason"], "comparison_canary_leaked")
+        self.assertNotIn(originals[0], output.getvalue())
+        kill.assert_called_once()
+
+    def test_comparison_diagnostics_are_omitted_from_success_stdout(self):
+        expected = {"status": "pass", "check": "bounded_cleanup",
+                    "sdk": native.SDK_VERSION, "publisher_cli": native.CLI_VERSION,
+                    "runtime": native.CLI_VERSION, "protocol": 3, "passed": list(native.CHECKS)}
+        process = Mock(pid=12345, returncode=0)
+        process.communicate.return_value = (json.dumps({
+            **expected, "file_comparison": {"permit": {"marker_present": True}},
+            "comparison_cleanup": "complete",
+        }), None)
+        with patch.object(native.subprocess, "Popen", return_value=process):
+            with patch.object(native, "kill_owned_group"):
+                with redirect_stdout(io.StringIO()) as output:
+                    status = native.run_bounded(Path("/synthetic/runtime"))
+        self.assertEqual(status, 0)
+        self.assertEqual(json.loads(output.getvalue()), expected)
+
+
 if __name__ == "__main__":
     unittest.main()

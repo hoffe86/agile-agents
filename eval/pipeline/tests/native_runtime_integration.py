@@ -40,6 +40,7 @@ SHELL_OUTPUT_MARKER = "native-unexpected-shell"
 TOOL_RESULT_KINDS = ("denied", "failure", "rejected", "success", "timeout")
 POSITIVE_READ_CALL_ID = "native-positive-read"
 PROTECTED_READ_CALL_ID = "native-protected-read"
+COMPARISON_CASES = ("permit", "native_deny", "missing", "callback_deny")
 ERROR_INPUT_LIMIT = 4096
 ERROR_TEXT_LIMIT = 2048
 CHILD_REPORT_LIMIT = 32768
@@ -263,6 +264,11 @@ def _protected_error(result: object, *, root: Path, protected_marker: str) -> di
     # Never inspect/serialize content, metadata, events, arguments or session logs.
     if type(result) is not dict or result.get("resultType") != "failure":
         return {"suppressed": "malformed"}
+    return _result_error(result, root=root, protected_marker=protected_marker)
+
+
+def _result_error(result: dict, *, root: Path, protected_marker: str) -> dict:
+    """Scrub only the two pinned error fields, never any successful read contents."""
     error, fallback = result.get("error"), result.get("textResultForLlm")
     for value in (error, fallback):
         if value is not None and type(value) is not str:
@@ -364,6 +370,8 @@ def run_bounded(runtime: Path) -> int:
         # supplied in its report or reread a potentially changed fixture afterward.
         protected_marker = uuid.uuid4().hex
         (root / "protected" / "control-plane.txt").write_text(protected_marker, encoding="utf-8")
+        comparison_marker = uuid.uuid4().hex
+        (root / "workspace" / "comparison.txt").write_text(comparison_marker, encoding="utf-8")
         env = isolated_environment(root)
         env[CANARY_NAME] = uuid.uuid4().hex  # synthetic; intentionally NOT in SDK env
         process = subprocess.Popen(
@@ -397,7 +405,9 @@ def run_bounded(runtime: Path) -> int:
         except (ValueError, RecursionError, CheckFailure):
             # A failed child already uses fixed stage/reason codes; retain only
             # allowlisted diagnostics, not its raw output.
-            report = safe_failure_report(output, root=root, protected_marker=protected_marker)
+            report = safe_failure_report(
+                output, root=root, protected_marker=protected_marker,
+                comparison_marker=comparison_marker)
             print(json.dumps(report, sort_keys=True))
             return 1
         print(json.dumps({key: report[key] for key in (
@@ -419,11 +429,14 @@ FAILURE_REASONS = (
     "unexpected_authentication",
     "native_file_positive_control_failed", "protected_canary_leaked",
     "permission_session_mismatch",
+    "comparison_control_failed", "comparison_malformed_result",
+    "comparison_canary_leaked", "comparison_cleanup_failed",
 )
 
 
 def safe_failure_report(output: str, *, root: Path | None = None,
-                        protected_marker: str | None = None) -> dict:
+                        protected_marker: str | None = None,
+                        comparison_marker: str | None = None) -> dict:
     report = {"status": "fail", "check": "invalid_child_report"}
     if type(output) is not str or len(output) > CHILD_REPORT_LIMIT:
         return report
@@ -541,6 +554,54 @@ def safe_failure_report(output: str, *, root: Path | None = None,
                                 safe_error["text"] = safe_error["text"][:ERROR_TEXT_LIMIT]
                     if safe_error is not None:
                         report["protected_error"] = safe_error
+            comparison = candidate.get("file_comparison")
+            if candidate.get("status") == "fail" and type(comparison) is dict:
+                safe_cases = {}
+                for case in COMPARISON_CASES:
+                    diagnostic = comparison.get(case)
+                    if type(diagnostic) is not dict:
+                        continue
+                    safe = {
+                        key: diagnostic[key] for key, values in {
+                            "kind": TOOL_RESULT_KINDS,
+                            "denied_paths": ("empty", "exact_target"),
+                            "target": ("same_file", "absent_file"),
+                            "allowed_directory": ("yes", "no", "unknown"),
+                            "callback": ("not_requested", "approved", "rejected", "mixed"),
+                        }.items() if type(diagnostic.get(key)) is str
+                        and diagnostic[key] in values
+                    }
+                    for key in ("marker_present", "read_success", "callback_other",
+                                "callback_session_mismatch", "sandbox_error_exact"):
+                        if type(diagnostic.get(key)) is bool:
+                            safe[key] = diagnostic[key]
+                    error = diagnostic.get("error")
+                    if type(error) is dict:
+                        safe_error = {"suppressed": "malformed"}
+                        if set(error) == {"suppressed"} and error["suppressed"] in ERROR_SUPPRESSIONS:
+                            safe_error = error
+                        elif (set(error) == {"source", "text"}
+                              and error["source"] in ("error", "textResultForLlm")):
+                            try:
+                                # Positive contents never enter diagnostics. Both original
+                                # parent-held markers remain forbidden in every error.
+                                safe_error = _scrub_native_error(
+                                    error["text"], root=root, protected_marker=comparison_marker)
+                                if "text" in safe_error:
+                                    safe_error = _scrub_native_error(
+                                        safe_error["text"], root=root,
+                                        protected_marker=protected_marker)
+                            except CheckFailure:
+                                report["reason"] = "comparison_canary_leaked"
+                                safe_error = {"suppressed": "malformed"}
+                            if "text" in safe_error:
+                                safe_error.update(source=error["source"],
+                                                  text=safe_error["text"][:ERROR_TEXT_LIMIT])
+                        safe["error"] = safe_error
+                    safe_cases[case] = safe
+                report["file_comparison"] = safe_cases
+                if candidate.get("comparison_cleanup") in ("complete", "failed"):
+                    report["comparison_cleanup"] = candidate["comparison_cleanup"]
             report["passed"] = [item for item in CHECKS
                                 if item in candidate.get("passed", [])]
             if candidate.get("sdk") == SDK_VERSION and candidate.get("publisher_cli") == CLI_VERSION:
@@ -551,6 +612,211 @@ def safe_failure_report(output: str, *, root: Path | None = None,
     except (ValueError, TypeError, RecursionError):
         pass
     return report
+
+
+async def compare_native_file_policy(client, root: Path, report: dict, bounded, on_event) -> dict:
+    """Four synthetic controls, not a denial classifier or a production grant."""
+    from copilot import ToolSet
+    from copilot.client import ManagedSettings, ManagedSettingsPermissions
+    from copilot.rpc import (
+        ModeSetRequest, PermissionDecisionApproveOnce, PermissionDecisionReject,
+        PermissionPathsAllowedCheckParams, PermissionPathsConfig, PermissionsConfigureParams,
+        SandboxConfig, SandboxConfigUserPolicy, SandboxConfigUserPolicyFilesystem,
+        SandboxConfigUserPolicyNetwork, ToolsExecuteRequest,
+    )
+    from copilot.session_events import PermissionMode, PermissionRequestRead, SessionMode
+
+    workspace = root / "workspace"
+    target = workspace / "comparison.txt"
+    require(target.is_absolute() and target.resolve(strict=True) == target and target.is_file(),
+            "comparison_control_failed")
+    marker = target.read_text(encoding="utf-8")
+    protected_marker = (root / "protected" / "control-plane.txt").read_text(encoding="utf-8")
+    missing = workspace / "comparison-missing.txt"
+    require(bool(marker) and not missing.exists() and not missing.is_symlink(),
+            "comparison_control_failed")
+    report["file_comparison"] = {}
+    report["comparison_cleanup"] = "complete"
+
+    async def run_case(case):
+        # A separate closure/window per owned session: a late callback can never
+        # borrow the next case's grant or contaminate its observation.
+        session_id = str(uuid.uuid4())
+        session = None
+        active = False
+        path = missing if case == "missing" else target
+        observation = {
+            "denied_paths": "exact_target" if case == "native_deny" else "empty",
+            "target": "absent_file" if case == "missing" else "same_file",
+            "callback": "not_requested", "callback_other": False,
+            "callback_session_mismatch": False,
+        }
+        report["file_comparison"][case] = observation
+
+        def permission(request, context):
+            decision = PermissionDecisionReject(feedback="native_check_denied")
+            if not active:
+                return decision
+            matched_session = context.get("session_id") == session_id
+            exact = (
+                matched_session and type(request) is PermissionRequestRead
+                and type(request.path) is str and request.path == str(path)
+                and request.resolved_path in (None, str(path))
+                and (request.managed_approval_required is None
+                     or request.managed_approval_required is False)
+                and (request.request_sandbox_bypass is None
+                     or request.request_sandbox_bypass is False)
+                and request.request_sandbox_bypass_reason is None
+                and request.sandbox_path_grant is None
+            )
+            if not matched_session:
+                observation["callback_session_mismatch"] = True
+            if not exact:
+                observation["callback_other"] = True
+                return decision
+            if case != "callback_deny":
+                # The missing-file control authorizes only the known-absent path;
+                # no directories, bypasses, tool arguments or alternate paths.
+                try:
+                    intact = (not missing.exists() and not missing.is_symlink()
+                              if case == "missing" else
+                              target.resolve(strict=True) == target and target.is_file()
+                              and target.read_text(encoding="utf-8") == marker)
+                except (OSError, RuntimeError):
+                    intact = False
+                if intact:
+                    decision = PermissionDecisionApproveOnce()
+            observed = (
+                "approved" if isinstance(decision, PermissionDecisionApproveOnce) else "rejected")
+            previous = observation["callback"]
+            observation["callback"] = (
+                observed if previous in ("not_requested", observed) else "mixed")
+            return decision
+
+        try:
+            require(target.read_text(encoding="utf-8") == marker
+                    and target.resolve(strict=True) == target,
+                    "comparison_control_failed")
+            # Pinned 1.0.24 create_session supports sandbox_config; there is no
+            # invented mutable-policy RPC. Only denied_paths differs for A/B.
+            session = await bounded(client.create_session(
+                session_id=session_id, working_directory=str(workspace),
+                config_directory=str(root / "state"), enable_config_discovery=False,
+                mcp_servers={}, disabled_mcp_servers=["*"], plugin_directories=[],
+                agent_directories=[], skill_directories=[], instruction_directories=[],
+                hook_directories=[], enable_skills=False,
+                available_tools=ToolSet().add_builtin(["view"]),
+                on_permission_request=permission, on_event=on_event,
+                managed_settings=ManagedSettings(permissions=ManagedSettingsPermissions(
+                    disable_bypass_permissions_mode="disable",
+                    disable_assisted_permissions_mode=True, limit_to=[],
+                )),
+                sandbox_config=SandboxConfig(
+                    enabled=True, allow_bypass=False, allow_dev_tool_access=False,
+                    user_policy=SandboxConfigUserPolicy(
+                        filesystem=SandboxConfigUserPolicyFilesystem(
+                            denied_paths=[str(target)] if case == "native_deny" else []),
+                        network=SandboxConfigUserPolicyNetwork(
+                            allow_outbound=False, allow_local_network=False),
+                    ),
+                ),
+            ))
+            require(session.session_id == session_id, "comparison_control_failed")
+            await bounded(session.rpc.permissions.configure(PermissionsConfigureParams(
+                approve_all_read_permission_requests=False,
+                approve_all_tool_permission_requests=False,
+                paths=PermissionPathsConfig(
+                    unrestricted=False, include_temp_directory=False, workspace_path=str(workspace)),
+            )))
+            await bounded(session.rpc.mode.set(ModeSetRequest(mode=SessionMode.PLAN)))
+            require(await bounded(session.rpc.mode.get()) == SessionMode.PLAN
+                    and (await bounded(session.rpc.permissions.get_mode())).mode == PermissionMode.MANUAL,
+                    "comparison_control_failed")
+            await bounded(session.rpc.tools.initialize_and_validate())
+            allowed = await bounded(session.rpc.permissions.paths.is_path_within_allowed_directories(
+                PermissionPathsAllowedCheckParams(path=str(path))))
+            observation["allowed_directory"] = (
+                "yes" if allowed.allowed is True else "no" if allowed.allowed is False else "unknown")
+            require(allowed.allowed is True, "comparison_control_failed")
+            active = True
+            try:
+                result = await bounded(session.rpc.tools.execute(ToolsExecuteRequest(
+                    name="view", arguments={"path": str(path)}, tool_call_id="native-comparison-read")))
+            finally:
+                active = False
+            # Scan all fields before judging shape/kind, including errors and
+            # structured results. The intentional positive is private, not logged.
+            try:
+                serialized = json.dumps(result)
+            except (TypeError, ValueError, RecursionError):
+                raise CheckFailure("comparison_malformed_result") from None
+            present = marker in serialized
+            observation["marker_present"] = present
+            require(protected_marker not in serialized, "protected_canary_leaked")
+            require(case == "permit" or not present, "comparison_canary_leaked")
+            # Pinned ToolResultExpanded requires string text and kind; error is
+            # optional/nullable. Diagnostic suppression cannot validate a control.
+            require(type(result) is dict
+                    and type(result.get("textResultForLlm")) is str
+                    and type(result.get("resultType")) is str
+                    and result["resultType"] in TOOL_RESULT_KINDS
+                    and (result.get("error") is None or type(result["error"]) is str),
+                    "comparison_malformed_result")
+            kind = result["resultType"]
+            observation.update(
+                kind=kind, read_success=kind == "success" and present,
+                sandbox_error_exact=result.get("error") == "Is a sandbox denied path.",
+            )
+            if kind != "success":
+                # Never forward a positive canary embedded in a failed response.
+                if present:
+                    raise CheckFailure("comparison_control_failed")
+                observation["error"] = _result_error(result, root=root, protected_marker=marker)
+            require(not observation["callback_session_mismatch"]
+                    and not observation["callback_other"], "comparison_control_failed")
+            require(target.read_text(encoding="utf-8") == marker
+                    and not missing.exists() and not missing.is_symlink(),
+                    "comparison_control_failed")
+            if case == "permit":
+                require(observation["read_success"], "comparison_control_failed")
+            elif case == "missing":
+                require(kind == "failure", "comparison_control_failed")
+            else:
+                require(kind in ("denied", "rejected", "failure"), "comparison_control_failed")
+            if case == "callback_deny":
+                require(observation["callback"] == "rejected", "comparison_control_failed")
+            else:
+                require(observation["callback"] in ("not_requested", "approved"),
+                        "comparison_control_failed")
+            # Generic failure here is recorded as experimental data ONLY. The
+            # caller applies the unchanged require_denial predicate after ALL
+            # controls. A different/generic error cannot make qualification pass.
+            return result
+        finally:
+            active = False
+            cleanup_failed = False
+            if session is not None:
+                for operation in (session.abort, session.disconnect):
+                    try:
+                        await bounded(operation())
+                    except Exception:
+                        cleanup_failed = True
+            # Delete even if create timed out after the runtime allocated the ID.
+            try:
+                await bounded(client.delete_session(session_id))
+            except Exception:
+                cleanup_failed = True
+            if cleanup_failed:
+                report["comparison_cleanup"] = "failed"
+                if sys.exc_info()[0] is None:
+                    raise CheckFailure("comparison_cleanup_failed")
+
+    native_result = {}
+    for case in COMPARISON_CASES:
+        result = await run_case(case)
+        if case == "native_deny":
+            native_result = result
+    return native_result
 
 
 async def native_checks(runtime: Path, root: Path) -> dict:
@@ -747,6 +1013,13 @@ async def native_checks(runtime: Path, root: Path) -> dict:
                 workspace_path=str(workspace)),
         )))
         report["passed"].append(report["check"])
+
+        # Run before the older tool/file gates, which may fail on this pin.
+        # Comparison observations cannot make any existing stage pass.
+        report["check"] = "native_file_denial"
+        comparison_result = await compare_native_file_policy(client, root, report, bounded, on_event)
+        require(not model_activity.is_set(), "comparison_control_failed")
+        require_denial(comparison_result, report)
 
         report["check"] = "native_toolset"
         # exit_plan_mode is mode-dependent; query a PLAN snapshot, not the

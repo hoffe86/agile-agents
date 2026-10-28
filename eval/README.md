@@ -946,6 +946,78 @@ The earlier shell-result uncertainty is separate from the positive-read failure
 reported by run 40518050911.
 No accepted denial values, native tool grants, or live-readiness holds changed.
 
+#### Experimental same-file filesystem-policy comparison
+
+The opt-in native driver now runs four **fresh, owned sessions** before the older
+tool/file gates. This avoids losing the controls when an earlier probe returns
+generic `failure`. No workflow, SDK/runtime pin, production controller, credential
+environment or readiness hold changes. This experiment is **not yet verified on
+the hosted runtime**; publication and dispatch remain separate authorized steps.
+
+The parent writes a separate synthetic `comparison.txt` marker and retains its
+original value. It is not the protected control-plane marker: intentionally
+reading it in the positive control must not look like a protected-data leak.
+
+| Case | File / filesystem `denied_paths` | Exact read callback |
+|---|---|---|
+| `permit` | Existing comparison file / empty | Approve once, only during this owned session's read |
+| `native_deny` | **Same absolute file and bytes** / that exact file | Same approval decision as `permit`, if requested |
+| `missing` | Known-absent sibling in the same workspace / empty | Approve only that absent path, if requested |
+| `callback_deny` | Same existing comparison file / empty | Explicitly reject; an observed exact callback is required |
+
+The A/B sessions have identical working/config directories, PLAN mode, manual
+permission mode, permission configuration, native `view` tool and arguments,
+network restrictions, and no hooks, skills, discovery or ambient sources.
+Session IDs and callback closures necessarily differ; the **only policy change**
+between `permit` and `native_deny` is filesystem `denied_paths`. Each case checks
+allowed-directory membership is `true`; no directory grant or bypass is added.
+The host verifies fixture bytes remain unchanged and the missing path remains
+absent. Fresh sessions use the pinned SDK 1.0.24 `create_session(sandbox_config=...)`
+and typed filesystem policy, not an invented policy-mutation RPC.
+
+Each per-session callback has its own execution window. Late requests are
+rejected without altering frozen observations. Wrong-session/other requests are
+rejected, recorded separately, and invalidate the control. `not_requested` is
+reported honestly, not rewritten to “approved” or “denied.” In particular, if
+the runtime auto-authorizes an in-workspace read and never asks the callback,
+the callback-denial control **fails**, rather than claiming that a denial was
+tested. This is a remaining hosted-evidence question.
+
+Failure-only `file_comparison` diagnostics expose fixed case/policy labels,
+result kind, allowed-directory membership, marker-presence and read-success
+booleans, exact/other callback observations, and bounded errors through the
+existing redactor. `sandbox_error_exact` only compares the direct `error` field
+with the exact literal `Is a sandbox denied path.`; it is **not a classifier**.
+No successful read contents, raw paths, callback payloads or session IDs are
+published. Error text is rechecked by the parent against both original markers
+and its own credential environment before truncation. Success stdout is unchanged.
+
+All returned fields are checked for the comparison marker before judging result
+kind in negative cases: even `failure`, `denied` or `rejected` with that marker
+stops immediately. Malformed results, failed controls and RPC timeouts also stop
+fail-closed. After the all-field canary scan, every control requires the pinned
+wire contract: string `textResultForLlm`, recognized string `resultType`, and
+`error` absent, null, or a string. Invalid fields raise
+`comparison_malformed_result`, even for explicit denial; suppressing a malformed
+error diagnostic does not validate the control. Otherwise all four controls
+complete before the **unchanged** `require_denial` predicate is applied to the
+native-deny result. Thus generic
+`failure` still fails qualification, even with the exact literal; it cannot be
+silently promoted to a passing comparison. The older checks are retained.
+Every created comparison session is aborted, disconnected and deleted with
+bounded RPCs; deletion is also attempted for an owned ID whose creation timed
+out. Cleanup failures remain failures. Existing client-stop and outer owned
+process-group cleanup/deadline still apply.
+
+The remaining experiment asks whether a permitted read succeeds, only changing
+native filesystem policy produces the exact failure, and missing-file and
+callback-denial controls produce distinguishable responses on **1.0.101**.
+Separate sessions still differ in runtime state and callback delivery; the
+controls cannot attest internal enforcement ordering or eliminate every runtime
+confounder. Marker absence does **not** prove no internal filesystem I/O occurred.
+No exact-literal branch guarantee or before-read proof is claimed. A later
+pin-specific classification decision requires hosted evidence and review.
+
 The driver now supplies the native activation conditions, without custom tools:
 
 - `on_user_input_request` enables the native user-input callback and always returns
