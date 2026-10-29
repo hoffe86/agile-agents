@@ -2,7 +2,8 @@
 name: test-bar-gate
 description: >-
   Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after the implementation stage finishes and before the reviewer fan-out. The smoke slot runs by default for any runnable application, deriving the start command via whichever ecosystem startup-discovery skill is installed when the profile doesn't declare one. Stack-aware via `solution-profile.yaml: quality_gates.test_bar`. On failure, returns to the author with a structured error report (no reviewer cost wasted on broken patches). Loaded by `dev-lead` between Stage 6 (Implement) and Stage 8 (Review).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Test-Bar Gate
@@ -26,11 +27,18 @@ Stage 6 (Implement) emits ──►  IMPLEMENTATION COMPLETE
          ▼                                             ▼
 Stage 8 reviewer fan-out                Return to `coding` / `infrastructure`
 (architecture / security /              with structured failure report.
-clean-code / test-quality /             One corrective retry allowed;
-iac reviews)                            second failure → halt + ask user.
+clean-code / test-quality /             Up to three corrective retries;
+iac reviews)                            4th failure → halt + ask user.
 ```
 
-The gate **never** runs before every Stage 6 task is `done` — we want the unit-test layer (when applicable) to exist before grading it. It runs over the **combined** diff of all tasks, which is why it is not redundant with the per-task gates: a task can pass its own tests and still break another's, and the agent that ran the suite is the same one that wrote it.
+Run over the **combined** diff after all Stage 6 tasks are `done`, and again after
+corrective edits before re-review. Per-task passes do not prove combined behavior.
+Attach fresh results and their content identity; re-entry never resets the
+supervisor's retry budget.
+
+Resolve `.github/solution-profile.yaml`, then the legacy root profile. Explicit
+`--profile` / `-ProfilePath` never falls back. Missing, unreadable, malformed,
+empty, or non-mapping profiles exit **2 (configuration error)**, not a skip.
 
 ## What runs
 
@@ -194,7 +202,9 @@ The script exits `1`.
 
 ## Retry policy
 
-The dev-lead may re-engage the author **once** with the structured failure report attached. If the gate fails a second time on the same task, the dev-lead **halts** and asks the user how to proceed — do not loop indefinitely on a gate that cannot be cleared.
+The dev-lead may re-engage the author **up to three times**, each with the failure report and a note on what the last attempt missed. If the gate still fails, it **halts** and asks the user.
+
+Three rounds because these failures are deterministic — but **stop early if it is not converging**: a retry that does not reduce the failing checks ends the loop rather than spending the rest. Rationale and evidence: ADR 0003.
 
 Routing is by **what the failure belongs to**, not by which layer the file is in — `coding` owns application code *and* its tests, so a lint failure in a test file and a wrong assertion are both its to fix:
 
@@ -212,5 +222,5 @@ When the diff is IaC-only, the author is `infrastructure` for every row above.
 ## Citations
 
 - `references/stream-a-papers.md` §13.3 — *Agentless test execution* (cheap, deterministic gates outperform LLM self-grading on short-loop quality signals).
-- `references/stream-e-blogs.md` §17 — Cognition's autofix loop (one corrective retry, then escalate).
+- `references/stream-e-blogs.md` §17 — Cognition's autofix loop (one corrective retry, then escalate). **We deliberately diverge** — three retries, because this gate is fully deterministic; see ADR 0003.
 - `references/stream-e-blogs.md` §22 — Stripe's deterministic graders (lint/type/test as the floor, reviewers as the ceiling).

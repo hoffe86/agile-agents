@@ -1,108 +1,56 @@
-# Scoring rubric
+# Outcome evidence rubric
 
-This document defines how the harness (and human reviewers, where automation is not feasible)
-score each task. Status values are deliberately limited to **three** so trends are readable in
-`baselines.md`.
+This is a conceptual reference for retained benchmark tasks and historical
+results, **not an active workspace scorer or CLI exit contract**. Active pipeline
+scoring measures recorded skill invocation; see
+[`../deepeval/README.md`](../deepeval/README.md).
+Grading doctrine remains in
+[`acceptance-grading`](../../plugins/agile-agents-core/skills/acceptance-grading/SKILL.md).
 
-## Status values
+## Custom tasks
 
-| Status     | Symbol | Meaning                                                                       |
-|------------|--------|-------------------------------------------------------------------------------|
-| `resolved` | ✅     | Every acceptance criterion is met. Build green. Tests green.                  |
-| `partial`  | 🟡     | At least one criterion is met; remaining failures are non-catastrophic.       |
-| `failed`   | ❌     | No criterion met, or build broken, or test regression introduced.             |
+Read each task's actual `acceptance.md`. A resolved outcome requires every
+criterion to be verified, not a plausible answer or an unchanged seeded input.
 
-A "non-catastrophic" failure is one where the produced artefact compiles, runs, and would not
-be rejected outright in human code review — but doesn't fully meet the acceptance bar.
+| Outcome | Meaning |
+|---|---|
+| `resolved` | Every acceptance criterion verified PASS |
+| `partial` | Fully verified, with some PASS and non-catastrophic FAIL |
+| `failed` | Verified failure, such as a broken build or test regression |
+| `unverified` | Missing evidence prevents a verified outcome; no resolved credit |
+| `setup_error` | Fixture/environment error, not demonstrated agent failure |
 
-## SWE-bench scoring
+Blocked approvals and skipped tasks are not measured outcomes. Missing tools
+are not failures of produced work. Preserve uncertainty and verified failures
+explicitly rather than allowing a claimed verdict or permissive threshold to
+grant credit.
 
-For SWE-bench Verified tasks the rubric mirrors the upstream definition so our numbers stay
-comparable to published baselines:
+Original inputs under each task's `baseline/` are comparison evidence, not
+answers. `inputs.json` describes their intended workspace destinations. No
+staging or verification runtime is supplied. Native build/render/test claims
+require native-tool evidence; source plausibility is not a substitute.
 
-| Status     | Test outcome                                                                            |
-|------------|-----------------------------------------------------------------------------------------|
-| `resolved` | All `FAIL_TO_PASS` tests now pass **and** all `PASS_TO_PASS` tests still pass.          |
-| `partial`  | Some `FAIL_TO_PASS` tests pass; no `PASS_TO_PASS` regression.                           |
-| `failed`   | Patch doesn't apply, build broken, or any `PASS_TO_PASS` test regresses.                |
+**Task-10's literal ingress-host equivalence is unresolved**: the six-resource
+baseline has no Ingress (its `ingress.host` configures `PUBLIC_BASE_URL`).
+Do not weaken the acceptance criterion, invent an Ingress or assert a pass.
+If the literal comparison cannot be established, mark UNVERIFIED with this reason.
 
-The harness reads the upstream `FAIL_TO_PASS` / `PASS_TO_PASS` lists from the
-`princeton-nlp/SWE-bench_Verified` dataset row keyed by `instance_id`.
+## SWE-bench
 
-### Why this mirrors upstream
+The retained manifest identifies future benchmark inputs. It does not fetch
+datasets, check out repositories or execute tests.
+Under the upstream outcome definition, resolved requires all `FAIL_TO_PASS`
+and `PASS_TO_PASS` tests to pass. Partial means some `FAIL_TO_PASS` pass without
+regression; failed means verified patch/build/test breakage.
 
-- "Resolved" matches the published metric on the SWE-bench leaderboard.
-- "Partial" gives us a smoother signal across commits than the binary upstream metric — useful
-  for spotting near-misses caused by minor agent regressions.
-- "Failed" is a strict superset of upstream's not-resolved (we additionally flag build breaks
-  and PASS_TO_PASS regressions explicitly).
+## Aggregates and comparability
 
-## Custom task scoring
+Keep every selected task in the denominator, including unverified, setup-error,
+blocked and skipped tasks. Resolved percentage is resolved / total, not
+resolved / verified. A staging report is not an outcome score.
 
-For each task in `custom-eval/tasks/task-NN-*/`:
-
-1. Read `acceptance.md` — it contains 3-5 numbered criteria.
-2. Run the task (or, for narrative deliverables like #08 threat-model, have a reviewer read
-   the produced artefact).
-3. Mark each criterion as `pass` / `fail`.
-4. Apply the table:
-
-| All criteria `pass`                                  | → `resolved` |
-| At least one `pass` and no broken build/test         | → `partial`  |
-| All criteria `fail` **or** build/tests broken        | → `failed`   |
-
-### Per-task notes
-
-- **task-04 (ADR)**, **task-05 (PR description)**, **task-08 (threat model)** — narrative
-  deliverables. Scoring is by a human reviewer who checks the criteria. The harness logs the
-  criteria checklist + the produced artefact path so the reviewer has everything in one file.
-- **task-01, 02, 06, 07, 09, 10** — code-producing tasks. Acceptance criteria include
-  build/test commands the harness runs automatically (where the synthetic profile permits).
-- **task-03 (Bicep)** — `bicep build` validates syntax; `az deployment group what-if` is
-  out of scope for the harness (would require an actual Azure subscription).
-
-## Aggregate metrics
-
-Per suite the harness computes and writes to `summary.json`:
-
-```jsonc
-{
-  "suite": "custom-eval",
-  "run_id": "20260415-093014-custom-eval",
-  "total": 10,
-  "resolved": 6,
-  "partial": 3,
-  "failed": 1,
-  "resolved_pct": 60.0,
-  "partial_pct": 30.0,
-  "failed_pct": 10.0,
-  "tasks": [
-    { "id": "task-01-csharp-minimal-api-endpoint", "status": "resolved" }
-    // ...
-  ]
-}
-```
-
-The same fields are appended as a row to `baselines.md`.
-
-## Pass threshold (harness exit code)
-
-`run-eval.ps1` / `run-eval.sh` exit `0` when `resolved_pct >= PassThreshold` (default `60`),
-and `1` otherwise. Adopters can tighten or loosen this in their CI pipeline:
-
-```powershell
-./run-eval.ps1 -Suite custom-eval -PassThreshold 75
-```
-
-```bash
-./run-eval.sh --suite custom-eval --pass-threshold 75
-```
-
-## Reviewer guidance — when in doubt
-
-- **Bias toward `failed` over `partial`** if the build is broken. A non-compiling artefact
-  is worse than nothing because it pollutes downstream metrics.
-- **Bias toward `partial` over `resolved`** if any acceptance criterion is unverifiable.
-  Don't credit the agent for criteria you couldn't check.
-- **Add a `Notes` line** in `baselines.md` whenever you down-grade a borderline `resolved` to
-  `partial` — keeps the trend honest across reviewers.
+Historical results in [`../baselines.md`](../baselines.md) keep their original
+contracts and limitations; they are not retroactively recomputed. The offline
+DeepEval skill score is a different measurement and cannot replace those results
+in a trend line. Live outcome execution remains deferred to
+[#22](https://github.com/hoffe86/agile-agents/issues/22).

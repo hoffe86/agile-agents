@@ -19,7 +19,8 @@ description: >-
 # A grant must match the server's registered name exactly, and that name may itself contain a slash
 # (`microsoft/azure-devops-mcp`) — copy it verbatim from your mcp-config.json.
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, browser, 'github/*', 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*]
-model_tier: mid  # mechanical authoring of well-structured work items; reasoning is bounded by the Definition of Ready + INVEST checklists
+metadata:
+  model_tier: mid  # mechanical authoring of well-structured work items; reasoning is bounded by the Definition of Ready + INVEST checklists
 argument-hint: "Describe the backlog task: create, improve, review, or update a work item"
 handoffs:
   - label: "Load"
@@ -183,22 +184,12 @@ On a later **Approve**, dev-lead asks you to **remove the `pending-approval` tag
 
 #### `TASKS PLANNED` hand-off block
 
-Emit this exact block when the Plan workflow completes:
-
-```markdown
-## TASKS PLANNED
-
-**Tracker platform:** <github-issues | ado-boards | jira | linear>
-**Parent work item:** <id> — <link>
-**Link pattern:** <e.g. AB#<n> / parent-child relation>
-**Tasks created (provisional, tag `pending-approval`):**
-| Task id | Title | ACs | State |
-|---|---|---|---|
-| <id> | <title> | <n> | <entry state> |
-| ... | ... | ... | ... |
-**Approach comment posted on parent:** yes — <comment link or id>
-**Open items / could not link:** <list, or "none">
-```
+At the beginning of a Plan task, read only
+[TASKS PLANNED](../skills/read-repo-context/references/handoff-contracts.md#tasks-planned)
+and emit that exact schema when the Plan workflow completes. Resolve this link
+relative to this loaded core agent file, not the consumer repository's working
+directory. If the file or named section is missing or mismatched, stop and report
+a malformed contract/context; do not reconstruct the schema.
 
 ### Status updates from a dev-lead run
 

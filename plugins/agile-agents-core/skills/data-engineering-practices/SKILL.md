@@ -15,7 +15,8 @@ description: >-
   schema change. DO NOT USE FOR: analysing data or building models (that is
   `data-science-practices`), or provisioning cloud resources generally (that is
   `iac-best-practices`).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Data-engineering practices

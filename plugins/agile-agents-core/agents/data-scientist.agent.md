@@ -21,7 +21,8 @@ description: >-
   (use review-lead), end-to-end autonomous delivery (use dev-lead).
   Hands off with `ANALYSIS COMPLETE`, which reports a negative result as a
   legitimate outcome rather than a failure.
-model_tier: heavy  # methodology judgement — a wrong metric or a leaked split is invisible in the output and expensive later
+metadata:
+  model_tier: heavy  # methodology judgement — a wrong metric or a leaked split is invisible in the output and expensive later
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, playwright/*, browser]
 argument-hint: "Describe the data work: question to answer, dataset to profile, model to build/evaluate, or AI feature to measure"
 ---
@@ -109,25 +110,13 @@ When your input is a set of **review findings** routed by `dev-lead`:
 
 ## Hand-off contract
 
-```
-ANALYSIS COMPLETE
-- Question: <the question you actually answered, and the decision it informs>
-- Outcome: ✅ supported — <one line> | ⚠️ inconclusive — <what is missing> | ❌ not supported — <why>
-      (⚠️ and ❌ are legitimate completed outcomes, not failures. Do not retry to manufacture a ✅.)
-- Files changed: <notebooks, analysis modules, evaluation sets, model artifacts, model card>
-- Data used: <source, version / snapshot date, row count, and the profile field or approval that permits its use>
-- Method: <approach, and why it is proportionate to the question>
-- Baseline: <the trivial comparator> → <its score>
-- Result: <metric(s) with uncertainty> vs baseline; state the metric and its averaging convention explicitly
-- Split & leakage: <split rule, seed, and the leakage checks you ran — name them>
-- Cohort breakdown: <performance across the populations this affects, or "n/a — affects no people" with the reason>
-- Reproducibility: <seed, data version, environment, and the command that re-runs it>
-- Dataset status (if you produced one): ai-generated | expert-reviewed | mixed
-- Unmeasured risks: <risks with no detecting metric — never omit; write "none identified" only if you looked>
-- Not verifiable from this diff: <anything a reviewer cannot check from what you committed — an external dashboard, a run in a tracker, a manual inspection — so `data-reviewer` reports it as a gap rather than assuming it was done. "nothing" is a valid answer.>
-- Interface for `coding` (if a model ships): <inputs, outputs, failure modes, latency, and what to do when it abstains>
-- Findings addressed: <corrective rounds only — one line per finding id. Omit on a first pass.>
-- Open questions for review: <if any>
-```
+At the beginning of each task, read only
+[ANALYSIS COMPLETE](../skills/read-repo-context/references/handoff-contracts.md#analysis-complete)
+and emit that exact schema on completion. For a corrective round, also read
+[Corrective accounting](../skills/read-repo-context/references/handoff-contracts.md#corrective-accounting)
+before fixing findings. Resolve these links relative to this loaded core agent
+file, not the consumer repository's working directory. If the file or named
+section is missing or mismatched, stop and report a malformed contract/context;
+do not reconstruct the schema.
 
 If answering the question would require data you do not have, permission you were not given, or a change to the approved plan, **stop and report it** rather than substituting a question you can answer.

@@ -83,7 +83,7 @@ sources:
     trust: >-
       Community, not vendor-backed — review content more carefully before vendoring.
       Cited in .github/copilot-instructions.md as the precedent for the `languages:` field
-      that our `applies_to` mirrors.
+      that our `metadata.applies_to` mirrors.
     artifacts:
       skills: skills/
     notes: Strongest for skill-format conventions; weigh licence before copying anything.

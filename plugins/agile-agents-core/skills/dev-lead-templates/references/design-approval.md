@@ -1,5 +1,7 @@
 # Design-approval prompt (dev-lead Stage 5, conditional)
 
+## Prompt
+
 Fires **after** the mandatory plan approval and **before** coding — only when
 Research surfaced something the human should sign off on separately from the task
 plan.
@@ -28,13 +30,8 @@ plan.
 Coding will be locked to this design. Approve to proceed?
 ```
 
-## Handling the answer
+### Return the answer
 
-- **Approve** → proceed to Stage 6 and continue autonomously.
-- **Adjust** → send `architect` the human's feedback as a corrective message
-  (counts as the architect stage's one corrective retry); re-render this template
-  with the revised design. **Cap: one Adjust round per run** — a second Adjust on
-  the same architect output is not allowed. If the human is still not satisfied,
-  choose Stop (the requirement needs rewording or a new run), not another loop.
-- **Stop** → mark remaining todos `blocked` with reason "user stopped at design
-  gate" and finish with the Stop report.
+Return the selected choice and feedback unchanged to `dev-lead`. Its Stage 5 owns
+approval, design adjustment accounting and stopping. This rendering template
+authorises no transition and sets no corrective budget.

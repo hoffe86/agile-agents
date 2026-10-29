@@ -28,7 +28,7 @@ the *installed* plugins and the stack `solution-profile.yaml` declares.
 
 | Capability | Phase | .NET | Python | Bicep | Terraform |
 |---|---|---|---|---|---|
-| Implement | 6 | `csharp-implementation` | `python-implementation` | `bicep-implementation` | `terraform-azure-implementation` |
+| Implement | 6 | `csharp-implementation` | `python-implementation` | `bicep-implementation` | `terraform-azure-implementation` — Azure-only, subject to the applicability gate below |
 | Unit test | 6 | `csharp-testing` | `python-testing` | n/a — IaC has no unit layer at this gate | n/a — same |
 | **IaC test** | 6 | n/a | n/a | **gap** | **gap** |
 | Coverage | 6 | **gap** — `csharp-testing` covers it inline; no dedicated skill | `pytest-coverage` | n/a | n/a |
@@ -36,7 +36,15 @@ the *installed* plugins and the stack `solution-profile.yaml` declares.
 | Startup discovery | 7 | `dotnet-startup-discovery` | `python-startup-discovery` | n/a — nothing to start | n/a — nothing to start |
 | Deploy preflight | 7b | n/a | n/a | `azure-deployment-preflight` | **gap** — `plan` is built-in, but nothing covers policy / quota / permission preflight |
 | Design-pattern review | 8 | `dotnet-design-pattern-review` | **gap** | n/a | n/a |
-| Format migration | — | n/a | n/a | `update-avm-modules-in-bicep` | `import-infrastructure-as-code` |
+| Format migration | — | n/a | n/a | `update-avm-modules-in-bicep` | `import-infrastructure-as-code` — Azure-only, subject to the applicability gate below |
+
+**Azure applicability gate:** Azure-only cells require an **installed** capability and
+`infrastructure.cloud: azure`. For multi-cloud/hybrid declarations, require explicit repo
+evidence of an Azure resource subset and document that scope; hybrid alone is not Azure
+evidence. Count Azure-only coverage only for that subset.
+Non-Azure Terraform implementation is a **gap**, not covered by the Azure skill;
+use repo/provider conventions and provider documentation and report that hand-off fallback.
+Import support is counted separately only when its source/target providers match.
 
 ### The IaC-test gap is the one that matters
 

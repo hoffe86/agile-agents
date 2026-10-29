@@ -23,6 +23,9 @@ from __future__ import annotations
 import os
 import re
 import sys
+from pathlib import Path
+
+import yaml
 
 DOC = os.path.join(".github", "copilot-instructions.md")
 
@@ -52,6 +55,20 @@ def actual_facts(repo: str) -> dict:
     facts["per_plugin"] = per_plugin
     facts["total_skills"] = total_skills
     facts["core_skills"] = per_plugin.get("agile-agents-core", 0)
+    scopes = []
+    for path in sorted(Path(plugins).glob("*/skills/*/SKILL.md")):
+        text = path.read_text(encoding="utf-8")
+        match = re.match(r"\A---\n(.*?)\n---(?:\n|\Z)", text, re.S)
+        if not match:
+            raise ValueError(f"{path}: missing frontmatter")
+        data = yaml.safe_load(match.group(1))
+        metadata = data.get("metadata") if isinstance(data, dict) else None
+        scope = metadata.get("applies_to") if isinstance(metadata, dict) else None
+        if not isinstance(scope, str) or not scope.strip() or "applies_to" in data:
+            raise ValueError(f"{path}: invalid metadata.applies_to (run frontmatter check)")
+        scopes.append(scope)
+    facts["all_scopes"] = scopes.count("all")
+    facts["scoped"] = len(scopes) - facts["all_scopes"]
 
     wf = os.path.join(repo, ".github", "workflows")
     facts["workflows"] = len([f for f in os.listdir(wf)
@@ -76,7 +93,7 @@ def actual_facts(repo: str) -> dict:
     vpath = os.path.join(plugins, "VENDORED.md")
     if os.path.isfile(vpath):
         in_section = False
-        for line in open(vpath, encoding="utf-8"):
+        for line in Path(vpath).read_text(encoding="utf-8").splitlines():
             if line.startswith("## "):
                 in_section = line.strip().startswith("## Skill")
                 continue
@@ -106,6 +123,8 @@ def claimed_facts(text: str) -> dict:
     one(r"(\d+) of the (\d+) skills are unmodified copies", "vendored", 1)
     one(r"(\d+) of the (\d+) skills are unmodified copies", "total_skills", 2)
     one(r"(?m)^(\d+) are hand-written or adopted", "handwritten")
+    one(r"split today is (\d+) `all` / (\d+) scoped", "all_scopes", 1)
+    one(r"split today is (\d+) `all` / (\d+) scoped", "scoped", 2)
 
     per_plugin = {}
     for m in re.finditer(r"agile-agents-([a-z]+)/\s+(\d+)\s+skills?\s+—", text):
@@ -123,6 +142,8 @@ LABELS = {
     "adr_max": "highest ADR number",
     "vendored": "vendored skills",
     "handwritten": "hand-written skills",
+    "all_scopes": "skills scoped to all",
+    "scoped": "technology-scoped skills",
 }
 
 
@@ -153,8 +174,12 @@ def run(repo: str) -> int:
         print("error: %s not found" % DOC, file=sys.stderr)
         return 2
 
-    text = open(path, encoding="utf-8").read()
-    problems = compare(actual_facts(repo), claimed_facts(text))
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        problems = compare(actual_facts(repo), claimed_facts(text))
+    except (ValueError, yaml.YAMLError) as exc:
+        print(f"cannot count skill scopes: {exc}", file=sys.stderr)
+        return 1
 
     if problems:
         print("copilot-instructions.md is out of sync with the repository:\n")
@@ -176,11 +201,13 @@ def self_test() -> int:
     actual = {
         "agents": 15, "core_skills": 41, "total_skills": 61, "workflows": 5,
         "adr_max": 14, "vendored": 20, "handwritten": 41,
+        "all_scopes": 35, "scoped": 26,
         "per_plugin": {"agile-agents-core": 41, "agile-agents-dotnet": 6},
     }
     base = {
         "agents": 15, "core_skills": 41, "total_skills": 61, "workflows": 5,
         "adr_max": 14, "vendored": 20, "handwritten": 41,
+        "all_scopes": 35, "scoped": 26,
         "per_plugin": {"agile-agents-core": 41, "agile-agents-dotnet": 6},
     }
 
@@ -191,6 +218,9 @@ def self_test() -> int:
         ("stale workflow count", {**base, "workflows": 4}, 1),
         ("stale ADR range", {**base, "adr_max": 8}, 1),
         ("stale vendored count", {**base, "vendored": 19}, 1),
+        ("stale all scope count", {**base, "all_scopes": 34}, 1),
+        ("stale scoped count", {**base, "scoped": 25}, 1),
+        ("missing scope claim", {k: v for k, v in base.items() if k != "scoped"}, 1),
         ("stale companion count",
          {**base, "per_plugin": {"agile-agents-core": 41, "agile-agents-dotnet": 5}}, 1),
         ("missing companion entry",

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "provenance": "synthetic minimal ASP.NET service and its pre-existing test project; no Azure credentials or workflow are included",
+  "inputs": [
+    {"source": "baseline/Web.slnx", "destination": "Web.slnx", "required": true},
+    {"source": "baseline/src", "destination": "src", "required": true},
+    {"source": "baseline/tests", "destination": "tests", "required": true}
+  ]
+}

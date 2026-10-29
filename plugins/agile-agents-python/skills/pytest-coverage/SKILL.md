@@ -1,7 +1,8 @@
 ---
 name: pytest-coverage
 description: 'Run pytest tests with coverage, discover lines missing coverage, and increase coverage to 100%.'
-applies_to: python
+metadata:
+  applies_to: python
 ---
 
 The goal is for the tests to cover all lines of code.

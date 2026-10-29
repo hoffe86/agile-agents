@@ -17,7 +17,8 @@ description: >-
   (use `dev-lead`), or writing the skill a gap calls for (a human decides; then a
   maintainer or `coding` writes it). Never adopts, installs, or edits an artifact itself.
 tools: [vscode, read, search, web, todo, execute, browser, playwright/*, 'github/*', context7/*, microsoft-docs/*]
-model_tier: heavy  # judgement-dense: coverage reasoning, overlap, placement — the mechanical half is a script
+metadata:
+  model_tier: heavy  # judgement-dense: coverage reasoning, overlap, placement — the mechanical half is a script
 argument-hint: "What to scout for (a stack, a phase, 'coverage', or 'triage drift')"
 ---
 
@@ -94,7 +95,10 @@ Run `pwsh scripts/check-vendored-drift.ps1 -ShowDiff` rather than diffing by han
 change?" is deterministic and costs nothing, and your value is deciding what the change *means*.
 Per drifted skill:
 
-- **Take it** — upstream improved something we want. Re-sync, re-apply `applies_to`.
+- **Take it** — upstream improved something we want. Re-sync, re-apply `metadata.applies_to`
+  without changing other metadata/native fields or the body. Preserve inherited metadata
+  (including upstream lists); if upstream now defines scope at either placement, stop
+  for collision triage rather than overwrite it.
 - **Leave it** — upstream moved in a direction this suite does not want. Say why, so the next run
   does not re-litigate it.
 - **It's our edit** — the local copy was modified in place, which the rules forbid. Revert to
@@ -116,7 +120,7 @@ Per drifted skill:
 |---|---|---|---|---|
 
 ### Recommended
-| Artifact | Source | Plugin | applies_to | Which gap it fills |
+| Artifact | Source | Plugin | metadata.applies_to | Which gap it fills |
 |---|---|---|---|---|
 
 ### Declined

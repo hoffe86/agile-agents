@@ -18,7 +18,8 @@ description: >-
   plugin or otherwise — without explicit approval, and never invents a profile value
   to get past a question.
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, browser, playwright/*]
-model_tier: mid  # interview + mechanical derivation; the judgement is the user's, not yours
+metadata:
+  model_tier: mid  # interview + mechanical derivation; the judgement is the user's, not yours
 argument-hint: "Bootstrap the harness for this repo (or name the profile field to repair)"
 ---
 
@@ -80,7 +81,15 @@ standing up a harness someone else will rely on:
 5. **Present and get approval** (below). One consolidated proposal, not one prompt per plugin.
 6. **Install what was approved**, then **verify** — re-read the installed set and confirm each
    declared technology now has a matching skill.
-7. **Report the gaps** and emit `BOOTSTRAP COMPLETE`.
+7. **Offer optional model setup**, proposal-only. First read
+   [Manual native setup](../skills/cost-budget/references/tier-defaults.md#manual-native-setup)
+   and **Preference is not governance** in that reference. Propose only profile-map
+   choices; the user explicitly approves and manually configures preferred models
+   through `/subagents`. Preserve existing choices/overrides; no map means no settings
+   change. Never write user/global settings or set task models from the profile.
+   Report unavailable models for the user to choose, never silently substitute.
+8. **Report the gaps**, including proposed/configured/skipped/unavailable model setup
+   (not runtime verification), and emit `BOOTSTRAP COMPLETE`.
 
 ## Deriving the plugin set
 
@@ -90,11 +99,27 @@ standing up a harness someone else will rely on:
 |---|---|---|
 | `tech_stack.primary_languages[].name` | `csharp` / `dotnet` / `fsharp` | `agile-agents-dotnet` |
 | `tech_stack.primary_languages[].name` | `python` | `agile-agents-python` |
-| `infrastructure.iac_tool` | `bicep` | `agile-agents-bicep` |
-| `infrastructure.iac_tool` | `terraform` | `agile-agents-terraform` |
+| `infrastructure.iac_tool` + `infrastructure.cloud` | `bicep` + Azure applicability below | `agile-agents-bicep` |
+| `infrastructure.iac_tool` + provider needs | `terraform` + a matching capability below | `agile-agents-terraform` |
 | `infrastructure.cloud` | `azure` | `agile-agents-azure` |
 | `backlog.platform` | `ado-boards` | `agile-agents-ado` |
 | `backlog.platform` | `github-issues` | `agile-agents-github` |
+
+**Azure applicability:** recommend Azure-only depth for `infrastructure.cloud: azure`.
+For a multi-cloud/hybrid declaration, require explicit repo evidence of an Azure resource
+subset and document that scope; hybrid alone is not Azure evidence.
+Recommend Azure-only depth only for that subset. Missing or conflicting
+cloud declarations need clarification. An Azure-only route requires an **installed**
+capability as well as this applicability — a recommendation is not availability.
+
+**Terraform is provider-neutral; `.tf` does not imply Azure.** The Terraform plugin's
+implementation skill is Azure-only. Recommend it for that depth only under the Azure
+applicability gate above; for other providers recommend the plugin only if a specific
+provider-relevant capability actually matches. The bundled import workflow and AzureRM
+diff helper are also Azure-only; neither supplies generic Terraform coverage.
+Do not count generic import support as non-Azure implementation coverage. If no installed
+skill matches, agents use repo/provider conventions and the provider's documentation and
+report that fallback in their hand-off. Do not install extra plugins to hide that gap.
 
 ```bash
 copilot plugin marketplace add hoffe86/agile-agents
@@ -159,16 +184,12 @@ the profile — writing a config file and changing an environment are different 
 
 ## Hand-off contract
 
-```
-BOOTSTRAP COMPLETE
-- Profile: <path> — <created | repaired | already valid>
-- Required fields: <n>/6 populated <list any still empty>
-- Plugins installed this run: <list, or "none — user deferred">
-- Plugins already present: <list, or "none">
-- Declared but unsupported: <technology → "falls back to repo conventions", or "none">
-- Gaps for the user: <profile fields left empty, deferred installs, decisions still needed, or "none">
-- Ready for delivery: yes | no — <what blocks it>
-```
+At the beginning of each task, read only
+[BOOTSTRAP COMPLETE](../skills/read-repo-context/references/handoff-contracts.md#bootstrap-complete)
+and emit that exact schema on completion. Resolve this link relative to this
+loaded core agent file, not the consumer repository's working directory.
+If the file or named section is missing or mismatched, stop and report a
+malformed contract/context; do not reconstruct the schema.
 
 **"Ready for delivery: yes" requires all six required fields populated** (`identity.project_name`,
 `identity.lifecycle_stage`, `documentation.location`, `backlog.platform`,

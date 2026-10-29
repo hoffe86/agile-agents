@@ -185,6 +185,7 @@ ai_copilot:
   allowed_ai_providers: []      # E.g. ["azure-openai-tenant-only", "foundry"]
   foundry_project_url: ""       # Microsoft Foundry project URL (if used).
   approved_models: []           # E.g. ["gpt-5.4", "claude-opus-4.7", "gpt-4.1"]
+                                # Policy record; no automatic tier resolver/enforcement.
   responsible_ai_tier: ""       # low | medium | high — drives RAI review depth.
   pii_handling_rule: ""         # E.g. "no-pii-to-llm", "redact-then-send", "tenant-bound-only"
   active_agents: []             # Subset of the agent suite that applies in this repo.
@@ -296,7 +297,7 @@ testing:
 # Per-AI-run budget for the agent suite — DISTINCT from `operational.cost_band_eur_monthly`,
 # which is steady-state app cost. Drives the `cost-budget` skill (plugins/agile-agents-core/skills/cost-budget/):
 # refuses to start external-project runs without an envelope, checkpoints at every phase
-# transition, hard-halts on breach. Tier defaults align with cost-budget/references/tier-defaults.md.
+# transition, hard-halts on breach. Model-tier preferences do not select runtime models.
 cost_envelope:
   enabled: true
   tier: "medium"                # small | medium | large. Informational: records the budget owner's
@@ -312,11 +313,18 @@ cost_envelope:
                                 # reported as unmetered rather than as 0.00 - an agent cannot
                                 # observe its own spend, so nothing is guessed.
   max_tokens_per_run: 2000000   # Aggregate token cap (input + output across all agents).
-  max_minutes_per_run: 60       # Wall-clock cap. Catches stuck loops even when token spend is fine.
+  max_minutes_per_run: 60       # Informational planning value; not an enforced wall-clock deadline.
   stop_on_breach: true          # true → emit cost-stop-report and halt; false → warn-only (rare).
-  model_tiers: {}               # Optional. Pin a concrete model per portable tier, e.g.
-                                #   { heavy: "gpt-5.4", mid: "gpt-5-mini", light: "gpt-4.1" }
-                                # Overrides each agent's `model_tier` frontmatter default.
+  model_tiers: {}               # Optional advisory preferences; no runtime code consumes this map.
+                                # Values: ordered nonempty lists or legacy single model strings.
+                                # Example: { heavy: ["model-a", "model-b"], mid: "model-c" }
+                                # Keys: heavy | mid | light. No duplicate or empty model strings;
+                                # every listed model must appear in ai_copilot.approved_models.
+                                # Order records preference, not automatic fallback or selection.
+                                # Does not resolve `metadata.model_tier` or override native `model`.
+                                # Bootstrapper may propose; user approves/configures via /subagents.
+                                # Preserve overrides; missing map leaves settings untouched.
+                                # Preferred fallback may leave approved_models; CI is static only.
 
 # ─── legal ────────────────────────────────────────────────────────────────────
 legal:

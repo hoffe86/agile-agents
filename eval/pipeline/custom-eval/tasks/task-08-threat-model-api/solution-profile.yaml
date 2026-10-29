@@ -1,25 +1,24 @@
-name: quotes-api
-language: csharp
-framework: aspnet-minimal-api
-
-deliverable_type: documentation
-artefact: threat-model
-
-security:
-  exposure: public-internet
-  authn: oauth2-client-credentials
-  identity_provider: entra-id
-  pii_in_payload: true
-  region: westeurope
-  edge:
-    cdn: azure-front-door
-    waf: enabled
-    rate_limit_rpm: 100
-  required_frameworks:
-    - owasp-api-top10
-    - microsoft-sdl
-    - nist-sp-800-204
-
+identity:
+  project_name: "Synthetic public quotes API threat-model benchmark"
+  lifecycle_stage: poc
+documentation:
+  platform: in-repo
+  location: docs/
+  adr:
+    location: docs/adr/
+    format: madr
+backlog:
+  platform: none
+  create_tasks: false
+tech_stack:
+  primary_languages: [markdown]
+  frameworks: []
+  test_discipline: none
+  test_frameworks: []
+infrastructure:
+  cloud: azure
+  deploy_verify: "off"
 quality_gates:
   test_bar:
     enabled: false
+    skip_reason: "Threat-model document only; security judgement is evaluated against acceptance criteria."

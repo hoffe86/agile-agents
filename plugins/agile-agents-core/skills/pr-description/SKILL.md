@@ -1,7 +1,8 @@
 ---
 name: pr-description
 description: Generate a high-signal pull-request description from a diff and the run's hand-off context. Produces a structured PR body with a one-line summary, the why, what changed (grouped by intent — feature / fix / refactor / chore / docs / test / ci / iac), risk and rollback notes, test evidence, breaking-change callouts, linked issues, and a reviewer-checklist. Loaded by dev-lead at PR-open time. Composes with conventional-commit (commit subject style) and read-repo-context (repo conventions, ADRs, solution-profile).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # pr-description

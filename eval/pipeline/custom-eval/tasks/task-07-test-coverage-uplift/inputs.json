@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "provenance": "synthetic working reconciliation implementation and PostgreSQL repository; no requested tests are included",
+  "inputs": [
+    {"source": "baseline/Reconciliation.slnx", "destination": "Reconciliation.slnx", "required": true},
+    {"source": "baseline/src/Reconciliation/Dependencies.cs", "destination": "src/Reconciliation/Dependencies.cs", "required": true},
+    {"source": "baseline/src/Reconciliation/Payment.cs", "destination": "src/Reconciliation/Payment.cs", "required": true},
+    {"source": "baseline/src/Reconciliation/PaymentReconciler.cs", "destination": "src/Reconciliation/PaymentReconciler.cs", "required": true},
+    {"source": "baseline/src/Reconciliation/PaymentRepository.cs", "destination": "src/Reconciliation/PaymentRepository.cs", "required": true},
+    {"source": "baseline/src/Reconciliation/Reconciliation.csproj", "destination": "src/Reconciliation/Reconciliation.csproj", "required": true},
+    {"source": "baseline/src/Reconciliation/SystemClock.cs", "destination": "src/Reconciliation/SystemClock.cs", "required": true}
+  ]
+}

@@ -10,7 +10,8 @@ description: >-
   the companion to `engineering-standards` — that skill is *what good looks like*,
   this one is *how an experienced practitioner decides*. USE ON EVERY task, alongside
   `engineering-standards`. Load it silently and apply it; do not echo it back.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Engineering Judgement

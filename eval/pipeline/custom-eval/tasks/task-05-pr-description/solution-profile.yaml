@@ -1,19 +1,23 @@
-name: orders-service
-language: csharp
-
-deliverable_type: documentation
-artefact: pr-description
-
-conventions:
-  pr_template_sections:
-    - What
-    - Why
-    - How
-    - Testing
-    - "Risk & rollback"
-  ticket_system: jira
-  ticket_prefix: JIRA-
-
+identity:
+  project_name: "Synthetic order cancellation PR-description benchmark"
+  lifecycle_stage: poc
+documentation:
+  platform: in-repo
+  location: docs/
+  adr:
+    location: docs/adr/
+    format: madr
+backlog:
+  platform: none
+  create_tasks: false
+tech_stack:
+  primary_languages: [markdown]
+  frameworks: []
+  test_discipline: none
+  test_frameworks: []
+infrastructure:
+  deploy_verify: "off"
 quality_gates:
   test_bar:
     enabled: false
+    skip_reason: "PR-description-only deliverable; the diff is supplied as context."

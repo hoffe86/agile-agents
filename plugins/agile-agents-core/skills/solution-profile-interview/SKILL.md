@@ -6,7 +6,8 @@ description: >-
   missing, when a required field is empty, when onboarding the agent suite into a new repo,
   or when the user asks to "set up the profile" / "run the interview". Loaded by `dev-lead`
   at Stage 0 Intake; also runnable standalone by any agent.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Solution Profile Interview
@@ -65,6 +66,7 @@ Put the `?` block last and keep it short. These are the fields no repo scan can 
 | `engagement_context.*` | commercial context |
 | `ai_copilot.*` | tenancy + governance policy |
 | `cost_envelope.tier` | budget owner's call |
+| `cost_envelope.model_tiers` | optional advisory model choices, not runtime policy |
 
 If the user answers only some, that's fine — **do not chase optional fields**. Ask a focused
 follow-up only for a still-empty **required** field (step 5).
@@ -94,6 +96,15 @@ These six must be non-empty before the suite can run:
 
 Any still empty → one focused follow-up question. **Do not silently proceed** and do not
 invent a value to get past the check.
+
+### 6. Optional native model setup
+
+For model setup, first read **Manual native setup** and **Preference is not
+governance** in [tier-defaults.md](../cost-budget/references/tier-defaults.md).
+Propose only map-derived choices; the user approves and configures preferred
+models manually in `/subagents`. Preserve explicit choices and per-agent overrides;
+no map leaves settings untouched. Report unavailable choices, never substitute.
+No user/global settings writes or profile-derived task model overrides.
 
 ## Guard rails
 

@@ -1,0 +1,12 @@
+# Pinned deliberately. ADR 0015 records that ToolCorrectnessMetric requires a model
+# object at construction but never invokes it while scoring -- an implementation detail,
+# not a documented contract. An unpinned upgrade could turn a deterministic, credential-
+# free metric into one that silently needs an LLM.
+deepeval==4.1.8
+pytest==9.1.1
+# Fixture staging and immutable-input verification tests (not a model dependency).
+PyYAML==6.0.3
+
+# Maintainer input only. Install requirements.lock.txt with --require-hashes.
+# The lock retains the working eval venv's versions, except setuptools 65.5.0
+# (pre-Python-3.12); 84.0.0 is the version already used by the developer environment.

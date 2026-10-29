@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "provenance": "synthetic invoice service baseline; concrete construction and monkeypatched tests are intentionally retained",
+  "inputs": [
+    {"source": "baseline/invoice_summariser.py", "destination": "invoice_summariser.py", "required": true},
+    {"source": "baseline/app.py", "destination": "app.py", "required": true},
+    {"source": "baseline/tests", "destination": "tests", "required": true},
+    {"source": "baseline/requirements.txt", "destination": "requirements.txt", "required": true},
+    {"source": "baseline/requirements-dev.txt", "destination": "requirements-dev.txt", "required": true}
+  ]
+}

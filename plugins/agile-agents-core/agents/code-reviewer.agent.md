@@ -19,7 +19,8 @@ description: >-
   infrastructure), whole-repository audits with no diff (that is the
   `code-review` skill, run standalone).
   NEVER modifies code.
-model_tier: heavy  # line-by-line correctness and design judgement over the full diff
+metadata:
+  model_tier: heavy  # line-by-line correctness and design judgement over the full diff
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the review scope: diff, branch, or files to review for general code quality"
 ---

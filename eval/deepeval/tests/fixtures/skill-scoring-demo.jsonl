@@ -1,0 +1,7 @@
+{"type":"session.start","data":{"description":"Synthetic CLI schema fixture for offline scoring demonstration; NOT a harness benchmark."}}
+{"type":"session.skills_loaded","data":{"skills":[{"name":"fixture-skill-a"},{"name":"fixture-skill-b"}]}}
+{"type":"user.message","data":{"content":"Fixture demonstration only."}}
+{"type":"assistant.turn_start","data":{}}
+{"type":"tool.execution_start","data":{"toolName":"skill","toolCallId":"fixture-call-1","arguments":{"skill":"fixture-skill-a"}}}
+{"type":"tool.execution_complete","data":{"toolCallId":"fixture-call-1","success":true}}
+{"type":"assistant.turn_end","data":{}}

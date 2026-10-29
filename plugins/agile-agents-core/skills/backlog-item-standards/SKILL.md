@@ -1,7 +1,8 @@
 ---
 name: backlog-item-standards
 description: Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definition of Ready checklist. Load when creating, improving, or reviewing a work item body. Pair with a tracker-mechanics skill (ado-work-items / github-issues) for field mapping and API shape. Used by backlog-manager.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # backlog-item-standards

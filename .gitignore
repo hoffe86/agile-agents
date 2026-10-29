@@ -5,6 +5,11 @@
 eval/**/runs/
 eval/**/results/
 eval/**/.runs/
+eval/pipeline/custom-eval/tasks/**/bin/
+eval/pipeline/custom-eval/tasks/**/obj/
+
+# Local/ephemeral runtime artifacts
+.copilot-runs/
 
 # macOS
 .DS_Store
@@ -21,3 +26,9 @@ Thumbs.db
 # Waza skill-eval run artifacts (regenerate with scripts/run-trigger-evals.ps1)
 .waza-results/
 .waza-cache/
+
+# DeepEval spike: local virtualenv and Python caches (ADR 0015)
+eval/deepeval/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

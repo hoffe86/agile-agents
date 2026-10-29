@@ -18,7 +18,8 @@ description: >-
   security or architecture aspects of tests
   (use security-reviewer / architecture-reviewer).
   NEVER modifies code.
-model_tier: heavy  # coverage gap analysis and detecting brittle/over-mocked patterns require deep reasoning
+metadata:
+  model_tier: heavy  # coverage gap analysis and detecting brittle/over-mocked patterns require deep reasoning
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the test review scope: diff to audit, suite to inspect, or coverage concern"
 ---
@@ -93,7 +94,7 @@ code and the tests that cover it, you are the independent check that the pair is
 
 ## Skills you compose with
 
-- **`polyglot-test-agent`** (adopted — no longer upstream) — cross-language test scaffolding reference.
+- **`polyglot-test-agent`** (adopted — no longer upstream) — cross-language testing reference only; do not execute its author workflow.
 - **The coverage-analysis and testing skills for the declared language** — when that ecosystem's companion plugin is installed (e.g. `csharp-testing`, `python-testing`). If no companion plugin covers the language under review, judge the tests against the repo's own existing test conventions and say so in your findings, so the reader knows the review was not backed by a language-specific standard. `testing-practices` is the bar the author was held to — read it as the standard you are checking against.
 - **`webapp-testing`** (vendored) — for E2E / browser tests.
 

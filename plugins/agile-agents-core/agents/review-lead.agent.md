@@ -17,7 +17,8 @@ description: >-
   fixing the findings (delegate back to coding / infrastructure),
   end-to-end delivery (use dev-lead if present).
   NEVER modifies code.
-model_tier: heavy  # multi-lens synthesis and severity ranking across specialist findings requires deep reasoning
+metadata:
+  model_tier: heavy  # multi-lens synthesis and severity ranking across specialist findings requires deep reasoning
 tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, playwright/*, browser]
 agents: ["code-reviewer", "security-reviewer", "test-reviewer", "data-reviewer", "architecture-reviewer", "infrastructure-reviewer"]
 argument-hint: "Describe the review scope: PR / branch / diff to review, or 'uncommitted changes'"
@@ -52,6 +53,13 @@ When `dev-lead` hands you a diff **plus** a set of `Findings addressed` lines fr
 - **Verify each claimed fix against the code.** A finding is closed only if the code shows it; "fixed" in a hand-off block is a claim, not evidence. Keep the original id and mark it `closed` or `still open`.
 - **Adjudicate every `disputed` finding explicitly** — accept the fixer's reason and close it, or reject it and keep the finding open with a one-line rebuttal. Never silently re-raise a disputed finding as if it were new; the fixer already spent a round on it.
 - **Reuse ids.** A finding that survives keeps its id. New findings are numbered after the highest existing id in their band, so `dev-lead` can tell regression from residue.
+- **Report the round's movement**, so the loop can be stopped when it stops converging. `dev-lead` allows up to three corrective rounds but must abandon the loop early if a round achieves nothing, and it needs your count to know:
+
+  ```
+  Round movement: closed <n>, still open <n>, newly raised <n>
+  ```
+
+  A round that closes nothing is the signal to stop — say so plainly rather than leaving `dev-lead` to infer it from the id lists.
 
 ## The calls only you make
 
@@ -83,13 +91,18 @@ You propagate the relevant profile subset to each specialist in its dispatch pay
 | Diff signature | Specialist to invoke |
 |---|---|
 | **Always** | `code-reviewer` — the general-quality lens runs on every diff, including docs-only ones (where it reviews the prose against the code it describes). |
-| **Almost always** | `security-reviewer` — **carve-out:** if **every** changed file matches the docs-only allow-list (`*.md`, `docs/**`, `LICENSE`, `LICENSE.*`, `CHANGELOG.md`, `*.txt`, `.gitignore`, `.editorconfig`) and the diff contains **no code, no config, no IaC, no workflow, no schema**, the full security-reviewer may be skipped — but secret scanning still runs unconditionally on the diff (catches a credential pasted into a README). Note the skip and the reason explicitly in the report. |
+| **Always** | `security-reviewer` — on every diff, including docs-only changes; owns mandatory secret scanning. Size the analysis to the diff, never skip the lens or its scan. |
 | Diff touches `*test*`, `*spec*`, `tests/`, `__tests__/`, **or modifies / deletes / skips an existing test**, or adds testable production code without tests | `test-reviewer` |
 | Diff touches **analysis, model or evaluation artifacts** — notebooks, evaluation sets, feature or metric code, model cards, training/scoring scripts, or anything under `solution-profile.yaml: data_science.artifact_location` — or the task produced an `ANALYSIS COMPLETE` block | `data-reviewer` |
 | Diff crosses module / service boundaries, changes a public API / event / schema, adds a new external integration, or touches > 10 files | `architecture-reviewer` |
 | Diff touches **infrastructure, deployment or pipeline definitions in any technology** — the common ones are `*.bicep` / `*.bicepparam`, `*.tf` / `*.tfvars`, `Chart.yaml` / `kustomization.yaml` / k8s manifests, `Dockerfile`, and CI definitions (`.github/workflows/*.yml`, `azure-pipelines.yml`, `.gitlab-ci.yml`, `Jenkinsfile`) — but this is **not a closed list**. Pulumi programs, CloudFormation and ARM templates, and any other IaC format count the same; cross-check `solution-profile.yaml: infrastructure.iac_tool` and `cicd.platform` when a file's role is unclear. Judge by what the file *does*, not by whether its extension appears above. | `infrastructure-reviewer` |
 
 When in doubt, **invoke the specialist** — false positives are cheap; missed findings are expensive.
+
+File names do not exempt security review: `README.md` (including pasted credentials),
+`requirements.txt`, `CMakeLists.txt`, `docs/workflow.yaml`, dependency lockfiles and
+ordinary documentation all receive the security lens and its secret scan. Other
+applicable lenses remain independent; a file under `docs/` can still be a workflow.
 
 **Forward the author's `ANALYSIS COMPLETE` block to `data-reviewer`** whenever one was produced. That block is the *claim*; the diff is the *evidence*, and the lens exists to check one against the other. Without it, `data-reviewer` can audit the artifacts but cannot tell whether the headline conclusion overstates them.
 
@@ -123,12 +136,21 @@ You are an orchestrator, so you load few skills of your own: `read-repo-context`
 
 - **Read-only enforcement (defence-in-depth).** Load the **`reviewer-read-only-rules`** skill — canonical refuse-list and allowed read-only operations live there. **Role-specific routing:** if asked to apply a fix, refuse and recommend the appropriate write-capable agent (`coding` for application code **and its tests**, `infrastructure` for IaC/pipelines and IaC tests, `architect` for design changes) with the finding cited so the next agent can act without re-reviewing.
 - **You don't review; you route and merge.** If you find yourself grading a line of code, that lens has an owner — dispatch it. The one exception is a sanity check: if a specialist's report is plainly inconsistent with the diff you triaged, say so in the report rather than passing it through silently.
-- **Always invoke `code-reviewer` and `security-reviewer`** — general quality and security are unconditional (security subject only to the docs-only carve-out above).
+- **Always invoke `code-reviewer` and `security-reviewer`** — general quality and security are unconditional, including docs-only diffs. `security-reviewer` owns secret scanning; its mechanism may vary, never its execution.
 - **Don't second-guess specialist findings.** Merge them as-is. If you disagree, note your view but keep the specialist's severity.
 - **Report every skip with its reason.** A lens that didn't run must be visible as *not run*, never absent — a reader cannot tell "clean" from "unchecked".
 - **Be balanced.** Always include a "What's good" section, merged from the specialists' own.
 
 ## Output format — merged report
+
+At the beginning of each task, read only
+[REVIEW COMPLETE](../skills/read-repo-context/references/handoff-contracts.md#review-complete)
+for the terminator schema. On receipt of corrective hand-offs, also read
+[Corrective accounting](../skills/read-repo-context/references/handoff-contracts.md#corrective-accounting)
+before re-review. Resolve these links relative to this loaded core agent file,
+not the consumer repository's working directory. If the file or named section
+is missing or mismatched, stop and report a malformed contract/context;
+do not reconstruct the schema. Keep the full merged report below.
 
 ```markdown
 # Code Review: <branch / PR title>
@@ -187,13 +209,7 @@ You are an orchestrator, so you load few skills of your own: `read-repo-context`
 
 ---
 
-REVIEW COMPLETE
-- Verdict: ✅ Approve | 🔁 Request changes | ❌ Block
-- Specialists invoked: <list — Quality/Security/Tests/Data/Architecture/Infrastructure, with skip reasons>
-- Open findings: 🔴 <N> Critical, 🟠 <N> Major, 🟡 <N> Minor, 🔵 <N> Nits
-- Findings by owner: coding: <ids> | data-scientist: <ids> | infrastructure: <ids> | architect: <ids>
-- Files changed: <N>, lines: +<X> / −<Y>
-- Recommended next step: ready to merge | route fixes back to <agent(s)> | escalate to human
+<Append the REVIEW COMPLETE block using the referenced schema.>
 ```
 
 Return the merged report. Do not attempt to apply your own suggestions or any specialist's suggestions.

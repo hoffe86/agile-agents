@@ -23,6 +23,8 @@
 #
 # Usage:
 #   ./run-gate.sh [--profile path/to/solution-profile.yaml] [--skill-root path]
+# Defaults to .github/solution-profile.yaml, then the legacy root profile.
+# An explicit path never falls back. Missing or invalid profiles exit 2.
 #
 # Requires `yq` (mikefarah, v4+) for YAML parsing. Install with:
 #   brew install yq      # macOS
@@ -30,7 +32,7 @@
 # -----------------------------------------------------------------------------
 set -uo pipefail
 
-PROFILE_PATH="./solution-profile.yaml"
+PROFILE_PATH=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SMOKE_COMMAND=""
@@ -49,12 +51,30 @@ done
 
 COMMANDS_YAML="${SKILL_ROOT}/references/commands.yaml"
 
+if [[ -z "$PROFILE_PATH" ]]; then
+  PROFILE_PATH="./.github/solution-profile.yaml"
+  [[ -e "$PROFILE_PATH" ]] || PROFILE_PATH="./solution-profile.yaml"
+fi
+if [[ ! -f "$PROFILE_PATH" || ! -r "$PROFILE_PATH" ]]; then
+  echo "ERROR: profile not found or unreadable: $PROFILE_PATH" >&2
+  exit 2
+fi
 if ! command -v yq >/dev/null 2>&1; then
   echo "ERROR: yq is required (https://github.com/mikefarah/yq)." >&2
   exit 2
 fi
 if [[ ! -f "$COMMANDS_YAML" ]]; then
   echo "ERROR: command palette not found: $COMMANDS_YAML" >&2
+  exit 2
+fi
+
+if ! PROFILE_KIND="$(yq -r 'tag' "$PROFILE_PATH")" ||
+   [[ "$PROFILE_KIND" != '!!map' ]]; then
+  echo "ERROR: profile must be a YAML mapping: $PROFILE_PATH" >&2
+  exit 2
+fi
+if [[ "$(yq -r 'length' "$PROFILE_PATH")" == 0 ]]; then
+  echo "ERROR: profile must not be empty: $PROFILE_PATH" >&2
   exit 2
 fi
 
@@ -166,7 +186,7 @@ failure_report() {
   [[ -n "$reason" ]] && printf -- '- **Reason:** %s\n' "$reason"
   printf -- '- **Working directory:** %s\n\n' "$(pwd)"
   printf '### stderr (last 30 lines)\n\n```text\n%s\n```\n\n' "$tail"
-  printf '### Suggested next action\n\nReturn to `coding` (or `infrastructure` when the diff is IaC-only) with this report and one corrective retry.\n'
+  printf '### Suggested next action\n\nReturn to `coding` (or `infrastructure` when the diff is IaC-only) with this report. Up to three corrective retries are allowed; if the gate still fails, halt and ask the user.\n'
 }
 
 run_check() {

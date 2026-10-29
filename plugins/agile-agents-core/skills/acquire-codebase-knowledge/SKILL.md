@@ -4,6 +4,7 @@ description: 'Use this skill when the user explicitly asks to map, document, or 
 license: MIT
 compatibility: 'Cross-platform. Requires Python 3.8+ and git. Run scripts/scan.py from the target project root.'
 metadata:
+  applies_to: all
   version: "1.3"
   enhancements:
     - Multi-language manifest detection (25+ languages supported)
@@ -13,7 +14,6 @@ metadata:
     - Security & compliance config detection
     - Performance testing markers
 argument-hint: 'Optional: specific area to focus on, e.g. "architecture only", "testing and concerns"'
-applies_to: all
 ---
 
 # Acquire Codebase Knowledge

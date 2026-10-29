@@ -11,7 +11,8 @@ description: >-
   diff, branch or PR inside the agent pipeline — that is the `review-lead` agent and
   its five specialist lenses, which use different severity, id and owner
   conventions; loading this skill there produces a second, conflicting review.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Code Review Skill

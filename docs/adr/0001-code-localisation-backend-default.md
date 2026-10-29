@@ -46,7 +46,7 @@ on the train, and on a fresh checkout with no secrets configured. The 5000-file
 ceiling (`code_localisation.repo_map_max_files`) protects against runaway
 parses on large monorepos.
 
-The dev-lead (`agents/dev-lead.agent.md`) does not
+The dev-lead (`plugins/agile-agents-core/agents/dev-lead.agent.md`) does not
 call `code-localisation` itself; it only validates that the profile field is
 populated (or that the `tree-sitter` default is acceptable) and propagates
 that fact to workers in the hand-off context.
@@ -79,8 +79,8 @@ that fact to workers in the hand-off context.
 
 ## References
 
-- `solution-profile.yaml` lines 145–157 (`code_localisation` block)
-- `agents/dev-lead.agent.md` (worker hand-off
+- `solution-profile.yaml` → `code_localisation:` block
+- `plugins/agile-agents-core/agents/dev-lead.agent.md` (worker hand-off
   context payload — mentions `code-localisation` availability)
 - `docs/research/autonomous-coding-agents-2026.md` §13.4 (Agentless localisation),
   §6 row H1

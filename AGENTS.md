@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-08-18.
+> Generated from `solution-profile.yaml` on 2026-10-15.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
 This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
@@ -17,7 +17,7 @@ authoritative, richer machine-readable contract remains
 - **Primary language(s)**: powershell, python, shell
 - **Backlog platform**: github-issues
 - **Documentation**: docs/ (platform: in-repo)
-- **Branch naming**: unspecified
+- **Branch naming**: <type>/<slug>
 - **Commit convention**: conventional-commits
 - **Default branch**: main
 
@@ -115,7 +115,7 @@ Analyses data, designs and runs experiments, builds and evaluates models, and su
 
 ### `dev-lead`
 
-Autonomous development lead. Takes a single, already-prepared requirement and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the requirement into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent work item in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this requirement autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + review, autonomous / unattended runs against a requirements file or backlog item, executing a plan you already produced in planning mode (hand it the `plan.md` path — it adopts that decomposition instead of re-deriving one), when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving one retry, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / infrastructure / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review-lead), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
+Autonomous development lead. Takes a single, already-prepared requirement and drives it end-to-end through the RPI pattern — Research → Plan → Implement → Review — by delegating to the specialist agents in sequence, enforcing a quality gate between each stage, passing context forward, and reporting one final Definition-of-Done verdict. In the Plan phase it decomposes the requirement into meaningful, independently- implementable tasks (each with acceptance criteria + an approach note) and has `backlog-manager` create them as child work items linked to the parent work item in the tracker, then presents that plan for human approval. Owns decomposition, sequencing, gating, cross-stage context, failure triage, and scope control. USE FOR: "build me X end-to-end", "implement this requirement autonomously", "deliver this feature", multi-stage work that crosses research + planning + coding + review, autonomous / unattended runs against a requirements file or backlog item, executing a plan you already produced in planning mode (hand it the `plan.md` path — it adopts that decomposition instead of re-deriving one), when you want one verdict instead of orchestrating the agents yourself. **Plans the work as tracker tasks and presents that plan for human approval before starting autonomous execution**; once approved, runs every remaining stage without further confirmation, stopping mid-run only on: ambiguity, gate failure surviving its retry budget, scope change, destructive action, missing secret, tracker-write failure, or ❌ Block review verdict. DO NOT USE FOR: a single stage in isolation — call the specialist directly (architect / coding / infrastructure / review), quick edits or one-line fixes (use coding), pure design work (use architect), pure review (use review-lead), Infrastructure-as-Code only (use infrastructure). Never silently expands scope — if the requirement is ambiguous, asks once up-front and stops.
 
 - **Tools**: ado/*, agent, azure-devops-mcp/*, azure-devops/*, browser, context7/*, execute, microsoft-docs/*, playwright/*, read, search, todo, vscode, web
 - **Sub-agents**: architect, backlog-manager, bootstrapper, coding, data-scientist, infrastructure, review-lead
@@ -163,9 +163,10 @@ The following skills are available in `.github/skills/` (or
 is a self-contained `<name>/SKILL.md` with YAML frontmatter and a
 natural-language workflow.
 
+- **acceptance-grading** (`agile-agents-core`) — How to grade produced work against acceptance criteria — the judgement contract for an evaluation harness.
 - **acquire-codebase-knowledge** (`agile-agents-core`) — Use this skill when the user explicitly asks to map, document, or onboard into an existing codebase.
 - **ado-work-items** (`agile-agents-ado`) — Azure DevOps Boards mechanics for reading and writing work items — MCP tool entry points, field mapping per work-item type (Epic / Feature / PBI / Issue / Task), markdown-vs-HTML formatting rules, ...
-- **architecture-decision-records** (`agile-agents-core`) — Author Architecture Decision Records (ADRs) using the MADR (Markdown Any Decision Records) format.
+- **architecture-decision-records** (`agile-agents-core`) — Author Architecture Decision Records (ADRs) in whichever format the project declares — the `documentation.adr.format` key in solution-profile.yaml selects Nygard (Context / Decision / Consequences ...
 - **architecture-design** (`agile-agents-core`) — Author or update a software/solution architecture design document.
 - **artifact-coverage** (`agile-agents-core`) — Work out which capabilities the agent harness needs for a given stack, which installed skills cover them, and where the gaps are — then judge whether a candidate artifact is worth adopting and whic...
 - **aspire** (`agile-agents-dotnet`) — Aspire skill covering the Aspire CLI, AppHost orchestration, service discovery, integrations, MCP server, VS Code extension, Dev Containers, GitHub Codespaces, templates, dashboard, and deployment.
@@ -186,7 +187,7 @@ natural-language workflow.
 - **data-engineering-practices** (`agile-agents-core`) — The craft bar for moving and shaping data — data contracts, schema evolution, idempotent and replayable loads, partitioning, backfills, quality gates that fail loudly, lineage, orchestration hygien...
 - **data-science-practices** (`agile-agents-core`) — The craft bar for data work — question-before-method discipline, data quality and provenance, leakage and split hygiene, baselines, uncertainty, cohort fairness, reproducibility, and PII/synthetic-...
 - **deploy-verify** (`agile-agents-core`) — Opt-in deployed verification — push the feature branch, let the project's own CI/CD pipeline deploy pipeline + IaC + application to the first non-production environment, and report whether it actua...
-- **dev-lead-templates** (`agile-agents-core`) — Rendering templates for the dev-lead orchestration run — the plan-approval gate prompt (Stage 4), the conditional design-approval gate prompt (Stage 5), and the final Done/Stop report (Stage 9).
+- **dev-lead-templates** (`agile-agents-core`) — Stage-local preparation, SQL/tracker bookkeeping and reporting recipes for dev-lead, plus plan/design approval prompts and the final Done/Stop report.
 - **development-practices** (`agile-agents-core`) — The implementation half of the build-and-verify craft — smallest-change bias, no speculative generality, cloud-native and observability defaults, error handling, documentation-in-the-same-change, l...
 - **dotnet-design-pattern-review** (`agile-agents-dotnet`) — Review the C#/.NET code for design pattern implementation and suggest improvements.
 - **dotnet-startup-discovery** (`agile-agents-dotnet`) — Work out how to start a .NET application and which URL proves it came up — Aspire AppHost, Azure Functions, ASP.NET Core web projects, console/worker services — by reading what the project already ...
@@ -202,7 +203,7 @@ natural-language workflow.
 - **import-infrastructure-as-code** (`agile-agents-terraform`) — Import existing Azure resources into Terraform using Azure CLI discovery and Azure Verified Modules (AVM).
 - **multi-stage-dockerfile** (`agile-agents-core`) — Create optimized multi-stage Dockerfiles for any language or framework
 - **playwright-generate-test** (`agile-agents-core`) — Generate a Playwright test based on a scenario using Playwright MCP
-- **polyglot-test-agent** (`agile-agents-core`) — Generates comprehensive, workable unit tests for any programming language using a multi-agent pipeline.
+- **polyglot-test-agent** (`agile-agents-core`) — Cross-language testing fallback for the current author when no matching language testing skill is installed.
 - **pr-description** (`agile-agents-core`) — Generate a high-signal pull-request description from a diff and the run's hand-off context.
 - **pytest-coverage** (`agile-agents-python`) — Run pytest tests with coverage, discover lines missing coverage, and increase coverage to 100%.
 - **python-implementation** (`agile-agents-python`) — Implement Python features end-to-end using current best practices (type hints, src layout, ruff-clean, modern stdlib, async where appropriate).
@@ -216,7 +217,7 @@ natural-language workflow.
 - **run-event-log** (`agile-agents-core`) — Emit one JSON Lines event per phase boundary, tool call, and completion to `.copilot-runs/<run-id>/events.jsonl` for audit, cost tracking, and post-hoc analysis.
 - **security-review** (`agile-agents-core`) — AI-powered codebase security scanner that reasons about code like a security researcher — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matchin...
 - **solution-profile-interview** (`agile-agents-core`) — Bootstrap or repair `.github/solution-profile.yaml` by discovering what the repo already tells you and interviewing the human only for what it can't.
-- **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure infrastructure using Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) for Terraform and following HashiCorp + Microsoft style guides.
+- **terraform-azure-implementation** (`agile-agents-terraform`) — Implement Azure-targeted Terraform (azurerm + AzAPI providers), preferring Azure Verified Modules (AVM) and HashiCorp + Microsoft style guides.
 - **terraform-azurerm-set-diff-analyzer** (`agile-agents-terraform`) — Analyze Terraform plan JSON output for AzureRM Provider to distinguish between false-positive diffs (order-only changes in Set-type attributes) and actual resource changes.
 - **test-bar-gate** (`agile-agents-core`) — Pre-reviewer automated quality gate — runs lint, type-check, unit tests, and a local smoke check (does the app actually come up?) after the implementation stage finishes and before the reviewer fan...
 - **testing-practices** (`agile-agents-core`) — The verification half of the build-and-verify craft — test-behaviour-not- implementation bias, coverage of the changed behaviour, mocking discipline, determinism rules, framework routing, interacti...

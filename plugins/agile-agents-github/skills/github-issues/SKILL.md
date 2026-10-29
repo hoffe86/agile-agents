@@ -6,7 +6,8 @@ description: >-
   syntax, labels / milestones / issue types / project fields, sub-issue parent-child
   hierarchy, comment templates, and content sanitisation. Load only when
   `solution-profile.yaml: backlog.platform == github-issues`. Used by backlog-manager.
-applies_to: github-issues
+metadata:
+  applies_to: github-issues
 ---
 
 # github-issues

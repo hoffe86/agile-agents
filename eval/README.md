@@ -1,284 +1,116 @@
-# `eval/` — Self-benchmarking harness for the dev-lead agent suite
+# Evaluation
 
-## Purpose
+Evaluation has three separate responsibilities. Their results are not interchangeable.
 
-This folder is the **measurement frame** for the coding-agent framework. It exists so we (and any
-adopter who forks this template) can answer two questions with numbers, not vibes:
+| Responsibility | Tool / location | What the evidence means |
+|---|---|---|
+| Pipeline scoring | DeepEval, [`deepeval/`](deepeval/README.md) | Coverage of expected skill identities in existing Copilot JSONL traces |
+| Deterministic process checks (L0) | [`pipeline/trajectory/`](pipeline/trajectory/README.md) | Conformance of a harness event log to its RPI ordering, gates and telemetry contracts |
+| Skill evaluation | Waza, [`skills/`](skills/README.md) | Routing, invocation and efficacy checks for individual skills |
 
-1. *Is the suite getting better or worse over time?* — track resolved/partial/failed rates across
-   commits in `baselines.md`.
-2. *Does change X actually help?* — re-run the harness before and after a change (e.g., adding the
-   semantic localisation backend in H1, the test-bar gate in H3, etc.) and compare the deltas.
+DeepEval is the sole active pipeline-scoring path
+([ADR 0015](../docs/adr/0015-deepeval-for-pipeline-evaluation.md)).
+Waza remains the skill evaluator
+([ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md)); deterministic L0
+checks remain independent
+([ADR 0008](../docs/adr/0008-layered-evaluation-strategy.md)).
 
-Self-benchmarking is the **first** improvement (Phase 1, item H2 in the improvement plan) for a
-reason: every later quality lift needs a quantitative anchor to be measured against.
+## Pipeline scoring and boundaries
 
-## How `eval/` is organised
+The scorer reads existing logs and measures recorded skill invocation using the
+pinned DeepEval 4.1.8 `ToolCorrectnessMetric`. It does not launch agents, call
+models, execute recorded commands or run generated artifacts. Expected skill
+identities are supplied by the operator. Matching every identity scores 1.0;
+missing identities give fractional coverage or 0. Invalid inputs and environment
+errors are reported separately from measured failures.
 
-One folder per **unit of evaluation** — the thing being graded — with everything shared
-at the root:
+Recorded invocation is **not** successful tool completion, correct skill use,
+task acceptance or an authenticated benchmark of the current harness. The
+synthetic demonstration fixture proves the scoring wiring, not harness quality.
+Workspace-outcome scoring and live execution are unavailable; sandbox/controller
+work is deferred to [#22](https://github.com/hoffe86/agile-agents/issues/22).
+There is no runner, fixture-staging command, judge compatibility layer or
+readiness API. Legacy/live options are not aliases for offline scoring.
 
-```
-eval/
-├── README.md          this file
-├── baselines.md       every tier's numbers, in one place
-├── pipeline/          grades RUNS    — L0/L1/L2 (ADR 0008)
-│   ├── trajectory/    L0 · process conformance over the event log (free, gating)
-│   ├── custom-eval/   L2 · framework-representative tasks
-│   ├── swe-bench-subset/  L2 · external comparable benchmark
-│   └── run-eval.{ps1,sh}, score-judge.{ps1,sh}, scoring-rubric.md, references/
-└── skills/            grades SKILLS  — S0/S1/S2 (ADR 0014)
-    ├── s0-routing/    should a prompt reach this skill (offline, free)
-    ├── s1-invocation/ did the agent actually invoke it (model)
-    └── s2-efficacy/   is the outcome better with it than without (2× model)
-```
+The cold-start scorer regression permits only trusted CPython Windows version
+probing and urllib3's loopback IPv6 capability bind. It rejects external
+connections, DNS, other process/bind attempts and recorded-command execution.
+This is evidence for the exercised offline path, not an OS sandbox or a claim
+of zero subprocesses/socket operations. See the
+[operational reference](deepeval/README.md#offline-boundary).
 
-**Why `pipeline/` and not `runs/`:** `eval/**/runs/` is the gitignored output directory
-that `run-eval` writes into. Naming the source folder `runs/` would collide with its own
-artifacts.
+## Code and data ownership
 
-**An `agents/` folder is the obvious third slot** — grading `*.agent.md` rather than
-skills or runs — and it is well-motivated: tool grants are a documented recurring defect
-here (wrong in three separate PRs, silent in both directions), and Waza's
-`tool_constraint` grader validates exactly which tools an agent used or avoided. It is
-deliberately **not created empty**; add it when the first agent eval exists, and keep to
-the convention above.
+First-party Python lives in [`python/agile_eval/`](python/agile_eval/), imported
+through the single `eval/python` source root. It does not shadow third-party
+`deepeval`. The trace adapter owns parsing and schema validation; the report
+module owns discovery, scoring and sanitized summaries; the offline model helper
+supplies telemetry/configuration safeguards and a fail-on-call model stub.
+`deepeval/` owns the operational entrypoint, locked dependencies and scorer tests.
 
-## Eval layers
+[`pipeline/custom-eval/`](pipeline/custom-eval/README.md) retains ten benchmark
+task specifications, profiles, input declarations and baseline source files.
+[`pipeline/swe-bench-subset/`](pipeline/swe-bench-subset/README.md) retains a
+25-instance manifest, not an installed dataset or an executable suite.
+Their source-consistency tests do not stage workspaces or execute fixture commands.
+The [outcome rubric](pipeline/scoring-rubric.md) records how to interpret task
+acceptance evidence; it is not an implemented scorer.
 
-This outcome eval is the **top** of a layered pyramid ([ADR 0008](../docs/adr/0008-layered-evaluation-strategy.md)):
+[`baselines.md`](baselines.md) contains historical measurements with their
+original limitations. These are not recomputed or promoted to current scores.
+`pipeline/runs/` remains the gitignored location for local summaries and existing
+run artifacts. Existing user outputs are not inputs to a migration or cleanup.
 
-| Layer | What it grades | Cost | Where |
-|---|---|---|---|
-| **L0** trajectory | *how* a run executed (RPI process conformance over the event log) | zero-credit, deterministic, gating | [`pipeline/trajectory/`](pipeline/trajectory/README.md) |
-| **L1** review-detection | the Review phase (seeded-defect recall/precision) | medium | planned (ADR 0008) |
-| **L2** outcome | *what* a run produced (acceptance vs. artifact) | credit-heavy, manual | [`pipeline/`](pipeline/) |
+### Retained run provenance
 
-L0 runs free on every push/PR and catches process failures L2 is blind to; L2 (below) is the
-end-to-end integration checkpoint.
+Historical rows and retained summaries without a trusted provenance binding remain
+**legacy/unattributed**, not reproducibility evidence. Do not backfill them with
+today's revision, input hashes or requested model identities. Historical sidecars
+and hashes, where present, are unsigned integrity metadata—not independent proof
+of the executing runtime or model. The retired provenance tooling is not an active
+verification API. The current offline scorer measures supplied trace contents;
+it does not authenticate historical runs or grant outcome credit. These limits
+preserve the classifications and numbers in [`baselines.md`](baselines.md).
 
-### The S-layer — grading skills, not runs
+## Commands and CI
 
-L0/L1/L2 grade **runs**. A second axis grades the **artifacts** the runs load
-([ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md)), using
-[`microsoft/waza`](https://github.com/microsoft/waza) — whose unit of evaluation is
-`SKILL.md` itself. It lives in **[`skills/`](skills/README.md)**, one directory per tier:
-
-| Layer | What it grades | Cost | Where |
-|---|---|---|---|
-| **S0** skill hygiene | frontmatter validity, token budget, `copilot-instructions` drift | zero-credit, deterministic, **gating** | [`eval-skills.yml`](../.github/workflows/eval-skills.yml) |
-| **S0** routing | should this prompt reach this skill (offline heuristic) | zero-credit | [`skills/s0-routing/`](skills/s0-routing/) — reports, uncalibrated |
-| **S1** invocation | did the agent actually invoke it | model | [`skills/s1-invocation/`](skills/s1-invocation/README.md) |
-| **S2** efficacy | is the outcome better than *not* loading it | 2× model | [`skills/s2-efficacy/`](skills/s2-efficacy/README.md) — blocked on isolation |
-
-Run the free tier locally exactly as CI does:
-
-```powershell
-python scripts/check-skill-frontmatter.py --self-test   # prove each assertion trips
-python scripts/check-skill-frontmatter.py               # 76 artifacts, strict YAML
-python scripts/check-instructions-drift.py              # roster counts match reality
-./scripts/check-skill-tokens.ps1                        # token ratchet + coverage
-./scripts/run-trigger-evals.ps1                         # routing baseline
-```
-
-Two things S0 exists to stop, both of which had already happened:
-
-- **A skill whose frontmatter does not parse is silently dropped by the CLI.** Not a
-  theoretical risk — the installed core plugin had 36 skills on disk and offered 35, and
-  the missing one was the only one whose YAML was invalid. It could never be invoked and
-  nothing reported it.
-- **Token budgets are a ratchet, not a target.** A skill body enters context when it
-  triggers, so its size is recurring spend; the always-on set costs ~8,100 tokens on
-  *every* agent turn. Limits in `.waza.yaml` sit at today's measured cost so a regression
-  fails. Raising one to go green is metric gaming — trim the skill, or move detail into
-  `references/`, which loads on demand rather than on trigger.
-
-**A skill graded alone is not a skill in the pipeline.** Waza evaluates a skill in
-isolation; ours run inside a 15-agent chain. The S-layer complements L0/L2 — it never
-replaces them.
-
-## Methodology
-
-Two evaluation suites, both runnable through the same harness:
-
-| Suite | Source | Size | Purpose |
-|---|---|---|---|
-| `swe-bench-subset/` | A 25-task stratified slice of [SWE-bench Verified](https://www.swebench.com/verified.html) | 25 tasks across 8 repos × 3 difficulty bands | External, comparable-to-literature benchmark |
-| `custom-eval/` | Hand-written framework-representative tasks | 10 tasks covering C#, Python, Bicep, GHA, Helm, ADRs, threat modelling | Internal, breadth-of-framework benchmark |
-
-For each task the harness:
-
-1. Loads the task prompt + (for custom-eval) `solution-profile.yaml` context.
-2. Invokes `dev-lead` once with the prompt (TODO — see *Limitations* below).
-3. Captures stdout/stderr + any produced artefacts.
-4. Scores the run against the rubric in [`scoring-rubric.md`](pipeline/scoring-rubric.md):
-   - **resolved** — all acceptance criteria pass
-   - **partial** — some criteria pass, none failed catastrophically (no broken build)
-   - **failed** — nothing meaningful produced or build broken
-5. Appends the run to `baselines.md`.
-
-## How to run
-
-### PowerShell (Windows / cross-platform PowerShell 7+)
-
-```powershell
-# Full SWE-bench subset
-./pipeline/run-eval.ps1 -Suite swe-bench-subset
-
-# Single custom-eval task
-./pipeline/run-eval.ps1 -Suite custom-eval -TaskFilter 'task-03'
-
-# All custom-eval tasks matching a regex
-./pipeline/run-eval.ps1 -Suite custom-eval -TaskFilter 'bicep|helm'
-```
-
-### Bash (Linux / macOS)
+Installation, CLI arguments, result schema, exit codes and test commands are in
+[`deepeval/README.md`](deepeval/README.md). The active scoring command is:
 
 ```bash
-./pipeline/run-eval.sh --suite custom-eval --task-filter 'task-03'
-./pipeline/run-eval.sh --suite custom-eval --dry-run     # print the copilot command per task; no auth/credits
+python eval/deepeval/report_skill_usage.py path/to/existing/logs --score --expect-skill architecture-decision-records --output eval/pipeline/runs/skill-usage-summary.json
 ```
-
-`custom-eval` invokes `dev-lead` for real: it reads each task's `prompt.md`, seeds a fresh
-workspace with the task's `solution-profile.yaml`, and runs
-
-```
-copilot -p <prompt> --agent agile-agents-core:dev-lead --plugin-dir <repo>/plugins/agile-agents-core --allow-all-tools \
-        --no-ask-user --output-format json -C <workspace> --add-dir <workspace>
-```
-
-`--plugin-dir <repo>/plugins/agile-agents-core` loads the plugin folder as a local plugin (named
-`agile-agents-core` from its `.github/plugin/plugin.json`), so the supervisor agent is addressed
-**plugin-namespaced** as
-`agile-agents-core:dev-lead` — bare `dev-lead` errors `No such agent`. No prior
-`copilot plugin install` is needed. The CLI must be installed and authenticated (`copilot
-login`); use `--dry-run` to validate the wiring without either.
 
 ### CI (on demand)
 
-The [`Eval · pipeline outcome`](../.github/workflows/eval-pipeline-outcome.yml) workflow runs the harness on GitHub Actions via
-`workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold, and a
-`dry_run` toggle (**default on** — renders the per-task command without auth/credits, so the
-default dispatch is a free wiring check). It posts `summary.json` to the run summary and uploads
-`runs/` as an artifact.
+The manual [DeepEval offline scoring workflow](../.github/workflows/eval-pipeline-outcome.yml)
+scores checkout-local traces; its synthetic fixture is a demonstration only.
+Use local scoring for gitignored developer logs rather than importing remote
+artifacts. Expected identities and trace paths are data, never shell source.
+Only sanitized JSON summaries belong in workflow artifacts, not raw transcripts,
+workspaces or credentials.
 
-**To actually execute the agents in CI (`dry_run: false`):**
+Its complete dispatch input contract is:
 
-1. Create a **fine-grained personal access token** with the **Copilot Requests** account
-   permission (user-owned — see
-   [Authenticating Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli#authenticating-with-a-personal-access-token)).
-2. Add it as the repository secret **`COPILOT_CLI_TOKEN`**.
-3. Dispatch with `dry_run` **unchecked**. The job then installs the Copilot CLI
-   (`npm install -g @github/copilot`) and authenticates with the token.
+| Input | Meaning | Default |
+|---|---|---|
+| `trace_path` | Existing checkout-relative JSONL file or log directory; paths and symlinks must stay inside the checkout | `eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl` (**synthetic**) |
+| `expected_skills` | Nonempty JSON array of nonblank skill identities, applied to each input log | `["fixture-skill-a"]` |
 
-A real run **consumes Copilot credits and is slow** — it executes the full multi-agent pipeline
-per task, and both the `dev-lead` run *and* the LLM judge call `copilot`. Use `task_filter` to
-limit scope (the job has a 180-minute timeout). If `dry_run: false` is selected without the
-secret, the job fails fast with a clear message rather than silently skipping. The eval is
-designed as a **local/manual measurement tool first** — running `run-eval.*` on your own
-authenticated machine is the cheaper primary path; CI real-runs are for shared, reproducible
-checkpoints. It stays **non-gating**; add `push` / `pull_request` triggers and raise the
-threshold once you trust the scores.
+The workflow provisions Python 3.12 using hash-verified wheels from the pinned
+evaluation lock, installs without an index, checks dependency closure and requires
+the real DeepEval offline metric. The scoring threshold is 1.0. Exit codes remain
+0 for all expectations recorded, 1 for measured failure, and 2 for input,
+schema or setup errors; errors never become inferred scores.
 
-Outputs land in `runs/<run-id>/` where `<run-id>` is `YYYYMMDD-HHMMSS-<suite>`:
+The owned output is `eval/pipeline/runs/skill-usage-summary.json`. Existing output
+files and redirected output paths are rejected. Only a summary created by the
+scoring step is eligible for upload, including measured failures and schema/setup
+error reports; input validation failures do not publish stale files. Artifact
+retention is seven days. The job summary renders only status, measured/total counts
+and threshold, not trace content or operator-supplied skill labels.
 
-```
-runs/
-└── 20260415-093014-custom-eval/
-    ├── task-01-csharp-minimal-api-endpoint.log
-    ├── task-02-python-di-refactor.log
-    ├── ...
-    └── summary.json
-```
-
-The `runs/` folder is gitignored in the distribution; only `baselines.md` is committed.
-
-## Scoring rubric (short form — full form in [`scoring-rubric.md`](pipeline/scoring-rubric.md))
-
-| Status | Meaning |
-|---|---|
-| `resolved` | All acceptance criteria pass; tests green; no broken build |
-| `partial` | At least one criterion passes; remaining criteria fail non-catastrophically |
-| `failed` | No meaningful output, build broken, or all criteria fail |
-
-Aggregate scores reported in `summary.json` and `baselines.md`:
-
-- **Resolved %** = resolved / total
-- **Partial %** = partial / total
-- **Failed %** = failed / total
-
-The harness exits **0** when resolved % ≥ 60% on the suite, **1** otherwise (configurable via
-`-PassThreshold` in `run-eval.ps1`).
-
-## Adding a custom task
-
-1. `mkdir custom-eval/tasks/task-NN-<slug>`
-2. Add three files following the pattern of existing tasks:
-   - `prompt.md` — the user-story prompt to give `dev-lead` (10-30 lines)
-   - `acceptance.md` — 3-5 explicit, machine- or human-verifiable pass criteria
-   - `solution-profile.yaml` — the synthetic profile context (tech stack, quality gates, etc.)
-3. The default LLM judge scores it against `acceptance.md` automatically — no scorer to write.
-   Add an optional `score.ps1`/`score.sh` only if the task needs a deterministic build/test.
-4. Re-run with `-TaskFilter task-NN`.
-5. Once stable, append a row to `baselines.md`.
-
-## Portability notes
-
-This harness is intentionally minimal so a downstream fork can:
-
-- **Replace `swe-bench-subset/`** with their own external benchmark (a slice of their bug-tracker,
-  internal coding interview tasks, etc.). The `tasks.json` schema is two required fields:
-  `instance_id` and `repo`. `difficulty` is optional metadata.
-- **Replace `custom-eval/`** entirely with project-representative tasks. The folder convention
-  (`task-NN-<slug>/{prompt.md, acceptance.md, solution-profile.yaml}`) is the only contract.
-- **Keep `run-eval.ps1` / `run-eval.sh`** unchanged — they are profile-agnostic.
-- **Customise `scoring-rubric.md`** for stricter or laxer pass criteria (e.g., a regulated
-  project may want `resolved` to require ADR + threat model on every task).
-- **Track `baselines.md` per project** — this is where the value compounds; every commit's
-  delta is visible.
-
-For air-gapped projects, the harness has **no network dependencies** at runtime. The only
-network-dependent step is the initial download of SWE-bench Verified test data, which adopters
-can mirror internally.
-
-## Scoring
-
-After a successful `dev-lead` run the harness scores the produced workspace against the task's
-`acceptance.md` and maps the result to `resolved` / `partial` / `failed` (exit `0` / `2` / else):
-
-1. **Default — LLM judge.** [`score-judge.ps1`](score-judge.ps1) / [`score-judge.sh`](score-judge.sh)
-   collect the files the agent produced (excluding the seeded `solution-profile.yaml`), fill the
-   shared grading prompt in [`references/judge-prompt.md`](references/judge-prompt.md) with the
-   acceptance criteria + those artifacts, and ask `copilot` for a verdict. An unparseable or empty
-   verdict, or no produced files, scores `failed` — the judge never inflates the score. This
-   automates the rubric's "human reviewer checks the criteria" path for narrative tasks (ADR, PR
-   description, threat model) and source-level checks for code tasks.
-2. **Override — deterministic per-task scorer.** Drop a `score.ps1` (pwsh) or `score.sh` (bash) in
-   the task folder and it takes precedence over the judge. Use this when acceptance needs a real
-   build/test rather than a judgement (e.g. `dotnet build` / `dotnet test`, `bicep build`). It runs
-   in the task workspace and uses the same `0 / 2 / else` exit-code contract.
-
-The judge needs `copilot` installed and authenticated, same as the run itself. Self-check the
-verdict parser with `score-judge.ps1 -SelfTest` / `score-judge.sh --self-test` (no copilot call).
-
-## Status & limitations (be honest)
-
-`run-eval.ps1` / `run-eval.sh` **invoke `dev-lead` for real** on the `custom-eval` suite
-(`copilot --agent agile-agents-core:dev-lead --plugin-dir <repo>/plugins/agile-agents-core`) and score it (above). One piece is
-still open:
-
-- **SWE-bench task-prep is not wired.** Running a SWE-bench instance needs the issue text from
-  the `princeton-nlp/SWE-bench_Verified` dataset plus a checkout of the target repo at the base
-  commit. Until that prep exists, `swe-bench-subset` tasks fail with a clear note. The
-  invocation helper is shared, so wiring prep is the only remaining work for that suite.
-
-For air-gapped projects the harness has no runtime network dependency beyond the SWE-bench data
-download (mirrorable internally) and whatever the agent + judge fetch.
-
-## Related plan items
-
-- **H2** (this folder) — measurement foundation
-- **H1** — semantic localisation: re-run this harness before/after to measure file-recall lift
-- **H3** — test-bar gate: re-run to measure reviewer-cycles-saved
-- **H4** — cost tracking: depends on H6 events, scored alongside resolved-rate here
-- **H6** — JSON event log: events appear in `runs/<run-id>/events.jsonl` once H6 lands
+The independent [skill workflow](../.github/workflows/eval-skills.yml) runs
+dependency/runtime contract checks and the Waza skill checks. L0 retains its
+own [trajectory workflow](../.github/workflows/eval-pipeline-trajectory.yml).
+No scoring demonstration grants live-execution readiness or L2 outcome credit.

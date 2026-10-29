@@ -13,7 +13,8 @@ description: >-
   building or evaluating a model, designing an evaluation set for an AI feature.
   DO NOT USE FOR: writing the production application that serves a model (that
   is `development-practices`), or reviewing someone else's diff.
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Data-science practices

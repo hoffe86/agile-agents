@@ -14,8 +14,9 @@ We do **not** vendor the actual SWE-bench data here, for two reasons:
 2. **Size** — the full Verified set is ~500 instances with patches, test files, and Docker
    image references; embedding it would bloat every downstream fork.
 
-To actually run a SWE-bench task, the harness (or an adopter's wrapper around it) loads the
-upstream instance by `instance_id` from the Hugging Face dataset at runtime.
+This is retained benchmark data, not a runnable suite. There is no dataset fetch,
+repository checkout or task-execution path. Future execution requires separately
+approved work under [#22](https://github.com/hoffe86/agile-agents/issues/22).
 
 ## Selection criteria for the 25-task subset
 
@@ -39,8 +40,8 @@ Designed to be a fast smoke-test that still gives a representative signal:
 3. **Determinism** — only tasks with stable, hermetic `FAIL_TO_PASS` test sets (no flaky
    network/time-dependent tests). All tasks here are present in the public Verified subset
    and have been confirmed to be deterministic by the SWE-bench Verified curation team.
-4. **Manageable wall-clock** — 25 tasks runs in ~1-2 hours on a single agent run, fast enough
-   for nightly CI but large enough for a meaningful signal.
+4. **Bounded size** — 25 selected instances keep the intended benchmark smaller
+   than the full dataset. This manifest establishes no measured runtime.
 
 ## `tasks.json` schema
 
@@ -55,19 +56,21 @@ Designed to be a fast smoke-test that still gives a representative signal:
 ]
 ```
 
-The harness only requires `instance_id` and `repo`. `difficulty` is metadata used in
-`baselines.md` for stratified reporting.
+`instance_id` and `repo` identify the intended upstream input. `difficulty` is
+selection metadata, not a runtime qualification.
 
 ## Scoring (SWE-bench-specific)
 
-A task is scored:
+The upstream outcome definitions, for a future verified execution, are:
 
 - **resolved** — all `PASS_TO_PASS` and `FAIL_TO_PASS` tests pass against the patch produced
   by `dev-lead` (this is the SWE-bench Verified definition of "resolved").
 - **partial** — some `FAIL_TO_PASS` tests pass and no previously passing test regresses.
 - **failed** — patch doesn't apply, build breaks, or `PASS_TO_PASS` regresses.
 
-See [`../scoring-rubric.md`](../scoring-rubric.md) §SWE-bench for the long form.
+See [`../scoring-rubric.md`](../scoring-rubric.md#swe-bench). The active
+[DeepEval scorer](../../deepeval/README.md) measures recorded skill invocation,
+not SWE-bench outcomes.
 
 ## How to refresh / re-stratify
 
@@ -86,8 +89,7 @@ A downstream fork can replace this folder wholesale with their own `tasks.json` 
 - A coding-interview task bank
 - A regression suite from a previous release
 
-The only contract is the `instance_id` + `repo` pair plus a way for the harness to fetch the
-problem statement and tests at runtime.
+The manifest identifies inputs only; a fetch/execution implementation is not supplied.
 
 ## References
 

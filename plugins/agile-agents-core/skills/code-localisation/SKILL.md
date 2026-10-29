@@ -1,7 +1,8 @@
 ---
 name: code-localisation
 description: Locate the small set of code files relevant to a task in a large repository. Three backends (tree-sitter repo-map, embedding+LLM rerank, MCP semantic-code server) selected via solution-profile.yaml `code_localisation.backend`. Loaded by `coding`, `architect`, and review agents on Stage 1/3+ when the task touches code (skip for IaC-only or doc-only changes).
-applies_to: all
+metadata:
+  applies_to: all
 ---
 
 # Code Localisation

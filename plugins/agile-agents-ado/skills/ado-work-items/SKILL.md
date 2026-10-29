@@ -7,7 +7,8 @@ description: >-
   tag conventions, severity scale, parent-child and predecessor linking, comment
   templates, and content sanitisation. Load only when
   `solution-profile.yaml: backlog.platform == ado-boards`. Used by backlog-manager.
-applies_to: ado-boards
+metadata:
+  applies_to: ado-boards
 ---
 
 # ado-work-items

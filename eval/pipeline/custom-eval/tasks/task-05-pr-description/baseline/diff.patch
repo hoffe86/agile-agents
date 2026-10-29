@@ -1,0 +1,73 @@
+diff --git a/src/Orders/OrderService.cs b/src/Orders/OrderService.cs
+index 71ad210..3c6fd11 100644
+--- a/src/Orders/OrderService.cs
++++ b/src/Orders/OrderService.cs
+@@ -18,3 +18,12 @@ public sealed class OrderService
+         return await repository.GetAsync(orderId, cancellationToken);
+     }
++
++    public async Task CancelAsync(Guid orderId, CancellationToken cancellationToken)
++    {
++        var order = await repository.GetAsync(orderId, cancellationToken);
++        if (order.Status is not (OrderStatus.Placed or OrderStatus.Paid))
++            throw new InvalidOperationException("Only Placed or Paid orders can be cancelled.");
++
++        await repository.MarkCancelledAsync(orderId, cancellationToken);
++    }
+ }
+diff --git a/src/Orders/IOrderRepository.cs b/src/Orders/IOrderRepository.cs
+index 4ac104a..70d2149 100644
+--- a/src/Orders/IOrderRepository.cs
++++ b/src/Orders/IOrderRepository.cs
+@@ -7,3 +7,4 @@ public interface IOrderRepository
+ {
+     Task<Order> GetAsync(Guid orderId, CancellationToken cancellationToken);
++    Task MarkCancelledAsync(Guid orderId, CancellationToken cancellationToken);
+ }
+diff --git a/src/Orders/OrderRepository.cs b/src/Orders/OrderRepository.cs
+index 81ce741..5589f72 100644
+--- a/src/Orders/OrderRepository.cs
++++ b/src/Orders/OrderRepository.cs
+@@ -24,3 +24,10 @@ public sealed class OrderRepository(AppDbContext db) : IOrderRepository
+     public Task<Order> GetAsync(Guid orderId, CancellationToken cancellationToken) =>
+         db.Orders.SingleAsync(order => order.Id == orderId, cancellationToken);
++
++    public async Task MarkCancelledAsync(Guid orderId, CancellationToken cancellationToken)
++    {
++        var order = await db.Orders.SingleAsync(x => x.Id == orderId, cancellationToken);
++        order.Status = OrderStatus.Cancelled;
++        await db.SaveChangesAsync(cancellationToken);
++    }
+ }
+diff --git a/tests/Orders.Tests/OrderServiceTests.cs b/tests/Orders.Tests/OrderServiceTests.cs
+index b9024ab..5ce44a1 100644
+--- a/tests/Orders.Tests/OrderServiceTests.cs
++++ b/tests/Orders.Tests/OrderServiceTests.cs
+@@ -44,2 +44,27 @@ public sealed class OrderServiceTests
+     }
++
++    [Fact]
++    public async Task CancelAsync_marks_a_placed_order_cancelled()
++    {
++        var order = new Order(Guid.NewGuid(), OrderStatus.Placed);
++        await service.CancelAsync(order.Id, CancellationToken.None);
++        await repository.Received(1).MarkCancelledAsync(order.Id, CancellationToken.None);
++    }
++
++    [Fact]
++    public async Task CancelAsync_marks_a_paid_order_cancelled()
++    {
++        var order = new Order(Guid.NewGuid(), OrderStatus.Paid);
++        await service.CancelAsync(order.Id, CancellationToken.None);
++        await repository.Received(1).MarkCancelledAsync(order.Id, CancellationToken.None);
++    }
++
++    [Fact]
++    public async Task CancelAsync_rejects_a_shipped_order()
++    {
++        var order = new Order(Guid.NewGuid(), OrderStatus.Shipped);
++        await Assert.ThrowsAsync<InvalidOperationException>(
++            () => service.CancelAsync(order.Id, CancellationToken.None));
++        await repository.DidNotReceive().MarkCancelledAsync(order.Id, CancellationToken.None);
++    }
+ }

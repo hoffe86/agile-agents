@@ -36,7 +36,7 @@ We need a format that:
 via `COPILOT_RUN_ID` so all events for a run land in one file.
 
 **Event types** (minimum set, defined in
-`coding/skills/run-event-log/references/event-schema.json`):
+`plugins/agile-agents-core/skills/run-event-log/references/event-schema.json`):
 
 - `run.start` / `run.complete` / `run.abort`
 - `stage.enter` / `stage.exit`
@@ -105,9 +105,9 @@ construction.
 
 ## References
 
-- `agents/dev-lead.agent.md` (sole emitter;
+- `plugins/agile-agents-core/agents/dev-lead.agent.md` (sole emitter;
   `run_id` minting; per-stage and per-gate emissions)
-- `skills/run-event-log/` (schema +
+- `plugins/agile-agents-core/skills/run-event-log/` (schema +
   `emit-event.sh` / `.ps1`)
 - `docs/research/autonomous-coding-agents-2026.md` §6 row H6; Stream E
   §6 (Anthropic Managed Agents event log), §25 (Sourcegraph mandates

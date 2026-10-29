@@ -1,0 +1,15 @@
+replicaCount: 1
+image:
+  tag: "dev-42"
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+ingress:
+  host: orders.dev.example.invalid
+config:
+  ASPNETCORE_ENVIRONMENT: Development
+  LOG_LEVEL: Debug

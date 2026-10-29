@@ -61,8 +61,8 @@ and `skills/` directly from each plugin (see
 agent/                               Marketplace root
 ├── .github/
 │   ├── copilot-instructions.md      This file
-│   ├── solution-profile.yaml        This repo's own profile - byte-identical to the
-│   │                                template it ships (see below)
+│   ├── solution-profile.yaml        This repo's own profile; the shipped template
+│   │                                defines keys, not identical project values
 │   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace,
 │   │                                pluginRoot ./plugins)
 │   └── workflows/                   5 workflows -> CI checks audit-references,
@@ -75,7 +75,7 @@ agent/                               Marketplace root
 │   │   ├── agents/                  15 *.agent.md (1 supervisor + 4 authors
 │   │   │                            + 7 reviewers + backlog-manager + bootstrapper
 │   │   │                            + capability-scout)
-│   │   ├── skills/                  41 repo-scope skills, incl.
+│   │   ├── skills/                  42 repo-scope skills, incl.
 │   │   │                            solution-profile-interview/references/
 │   │   │                            solution-profile.template.yaml
 │   ├── agile-agents-dotnet/         6 skills — C# / .NET
@@ -90,14 +90,16 @@ agent/                               Marketplace root
 │                                    check-skill-tokens.ps1, check-instructions-drift.py,
 │                                    gen-trigger-evals.py, run-trigger-evals.ps1
 ├── eval/                            One folder per unit of evaluation
-│   ├── pipeline/                    grades RUNS   — trajectory (L0) + custom-eval /
-│   │                                swe-bench-subset (L2) + run-eval — ADR 0008
+│   ├── deepeval/                    offline recorded-skill scoring — ADR 0015
+│   ├── python/agile_eval/           shared trace adapter + offline scorer
+│   ├── pipeline/                    deterministic trajectory (L0) + retained
+│   │                                custom-eval / swe-bench benchmark data — ADR 0008
 │   ├── skills/                      grades SKILLS — s0-routing + s1-invocation +
 │   │                                s2-efficacy — ADR 0014
 │   └── baselines.md                 every tier's numbers, in one place
 ├── .waza.yaml                       Waza config: skill token ratchet + eval paths (ADR 0014)
 ├── docs/
-│   ├── adr/                         Architecture decision records (0001–0014)
+│   ├── adr/                         Architecture decision records (0001–0015)
 │   ├── research/                    Whitepaper + spikes
 │   └── AGENTS-MD-MAPPING.md         Folder→agent mapping for the generator
 ├── AGENTS.md                        Generated — do not hand-edit
@@ -292,16 +294,17 @@ Consequences worth preserving:
   continue. Halting delivery over a metering table is the wrong trade.
 
 ### Vendored skills
-20 of the 61 skills are unmodified copies from
+20 of the 62 skills are unmodified copies from
 [github/awesome-copilot](https://github.com/github/awesome-copilot/tree/main/skills),
 indexed in `plugins/VENDORED.md` (which names the owning plugin per skill). **Do not edit
-them in place** — extend via a wrapper skill, or contribute upstream and re-sync. The other
-41 are hand-written or adopted and are the ones to edit — 38 repo-scope
+them in place** — except for the sanctioned scope annotation below; extend via a wrapper
+skill, or contribute upstream and re-sync. The other
+42 are hand-written or adopted and are the ones to edit — 39 repo-scope
 (csharp/python-implementation, csharp/python-testing, dotnet/python-startup-discovery,
 development-practices, testing-practices, data-science-practices, data-engineering-practices, code-review-checklist, artifact-coverage,
 bicep/terraform-azure/helm-kustomize/cicd-pipeline-implementation, iac-best-practices,
 architecture-design, architecture-decision-records, read-repo-context, engineering-standards,
-engineering-judgement,
+engineering-judgement, acceptance-grading,
 reviewer-read-only-rules, pr-description, release-notes, code-localisation, run-event-log,
 test-bar-gate, e2e-testing, cost-budget, dev-lead-templates, backlog-item-standards,
 ado-work-items, github-issues, azure-platform-grounding, deploy-verify,
@@ -314,14 +317,16 @@ re-sync will not supply them. What upstream does cover — and what is vendored 
 deployment preflight and Playwright test generation.
 
 `scripts/check-vendored-drift.ps1` fetches each entry and diffs it against the local copy,
-ignoring only the `applies_to` line. Run it before a re-sync; hand the result to
+ignoring only frontmatter `metadata.applies_to` and an annotation-only wrapper absent
+upstream. Other metadata, comments, native fields and body differences remain drift;
+upstream scope collisions require manual triage. Run it before a re-sync; hand the result to
 `capability-scout` to decide what is worth taking.
 
 ### Personal preferences are not shipped
 `trade-off-reporting`, `code-reviewer` and `cloud-native-patterns` once lived under a separate
 `user/skills/` folder, because that is where they were first written — a person's own
-`~/.copilot/skills/`. They now sit in `skills/` with everything else: all three are `applies_to:
-all` engineering skills that the agents rely on, none is a personal preference, and both paths were
+`~/.copilot/skills/`. They now sit in `skills/` with everything else: all three have
+`metadata.applies_to: all` and are engineering skills that the agents rely on, none is a personal preference, and both paths were
 bundled identically anyway. **Do not re-split them** — a second skills folder needs its own
 manifest entry, which is exactly the silent-drop failure the flat-layout rule above exists to
 prevent, and it left contributors with no rule for which folder a new skill belongs in.
@@ -381,18 +386,43 @@ should have internalised. Cutting it would produce a shorter agent that finds le
 adding judgement, pay for it by deleting *procedure* — never by deleting *reference*.
 
 ### Model-tier convention
-Each `.agent.md` declares a `model_tier` in frontmatter — `light` (orchestration: `dev-lead`),
-`mid` (mechanical authoring: `coding`, `infrastructure`, `backlog-manager`), or
-`heavy` (deep reasoning: `architect` and all review agents).
+Each `.agent.md` records `metadata.model_tier` in a string-to-string metadata map:
+`mid` for `coding`, `infrastructure`, `backlog-manager`, and `bootstrapper`; `heavy`
+for `dev-lead`, `architect`, `capability-scout`, `data-scientist`, and all review agents.
+`dev-lead` needs deep reasoning for planning/decomposition, acceptance coverage, risk
+sequencing, and gate judgement. Preserve these 15 assignments (ADR 0007): 4 mid,
+11 heavy. `light` remains supported but has no current roster assignment.
 
-**Nothing reads it.** It is declared by all 15 agents and consumed by no script, no
-manifest, and not by the CLI — whose own frontmatter field is `model`. Treat it as recorded
-intent (the rationale lives in ADR 0007 and `cost-budget/references/tier-defaults.md`), keep
-it accurate when editing, and do not expect changing it to change which model runs.
+**Validation reads it; runtime selection does not.** `scripts/check-skill-frontmatter.py`
+rejects missing/invalid metadata or tiers, legacy top-level tiers, nested native fields,
+and core inventory/assignment drift. Native fields (`model`, `tools`, `description`, etc.)
+stay top-level. Copilot's runtime-native controls govern model selection; the annotation
+does not override them. Neither the optional `cost_envelope.model_tiers` preferences nor
+`ai_copilot.approved_models` is automatically enforced by a tier resolver — none exists.
+This is advisory Copilot metadata, not a cross-harness contract or measured cost saving.
+The checker also validates advisory policy in the root profile and shipped template
+(not consumer fixtures): tier values are ordered nonempty model-ID lists or legacy
+single strings, without duplicates, and all listed IDs must be in the approved list.
+This static consistency check does not enforce runtime selection or automatic fallback.
+Keep this repo's seven IDs in its own profile; keep the shipped template generic.
+For optional setup, bootstrapper and the profile interview must read **Manual native
+setup** and **Preference is not governance** in
+`plugins/agile-agents-core/skills/cost-budget/references/tier-defaults.md`.
+Proposals come only from the consumer's map; the user approves and configures preferred
+models manually in `/subagents`. Preserve explicit choices and per-agent overrides;
+no map leaves settings untouched. No user/global settings writes, profile-derived task
+model overrides, or shipped `model` / `models` pins. Unavailable models are reported
+for the user to choose, never silently substituted. Preferred fallback may leave the
+approved list; static CI is not governance enforcement. Required-policy and Auto
+interactions remain unverified on CLI 1.0.98.
+The dogfood test bar uses `scripts/run-repo-checks.py lint|unit` with the active Python
+environment (`eval/deepeval/requirements.lock.txt`, installed with `--require-hashes`;
+see `eval/deepeval/README.md`) and `pwsh`; failures propagate immediately.
+Preserve the unittest/pytest split from CI, not blanket pytest discovery.
 
 ### Skill format
 Every skill is `<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`,
-`applies_to`). **`description` is what drives skill-invocation matching** — `applies_to` does
+`metadata.applies_to`). **`description` is what drives skill-invocation matching** — the scope annotation does
 not (see below). The frontmatter is followed by the workflow in natural language; reference
 files live in `<skill-name>/references/`, scripts in `<skill-name>/scripts/`.
 
@@ -423,14 +453,21 @@ regression, not to bless the current size. Raising one to make CI pass is metric
 (`engineering-judgement` §7) — trim the skill, or move detail into `references/`, which
 loads on demand rather than on trigger. See ADR 0014.
 
-`applies_to` declares the technology scope — `all` for a technique that holds in any
+`metadata.applies_to` declares the technology scope — `all` for a technique that holds in any
 ecosystem, otherwise a comma-separated list of the ecosystems it actually assumes
 (`dotnet`, `python`, `azure, terraform`, `kubernetes, helm, kustomize`, `docker`,
 `github-actions`, …). It is **required on every skill**; a missing value is a defect, not
-a default. The split today is 34 `all` / 26 scoped.
+a default. The split today is 36 `all` / 26 scoped.
 
-**Nothing reads it.** Like `model_tier`, it is declared on every skill and consumed by no
-script, no manifest, and not by the CLI — it is a local field that upstream has no equivalent
+**Validation requires a nonempty string in a metadata mapping; it does not control loading.**
+Legacy top-level scope, duplicate YAML keys, and native skill fields nested in metadata
+are rejected. Native fields stay top-level. Only the locally owned scope annotation is
+validated: inherited metadata is not blanket-converted or subject to the agents'
+string-map rule. In particular, upstream `acquire-codebase-knowledge` retains its
+`metadata.version` string and `metadata.enhancements` list; this is not a claim of full
+AgentSkills string-map conformance. Like the agents'
+`metadata.model_tier`, it records intent rather than runtime selection policy.
+It is a local field that upstream has no equivalent
 for (which is why `plugins/VENDORED.md` lists it as the one sanctioned modification to a
 vendored copy). It does **not** filter the matching pool: every installed skill is a candidate
 on every task regardless of what it declares. Treat it as recorded intent — it tells a *human*
@@ -441,7 +478,7 @@ The mechanism that genuinely limits what a project carries is therefore **the pl
 this field**: a Python project installs no `agile-agents-dotnet`, so those skills are not in its
 pool at all. That is why anything tied to one ecosystem belongs in a companion. Within a plugin,
 a scoped skill is still a live candidate for every task — so keep descriptions specific enough
-that a wrong match is unlikely, rather than relying on `applies_to` to prevent it.
+that a wrong match is unlikely, rather than relying on `metadata.applies_to` to prevent it.
 (Same reasoning as `microsoft/hve-core`'s `coding-standards` skills and
 `obra/superpowers-skills`' `languages:` field.)
 
@@ -524,4 +561,3 @@ reads, it reports *"no claim found"* rather than silently passing; update the re
 the script. Counting vendored skills means the rows under **`## Skill → Upstream` only**:
 `VENDORED.md` has three tables, and the adopted (`polyglot-test-agent`) and
 suggested-contribution tables are not vendored entries.
-
