@@ -179,6 +179,53 @@ def test_missing_python_exits_two_with_actionable_diagnostic_and_no_artifacts(
     assert not output.exists()
 
 
+@pytest.mark.parametrize("diagnostic", ["success", "missing", "timeout"])
+def test_nondry_runner_always_exits_two_before_staging_despite_diagnostic_status(
+        diagnostic, tmp_path):
+    # Relocated from the removed controller tests: the retained runner owns the
+    # unconditional hold. Doubles exercise diagnostic outcomes, not a live runtime.
+    output = tmp_path / "must-not-stage"
+    script = """
+import sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from agile_eval import run_eval
+def diagnostic(*args, **kwargs):
+    assert args[0][1:4] == ['-I', '-S', '-B']
+    print('diagnostic-called')
+    if sys.argv[3] == 'missing':
+        raise OSError('diagnostic missing')
+    if sys.argv[3] == 'timeout':
+        raise run_eval.subprocess.TimeoutExpired('diagnostic', 10)
+    return run_eval.subprocess.CompletedProcess(args[0], 0)
+denied = []
+def deny(event, args):
+    if (event.startswith(('socket.', 'os.mkdir', 'subprocess.'))
+            or (event == 'import' and args[0].split('.')[0] in {'copilot', 'deepeval', 'yaml'})):
+        denied.append(event)
+        raise AssertionError(event)
+sys.addaudithook(deny)
+with patch.object(run_eval.subprocess, 'run', diagnostic):
+    code = run_eval.main(['--suite', 'custom-eval', '--output-root', sys.argv[2], '--no-isolation'])
+assert not denied, denied
+assert not any(n.startswith(('copilot', 'deepeval', 'yaml')) for n in sys.modules)
+raise SystemExit(code)
+"""
+    env = {key: value for key, value in os.environ.items()
+           if key.upper() in {"SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"}}
+    env.update(HOME=str(tmp_path), USERPROFILE=str(tmp_path), APPDATA=str(tmp_path),
+               LOCALAPPDATA=str(tmp_path), TEMP=str(tmp_path), TMP=str(tmp_path))
+    proc = execute(
+        [sys.executable, "-I", "-S", "-B", "-X", "utf8", "-c", script,
+         ROOT / "eval/python", output, diagnostic], env, cwd=tmp_path,
+    )
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "live evaluation is disabled" in proc.stderr.lower()
+    assert "diagnostic-called" in proc.stdout
+    assert not output.exists()
+    assert ("Readiness diagnostic unavailable" in proc.stderr) is (diagnostic != "success")
+
+
 @pytest.mark.parametrize("native", NATIVES)
 @pytest.mark.parametrize("options", [
     ["--task-filter"], ["--scorer"], ["--unsupported-flag"],

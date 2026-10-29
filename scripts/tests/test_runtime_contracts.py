@@ -2814,7 +2814,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
         commands = self.runner.commands_for("unit")
         # Dependency-present checks now precede, but do not replace, the existing
         # unittest/pytest split. An absent DeepEval must fail before tests can skip.
-        self.assertEqual(len(commands), 9)
+        self.assertEqual(len(commands), 8)
         self.assertEqual([command[1:] for command in commands[:3]], [
             ["-m", "pip", "check"],
             ["eval/deepeval/check_environment.py"],
@@ -2822,15 +2822,15 @@ runpy.run_path(sys.argv[0], run_name="__main__")
              "-p", "test_dependency_environment.py", "-v"],
         ])
         suite_commands = commands[3:]
-        self.assertEqual([command[1:4] for command in suite_commands[:5]],
-                         [["-m", "unittest", "discover"]] * 5)
-        self.assertEqual([command[5] for command in suite_commands[:5]],
+        self.assertEqual([command[1:4] for command in suite_commands[:4]],
+                         [["-m", "unittest", "discover"]] * 4)
+        self.assertEqual([command[5] for command in suite_commands[:4]],
                          ["scripts/tests", "eval/pipeline/tests", "eval/pipeline/tests",
-                          "eval/pipeline/tests", "eval/pipeline/trajectory"])
-        self.assertEqual([command[7] for command in suite_commands[:5]], [
+                          "eval/pipeline/trajectory"])
+        self.assertEqual([command[7] for command in suite_commands[:4]], [
             "test_*.py", "test_eval_pipeline_workflow.py", "test_authorization.py",
-            "test_native_controller.py", "test_check_trajectory.py"])
-        self.assertEqual(suite_commands[5][1:], [
+            "test_check_trajectory.py"])
+        self.assertEqual(suite_commands[4][1:], [
             "-m", "pytest", "-q", "eval/pipeline/custom-eval/tests", "eval/deepeval/tests"])
         self.assertTrue(all(command[0] == sys.executable for command in commands))
 

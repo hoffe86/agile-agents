@@ -68,7 +68,6 @@ def test_firstparty_imports_follow_approved_ownership_without_delayed_cycles():
         "workspace_inputs": {"file_io"},
         "provenance": {"file_io", "workspace_inputs", "grading_contract"},
         "grading": {"grading_contract", "workspace_inputs", "provenance"},
-        "native_controller": {"authorization"},
     }
     for module, dependencies in expected.items():
         assert graph[f"agile_eval.{module}"] == {f"agile_eval.{name}" for name in dependencies}

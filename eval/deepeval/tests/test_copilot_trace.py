@@ -133,7 +133,7 @@ def test_renamed_tool_event_silently_empties_the_trace():
 def test_tool_correctness_measures_skill_bypass(deepeval_module):
     """End-to-end: trace -> DeepEval -> a score that discriminates bypass."""
     from deepeval.metrics import ToolCorrectnessMetric
-    from deepeval.test_case import LLMTestCase, ToolCall
+    from deepeval.test_case import LLMTestCase, ToolCall, ToolCallParams
 
     from agile_eval.adapters.copilot_trace import to_deepeval_tools
     from agile_eval.metrics.local_model import stub_model
@@ -147,9 +147,11 @@ def test_tool_correctness_measures_skill_bypass(deepeval_module):
         )
     )
 
-    expected = [ToolCall(name=SKILL_TOOL_NAME)]
+    expected = [ToolCall(name=SKILL_TOOL_NAME,
+                         input_parameters={"skill": "architecture-decision-records"})]
 
-    m_ok = ToolCorrectnessMetric(model=stub_model())
+    m_ok = ToolCorrectnessMetric(model=stub_model(), async_mode=False,
+                                 evaluation_params=[ToolCallParams.INPUT_PARAMETERS])
     m_ok.measure(
         LLMTestCase(
             input="write an ADR",
@@ -159,7 +161,8 @@ def test_tool_correctness_measures_skill_bypass(deepeval_module):
         )
     )
 
-    m_bad = ToolCorrectnessMetric(model=stub_model())
+    m_bad = ToolCorrectnessMetric(model=stub_model(), async_mode=False,
+                                  evaluation_params=[ToolCallParams.INPUT_PARAMETERS])
     m_bad.measure(
         LLMTestCase(
             input="write an ADR",

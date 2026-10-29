@@ -1,8 +1,9 @@
-# DeepEval spike — pipeline (agent / E2E) evaluation
+# DeepEval — offline existing-output scoring
 
-Status: **spike**. Decision and risks in [ADR 0015](../../docs/adr/0015-deepeval-for-pipeline-evaluation.md).
-The native harness in [`../pipeline/`](../pipeline/) remains available. Both outcome
-judges now share the strict structured contract in
+Status: **existing-log scoring is operational**; fresh agents and workspace outcome
+execution remain held. Decision and risks in [ADR 0015](../../docs/adr/0015-deepeval-for-pipeline-evaluation.md).
+The harness in [`../pipeline/`](../pipeline/) retains offline staging. Outcome
+entrypoints share the strict structured contract in
 [`agile_eval.grading_contract`](../python/agile_eval/grading_contract.py).
 
 First-party implementation is under [`../python/agile_eval/`](../python/agile_eval/),
@@ -10,14 +11,18 @@ including `metrics` and `adapters`. This directory retains dependency locks, tes
 and the existing executable script paths. Import libraries through `agile_eval.*`;
 adding only `eval/python` to the source path does not shadow third-party `deepeval`.
 
-**Live scoring is currently disabled.** DeepEval is still available for offline parser,
-metric-contract, and fixture tests, but `run_judge` returns `UNVERIFIED` without sending
+**Live execution is disabled.** DeepEval scores recorded skill invocation, but
+`run_judge` returns `UNVERIFIED` without sending
 workspace content to a model or invoking host tools. Live agent runs are blocked by the
 pipeline runner. The future credential-free worker boundary denies external/host/control-plane
 networking for untrusted artifact execution; it does not describe the model API caller,
 which needs network and authentication. HOME/tempdir/PATH hygiene is not OS isolation,
 and dry staging is not execution-readiness certification. Task-local loopback/database
 policy is still unapproved. See the [safety hold](../README.md#live-evaluation-safety-hold).
+Sandbox/controller experimentation is deferred to
+[#22](https://github.com/hoffe86/agile-agents/issues/22), preserved at
+[`08892b463a979bbfdaf7399d2d950cff8ff5c07c`](https://github.com/hoffe86/agile-agents/tree/08892b463a979bbfdaf7399d2d950cff8ff5c07c),
+not retained as active probes or an SDK dependency.
 
 ## What this proves
 
@@ -68,13 +73,24 @@ python eval/deepeval/check_environment.py
 export EVAL_REQUIRE_DEEPEVAL=1
 export DEEPEVAL_TELEMETRY_OPT_OUT=1
 python -m unittest discover -s eval/pipeline/tests -p test_dependency_environment.py -v
-python -m unittest discover -s eval/pipeline/tests -p test_native_controller.py -v
+python -m unittest discover -s eval/pipeline/tests -p test_authorization.py -v
 python -m pytest eval/deepeval/tests -q
 
-# measure skill usage across existing run logs — no credentials, no new runs
-python eval/deepeval/report_skill_usage.py eval/pipeline/runs \
-    --expect-skill architecture-decision-records
+# Synthetic fixture demo only — NOT a benchmark of current harness quality.
+python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl --score --expect-skill fixture-skill-a --output eval/pipeline/runs/skill-fixture-summary.json
+
+# Measure existing logs — no credentials, no new runs.
+python eval/deepeval/report_skill_usage.py path/to/existing/logs --score --expect-skill architecture-decision-records --output eval/pipeline/runs/skill-usage-summary.json
 ```
+
+CI runs the synthetic demonstration in both `eval-skills.yml` OS lanes after
+dependency validation. The manual `eval-pipeline-outcome.yml` workflow defaults to
+`mode: offline-score` over the same fixture, writes `skill-usage-summary.json`,
+and accepts an existing checkout-relative trace path plus a JSON array of expected
+skills. `dry_run: false` still fails closed, not into offline scoring.
+See [CI inputs, outputs and limits](../README.md#ci-on-demand).
+Only summaries are uploaded, never raw transcripts; neither demonstration grants
+current-harness benchmark or L2 acceptance credit.
 
 Importing `agile_eval.report_skill_usage` leaves streams unchanged; its CLI `main()`
 configures UTF-8 before producing the normal report.
@@ -83,11 +99,94 @@ configures UTF-8 before producing the normal report.
 ([`agile_eval.metrics.local_model`](../python/agile_eval/metrics/local_model.py)), because opting out after import is
 too late. Set it in CI as well — belt and braces.
 
+## Existing-output scoring contract
+
+`--score` opts into the actual pinned **4.1.8 `ToolCorrectnessMetric.measure()`**.
+It requires one or more nonempty `--expect-skill` values and a local
+`--output <file.json>`. The parent directory is created if needed. The destination
+must not be an input log. Without `--score`, the existing human-readable,
+stdlib-only parser report remains available (no DeepEval import).
+
+- Accept a single UTF-8 Copilot JSONL log, or recursively collect `.log` and
+  `.jsonl` files from a directory in sorted order. Exclude `.copilot-home` and
+  `.copilot` process-log trees. Every selected log uses the same expectations;
+  select a narrower directory or score files individually for different tasks.
+- Deduplicate expected identities and recorded skill calls. Project calls to
+  `ToolCall(name="skill", input_parameters={"skill": identity})`; compare using
+  `evaluation_params=[ToolCallParams.INPUT_PARAMETERS]`. Extra arguments, other
+  tools, ordering and repeat invocations do not affect identity coverage.
+- Score = matched unique expected identities / unique expected identities.
+  Expected A with called B scores **0**, even though both use the skill tool.
+  One of two expected identities scores **0.5**. The pass threshold is fixed at
+  **1.0**, without strict-mode rounding away partial evidence.
+- The adapter tolerates ordinary non-JSON banners but rejects malformed JSON
+  event lines (including duplicate fields and nonfinite numbers), non-object
+  events/data, malformed tool arguments or skill
+  identities, unknown tool events, missing required schema signals, invalid
+  UTF-8 and dry-run/setup placeholders. Required signals currently include tool
+  starts, assistant turn starts and a nonempty registered-skills list. Missing
+  signals are schema errors, not proof of skill bypass.
+
+| Exit | JSON status | Meaning |
+|---|---|---|
+| 0 | `passed`, `passed: true` | Every selected input measured 1.0 |
+| 1 | `failed`, `passed: false` | At least one measured score below 1.0 |
+| 2 | `schema_error` or `setup_error`, `passed: null` | Invalid trace/input, no inputs, missing/wrong dependency, or measurement failure |
+
+Argument errors and unwritable output also exit 2; no JSON is promised when the
+destination cannot be used. An output that aliases a selected input (including
+an existing hard link) is rejected before scoring or writing. Filesystem errors
+while checking that identity are setup errors, not permission to proceed.
+Errors take precedence over measured failures in a
+mixed directory. JSON schema 1 records `metric`, `deepeval_version`, `scope`,
+`expected_skills`, `threshold`, `status`, `passed`, `total`, `measured`, `results`
+and `errors`. Each result contains a one-based `input_index` in sorted input
+order, `status`, nullable `score`/`passed`, and sanitized structural errors.
+It deliberately omits input paths/names, prompts, tool outputs, raw arguments,
+metric reasons and exception text. Expected labels come from the operator, not
+the log; do not put secrets in `--expect-skill`.
+
+The synchronous measure call uses a **fail-on-call model stub**, no
+`available_tools` (that activates an LLM path), no `evaluate()` runner and hence
+no runner cache or hosted report/upload. Code forces telemetry/update checks off
+and disables dotenv/legacy-keyfile loading **before importing DeepEval**.
+The cold-start regression test audits network/process attempts from import through
+measurement, even with synthetic ambient keys and telemetry/update opt-ins, and
+asserts only the requested local summary is created. It does not prewarm platform
+metadata or override socket capabilities. It records and permits only two narrow
+trusted initialization operations: CPython's Windows metadata `cmd.exe /c "ver"`
+from `platform._syscmd_ver`, and urllib3's IPv6 capability bind to `::1` on port 0.
+Neither is an external connection, model/agent run, or recorded command/artifact
+execution. Connection/DNS attempts and other process/bind attempts are rejected
+and recorded even if a dependency catches the exception. Thus this is evidence for
+the exercised offline scoring path, **not** a claim of zero subprocesses or zero
+socket operations, and not an OS sandbox.
+
+The signature and fractional input-matching formula were checked against installed
+4.1.8 `metrics/tool_correctness/tool_correctness.py`, and exercised by the real
+metric tests (not inferred from the current documentation's formula).
+
+This metric asserts **recorded invocation**, not successful completion, correct
+skill use, workspace acceptance or task quality. A supplied log is not
+authenticated model/runtime evidence; the report grants no outcome/provenance
+credit. `AcceptanceMetric` remains honestly `UNVERIFIED` on held valid inputs.
+The demo file is a synthetic schema fixture; the separate
+`copilot-session.jsonl` remains the sanitized real-log adapter regression.
+
+CI-safe negative demonstrations (each deliberately exits 1):
+
+```bash
+# Wrong identity: score 0.
+python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl --score --expect-skill fixture-skill-b --output eval/pipeline/runs/skill-fixture-negative.json
+# Partial coverage: score 0.5, still fails the full-coverage threshold.
+python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl --score --expect-skill fixture-skill-a --expect-skill fixture-skill-b --output eval/pipeline/runs/skill-fixture-partial.json
+```
+
 ### Dependency lock and maintenance
 
 `requirements.txt` is the **maintainer input**, not an installation command.
 `requirements.lock.txt` is the complete transitive pip requirements closure:
-DeepEval **4.1.8**, github-copilot-sdk **1.0.28**, pytest **9.1.1**, PyYAML **6.0.3**,
+DeepEval **4.1.8**, pytest **9.1.1**, PyYAML **6.0.3**,
 and exact dependency versions.
 Versions were retained from the working evaluation venv, not broadly upgraded.
 The exception is setuptools **84.0.0**, already present in the developer environment;
@@ -103,150 +202,19 @@ Click, Typer and tqdm. Pip selects compatible wheels and fails closed otherwise.
 `requirements-yaml.lock.txt` owns the PyYAML hashes and is included by the full lock;
 the skill-quality lane uses only that lightweight file.
 
-The already-adopted SDK uses this same closure for ordinary callback unit tests,
-not a separate environment. Its added transitive pins are httpx **0.28.1**,
-httpcore **1.0.9**, python-dateutil **2.9.0.post0**, and six **1.17.0**; existing
-shared versions and platform hashes are unchanged. The tests assert the actual
-`PlanReadResult` and `PermissionDecisionReject` contracts and the SDK's declared
-CLI runtime version **1.0.105** and protocol **3**, without installing or launching that runtime in
-unit tests. SDK imports
-are local to those tests; missing or incompatible dependencies fail with the
-shared-lock install command. Client construction, sockets and subprocesses are
-forbidden, and the production readiness path remains SDK-free and held.
-The configuration contract also binds the held session options against the real
-SDK signature without constructing a client. SDK 1.0.24 removed
-`enable_github_cache_store`; that obsolete keyword is no longer emitted.
-This is API compatibility, **not** evidence that a cache or sandbox is isolated.
-
-#### Current stable pair (2026-10-28)
-
-The **2026-10-28** upgrade changes only SDK **1.0.24 → 1.0.28** and its wheel hash.
-DeepEval **4.1.8**, every other package version, platform marker and wheel hash
-are unchanged. Both downloaded SDK wheels have identical `Requires-Dist` entries:
-`python-dateutil>=2.9.0.post0`, `pydantic>=2.11`, `httpx>=0.24.0`, and optional
-`opentelemetry-api>=1.0.0; extra == "telemetry"`. No new dependency or manager.
-
-Latest stable was rechecked against the official
-[SDK latest release API](https://api.github.com/repos/github/copilot-sdk/releases/latest),
-[SDK v1.0.28 release](https://github.com/github/copilot-sdk/releases/tag/v1.0.28),
-[PyPI latest metadata](https://pypi.org/pypi/github-copilot-sdk/json),
-[PyPI 1.0.28 metadata](https://pypi.org/pypi/github-copilot-sdk/1.0.28/json),
-and [CLI latest release API](https://api.github.com/repos/github/copilot-cli/releases/latest).
-The downloaded `github_copilot_sdk-1.0.28-py3-none-any.whl` SHA-256 matches PyPI:
-`191e4b7f22a5a3842504ec9ee92f88abc4cf3aecca4ab04e2d359aa307436dd1`.
-Although SDK release prose mentions snapshot **1.0.105-1**, the **published wheel**
-pins stable **1.0.105** in `_cli_version.py` and protocol **3** in
-`_sdk_protocol_version.py`. The wheel, not that prose, selects the runtime.
-
-Use the SDK's `python -m copilot download-runtime` utility in trusted provisioning
-with a private `COPILOT_CLI_EXTRACT_DIR`. It selects the complete matching native
-package (`copilot-runtime` / `copilot-runtime.exe` plus `runtime.node`), not a
-standalone interactive CLI. The [v1.0.105 release](https://github.com/github/copilot-cli/releases/tag/v1.0.105)
-asset digests agree with its
-[SHA256SUMS.txt](https://github.com/github/copilot-cli/releases/download/v1.0.105/SHA256SUMS.txt):
-
-| Runtime asset | Publisher SHA-256 |
-|---|---|
-| `github-copilot-1.0.105-win32-x64.tgz` | `2dbd898b12d71e7c2c467adb5df113c8e4ad940d552aceec0599c86f7ba0af94` |
-| `github-copilot-1.0.105-linux-x64.tgz` | `be20f4a2a68fc24da149f6328aa4993309b8d0d13faeea9e22bd065d23ef03b2` |
-
-These are publisher runtime checksums, **not a claim of local runtime download
-or startup** during this upgrade. No ambient/global CLI was changed.
-The stable runtime includes the publisher's
-[1.0.102](https://github.com/github/copilot-cli/releases/tag/v1.0.102) fixes for
-sandboxed commands lasting over 10 seconds and subagent permissions, and
-[1.0.104](https://github.com/github/copilot-cli/releases/tag/v1.0.104) attached-task
-waiting fix. Release notes do not prove D1/D2 or this harness's denial semantics.
-
-Offline tests bind the held controller and four comparison sessions to the real
-1.0.28 APIs without client construction/startup. The general denial predicate
-still rejects generic `failure`. The qualification-only file classifier now
-requires fresh same-run controls and the exact pinned raw result, not historical
-evidence or sanitized diagnostics; see the
-[current qualification contract](../README.md#same-run-file-policy-qualification).
-The process stage now uses disposable native `tools.execute` sessions with
-exact-command one-shot permissions, paired filesystem policies, a fixed
-proxy-aware public HTTPS HEAD positive/negative, and attached-process
-normal/cancel/timeout cleanup controls. See the
-[current process qualification contract](../README.md#native-process-qualification)
-for the matrix, budgets and fail-closed limitations. These implementation and
-offline contract tests are **not hosted enforcement evidence**; candidate hosted
-qualification and production readiness remain unverified/held. No production
-role policy or auth path is introduced.
-The infrastructure-owned workflow now uses `native-runtime-1.0.105` in its
-extraction directory, with its provisioning comment identifying SDK 1.0.28/runtime
-1.0.105. The exact-pin regression passes; all **15/15** workflow contracts pass.
-No workflow was dispatched, and candidate hosted qualification has not run.
-
-Validation on Windows CPython **3.11.9** used the existing private evaluation venv,
-after updating the manifest: hash-verified `pip download`, an offline
-`install --dry-run --ignore-installed`, then `install --no-index --require-hashes
---only-binary=:all:` and `pip check`. Installed-distribution comparison changed
-**only** `github-copilot-sdk` from 1.0.24 to 1.0.28.
-All four supported wheel targets downloaded successfully: Windows `win_amd64`
-and Ubuntu `manylinux` x86_64, CPython 3.11/3.12. All **106 downloaded wheel files**
-matched the retained lock hashes. Their actual `METADATA`, compatible tags,
-`Requires-Python`, target markers and transitive extras were checked independently:
-**73 packages on Windows / 72 on Ubuntu** (Windows-only `colorama`).
-This proves artifact/closure compatibility, not native Ubuntu/Python 3.12 execution.
-All **148** unchanged native contracts, **47** controller tests and **15** dependency
-tests passed, as did `python scripts/run-repo-checks.py lint`.
-The earlier coding validation totaled **845/846** passing, with only the workflow
-extraction-path assertion failing. That included **155** script tests and **14/15**
-workflow contracts; separately completing the configured suites after that
-fail-fast boundary passed **33** authorization tests, **36** trajectory tests and
-**397** pytest tests with `EVAL_REQUIRE_DEEPEVAL=1` and telemetry opt-out.
-After the workflow edit, the infrastructure author reran all **15/15** workflow
-contracts and both configured gates, `python scripts/run-repo-checks.py lint`
-and `python scripts/run-repo-checks.py unit`: both exited **0**, with
-**301 unittest + 397 pytest = 698 tests** passing in the unit gate.
-All selected local checks now pass; the sole earlier failure is cleared.
-This is not a new native Windows or Ubuntu/Python 3.12 runtime qualification.
-Native SDK startup was not attempted.
-
-#### Historical restoration (2026-10-21; not current-pair evidence)
-
-The **2026-10-21** upgrade changed only the SDK root and wheel hash; DeepEval and
-the remaining closure were unchanged. Latest stable versions **at that time** were checked against
-[PyPI JSON](https://pypi.org/pypi/github-copilot-sdk/1.0.24/json) and the
-[SDK v1.0.24 release](https://github.com/github/copilot-sdk/releases/tag/v1.0.24),
-and against [npm metadata](https://registry.npmjs.org/@github%2fcopilot/1.0.101)
-and the [CLI v1.0.101 release](https://github.com/github/copilot-cli/releases/tag/v1.0.101).
-Both GitHub releases were published on 2026-10-20 and are neither drafts nor
-prereleases. The downloaded SDK wheel's `_cli_version.py` pins **1.0.101** too:
-no older automatic bundle, prerelease, ambient CLI, or fallback was selected.
-Its SHA-256 is
-`6b2e896df6801c5b144c3e5a0ee6c8890e7bb3af43903401fc4053fec875dc9d`.
-
-The official SDK `python -m copilot download-runtime` utility restored that
-runtime into a disposable `COPILOT_CLI_EXTRACT_DIR`, not user/global runtime
-settings. Its release asset is `github-copilot-1.0.101-win32-x64.tgz`
-(release SHA-256
-`b4ea97de362afc4c17d25a2aee8e4212c97c8ada488398f9735b7ec09922c6cc`);
-the utility verifies the release checksum before extracting. This SDK-managed
-entrypoint is `copilot-runtime.exe`, not the interactive `copilot.exe`.
-In the selected package the explicit native path API is
-`CopilotClient(connection=RuntimeConnection.for_stdio(path=..., args=...))`,
-not the older dictionary/`cli_path` examples in current local-CLI documentation.
-The matching published pins establish the publisher-selected pair; successful
-RPC, sandbox and delegated-agent compatibility are **not yet measured**.
-See [bounded qualification and its blockers](../README.md#approved-boundaries-and-bounded-qualification-2026-10-21).
-
-That earlier upgrade validation used the existing private Windows CPython **3.11.9** environment:
-hash-verified wheel download, exact offline dry-run/restore and `pip check` passed.
-The new universal SDK wheel's `Requires-Python` and active `Requires-Dist` entries
-fit the unchanged lock under Windows/Ubuntu CPython 3.11/3.12 marker environments.
-A bounded full Ubuntu 3.11 wheel download timed out after 220 seconds; the
-remaining full cross-target downloads were not attempted. Thus that upgrade did
-**not** claim renewed full four-target download or native Ubuntu/Python 3.12
-execution evidence. The platform hashes were preserved, not regenerated.
+Removing the unused SDK also removes its exclusive transitives `httpx`,
+`httpcore`, `python-dateutil` and `six`. Installed METADATA closure traversal,
+including extras, found these unreachable from the retained roots under all four
+Windows/Ubuntu CPython 3.11/3.12 marker environments. All retained versions/hashes
+are unchanged; shared packages such as `pydantic` and `opentelemetry-api` stay.
+The runtime/qualification history belongs to #22, not this scoring environment.
 
 #### Installation and maintenance gates
 
 CI creates a fresh venv, downloads with `--require-hashes --only-binary=:all:`,
 installs with `--no-index`, runs `pip check`, then requires the real DeepEval import,
 real `BaseMetric` inheritance, and deterministic `ToolCorrectnessMetric` score with
-the fail-on-call stub. `EVAL_REQUIRE_DEEPEVAL=1` makes both dependency-dependent
+the fail-on-call stub. `EVAL_REQUIRE_DEEPEVAL=1` makes dependency-dependent
 pytest tests fail on a missing/broken import instead of skipping. The isolated
 dependency-free parser regression remains valid. Telemetry opt-out and offline test
 design **are not OS network isolation** and do not release the live-evaluation hold.
@@ -456,8 +424,9 @@ agent that invoked nothing. That is the same shape as the three defects found on
 prove the guard actually fires rather than assuming it would. `report_skill_usage.py`
 exits `2` on schema drift specifically so it cannot be mistaken for an agent result.
 
-The test fixture is distilled from a real run log, sanitised of absolute paths — not
-hand-written, so it cannot drift into agreeing with the parser.
+The original adapter fixture is distilled from a real run log, sanitised of absolute
+paths. The separately named `skill-scoring-demo.jsonl` is intentionally synthetic,
+for reproducible CLI demonstration rather than benchmark evidence.
 
 ## Models
 
@@ -465,11 +434,11 @@ Two categories, per ADR 0015:
 
 | Metric | Needs a model? |
 |---|---|
-| `ToolCorrectness` (skill bypass) | Constructor requires one; **never invokes it** (`llm_calls=0`). `stub_model()` satisfies it with no credentials. |
-| Custom `BaseMetric` (build/test outcome) | No — it runs commands. |
+| `ToolCorrectness` (skill invocation) | Constructor requires one; this configuration never invokes it. `stub_model()` fails if called; `available_tools` is deliberately absent. |
+| `AcceptanceMetric` (workspace outcome) | Held: valid inputs return `UNVERIFIED`; no commands or models run. |
 | Task Completion, Plan Adherence, Plan Quality, Step Efficiency | Yes, genuinely. |
 
-For the last row, `azure_openai_model()` wraps DeepEval's `AzureOpenAIModel`, which accepts
+For future separately approved work on the last row, `azure_openai_model()` wraps DeepEval's `AzureOpenAIModel`, which accepts
 either `AZURE_OPENAI_API_KEY` or `azure_ad_token_provider` — so Azure OpenAI (including a
 deployment inside an AI Foundry resource) works, and CI can stay passwordless via Entra ID.
 Ollama is supported natively for a fully local judge.
@@ -479,9 +448,8 @@ an implementation detail, not a documented contract.
 
 ## Not done yet
 
-- Isolated Copilot configuration root, without which the numbers above measure the
-  developer's machine rather than the branch.
+- Safe fresh-agent execution and sandbox/controller qualification: [#22](https://github.com/hoffe86/agile-agents/issues/22).
 - Trajectory metrics (Plan Adherence against the Stage 4 plan) — needs the span tree built
   into nested DeepEval spans, not just the flat ordered tool list.
-- Outcome grading via custom `BaseMetric`, hosting the `acceptance-grading` skill.
-- Deciding the fate of `../pipeline/` — replace, or keep as the fallback ADR 0015 names.
+- Verified outcome grading: the existing `AcceptanceMetric` integration is tested but
+  deliberately cannot turn held workspace preflight into acceptance credit.

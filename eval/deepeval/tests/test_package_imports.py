@@ -15,11 +15,9 @@ PACKAGE = SOURCE / "agile_eval"
 
 
 def test_canonical_imports_share_types_exceptions_and_have_no_module_aliases(deepeval_module):
-    from agile_eval import authorization, grading_contract, native_controller, prepare_inputs
+    from agile_eval import authorization, grading_contract, prepare_inputs
     from agile_eval.metrics import acceptance
 
-    assert native_controller.InvalidRecord is authorization.InvalidRecord
-    assert native_controller.JobAuthorization is authorization.JobAuthorization
     assert acceptance.JudgeResult is grading_contract.JudgeResult
     assert acceptance.Verdict is grading_contract.Verdict
     assert importlib.import_module("agile_eval.prepare_inputs").SetupError is prepare_inputs.SetupError
@@ -45,7 +43,7 @@ def test_isolated_library_imports_ignore_ambient_modules_and_do_not_expose_depen
     marker = tmp_path / "ambient-imported"
     poison = f"from pathlib import Path\nPath({str(marker)!r}).touch()\nraise AssertionError('ambient')\n"
     for name in ("sitecustomize", "authorization", "grading", "provenance",
-                 "native_controller", "run_eval", "prepare_inputs"):
+                 "run_eval", "prepare_inputs"):
         (tmp_path / f"{name}.py").write_text(poison, encoding="utf-8")
     script = """
 import importlib.util
@@ -55,7 +53,7 @@ source = Path(sys.argv[1])
 assert Path.cwd().as_posix() not in sys.path
 sys.path.insert(0, str(source))
 before = list(sys.path)
-from agile_eval import authorization, grading, native_controller, provenance, run_eval, score_workspace
+from agile_eval import authorization, grading, provenance, run_eval, score_workspace
 from agile_eval import grading_contract
 from agile_eval.adapters import copilot_trace
 assert sys.path == before
@@ -63,7 +61,6 @@ assert importlib.util.find_spec('deepeval') is None
 assert importlib.util.find_spec('yaml') is None
 assert not any(n.split('.')[0] in {'yaml', 'deepeval', 'copilot', 'sitecustomize'} for n in sys.modules)
 assert 'agile_eval.prepare_inputs' not in sys.modules
-assert native_controller.InvalidRecord is authorization.InvalidRecord
 assert grading_contract.parse_result('1. PASS - ok\\nVERDICT: RESOLVED', 1).verdict is grading_contract.Verdict.RESOLVED
 assert provenance.ROOT == run_eval.ROOT == source.parent.parent
 """

@@ -56,8 +56,9 @@ The package keeps the grading dependencies one-way:
   held preflight, and the grading CLI. Provenance never imports grading.
 
 Consumers import functions from their owner rather than through compatibility
-re-exports. The native controller still depends on authorization; preparation and
-the run coordinator retain their existing responsibilities and lazy dependency boundary.
+re-exports. Preparation and the run coordinator retain their existing responsibilities
+and lazy dependency boundary. Sandbox/controller experimentation is tracked separately
+in [#22](https://github.com/hoffe86/agile-agents/issues/22), not an active adapter.
 
 **Why `pipeline/` and not `runs/`:** `eval/**/runs/` is the gitignored output directory
 that `run-eval` writes into. Naming the source folder `runs/` would collide with its own
@@ -285,6 +286,37 @@ hold. Approval alone is not permission to resume live execution.
 Do not remove the hold using chmod, environment variables,
 prompt instructions, executable allowlists, or the offline fake-CLI tests.
 
+## Score existing outputs with DeepEval
+
+The operational first step is **existing-log analysis**, not launching fresh agents.
+Install the pinned environment using [deepeval/README.md](deepeval/README.md#run-it).
+From the repository root:
+
+```bash
+# Synthetic fixture demonstration only — NOT a benchmark of the current harness.
+python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl --score --expect-skill fixture-skill-a --output eval/pipeline/runs/skill-fixture-summary.json
+
+# Existing retained logs: each log must have invoked every explicitly expected skill.
+python eval/deepeval/report_skill_usage.py path/to/existing/logs --score --expect-skill architecture-decision-records --output eval/pipeline/runs/skill-usage-summary.json
+```
+
+File inputs and recursive `.log`/`.jsonl` directories work. Repeat `--expect-skill`
+for additional identities; choose a directory whose logs share those expectations.
+The real pinned `ToolCorrectnessMetric` scores the fraction of unique expected skill
+identities recorded in each trace, not merely the presence of a `skill` tool.
+Exit **0** means all inputs scored 1; **1** means at least one measured failure;
+**2** means argument/input/schema/setup/measurement/output error. A partial score
+such as 0.5 remains a measured failure, not a setup error. JSON retains per-input
+scores and errors separately; input/schema errors never award a pass.
+Dry-run placeholder logs are not valid traces.
+
+This measures **recorded invocation only**: not successful tool completion,
+correct use of the skill, workspace acceptance, task quality, model identity or
+authenticity of the supplied log. It does not award provenance-bound outcome
+credit. No model, generated code, cache, hosted report or new agent is involved.
+See the [CLI contract](deepeval/README.md#existing-output-scoring-contract) for
+privacy, schema, and legacy parser-only behavior.
+
 ## How to run
 
 Python is required before an attempt starts. Use an interpreter with the locked
@@ -313,58 +345,59 @@ gate remains in force as a separate gate; the current sandbox hold blocks earlie
 
 ### CI (on demand)
 
-The [`Eval · pipeline outcome`](../.github/workflows/eval-pipeline-outcome.yml) workflow runs the harness on GitHub Actions via
-`workflow_dispatch`: pick the suite, an optional task-filter regex, a pass-threshold (0-100), and a
-`dry_run` toggle (**default on** — performs offline fixture preflight/staging). It posts `summary.json` to the run summary and uploads
-`runs/` as an artifact.
+The [`Eval · pipeline offline scoring`](../.github/workflows/eval-pipeline-outcome.yml)
+manual workflow defaults to **actual offline measurement**, not staging:
 
-Selecting `dry_run: false` fails closed before staging or invoking a CLI. No Copilot secret is
-needed or exposed, and the ordinary harness job does not install Copilot. Live execution remains disabled
-until a verified OS sandbox exists; human plan approval remains a separate mandatory gate.
+| Input | Default / meaning |
+|---|---|
+| `mode` | `offline-score`; alternatively `fixture-staging` |
+| `trace_path` | `eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl` — **synthetic fixture**, not a current-harness benchmark |
+| `expected_skills` | `["fixture-skill-a"]`; JSON array, each identity passed literally as a separate expectation |
+| `dry_run` | `true` is mandatory in both modes. `false` fails closed before checkout/provisioning; it never substitutes an offline score for a live request |
+| `suite`, `task_filter`, `pass_threshold` | Staging only; defaults `custom-eval`, `.*`, `0`. Threshold must be an integer 0–100; it does not change the skill metric's fixed **1.0** threshold |
 
-The separate `native_only` boolean defaults to **false**. Setting it to **true** runs only
-no-model native boundary qualification on hosted Ubuntu/Python 3.12, using the existing
-hash lock (SDK 1.0.28) and publisher-managed CLI 1.0.105. The infrastructure-owned
-workflow extraction path is now `native-runtime-1.0.105`, and its provisioning
-comment identifies SDK 1.0.28/runtime 1.0.105. All 15 workflow contracts pass.
-No new hosted run is claimed for this pair. Before checking host support,
-the job installs only the [official Linux prerequisites](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/using-local-sandboxing#prerequisites)
-using the ephemeral Ubuntu 24.04 runner's normal `sudo apt-get` provisioning:
-`bubblewrap=0.9.0-1ubuntu0.3` (Noble updates/security, main) and
-`slirp4netns=1.2.1-1build2` (Noble release, universe). These exact versions were
-verified against Ubuntu's primary archive on 2026-10-22
-([Bubblewrap](https://api.launchpad.net/1.0/ubuntu/+archive/primary/+binarypub/249852446),
-[slirp4netns](https://api.launchpad.net/1.0/ubuntu/+archive/primary/+binarypub/207474824));
-APT source/version policy and installed versions are logged. An unavailable pin fails
-closed rather than selecting an unreviewed version. Host prerequisite provisioning
-does not select or override SDK/CLI/DeepEval pins.
-The workflow checks executable availability, including `/usr/bin/python3`, but does
-not invoke `bwrap` directly. [Copilot owns sandbox lifecycle and policy through
-MXC](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/about-cloud-and-local-sandboxes#how-local-sandboxing-works);
-[MXC uses Bubblewrap by default on Linux](https://github.com/microsoft/mxc).
-No direct MXC dependency or wrapper is needed. The unchanged native driver uses
-`sandbox_config` and `client.rpc.sandbox.get_host_support()` to check runtime
-capabilities, and still requires actual file/network/environment canaries. Current
-documentation describes the integration, not proof that the locked SDK/CLI pair
-works on this host. Missing support or OS-policy denial fails the job; no
-AppArmor/sysctl, setuid, or other security-policy workaround is permitted.
+Both modes install CPython 3.12 and the existing hash-locked wheel closure, including
+PyYAML, then validate dependencies. Only trusted wheel download contacts PyPI.
+There is no provider login, secret, agent/model call, generated-code execution,
+SDK/runtime provisioning or remote trace download.
 
-Run [40478427043](https://github.com/hoffe86/agile-agents/actions/runs/40478427043)
-installed both pinned packages, then the former direct namespace probe failed with
-`loopback: Failed RTM_NEWADDR: Operation not permitted`. The native SDK never
-started. That ad hoc probe was not established as equivalent to MXC's invocation.
-Removing it removes duplicated code; it does **not** resolve the host denial or
-authorize a retry through the SDK or another backend. Real native validation remains
-blocked until policy/prerequisites are resolved or an authorized environment is
-available.
+The default scoring step is equivalent to:
 
-The job passes no credentials or model prompts, retains
-only sanitized check results in job logs, and removes its temporary provisioning.
-This mode produces no benchmark grades, percentages, or run artifacts. A passing primitive
-check does **not** verify actual Stage 4/delegation fidelity or release the controller's
-live hold. Keep `dry_run: true`; suite/filter/threshold inputs are not used in native mode.
+```bash
+python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl --score --expect-skill fixture-skill-a --output eval/pipeline/runs/skill-usage-summary.json
+```
 
-Outputs land in `runs/<run-id>/` where `<run-id>` is
+For existing traces, select a repository-relative file or directory already present
+in the checked-out revision and set `expected_skills`, for example
+`["architecture-decision-records","read-repo-context"]`. Every selected trace gets
+the same expectations. Absolute paths, missing paths, paths/symlinked log files
+escaping the checkout, malformed/empty expectations and pre-existing/redirected
+output paths fail closed. Paths and identities are passed as data, never shell
+source. Do not put secrets in expectation labels. Gitignored developer logs are
+not available on hosted runners; use the local command for those, not a remote
+artifact import mechanism.
+
+Scoring exits **0** for full coverage, **1** for measured failure/partial coverage,
+and **2** for setup/schema/argument/output errors. These propagate to job failure.
+The job summary explicitly distinguishes synthetic demonstration, existing traces,
+staging and live refusal; **recorded invocation is not successful tool completion,
+task acceptance or L2 resolved credit**. Acceptance remains `UNVERIFIED`.
+
+Only `eval/pipeline/runs/skill-usage-summary.json` (scoring) or
+`eval/pipeline/runs/*/summary.json` (staging) is uploaded, including after a failed
+measurement, with seven-day retention. Raw transcripts and workspaces are not
+uploaded. Missing reports are errors, never inferred scores.
+
+The `eval-skills.yml` Ubuntu/Windows runtime-contract matrix also runs the synthetic
+demonstration after dependency validation, using the command above with output
+`eval/pipeline/runs/skill-fixture-summary.json`. Its unittest/pytest split and Waza
+skill checks are unchanged.
+
+The `native_only` input, native qualification job and deleted native test selectors
+have been removed. Sandbox experimentation is deferred to
+[#22](https://github.com/hoffe86/agile-agents/issues/22); the live hold remains.
+
+Legacy fixture-staging outputs land in `runs/<run-id>/` where `<run-id>` is
 `YYYYMMDD-HHMMSS-<suite>-<unique-suffix>`. Treat the uniqueness suffix as opaque:
 
 ```
@@ -504,10 +537,9 @@ tasks stay in the denominator. Task 05 reads the immutable synthetic `diff.patch
 and produces Markdown **description text only**. It cannot open a PR, modify the
 depicted source, contact JIRA, alter inputs or use network/shell tools.
 
-### Controller API seam for the held native adapter
+### Offline authorization API
 
-Use the trusted `eval/python` source root and import `agile_eval.authorization`
-and `agile_eval.native_controller`, following the existing evaluation scripts:
+Use the trusted `eval/python` source root:
 
 ```text
 agile_eval.authorization:
@@ -525,840 +557,48 @@ agile_eval.authorization:
   JobAuthorization.state / attempts / reserved_budget / terminal_reason
 ```
 
-All `now` values come from the trusted controller clock as UTC whole-second
+All `now` values come from the trusted caller as UTC whole-second
 `YYYY-MM-DDTHH:MM:SSZ` strings. `Identities` binds source, plugin, overlay, input
 and toolchain SHA-256 values plus runtime/model IDs and capabilities; operations
-bind kind, exact absolute target, actor identity and byte limit. The native
-adapter must capture the actual owned-session path and hash exact plan bytes
-without newline/whitespace normalization, then supply the full current submission
-again at the single offline attempt. This library does not read native plan files or authenticate
-model/runtime claims on its own.
+bind kind, exact absolute target, actor identity and byte limit. The library does
+not read native plan files or authenticate model/runtime claims on its own.
 
-The attempt method is a **trusted controller API**, never an agent tool. The
-expected digest and approval reference must arrive independently from human
-approval, not from a workspace file or the envelope's own claim. Adjacent approval
-and provenance files are never ingested. `attempt` evaluates policy internally;
-there is no API accepting a caller's purported eligible decision.
+The attempt method is never an agent tool. The expected digest and approval
+reference must arrive independently from human approval, not from a workspace
+file or the envelope's own claim. Adjacent approval/provenance files are never
+ingested. `attempt` evaluates policy internally; it does not accept a caller's
+purported eligible decision.
 
-Authorization uses one job-local state object in `agile_eval.authorization`. A local thread
-lock protects its single offline attempt; callbacks have a separate async lock. There is no
-pending grant, receipt, per-operation admission, database, epoch or recovery API.
-The canonical envelope no longer has `grant_ttl_seconds`; old records containing
-that removed field are rejected, not migrated into authority.
-
-Each job starts `UNAUTHORIZED`. Independently authenticated approval inputs are
-required for its one attempt. A policy-evaluated attempt, including blocked or
-uncertain advice, uses the job (`USED`); integrity failures latch `ABORTED`.
-Attempt count is at most one even if envelope limits allow more. On eligibility
-the full declared budget is reserved; abort cannot refund it. Expiry is checked
-against the approved envelope at that transition. No operation becomes executable.
-There is no cross-job cumulative accounting or durable deduplication: another job
-requires fresh independent approval, not reuse of persisted permission.
-
-The controller must remain inaccessible to untrusted workers. In-process locks
-do not prove that boundary or make native plan capture/execution atomic. A new
-controller always starts unauthorized, including after invalid input, cancellation
-or restart. It never restores permission from JSONL, audit, result or approval files.
-
-### Offline verification and remaining blockers
+Each job starts `UNAUTHORIZED`. A policy-evaluated attempt uses the job (`USED`);
+integrity failures latch `ABORTED`. Attempt count is at most one; eligibility
+reserves the full declared budget, and abort cannot refund it. No operation
+becomes executable. There is no cross-job cumulative accounting, recovery,
+persisted permission, per-operation grant or durable deduplication. A local
+thread lock protects the single offline attempt, not an OS boundary.
 
 ```text
 python -B -m unittest discover -s eval/pipeline/tests -p test_authorization.py -v
 python eval/authorization.py check-readiness
 ```
 
-The first command uses only the standard library, strict-record and single-job
-policy tests, including a local thread race. It does not verify OS isolation.
-The second performs no SDK import/startup, state
-creation, credential discovery, staging or network access, and always exits **2**.
-The authorization and native controller test modules are selected explicitly by
-`python scripts/run-repo-checks.py unit`, retaining the existing unittest/pytest
-split. Authorization tests need no SDK or DeepEval; controller tests use the shared
-evaluation environment described in [deepeval/README.md](deepeval/README.md).
-
-Readiness is permanently `execution_ready: false`, `state: not_ready`, with:
-`live_hold`, `controller_state_isolation_unverified`,
-`native_atomic_admission_unverified`, `stage4_plan_provenance_unverified`,
-`delegate_model_provenance_unverified`, `credential_transport_unverified`, and
-`pinned_runtime_compatibility_unverified`. The native control seam below adds
-defensive callbacks, environment sanitation and runner diagnostics behind this
-same permanent hold; no live execution is enabled.
-No paid evaluation, live-v2 success record or positive credit is enabled by these
-controls. The separately authorized dependency upgrade and bounded no-model
-qualification below do not release them.
-
-### Held native controller
-
-`agile_eval.native_controller` is a standard-library-only adapter seam. Its
-`NativeController` receives one independently bound `PlanSubmission`, the exact
-owned native session/path and a dedicated owned runtime, and creates its own fresh
-`JobAuthorization`. Do not supply a shared runtime. The public
-`NativeSession` / `NativeRpc` / `NativePlan` protocols
-mirror the SDK 1.0.28 `session.rpc.plan.read()` attribute result
-(`exists`, `content`, `path`); tests use typed doubles and offline SDK contracts,
-not a live runtime.
-
-- `on_exit_plan_mode_request` checks callback and owned session IDs, awaits the
-  owned native plan read, and checks the exact path and UTF-8 content SHA-256
-  without newline or whitespace normalization. It never substitutes inline
-  `planContent`, `summary` or `recommendedAction`. Even a matching plan returns
-  `stage4_plan_provenance_unverified`: native plan capture is not semantic Stage 4
-  provenance. No branch approves, uses the offline attempt, or selects `exit_only`.
-- `on_pre_tool_use` explicitly denies every route, including native tools,
-  delegates, unknown/unattributed calls and remote MCP. Ordinary handler failures
-  latch abort, finish cleanup and **return deny**, rather than trusting an SDK
-  hook exception to deny. `on_permission_request` independently rejects;
-  `on_user_input_request` refuses arbitrary approval strings.
-- `abort` / `on_disconnect` latch terminal state before awaiting cleanup. They
-  abort the job, disconnect the session and stop only the dedicated owned runtime. Failed graceful stop
-  falls back to bounded `force_stop`. Cancellation waits for cleanup and then
-  propagates. Cleanup failures retain bounded codes, not exception text; even a
-  failed force-stop never permits continuation. No automatic resume, retry or
-  grant refund. An OS-level failure to stop remains unresolved—not proof that
-  the process died.
-- A session lock serializes callback work; it does not make native
-  plan-read-to-callback-return-to-tool execution atomic. SDK failures before callback dispatch and alternate execution routes
-  remain unverified and are among the reasons startup stays blocked.
-
-`sanitized_runtime_spec(parent_environment, *, home, config, temp, workspace,
-trusted_path)` builds an immutable environment from explicit values and only a
-constrained `LANG` allowlist. It does not copy the parent's environment, mutate it,
-discover credentials, create directories, or inherit user PATH/config, Git/SSH,
-proxy/keychain/cloud/model credentials or Node/Python startup injection settings.
-Paths and binaries must already be controller-owned/trusted. Its defensive
-session options disable discovery, file hooks, host Git/cache integration and
-session storage; explicit agent/skill/instruction/hook discovery roots are empty.
-Automatic continuations are explicitly disabled with
-`autopilot={"continuation_enabled": False, "max_continues": 0}` rather than
-inheriting the SDK's enabled/five-continuation default. No plugin/MCP/tool routes
-are enabled. Empty roots clear only explicit SDK discovery roots, not all native
-built-ins or an existing runtime's capabilities. This is tested
-**configuration hygiene**, not verified native sandbox/network/credential isolation.
-An empty tool list is not revocation.
-
-`start_native_runtime(spec, *, github_token=None)` always returns `not_ready`
-**before SDK import, client construction or startup**. Client-level token options
-are rejected (including an empty string). SDK 1.0.28 `client.py` replaces inherited
-environment when explicit `env` is supplied, but then injects `github_token` into
-`COPILOT_SDK_AUTH_TOKEN`; sanitizing the input mapping alone cannot prevent that
-leak. No per-session token, environment-secret or proxy workaround is implemented.
-`sdk_callbacks(controller, opt_in=True)` is an explicit integration-only lazy
-import that translates the independent rejection into `PermissionDecisionReject`;
-it does not create a client and is never called by readiness or the runners.
-
-Both non-dry runners request the shared `authorization.py check-readiness`
-diagnostic and then **unconditionally exit 2**. A zero/error diagnostic status,
-missing Python, plausible envelope/grant files, credentials, or `NoIsolation`
-cannot unlock execution. No staging or model startup occurs. Dry-run behavior,
-dry provenance v1, grading v2, disabled judge and trace requirements are unchanged.
-
-```text
-python -B -m unittest discover -s eval/pipeline/tests -p test_native_controller.py -v
-```
-
-These are callback/configuration and real-shell **unit tests**, not runtime
-integration evidence. Three offline tests in this same module exercise the actual
-`sdk_callbacks` factory, `PermissionDecisionReject` and `PlanReadResult` types
-against SDK 1.0.28 using the shared `deepeval/requirements.lock.txt` environment.
-They forbid client/process/socket creation and fail on missing or wrong SDK pins.
-No runtime starts or model calls occur.
-
-#### Production guard subset and remaining contract gaps (2026-10-28)
-
-**Phase 3 remains blocked; phase 4 has only the restrictive configuration subset.**
-The held `RuntimeSpec.session_options()` boundary now supplies the continuation
-and discovery guards above. Six additional offline tests cover defensive copies,
-actual SDK serialization retaining `False`/`0`, synthetic client-token injection,
-the attribution schema gap, refusal of claimed supervisor commands, and refusal
-of `exit_only` even after offline eligibility. Existing tests still cover mutable
-plans, unknown routes, session replacement, cancellation, terminal cleanup, token
-rejection and SDK-free/readiness-without-I/O. These are not hosted enforcement
-measurements, exclusive-client evidence or completed D1/D2.
-Validation: **308/308** targeted authorization/controller/native offline tests;
-the configured lint and unit gates also pass (**307 unittest + 397 pytest**).
-Targeted in-memory compilation and whitespace checks pass. No coverage percentage
-was measured; these results do not release any production hold.
-
-The installed SDK **1.0.28** `client.py`, `session.py`, `generated/rpc.py` and
-`generated/session_events.py` were byte-for-byte compared with official
-`github/copilot-sdk` tag `v1.0.28`. The publisher-selected runtime remains
-**1.0.105**; no native runtime was started for this change.
-
-- **Supported role scoping is not yet a sufficient authorization chain.**
-  [Custom-agent tools](https://github.com/github/copilot-sdk/blob/v1.0.28/docs/features/custom-agents.md#scoping-tools-per-agent)
-  accept explicit native names; omitted/null tools inherit all session tools.
-  Session `available_tools`/`excluded_tools` constrain everyone, while
-  `default_agent.excluded_tools` hides tools only from the default agent.
-  These are not per-role OS policies. The
-  [pre-tool input](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/session.py#L1018-L1030)
-  has optional `agentId`/`agentType`/`parentAgentId` but **no `toolCallId`**.
-  [Hook dispatch](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/session.py#L3873-L3948)
-  forwards CLI-supplied metadata; it does not establish an immutable binding to
-  the trusted harness definition. The
-  [shell permission request](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/generated/session_events.py#L8720-L8746)
-  has optional `tool_call_id`, but no agent identity.
-  [Permission invocation](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/session.py#L553-L558)
-  carries session ID, managed-settings state and optional prompt details;
-  [dispatch](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/session.py#L3153-L3170)
-  adds no role. Matching command text or accepting caller-supplied role strings
-  cannot fill that join.
-- **The public execution APIs do not resolve that gap.**
-  [`agent.get_current`/`select`](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/generated/rpc.py#L67575-L67583)
-  describe selected session agents/subsequent turns, not the actor of a pending
-  shell permission. [`tools.execute`](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/generated/rpc.py#L68236-L68241)
-  runs a currently offered session tool; its
-  [request](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/generated/rpc.py#L20903-L20928)
-  contains name, arguments and optional call ID, not a verified role selector.
-  Subagent settings configure model/reasoning/context/auto-invocation, not OS
-  policy. **Upstream question:** what supported contract binds each shell
-  permission to a runtime-authored agent instance, trusted agent definition and
-  immutable tool invocation, across root and nested delegation, without allowing
-  a restricted worker to regain supervisor shell access? Until established,
-  no supervisor approval, inferred roster, prefix grant or new orchestration
-  framework is implemented; all tools and permission callbacks stay denied.
-- **Credential transport remains independently blocked.**
-  [Client environment construction](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/client.py#L4863-L4875)
-  replaces the inherited environment and then injects `github_token` into
-  `COPILOT_SDK_AUTH_TOKEN`. The synthetic source-contract test demonstrates that
-  ordering without invoking startup; the held launcher rejects this option.
-  Experimental [`gitHubAuth.setCredentials`](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/generated/rpc.py#L18249-L18262)
-  installs credentials for outbound requests and warns of secrets at rest/in
-  transit; it does **not** promise exclusion from child environments, file tools,
-  persistent state or same-user process access. No alternative credential
-  transport is selected or provisioned. The missing evidence is a supported
-  transport's isolation guarantee plus separately authorized native measurement;
-  environment sanitation or a successful RPC is not that evidence.
-
-SDK [Autopilot options](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/session.py#L1514-L1523)
-and native `exit_only` are supported surfaces, not permission to continue.
-The Stage-4 provenance gate remains closed; there is no approved continuation
-branch. A common filesystem/network sandbox policy remains the accepted design,
-not an implemented/qualified production policy in this subset. The
-[`sandbox_config` construction boundary](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/client.py#L2696-L2698)
-exists before MCP startup, but does not itself solve role attribution, protect
-every controller/baseline/credential path, or establish same-user isolation.
-All readiness blockers, including the deliberately legacy
-`native_atomic_admission_unverified`, are unchanged. Revisit only with the
-missing contract/evidence, not by lowering D1 or inventing a native transaction.
-
-### Latest-stable pin upgrade (2026-10-28; offline only)
-
-Current operating pins are **SDK 1.0.28 / publisher runtime 1.0.105 / protocol 3**,
-not the intermediate 1.0.25/1.0.102 pair. Official latest releases, downloaded wheel
-metadata and SHA-256 were reverified; the wheel selects stable 1.0.105 despite
-the release prose mentioning snapshot 1.0.105-1.
-See [current artifacts and dependency closure](deepeval/README.md#current-stable-pair-2026-10-28).
-DeepEval 4.1.8 and every unrelated dependency/hash remain unchanged.
-
-All selected local checks now pass. The earlier coding validation passed all
-**148** native contracts, **47** controller tests and **15** dependency tests;
-its **845/846** result had one failure: the workflow extraction-path assertion.
-After completing the workflow edit, infrastructure validation passed **15/15**
-workflow contracts and both configured lint and unit gates (exit **0**);
-the unit gate passed **301 unittest + 397 pytest = 698 tests**. This clears the
-sole earlier failure, not the native qualification hold. These local checks and
-cross-target wheel checks do not establish native Windows or Ubuntu/Python 3.12
-runtime behavior for the candidate pair.
-
-That upgrade was pins/API compatibility/offline tests/docs only. The 148 existing
-native tests and four controlled comparison cases are retained; the current
-qualification change adds 24 offline tests (172 in the main module).
-Including 59 process contracts, the current entrypoint collects **231 tests**
-after the corrective regressions. The stable
-release's sandbox-command, subagent-permission and attached-task fixes are
-publisher claims, not evidence that D1/D2 works here. The upgrade itself added
-no process probe, role policy, auth route or denial classifier. The narrow
-file-policy classifier and disposable process qualification are described below.
-Unqualified generic `failure` still fails, and `start_native_runtime` still rejects client tokens and returns
-`execution_ready: false`.
-
-Run [40648729927](https://github.com/hoffe86/agile-agents/actions/runs/40648729927)
-is **old-pair baseline only**, not candidate-hosted proof or authority to reinterpret
-the new runtime's errors. All run observations, 1.0.24 source comparisons and
-Windows startup results below retain their historical versions; none establish
-native behavior on 1.0.28/1.0.105. Fresh candidate hosted controls and independent
-review remain pending. D1/D2 and the production live hold are
-unchanged. No runtime was started locally, and no workflow was dispatched.
-
-### Approved boundaries and bounded qualification (2026-10-21)
-
-The user approved **D1** and **D2**, plus latest-stable SDK/CLI restoration and
-bounded **no-model** qualification. This does not approve an evaluation run.
-
-- **D1:** the unchanged `dev-lead` supervisor may execute only its prescribed
-  `run-event-log`, `cost-budget` and applicable `test-bar-gate` orchestration
-  scripts inside the native sandbox. Task-05 workers remain shell/network denied.
-  Native role/session attribution must distinguish them; no blanket shell grant
-  or command-prefix workaround is acceptable. Native OS enforcement for process
-  tools and CLI software enforcement for built-in file operations are accepted
-  trust boundaries, **not measured facts**. Workers must not access credentials,
-  controller state, approval records or canonical baselines; bypass stays disabled.
-- **D2:** native `exit_only`, exclusive owned session, an immutable binding to the
-  actual plan, and **one separately authorized continuation** replace the earlier
-  proposed native compare-digest-and-execute transaction. No autoexecution,
-  competing queued turns/clients, capability broadening, or mutable-plan
-  substitution is permitted. Fail-closed errors and genuine cleanup are required.
-  The legacy `native_atomic_admission_unverified` code is retained as a conservative
-  hold pending measurement of this approved replacement, not a demand to invent
-  a nonexistent transaction. Production still has no approval/continuation branch.
-
-SDK **1.0.24** and its publisher-selected CLI runtime **1.0.101** were restored
-with the unchanged DeepEval **4.1.8** closure; exact release sources and hashes
-are in [dependency maintenance](deepeval/README.md#dependency-lock-and-maintenance).
-The actual selected SDK source supports `session.rpc.tools.execute(...)` without a model
-turn and retains the isolated delegation tool names. Source availability is not
-proof of their runtime enforcement or agent/model fidelity.
-
-The opt-in `pipeline/tests/native_runtime_integration.py` driver reports
-`missing_tools` on `native_toolset` / `native_tools_missing` failures. This is a
-sorted, deduplicated subset of its fixed required names, not a raw tool inventory.
-Other failure stages and successful reports do not include this field.
-SDK `ToolSet` filters registered tools; it does not register them.
-`get_current_metadata()` reports the session's current initialized tools.
-Missing names alone do not establish a mode, catalog, authentication, or runtime
-defect.
-
-For `explicit_native_denial_required`, the driver also reports `denial_result`.
-The stage identifies the probe: `native_toolset` is the `bash` request;
-`native_file_denial` is the protected-file `view` request.
-
-- `shape` is `mapping`, `object` (has `result_type`), or `other`.
-- `kind` is one of the pinned SDK's `denied`, `failure`, `rejected`, `success`,
-  or `timeout` values. A missing field is `absent`; any other value, including
-  null, is `unrecognized`. Unknown strings and nested envelopes are not interpreted
-  as denial and are never echoed.
-- Only the bash probe adds `canary_file` (`present`, `absent`, `unknown`) and
-  `command_execution` (`observed`, `not_observed`, `unknown`). It requests a
-  bounded write of the fixed output marker to a unique file in the owned temporary
-  workspace, followed by the same marker on stdout. The marker is split in the
-  command text, so a command echo alone is not positive execution evidence.
-  A created file or marker in `textResultForLlm` means `observed` and fails the
-  check, even if the result claims denial. Missing/malformed result text or an
-  unreadable file state leaves execution `unknown` unless positive evidence exists.
-  **Neither `not_observed` nor file absence proves non-execution.** Passing still
-  requires explicit `denied`/`rejected`, observed file absence, and no positive
-  output evidence. An unreadable file state fails closed.
-
-File-check failures retain `native_file_positive_control_failed`, `protected_canary_leaked`, or `permission_session_mismatch` through both report boundaries, with the original stage and prior passed checks.
-
-Run [40518050911](https://github.com/hoffe86/agile-agents/actions/runs/40518050911)
-passed the first four stages, then failed the allowed-file positive control;
-it did not reach the protected-file read. The driver had no approval path for a
-fixture read that required permission: both auto-approval flags were false and
-the callback rejected every request. It had already verified `INTERACTIVE` mode
-after `exit_only`, and the positive fixture existed before session creation.
-
-The callback now returns `PermissionDecisionApproveOnce` only for a typed
-`PermissionRequestRead` of the exact host-created `workspace/readable.txt`, during
-that positive probe and for the owned SDK session. The requested path must match
-exactly; any supplied resolved path must also match, and the fixture must still
-resolve to the same regular file. Protected, outside, traversal, symlink-alias,
-malformed/multiple-path and other permission requests are rejected. Managed
-approval, sandbox bypass and sandbox path-grant requests are also rejected.
-No directory grant, blanket read/tool approval, or sandbox policy change is used.
-The approval window closes in `finally` before the protected probe.
-
-The original SDK 1.0.24 source investigation used
-[`PermissionRequestRead`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/session_events.py#L8493-L8550)
-and
-[`PermissionDecisionApproveOnce`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L32751-L32773)
-contracts. The SDK supplies callback session identity in
-[`session.py`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/session.py#L3401-L3452).
-The public
-[`permissions.paths`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L67860-L67890)
-API can list exact approvals but its add operation grants a **directory**; it
-does not provide an exact-file read grant setter. These three local source files
-were byte-for-byte checked against official v1.0.24.
-
-Run [40521978568](https://github.com/hoffe86/agile-agents/actions/runs/40521978568)
-then passed the positive control and returned `{shape: mapping, kind: failure}`
-for the protected `view` request. It failed at `native_file_denial` with
-`explicit_native_denial_required`. This is not evidence of missing authentication:
-the allowed native read worked. It is also not yet proof of policy denial.
-If the positive marker is absent in a future run, `positive_read`
-reports only `kind` (the same fixed kinds as above, plus `absent`/`unrecognized`)
-and `permission` (`not_requested`, `approved`, `rejected`, or `mixed`). It never
-reports response content. The positive marker-in-JSON assertion is unchanged.
-The protected marker is now checked **before** the result kind, against the
-original host-created marker. Returned protected content is a hard
-`protected_canary_leaked` failure, including when the kind is `failure`, `denied`
-or `rejected`. A changed fixture cannot change the expected marker.
-The general explicit-denial predicate and nonempty, all-matching permission-session
-assertions remain. The qualification-only exception below requires fresh controls
-before accepting the exact raw filesystem-policy failure.
-The latter covers all callbacks in
-the check, not a requirement that protected-file denial itself invoke a callback.
-Native policy may deny that request before callback dispatch.
-
-#### Protected-file contract and bounded diagnostics
-
-The fixture remains outside the workspace; its **exact file**, not its parent
-directory, is supplied to `sandbox_config.user_policy.filesystem.denied_paths`
-so the probe uses the same policy shape as the same-file comparison. The separate
-[`PermissionPathsConfig`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L42665)
-still restricts paths to the workspace, excludes the temp directory, and grants
-no extra directories. Callback authorization is unchanged: no protected read is approved.
-
-The historically inspected `ToolResultExpanded` schema below has `resultType`,
-`textResultForLlm`, optional string `error`, and untyped `structuredContent`.
-It has **no typed filesystem-policy denial code**. The public
-[`managed-settings permission evaluator`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L54766)
-takes URL operations; it is not a filesystem verdict API.
-These contracts do not establish which result kind CLI 1.0.101 uses when
-`view` hits a denied filesystem path before a permission callback.
-The unchanged generic `require_denial` rejects `failure` and uses no English
-error-text matching, private runtime API, or invented structured code. The later
-[same-run file-policy qualification](#same-run-file-policy-qualification) is a
-separate, version-bound exact-raw-error exception, not a change to that helper.
-
-Once the protected probe starts, failures can also report `protected_read`:
-
-| Field | Fixed values / meaning |
-|---|---|
-| `callback` | `not_requested`, `rejected_exact_read`, `rejected_other`, `mixed`; only callbacks during the protected probe, never the prior fixture approval |
-| `callback_session` | `not_requested`, `match`, `mismatch`; a mismatch remains recorded |
-| `marker` | `present`, `absent`, `unknown`; scans the serialized result, including structured fields; unknown serialization cannot pass |
-| `text_shape` | `string`, `absent`, `other`, `unknown`; no text in this field |
-| `allowed_directory` | `yes` / `no` from native `permissions.paths.is_path_within_allowed_directories` |
-| `sandbox_blocked` | `yes` / `no` from native `sandbox.get_enforcement_status().blocked` |
-
-The last two fields can instead be `not_run`, `unknown` (malformed value),
-`timeout`, or `operation_failed`. Both inspections are public, read-only RPCs.
-They run only after a protected-probe failure, each under the existing 15-second
-RPC limit and 180-second outer deadline. Their errors do not replace the original
-probe error. The callback window closes in `finally`, including on RPC failure.
-
-[`Directory membership`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L67860-L67877)
-is **not** a tool authorization verdict.
-[`Sandbox blocked`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L15588)
-means an enforcement failure permanently blocked the session; it does **not**
-mean this path matched `denied_paths`. A recorded callback rejection is not proof
-that the runtime applied that answer. None of these observations can turn
-`failure` into a pass. They distinguish the remaining cases in one next authorized
-native check without exposing raw output. The CLI's actual protected-read cause
-remains **unknown**; no native run was made for this change.
-
-Run [40528535235](https://github.com/hoffe86/agile-agents/actions/runs/40528535235)
-subsequently passed the allowed read but again returned protected-read
-`{shape: mapping, kind: failure}`. The protected callback was `not_requested`,
-the marker was `absent`, and both `allowed_directory` and `sandbox_blocked` were
-`no`. That still does not establish a denial or its cause.
-
-The driver supplies distinct fixed synthetic `tool_call_id` values for
-the positive and protected `view` requests, using the public
-[`ToolsExecuteRequest`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L20692-L20717)
-correlation field. The existing session callback observes public
-`tool.execution_complete` events without changing its model-activity checks.
-Only a protected-probe failure can add `protected_completion`:
-
-| Field | Fixed values / meaning |
-|---|---|
-| `event` | `seen` / `not_seen`; whether **any** public completion was observed during the diagnostic window, not necessarily the protected call |
-| `correlation` | `match` for the protected call ID; `mismatch` for a different string ID; `absent` for missing/null/empty ID; `unrecognized` for malformed ID |
-| `success` | Strict JSON boolean from a matching event, otherwise `unknown`; integers and strings are not booleans |
-| `error` | `present` / `absent` for a matching event's non-null error field, otherwise `unknown` |
-| `code` | `present` / `absent` for a matching event's non-null error-code field, otherwise `unknown`; **never the code value** |
-| `remediation` | Only pinned `RemediationAction` values: `sign_in`, `switch_account`, `show_account`, `review_sandbox_policy`, `allow_sandbox_outbound`, `rewind_conversation`; otherwise `absent` / `unrecognized` |
-
-These are observations, **not actions to perform or permission to widen policy**.
-The then-installed Python 1.0.24 `SessionEvent`, `ToolExecutionCompleteData`,
-`ToolExecutionCompleteError` and `RemediationAction` shapes were inspected and
-tested against the pinned package; the
-[publisher completion/error contract](https://github.com/github/copilot-sdk/blob/v1.0.24/nodejs/src/generated/session-events.ts#L8238-L8250)
-defines an open string code, not a closed denial-code allowlist. No raw message,
-result, content, arguments, path, call ID, code value or metadata is retained in
-the diagnostic. The outer process independently filters its keys, types and
-values and prevents uncorrelated details from being attributed to the probe.
-
-The diagnostic window starts immediately before protected execution and ends
-after the existing failure-only policy inspections (or immediately on success).
-It stores one fixed-size summary: the first matching completion wins, even over
-earlier nonmatches; later positive, unrelated or duplicate events cannot overwrite
-it. Without a match, correlation precedence is `mismatch`, `unrecognized`, then
-`absent`, and error/success details remain unknown. Events before the window and
-after its frozen failure snapshot are ignored.
-
-Direct `tools.execute` RPCs may emit no public completion, or delivery may arrive
-after this window. SDK 1.0.24 exposes no public completion-draining mechanism;
-`get_events()` retrieves full session history, not a drain. No history collection,
-extra wait, timer, polling, model request or private event dependency is added.
-`not_seen` is therefore **unknown**, never evidence of denial. Internal ephemeral
-`sandbox.decision` events are ignored: policy inspection is not proof that a
-verdict was honored and may indicate a permitted bypass. Even a correlated
-`success: false` with `review_sandbox_policy` cannot turn generic RPC `failure`
-into an accepted denial. Protected-marker leakage still wins over **every**
-result kind, and successful output remains unchanged.
-
-This diagnostic is locally validated only. A repeat hosted check requires separate
-publication/dispatch authorization; no new hosted evidence or root-cause claim is
-made here. `live_readiness: false` and all production-execution holds remain intact.
-
-Run [40539957771](https://github.com/hoffe86/agile-agents/actions/runs/40539957771)
-again returned generic protected-read `failure` after the positive read passed,
-without an observed completion callback. That still leaves the cause unknown.
-
-The opt-in `--run-native` synthetic driver now adds **bounded, redacted failure
-diagnostics in public logs**, not a confidential artifact or an encryption layer.
-Only the exact protected `view` request's direct wire result with kind `failure`
-can add `protected_error`. A nonempty string `error` takes precedence; only when
-it is absent/null/blank does `textResultForLlm` supply the explanation. Both use
-the same scrubber. Exceptions, completion messages, other calls, arguments,
-metadata, structured content and session logs never supply this text.
-
-For example, an invented synthetic failure could render:
-
-```json
-{"protected_error":{"source":"error","text":"Synthetic filesystem policy could not initialize"}}
-```
-
-The information-flow limits are:
-
-- The existing explicit minimal environments for the driver child and SDK runtime
-  remain unchanged: **CI/service credential values are not forwarded**. Fixtures
-  must contain only synthetic data; **never put real secrets in a fixture**.
-- The parent creates the protected fixture and retains its original random marker
-  independently of child output or subsequent file changes. The existing all-field
-  canary check (including `error`) precedes result-kind checks and error capture.
-  A detected marker is `protected_canary_leaked`, with **no error body**, even if
-  the result says `denied` or `rejected`.
-- Error strings above **4,096 characters** are suppressed entirely. Within that
-  limit, the entire candidate is scanned before any path redaction or truncation,
-  both before and after ANSI/control removal. The bounded candidate crosses only
-  the private child pipe intact; **only the parent truncates**, after checking its
-  own environment, so truncation cannot hide a known credential spanning the cut.
-  Public output text is at most **2,048 characters**. Known credential values from
-  each process's relevant environment
-  and credential-looking material (including authorization headers, token
-  assignments, credential URLs, private keys and common provider token forms)
-  suppress the **entire text**, rather than attempting to remove just the secret.
-- Known synthetic, repository, runner, home and temporary roots become fixed
-  labels. Unrecognized absolute paths suppress the text. ANSI/control characters
-  are removed, workflow-command delimiters are neutralized, and output is one
-  JSON-encoded report, never a raw multiline error echo.
-- Malformed/mixed error fields and unusable input produce only a fixed
-  `suppressed` reason (`context_missing`, `malformed`, `oversized`, `empty`,
-  `credential_material`, or `unrecognized_path`). No arbitrary object is
-  stringified for this diagnostic. The outer process independently checks the
-  failure context, diagnostic structure, text limits and content using its own
-  original marker and environment; child reports over **32,768 characters**
-  are rejected without relaying them.
-
-Pattern matching is defense in depth, **not guaranteed secret recognition**.
-The reduced data available to the child, synthetic-only fixtures and narrowly
-selected error field are essential constraints, not substitutes for one another.
-This is not a general logging facility and does not change the production runner.
-Even text saying “access denied” cannot make generic `failure` an accepted denial.
-Success stdout, permissions, grants, readiness holds and model-call behavior are
-unchanged. No hosted rerun was performed for this diagnostic; publication and
-dispatch still require separate explicit authorization.
-
-The outer process validates every diagnostic key and value. Raw results,
-unsanitized errors, stdout, session logs and credential material are not relayed.
-The original failure reason (except a newly detected protected-marker leak),
-prior passed checks and cleanup rules remain in force. Successful stdout is
-unchanged. For the **bash probe**, if the response is a mapping with kind `failure`,
-text without the marker, and an absent file, the new field is exactly:
-
-```json
-{"denial_result":{"shape":"mapping","kind":"failure","canary_file":"absent","command_execution":"not_observed"}}
-```
-
-The installed SDK source was compared with official **v1.0.24**:
-[`ToolsApi.execute`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L67665-L67674)
-returns the wire result directly;
-[`ToolResultExpanded`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L41785-L41866)
-maps top-level `resultType` to `result_type`;
-[`ToolResultType` / `ToolsExecuteRequest`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/generated/rpc.py#L20681-L20718)
-lists the five kinds and describes execution of a **currently offered** tool.
-The existing parser already matches that shape. This source does not establish
-that requesting an unavailable `bash` tool must produce an explicit permission
-denial, or that direct host RPC and agent calls have identical enforcement.
-The earlier shell-result uncertainty is separate from the positive-read failure
-reported by run 40518050911.
-No accepted denial values, native tool grants, or live-readiness holds changed.
-
-#### Same-run file-policy qualification
-
-The opt-in native driver runs four **fresh, owned sessions** before the older
-tool/file gates. This avoids losing the controls when an earlier probe returns
-generic `failure`. Qualification does not change workflow, SDK/runtime pins,
-production controller, credential environment or readiness holds. It is **not
-requalified on the current hosted runtime pair**; publication and dispatch remain
-separate authorized steps.
-
-The parent writes a separate synthetic `comparison.txt` marker and retains its
-original value. It is not the protected control-plane marker: intentionally
-reading it in the positive control must not look like a protected-data leak.
-
-| Case | File / filesystem `denied_paths` | Exact read callback |
-|---|---|---|
-| `permit` | Existing comparison file / empty | Approve once, only during this owned session's read |
-| `native_deny` | **Same absolute file and bytes** / that exact file | Same approval decision as `permit`, if requested; qualification requires no callback |
-| `missing` | Known-absent sibling in the same workspace / empty | Approve only that absent path, if requested |
-| `callback_deny` | Same existing comparison file / empty | Explicitly reject; an observed exact callback is required |
-
-The A/B sessions have identical working/config directories, PLAN mode, manual
-permission mode, permission configuration, native `view` tool and arguments,
-network restrictions, and no hooks, skills, discovery or ambient sources.
-Session IDs and callback closures necessarily differ; the **only policy change**
-between `permit` and `native_deny` is filesystem `denied_paths`. Each case checks
-allowed-directory membership is `true`; no directory grant or bypass is added.
-The host verifies fixture bytes remain unchanged and the missing path remains
-absent. Fresh sessions use the pinned SDK 1.0.28 `create_session(sandbox_config=...)`
-and typed filesystem policy, not an invented policy-mutation RPC.
-
-Each per-session callback has its own execution window. Late requests are
-rejected without altering frozen observations. Wrong-session/other requests are
-rejected, recorded separately, and invalidate the control. `not_requested` is
-reported honestly, not rewritten to “approved” or “denied.” In particular, if
-the runtime auto-authorizes an in-workspace read and never asks the callback,
-the callback-denial control **fails**, rather than claiming that a denial was
-tested. This is a remaining hosted-evidence question.
-
-Failure-only `file_comparison` diagnostics expose fixed case/policy labels,
-result kind, allowed-directory membership, marker-presence and read-success
-booleans, exact/other callback observations, and bounded errors through the
-existing redactor. The diagnostic `sandbox_error_exact` only compares the direct
-`error` field with the exact literal `Is a sandbox denied path.`; the classifier
-never consumes that diagnostic or sanitized text.
-No successful read contents, raw paths, callback payloads or session IDs are
-published. Error text is rechecked by the parent against both original markers
-and its own credential environment before truncation. Success stdout is unchanged.
-
-All returned fields are checked for the comparison marker before judging result
-kind in negative cases: even `failure`, `denied` or `rejected` with that marker
-stops immediately. Malformed results, failed controls and RPC timeouts also stop
-fail-closed. After the all-field canary scan, every control requires the pinned
-wire contract: string `textResultForLlm`, recognized string `resultType`, and
-`error` absent, null, or a string. Invalid fields raise
-`comparison_malformed_result`, even for explicit denial; suppressing a malformed
-error diagnostic does not validate the control. Private raw evidence is released
-only after all four controls and their cleanup complete. The qualification-only
-classifier requires SDK **1.0.28**, actual runtime **1.0.105**, and integer protocol
-**3**; its pin is separate from the operating pins so an upgrade cannot silently
-inherit the exception. Each control must have a distinct owned session, the exact
-`view` target and deny policy, allowed-directory membership, and no mismatched or
-unexpected callbacks. In addition:
-
-| Control | Required raw outcome |
-|---|---|
-| `permit` | `success`, marker in `textResultForLlm`, no error, observed exact-read approval |
-| `native_deny` | `failure`, exact `error == "Is a sandbox denied path."`, no marker; callback must be `not_requested`; approval, rejection or mixed observations invalidate qualification |
-| `missing` | `failure`, exact `error == "Path does not exist"`, no marker; callback absent or approved |
-| `callback_deny` | `denied`, observed rejection, no marker, error distinct from both other negative controls |
-
-Unknown versions, incomplete controls, malformed results, negative-control
-collisions and nonexact errors fail closed. There is no substring matching,
-normalization, text fallback, or inference from event absence. The
-**unchanged** `require_denial` still rejects every generic `failure`, including
-the exact literal when unqualified.
-
-Only the remaining fixed protected-file `view` probe can reuse the resulting
-private qualification. It checks the same pin, exact target and denied-file
-policy, unchanged fixtures, valid callback scope, and all-field canary absence
-before accepting the exact raw failure. This means **observed software-policy
-refusal**, not publisher-typed denial, OS file isolation, or internal attestation.
-Every created comparison session is aborted, disconnected and deleted with
-bounded RPCs; deletion is also attempted for an owned ID whose creation timed
-out. Cleanup failures remain failures. Existing client-stop and outer owned
-process-group cleanup/deadline still apply.
-
-The remaining experiment asks whether a permitted read succeeds, only changing
-native filesystem policy produces the exact failure, and missing-file and
-callback-denial controls produce distinguishable responses on the current
-**1.0.105** runtime; the old **1.0.101** baseline cannot answer this.
-Separate sessions still differ in runtime state and callback delivery; the
-controls cannot attest internal enforcement ordering or eliminate every runtime
-confounder. Marker absence does **not** prove no internal filesystem I/O occurred.
-No exact-literal branch guarantee or before-read proof is claimed. Candidate
-hosted evidence and independent review remain outstanding. Historical run
-40648729927 on 1.0.24/1.0.101 is not transferred to the current pair.
-
-#### Native process qualification
-
-The process stage uses SDK 1.0.28's
-[`ToolsApi.execute`](https://github.com/github/copilot-sdk/blob/v1.0.28/python/copilot/generated/rpc.py)
-native invocation pipeline in **disposable qualification sessions**, not in the
-production worker. `get_host_support()` is a prerequisite, never a pass.
-The obsolete `shell.execute_user_requested` route and host-loopback substitute
-are not used. Production authorization, readiness flags and live holds are unchanged.
-
-Each disposable session offers only native `bash`, disables ambient discovery,
-MCP/plugins/skills and managed permission bypass, and enables `SandboxConfig`
-with bypass and developer-tool access disabled. Its ordinary typed permission
-callback approves once only while the exact owned session's fixed command is
-pending; unknown kinds, other commands/sessions, repeat requests, path grants
-and sandbox bypass/permissive requests are rejected. There is no prefix grant.
-
-After initialization, `get_current_metadata().tools[].input_schema` supplies
-the **actual offered argument schema**. The pinned SDK's separate
-`get_builtin_descriptors()` decoder retains only the schema root type, so it
-cannot validate argument constraints. A deliberately limited primitive-schema
-validator checks the fixed `command`, `mode=sync`, `initial_wait=30` and optional
-description; incompatible/missing constraints fail with
-`process_descriptor_incompatible`. No JSON-schema dependency is introduced.
-
-On that failure only, `process_descriptor` identifies the validator's rejection
-stage, reason, known property and constraint keyword. It reports the rejected
-node's shape/type and allowlisted schema keywords, plus presence/type/required
-status for the five known arguments. Unknown names are counted (saturated at
-100), never printed. Descriptions, defaults, enum values, reference targets,
-commands and paths are not emitted; the parent re-allowlists every field.
-This is diagnostic evidence, not relaxed schema support or execution credit.
-Hosted run `40745023717` (SDK 1.0.28 / runtime 1.0.105, protocol 3) failed before
-the first process execution with `process_descriptor_incompatible`; it recorded
-neither the descriptor nor the rejecting constraint and has no artifacts.
-The actual hosted bash schema therefore remains unverified. A new approved
-no-model hosted qualification is needed to identify the constraint before a
-compatibility change can be justified; local contract tests are not a substitute.
-
-| Executable control | Required evidence before the stage can pass |
-|---|---|
-| Workspace read/write | Native `/usr/bin/python3 -I` writes a fresh start record, roundtrips a file, and emits exact completion markers |
-| Protected read/write, permit | An existing synthetic file outside the workspace has an explicit native read/write grant; the child verifies its digest and changes its bytes |
-| Protected read/write, deny | Identical command and fixture, with only the exact-file native deny added; only `PermissionError`/`FileNotFoundError` count as refusals, and host verification requires original bytes unchanged |
-| Outbound permit | Proxy-aware HTTPS **HEAD** to exactly `https://docs.github.com/`, native `allowed_hosts=["docs.github.com"]`, outbound enabled; a 2xx/3xx HTTP response is required |
-| Outbound deny | Identical command/configuration except native outbound disabled; local OS `EACCES`/`EPERM` during socket connection establishment, before a connected socket is returned, is required |
-| Normal attached completion | Parent plus attached descendant start; the parent remains attached for more than ten seconds, completes, and both recorded processes terminate |
-| Explicit cancellation | After live parent/descendant readiness proof, a one-second timer triggers native session abort; both identities must still be alive immediately before abort and terminate afterward |
-| Execution deadline | A separate two-second deadline after readiness triggers native abort; both identities must still be alive immediately before abort and terminate afterward; reported distinctly from normal completion/cancellation |
-
-The HEAD has no credentials, repository/file content, query or request body.
-It reads no response body and follows **no redirects**, including cross-host
-redirects. Python's standard proxy handler uses only the native child's trusted
-environment; the isolated controller does not forward host proxies or tokens.
-Credential-bearing proxy URLs are rejected. The native proxy is used as
-provided—no new proxy, service, custom sandbox, certificate bypass or installation.
-A proxy acknowledgement is never positive upstream evidence. The connection
-observer isolates the stdlib socket-creation call from TLS, proxy CONNECT,
-request transmission and response-header reads. Only its local OS permission
-refusal can qualify (`connect_permission_denied`); Linux documents these
-[connection permission errors](https://man7.org/linux/man-pages/man2/connect.2.html)
-for local firewall/security policy. This is paired-control evidence, not internal
-native-policy attestation. Ordinary `ECONNREFUSED`, resets, timeouts, unreachable
-hosts, TLS/DNS/setup failures, and all proxy/HTTP error responses—including
-CONNECT 403—are inconclusive failures, never outbound-denial credit. No network
-error-string matching is used. If the hosted boundary exposes only ambiguous
-signals, qualification fails closed; any failed positive stops before its negative.
-Reports retain only fixed semantic codes.
-
-The inline Python source is outside the writable artifact trust boundary.
-Full start/completion markers do not appear in the command text. A short
-readiness handshake keeps even fast probes alive until the host checks the
-child-written record. Both the start record and readiness acknowledgement are
-written and closed in private sibling files before atomic publication.
-Linux `/proc` PID/starttime/parent/group/session checks
-establish owned ancestry and the attached descendant relationship; death checks
-read only those recorded PIDs and guard against PID reuse. Immediately before
-abort, both original identities are revalidated as live with matching starttimes;
-a pending RPC alone is insufficient. Native abort,
-disconnect and deletion acknowledgements alone cannot establish cleanup.
-No global process enumeration or kill-by-name is used. Outer owned-process-group
-killing remains a **failure fallback**, never qualification evidence.
-
-Only attached scripts are in scope; detached/`setsid` descendants are not claimed.
-The general RPC limit remains **15 seconds**. Process execution gets a named
-**30-second** limit, readiness/death polling **5 seconds** each, and the complete
-process phase a **100-second** cancellation deadline followed by bounded teardown.
-An inner RPC/execution timeout reports `process_operation_timeout`; only expiry
-of that phase's deadline reports `process_deadline_exceeded`. Neither earns
-process-stage pass credit, and both retain bounded cleanup.
-The existing **180-second hard outer deadline** and **five-minute workflow step**
-remain unchanged. Hosted timing has not been measured; exceeding a budget fails
-rather than silently extending it.
-
-Offline contracts run through the existing `test_native_runtime_integration.py`
-entrypoint, including `native_process_contracts.py`, without creating an asyncio
-loop, SDK client or socket. They exercise pinned API types, callbacks, schema
-rejection, real synthetic payload I/O, network error classification, orchestration
-and orphan failures. **They do not prove Linux native enforcement.** A hosted
-no-model run must still verify the offered shell schema, native proxy/CA behavior,
-host-visible process identities and whether native session abort actually
-terminates direct `tools.execute` work and its attached descendant. Any unsupported
-behavior fails closed. No local native startup or workflow dispatch is implied.
-
-The driver now supplies the native activation conditions, without custom tools:
-
-- `on_user_input_request` enables the native user-input callback and always returns
-  a fixed freeform refusal; question text or offered choices cannot approve execution.
-  The original source check established SDK 1.0.24 serializes this as `requestUserInput` in
-  [`client.py`](https://github.com/github/copilot-sdk/blob/v1.0.24/python/copilot/client.py#L2795-L2799).
-- It enters and verifies `SessionMode.PLAN` **before** initializing/querying the
-  current tool set. This follows the pinned
-  [mode-handler example](https://github.com/github/copilot-sdk/blob/v1.0.24/python/e2e/test_mode_handlers_e2e.py);
-  the later actual-plan read, digest-bound refusal and `exit_only`/no-autoexecution
-  assertions are unchanged.
-- `enable_skills=True` is paired with the absolute path to the existing
-  `plugins/agile-agents-core/skills/trade-off-reporting` directory. The pinned
-  [customization-location contract](https://github.com/github/copilot-sdk/blob/v1.0.24/docs/features/customization-locations.md#file-formats-and-precedence)
-  supports a **direct `SKILL.md` bundle**, so neither a parent skill directory nor
-  a new fixture/plugin is needed. The driver awaits `skills.ensure_loaded()` and
-  requires `skills.list()` to contain exactly that enabled skill at its expected
-  file path, without a plugin source. These are native discovery RPCs, not
-  injected metadata or a custom skill provider.
-
-Ambient configuration discovery remains off; plugin, agent, instruction and hook
-roots remain empty, and the isolated builtin allowlist plus `view` is unchanged.
-Explicit skill roots are not general filesystem grants, but the pinned contract
-does give active local skills read-only resource access to their contributing SDK
-directory. Only this one repository-controlled skill bundle is trusted here.
-No skill invocation, model turn, full core-plugin loading, or harness fidelity is
-claimed. Offline contracts check creation arguments against the pinned SDK signature,
-refusal behavior, discovery validation and PLAN-before-metadata ordering without
-creating an event loop or starting a runtime:
-
-```console
-python -B -m unittest discover -s eval/pipeline/tests -p test_native_runtime_integration.py -v
-```
-
-The configuration repair is not a successful native-host qualification: the changed
-driver still requires execution in approved native CI after publication. The existing
-Windows loop stall and sandbox-denial restrictions are not bypassed.
-All required capabilities, denial checks, and readiness holds remain unchanged.
-
-The following is the **historical 2026-10-21 SDK 1.0.24 / runtime 1.0.101**
-qualification, not an attempted startup of the current pair.
-
-| Check on this Windows host | Result / evidence boundary |
-|---|---|
-| Official package/release identity, wheel hash, exact offline restore, `pip check` | Passed; only the SDK version changed in the Python closure |
-| Selected SDK session keyword and explicit stdio connection contract | Ordinary offline regression passed; removed obsolete `enable_github_cache_store` keyword |
-| Actual downloaded native executable | SDK-managed `copilot-runtime.exe` rejects `--version` with `unsupported argument '--version'`; no runtime self-reported version or handshake claimed |
-| One bounded no-model SDK startup attempt | Blocked **before client construction/start**: CPython 3.11.9 Windows default asyncio loop stalls in `socket.socketpair()` → `socket.accept()`; 25-second watchdog captured the stack and terminated the owned Python child |
-| Owned session creation/authentication, plugin inventory, native direct tool execution/denial | Not reached; no session created, tool dispatched, or model request sent |
-| D1 supervisor/worker distinction, filesystem/network/credential protection, bypass denial | Unverified; no synthetic callback result is credited as native enforcement |
-| D2 native plan binding, `exit_only`, no autoexecution, exclusive ownership, one continuation | Unverified on this pair; no plan-mode transition or continuation attempted |
-| Actual delegation, selected agent/model fidelity | Unverified; deliberately no model generation or agent spawn |
-| Cleanup | Qualification Python child exited; no SDK runtime/session was started. Disposable synthetic task/state removed. OS descendant inspection via `Get-CimInstance Win32_Process` was denied (`Access to a CIM resource was not available to the client`); no alternate/elevated inspection attempted |
-
-Raw sanitized qualification data is a session-local JSON file, not a repository
-proof framework or a production authorization record. The socket stall does not
-identify a specific sandbox policy file: **cause/policy attribution is unknown**.
-That historical full unit gate also stalled at the unchanged DeepEval dependency smoke's
-default event-loop creation; this is not a green full-suite result. Focused package,
-import-isolation and native DeepEval framework tests passed without model calls.
-No tests, event-loop implementation, transport, sandbox settings or guard were
-weakened to avoid the stall.
-
-Next qualification requires the ordinary default asyncio loop to function in an
-authorized environment, then real native checks of D1/D2. Additionally, the
-historically inspected SDK's `SandboxConfig` documentation said the runtime reads credential
-hosts but ignores `enabled` and other policy fields supplied by the host. Therefore
-neither that object nor `sandbox.get_enforcement_status()` (managed-policy status
-only) attests OS enforcement. Establish the native host's enforcement capability
-before permitting tools; do not substitute a custom host/proxy or remote TCP.
-All readiness blockers remain in force.
-
-**CI wiring:** `.github/workflows/eval-skills.yml` runs both suites as separate
-steps in its `runtime-contracts` job, on the `ubuntu-latest` and `windows-latest`
-matrix entries, after the pipeline workflow regression step:
-`python -m unittest discover -s eval/pipeline/tests -p test_authorization.py -v`
-and
-`python -m unittest discover -s eval/pipeline/tests -p test_native_controller.py -v`.
-This describes the configured workflow, not a verified successful Linux CI run.
-
-Restart/rerun requires fresh trusted approval with an independently supplied digest
-and approval reference. These are references, not credentials or an authenticator:
-the caller must authenticate their source, not copy them from an envelope.
-Credential transport, actual-plan authorization and native execution remain
-unverified; environment sanitation is configuration hygiene, not sandbox isolation.
+The first command tests strict records and single-job policy without an SDK or
+DeepEval. The second performs no SDK startup, credential discovery, staging or
+network access and always exits **2**. Readiness stays `execution_ready: false`;
+the runner unconditionally holds live execution regardless of that diagnostic's
+result. These offline contracts remain for regression coverage, not as an
+authorization engine for existing-log scoring.
+
+## Deferred sandbox work
+
+[Issue #22](https://github.com/hoffe86/agile-agents/issues/22) owns sandboxing and
+the held SDK-controller experiment. Its implementation and qualification diary
+are preserved at commit
+[`08892b463a979bbfdaf7399d2d950cff8ff5c07c`](https://github.com/hoffe86/agile-agents/tree/08892b463a979bbfdaf7399d2d950cff8ff5c07c).
+Native probes/helpers, their tests and the unused SDK dependency have been
+removed from active source, not relocated into another active folder.
+Tests of the retained runner's unconditional live hold remain in
+`deepeval/tests/test_native_scoring.py`, including diagnostics that return success,
+raise `OSError`, or time out: none may permit staging or execution-dependency imports.
+Readiness import/CLI coverage remains in `pipeline/tests/test_authorization.py`.
+No native qualification, runtime startup, fresh agent execution or release of
+the live hold is part of existing-output scoring.

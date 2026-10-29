@@ -64,6 +64,7 @@ class Trace:
     turns: int
     events_parsed: int
     events_unparsable: int
+    schema_errors: list[str] = field(default_factory=list)
 
     @property
     def tool_names(self) -> list[str]:
@@ -80,24 +81,45 @@ class Trace:
         return list(seen)
 
 
-def _iter_events(lines: Iterable[str]) -> Iterator[tuple[dict[str, Any] | None, str]]:
-    for line in lines:
+def _event_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate event field")
+        result[key] = value
+    return result
+
+
+def _reject_constant(_value: str) -> None:
+    raise ValueError("nonfinite JSON value")
+
+
+def _iter_events(lines: Iterable[str]) -> Iterator[tuple[dict[str, Any] | None, str | None]]:
+    for number, line in enumerate(lines, start=1):
         line = line.strip()
         if not line:
             continue
-        try:
-            parsed = json.loads(line)
-        except json.JSONDecodeError:
-            # Logs interleave harness output (banners, judge transcripts) with the CLI's
-            # JSON. Skipping non-JSON is expected; failing on it is not.
-            yield None, line
+        if line.startswith(("[DRY RUN]", "[setup_error]")):
+            yield None, f"line {number}: staging placeholder is not a recorded session"
             continue
-        yield (parsed if isinstance(parsed, dict) else None), line
+        try:
+            parsed = json.loads(line, object_pairs_hook=_event_object, parse_constant=_reject_constant)
+        except (ValueError, RecursionError):
+            # Logs interleave harness output (banners, judge transcripts) with the CLI's
+            # JSON. Tolerate banners, but never silently discard a broken JSON event.
+            yield None, f"line {number}: malformed JSON event" if line.startswith(
+                ("{", "[", "NaN", "Infinity", "-Infinity")
+            ) else None
+            continue
+        if not isinstance(parsed, dict):
+            yield None, f"line {number}: event must be a JSON object"
+        else:
+            yield parsed, None
 
 
 def parse_log(path: str | Path) -> Trace:
     """Reconstruct a Trace from a Copilot CLI session log."""
-    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    text = Path(path).read_text(encoding="utf-8")
     return parse_log_text(text)
 
 
@@ -108,21 +130,36 @@ def parse_log_text(text: str) -> Trace:
     turns = 0
     parsed_count = 0
     unparsable = 0
+    errors: list[str] = []
 
-    for event, _raw in _iter_events(text.splitlines()):
+    for event, error in _iter_events(text.splitlines()):
+        if error:
+            errors.append(error)
         if event is None:
             unparsable += 1
             continue
         parsed_count += 1
         etype = event.get("type")
-        data = event.get("data") or {}
+        data = event.get("data")
+        if not isinstance(etype, str) or not etype.strip() or not isinstance(data, dict):
+            errors.append(f"event {parsed_count}: type must be a nonempty string and data an object")
+            continue
 
         if etype == "tool.execution_start":
             args = data.get("arguments")
+            name = data.get("toolName")
+            if not isinstance(name, str) or not name.strip() or not isinstance(args, dict):
+                errors.append(f"event {parsed_count}: toolName must be a nonempty string and arguments an object")
+                continue
+            if name == SKILL_TOOL_NAME and (
+                not isinstance(args.get("skill"), str) or not args["skill"].strip()
+            ):
+                errors.append(f"event {parsed_count}: skill invocation requires a nonempty skill identity")
+                continue
             tools.append(
                 ToolInvocation(
-                    name=str(data.get("toolName", "")),
-                    arguments=args if isinstance(args, dict) else {},
+                    name=name,
+                    arguments=args,
                     call_id=data.get("toolCallId"),
                     span_id=event.get("id"),
                     parent_id=event.get("parentId"),
@@ -132,9 +169,16 @@ def parse_log_text(text: str) -> Trace:
         elif etype == "assistant.turn_start":
             turns += 1
         elif etype == "session.skills_loaded":
-            for skill in data.get("skills") or []:
-                if isinstance(skill, dict) and isinstance(skill.get("name"), str):
-                    skills_offered.append(skill["name"])
+            skills = data.get("skills")
+            if not isinstance(skills, list) or any(
+                not isinstance(skill, dict) or not isinstance(skill.get("name"), str)
+                or not skill["name"].strip() for skill in skills
+            ):
+                errors.append(f"event {parsed_count}: skills must be a list of named objects")
+                continue
+            skills_offered.extend(skill["name"] for skill in skills)
+        elif etype.startswith("tool.") and etype not in SCHEMA_EVENTS:
+            errors.append(f"event {parsed_count}: unrecognized tool event; check adapter schema")
         elif etype == "user.message" and prompt is None:
             content = data.get("content") or data.get("message")
             if isinstance(content, str):
@@ -147,6 +191,7 @@ def parse_log_text(text: str) -> Trace:
         turns=turns,
         events_parsed=parsed_count,
         events_unparsable=unparsable,
+        schema_errors=errors,
     )
 
 
@@ -157,7 +202,7 @@ def verify_schema(trace: Trace) -> list[str]:
     event yields an empty trace, and an empty trace looks exactly like an agent that did
     nothing. These checks turn that into a visible complaint.
     """
-    problems: list[str] = []
+    problems = list(trace.schema_errors)
     if trace.events_parsed == 0:
         problems.append("no JSON events parsed - log is not CLI session output, or the format changed")
         return problems

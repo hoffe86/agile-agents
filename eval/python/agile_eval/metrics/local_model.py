@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 
 # Set before DeepEval is imported anywhere -- opting out after the fact is too late.
-os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "1")
+os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "1"
 os.environ.setdefault("DEEPEVAL_DISABLE_PROGRESS_BAR", "1")
 
 
@@ -29,6 +29,11 @@ def configure_offline() -> None:
     nor evaluate(official=False) is a no-upload guarantee.
     """
     os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "1"
+    os.environ["DEEPEVAL_UPDATE_WARNING_OPT_IN"] = "0"
+    os.environ["DEEPEVAL_DISABLE_PROGRESS_BAR"] = "1"
+    # Do not let a local .env opt the offline path back into telemetry or updates.
+    os.environ["DEEPEVAL_DISABLE_DOTENV"] = "1"
+    os.environ["DEEPEVAL_DISABLE_LEGACY_KEYFILE"] = "1"
 
 
 class StubModelCalled(AssertionError):

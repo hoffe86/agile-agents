@@ -99,8 +99,7 @@ class LockTests(unittest.TestCase):
         lock = read_lock()
         self.assertEqual(
             {canonicalize_name(req.name): str(req.specifier) for req in roots()},
-            {"deepeval": "==4.1.8", "github-copilot-sdk": "==1.0.28",
-             "pytest": "==9.1.1", "pyyaml": "==6.0.3"},
+            {"deepeval": "==4.1.8", "pytest": "==9.1.1", "pyyaml": "==6.0.3"},
         )
         for req in roots():
             self.assertEqual(lock[canonicalize_name(req.name)][0].specifier, req.specifier)
@@ -220,7 +219,7 @@ class RequiredImportTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
-    def test_native_control_suites_run_as_separate_steps_on_both_operating_systems(self):
+    def test_authorization_suite_runs_as_a_separate_step_on_both_operating_systems(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/eval-skills.yml").read_text(encoding="utf-8"))
         job = workflow["jobs"]["runtime-contracts"]
         self.assertEqual(job["strategy"]["matrix"]["os"], ["ubuntu-latest", "windows-latest"])
@@ -233,7 +232,7 @@ class WorkflowTests(unittest.TestCase):
                 "python -m unittest discover -s eval/pipeline/tests -p test_eval_pipeline_workflow.py -v"
             )
         )
-        for offset, module in enumerate(("test_authorization.py", "test_native_controller.py"), start=1):
+        for offset, module in enumerate(("test_authorization.py",), start=1):
             with self.subTest(module=module):
                 step = steps[workflow_test + offset]
                 self.assertEqual(

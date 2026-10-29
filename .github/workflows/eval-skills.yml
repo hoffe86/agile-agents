@@ -41,9 +41,11 @@ jobs:
       DEEPEVAL_DISABLE_PROGRESS_BAR: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
@@ -82,6 +84,13 @@ jobs:
       - name: Require real DeepEval and its deterministic contract
         run: python eval/deepeval/check_environment.py
 
+      # A synthetic schema fixture, not a benchmark of current harness quality.
+      # Measures recorded invocation only, not completion or L2 acceptance.
+      - name: Demonstrate offline skill scoring on a synthetic fixture
+        run: >-
+          python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl
+          --score --expect-skill fixture-skill-a --output eval/pipeline/runs/skill-fixture-summary.json
+
       # Separate steps propagate every native-command failure on both shells.
       - name: Offline dependency regressions
         run: python -m unittest discover -s eval/pipeline/tests -p test_dependency_environment.py -v
@@ -91,12 +100,6 @@ jobs:
 
       - name: Offline authorization regressions
         run: python -m unittest discover -s eval/pipeline/tests -p test_authorization.py -v
-
-      - name: Offline native controller regressions
-        run: python -m unittest discover -s eval/pipeline/tests -p test_native_controller.py -v
-
-      - name: Offline native qualification contracts
-        run: python -m unittest discover -s eval/pipeline/tests -p test_native_runtime_integration.py -v
 
       - name: Offline trajectory regressions
         run: python -m unittest discover -s eval/pipeline/trajectory -p test_check_trajectory.py -v
@@ -112,10 +115,12 @@ jobs:
     env:
       WAZA_VERSION: v0.38.6
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
@@ -149,7 +154,7 @@ jobs:
 
       - name: Cache waza binary
         id: waza-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.local/bin/waza
           key: waza-${{ env.WAZA_VERSION }}-linux-amd64
