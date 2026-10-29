@@ -119,6 +119,187 @@ class ProcessDescriptorTests(unittest.TestCase):
                 with self.assertRaisesRegex(native.CheckFailure, "process_descriptor_incompatible"):
                     native._process_arguments(SimpleNamespace(tools=tools), "fixed")
 
+    def diagnostic(self, metadata):
+        with self.assertRaisesRegex(native.CheckFailure, "^process_descriptor_incompatible$") as caught:
+            native._process_arguments(metadata, "fixed command")
+        diagnostic = caught.exception.diagnostic
+        public = native.safe_failure_report(json.dumps({
+            "status": "fail", "check": "native_process_sandbox",
+            "reason": "process_descriptor_incompatible", "process_descriptor": diagnostic,
+        }))
+        self.assertEqual(public["process_descriptor"], diagnostic)
+        return diagnostic
+
+    def test_pinned_wire_alias_is_dictionary_not_json_text_or_camel_case(self):
+        from copilot.rpc import CurrentToolMetadata, ToolsGetCurrentMetadataResult
+
+        schema = offered().tools[0].input_schema
+        decoded = ToolsGetCurrentMetadataResult.from_dict({"tools": [{
+            "name": "bash", "description": "synthetic", "input_schema": schema,
+        }]})
+        self.assertEqual(decoded.tools[0].to_dict()["input_schema"], schema)
+        self.assertEqual(native._process_arguments(decoded, "fixed command")["command"], "fixed command")
+        with self.assertRaises(AssertionError):
+            CurrentToolMetadata.from_dict({
+                "name": "bash", "description": "", "input_schema": json.dumps(schema)})
+        wrong_alias = CurrentToolMetadata.from_dict({
+            "name": "bash", "description": "", "inputSchema": schema})
+        diagnostic = self.diagnostic(SimpleNamespace(tools=[wrong_alias]))
+        self.assertEqual((diagnostic["stage"], diagnostic["schema_shape"]), ("schema", "null"))
+
+    def test_descriptor_envelope_and_schema_shapes_have_distinct_fixed_reasons(self):
+        from copilot.rpc import BuiltinToolInputSchema
+
+        tool = offered().tools[0]
+        cases = [
+            (SimpleNamespace(tools=None), "tools", "shape", "null"),
+            (SimpleNamespace(tools=[]), "tools", "count", "list"),
+            (SimpleNamespace(tools=[replace(tool, name="other")]), "identity", "identity", "null"),
+            (SimpleNamespace(tools=[replace(tool, input_schema="sensitive")]),
+             "schema", "shape", "string"),
+            (SimpleNamespace(tools=[replace(tool, input_schema=BuiltinToolInputSchema.from_dict(
+                {"type": "object"}))]), "schema", "shape", "other"),
+            (offered({"type": ["object", "null"]}), "schema", "type", "mapping"),
+        ]
+        for metadata, stage, reason, shape in cases:
+            with self.subTest(stage=stage, reason=reason, shape=shape):
+                diagnostic = self.diagnostic(metadata)
+                self.assertEqual((diagnostic["stage"], diagnostic["reason"], diagnostic["schema_shape"]),
+                                 (stage, reason, shape))
+
+    def test_rejection_identifies_exact_stage_property_and_constraint_without_changing_acceptance(self):
+        schema = offered().tools[0].input_schema
+        cases = [
+            ({**schema, "properties": None}, "properties", "shape", "root", "properties"),
+            ({**schema, "required": [None]}, "required", "shape", "root", "required"),
+            ({**schema, "required": ["timeout"]}, "required", "unsupplied", "root", "required"),
+            ({**schema, "required": ["unknown"]}, "required", "unsupplied", "root", "required"),
+            ({**schema, "allOf": []}, "schema", "keywords", "root", "none"),
+            ({**schema, "$ref": "sensitive"}, "schema", "keywords", "root", "none"),
+            ({**schema, "additionalProperties": {}}, "schema", "shape", "root", "additionalProperties"),
+            ({**schema, "$schema": "sensitive"}, "schema", "unsupported", "root", "$schema"),
+            ({**schema, "properties": {"command": {"type": "string"}}},
+             "properties", "missing", "root", "properties"),
+        ]
+        property_cases = [
+            ("command", None, "property", "shape", "none"),
+            ("command", {"type": "string", "pattern": "sensitive"}, "property", "keywords", "none"),
+            ("command", {"$ref": "sensitive"}, "property", "keywords", "none"),
+            ("mode", {"oneOf": [{"type": "string"}, {"type": "null"}]},
+             "property", "keywords", "none"),
+            ("mode", {"type": ["string", "null"]}, "property", "type", "type"),
+            ("mode", {"type": "boolean"}, "property", "type", "type"),
+            ("mode", {"type": "number"}, "argument", "type", "type"),
+            ("mode", {"type": "string", "enum": []}, "property", "enum_shape", "enum"),
+            ("mode", {"type": "string", "enum": [True]}, "property", "enum_shape", "enum"),
+            ("mode", {"type": "string", "enum": ["async"]}, "argument", "enum_mismatch", "enum"),
+            ("command", {"type": "string", "minLength": -1}, "property", "bound_shape", "minLength"),
+            ("command", {"type": "string", "minimum": 1}, "property", "bound_shape", "minimum"),
+            ("command", {"type": "string", "minLength": 50}, "argument", "bound_mismatch", "minLength"),
+            ("command", {"type": "string", "maxLength": 1}, "argument", "bound_mismatch", "maxLength"),
+            ("initial_wait", {"type": "integer", "minimum": True}, "property", "bound_shape", "minimum"),
+            ("initial_wait", {"type": "integer", "minimum": 31}, "argument", "bound_mismatch", "minimum"),
+            ("initial_wait", {"type": "integer", "minimum": 31, "maximum": 10},
+             "argument", "bound_mismatch", "minimum"),
+            ("initial_wait", {"type": "integer", "maximum": 10}, "argument", "bound_mismatch", "maximum"),
+        ]
+        cases.extend(({**schema, "properties": {**schema["properties"], name: spec}},
+                      stage, reason, name, keyword)
+                     for name, spec, stage, reason, keyword in property_cases)
+        for variant, stage, reason, name, keyword in cases:
+            with self.subTest(stage=stage, reason=reason, name=name, keyword=keyword):
+                diagnostic = self.diagnostic(offered(variant))
+                self.assertEqual({key: diagnostic[key] for key in ("stage", "reason", "property", "keyword")},
+                                 {"stage": stage, "reason": reason, "property": name, "keyword": keyword})
+
+    def test_required_known_but_undeclared_argument_is_identified_without_guessing_a_value(self):
+        schema = offered().tools[0].input_schema
+        schema["required"] = ["timeout"]
+        diagnostic = self.diagnostic(offered(schema))
+        self.assertEqual(diagnostic["required_arguments"], ["timeout"])
+        self.assertNotIn("timeout", diagnostic["properties"])
+        self.assertEqual(diagnostic["reason"], "unsupplied")
+
+    def test_known_presence_types_and_required_flags_survive_while_unknown_names_are_counted(self):
+        schema = offered().tools[0].input_schema
+        schema["properties"]["sensitive/path"] = {"type": "string"}
+        schema["required"].append("sensitive/path")
+        diagnostic = self.diagnostic(offered(schema))
+        self.assertEqual((diagnostic["stage"], diagnostic["reason"]), ("properties", "unsupported"))
+        self.assertEqual(diagnostic["unknown_properties"], 1)
+        self.assertEqual(diagnostic["unknown_required"], 1)
+        self.assertEqual(diagnostic["properties"], {
+            "command": {"schema_shape": "mapping", "schema_type": "string", "required": "yes"},
+            "description": {"schema_shape": "mapping", "schema_type": "string", "required": "yes"},
+            "mode": {"schema_shape": "mapping", "schema_type": "string", "required": "no"},
+            "initial_wait": {"schema_shape": "mapping", "schema_type": "integer", "required": "no"},
+        })
+        self.assertNotIn("sensitive", json.dumps(diagnostic))
+
+    def test_diagnostics_omit_arbitrary_metadata_defaults_enum_values_and_reference_targets(self):
+        schema = offered().tools[0].input_schema
+        secret = "synthetic-private-path-or-token"
+        schema.update(description=secret, title=secret, **{"$ref": secret})
+        schema["properties"]["mode"].update(default=secret, enum=[secret])
+        schema.update({f"{secret}-{i}": secret for i in range(150)})
+        schema["properties"].update({f"{secret}-{i}": secret for i in range(150)})
+        schema["required"].extend(f"{secret}-{i}" for i in range(150))
+        before = json.dumps(schema)
+        tool = replace(offered(schema).tools[0], description=secret)
+        diagnostic = self.diagnostic(SimpleNamespace(tools=[tool]))
+        self.assertIn("$ref", diagnostic["keywords"])
+        self.assertEqual(diagnostic["unknown_keywords"], 100)
+        self.assertEqual(diagnostic["unknown_properties"], 100)
+        self.assertEqual(diagnostic["unknown_required"], 100)
+        self.assertNotIn(secret, json.dumps(diagnostic))
+        self.assertLess(len(json.dumps(diagnostic)), 2000)
+        self.assertEqual(json.dumps(schema), before)
+
+    def test_property_keyword_diagnostic_reports_ref_and_union_without_their_contents(self):
+        schema = offered().tools[0].input_schema
+        schema["properties"]["mode"] = {
+            "type": ["string", "null"], "$ref": "synthetic-secret",
+            "anyOf": [{"const": "synthetic-secret"}], "unrecognized-secret": "synthetic-secret",
+        }
+        diagnostic = self.diagnostic(offered(schema))
+        self.assertEqual(diagnostic["schema_type"], "union")
+        self.assertEqual(diagnostic["keywords"], ["type", "$ref", "anyOf"])
+        self.assertEqual(diagnostic["unknown_keywords"], 1)
+        self.assertNotIn("secret", json.dumps(diagnostic))
+
+    def test_parent_strips_forged_diagnostic_text_keys_and_invalid_counts(self):
+        public = native.safe_failure_report(json.dumps({
+            "status": "fail", "check": "native_process_sandbox", "reason": "process_descriptor_incompatible",
+            "process_descriptor": {
+                "stage": "schema", "reason": "keywords", "property": "secret", "keyword": ["type"],
+                "schema_shape": {}, "schema_type": "secret", "unknown_keywords": True,
+                "unknown_properties": 101, "unknown_required": -1, "secret": "secret",
+                "keywords": ["$ref", "$ref", "secret", {"type": "secret"}],
+                "required_arguments": ["timeout", "timeout", "secret", ["command"]],
+                "properties": {"command": {"schema_type": "string", "required": True, "default": "secret"},
+                               "mode": "secret", "secret": {"schema_type": "string"}},
+            },
+        }))
+        self.assertEqual(public["process_descriptor"], {
+            "stage": "schema", "reason": "keywords", "keywords": ["$ref"],
+            "required_arguments": ["timeout"],
+            "properties": {"command": {"schema_type": "string"}},
+        })
+        self.assertNotIn("secret", json.dumps(public))
+
+    def test_descriptor_diagnostics_only_leave_parent_on_relevant_failure(self):
+        for status, check, reason in (
+            ("pass", "native_process_sandbox", "process_descriptor_incompatible"),
+            ("fail", "native_file_denial", "process_descriptor_incompatible"),
+            ("fail", "native_process_sandbox", "process_cleanup_failed"),
+        ):
+            with self.subTest(status=status, check=check, reason=reason):
+                public = native.safe_failure_report(json.dumps({
+                    "status": status, "check": check, "reason": reason,
+                    "process_descriptor": {"stage": "schema"},
+                }))
+                self.assertNotIn("process_descriptor", public)
+
 
 class ProcessPermissionTests(unittest.TestCase):
     def setUp(self):
@@ -778,6 +959,42 @@ class NativeProcessMatrixTests(unittest.TestCase):
             self.assertEqual(self.calls[abort - 2:abort],
                              [(case, "identity_4000"), (case, "identity_4001")])
         self.assertEqual(len([call for call in self.calls if call[1] == "delete"]), 8)
+
+    def test_unsupported_descriptor_never_executes_or_approves_and_still_cleans_up(self):
+        schema = offered().tools[0].input_schema
+        schema["properties"]["mode"]["enum"] = ["async"]
+        metadata = offered(schema)
+        with patch(f"{__name__}.offered", return_value=metadata):
+            report = self.run_report_boundary()
+        self.assertEqual(report["reason"], "process_descriptor_incompatible")
+        self.assertEqual(report["process_descriptor"]["reason"], "enum_mismatch")
+        self.assertEqual(report["process_descriptor"]["property"], "mode")
+        self.assertEqual(report["passed"], ["native_file_denial"])
+        self.assertEqual(report["process_controls"], {"workspace": "started"})
+        self.assertEqual(report["process_network"], {})
+        self.assertNotIn(("workspace", "execute"), self.calls)
+        self.assertEqual(self.calls[-2:], [("workspace", "disconnect"), ("workspace", "delete")])
+        self.assertEqual(self.outer_cleanup, ["abort", "disconnect", "stop"])
+        self.assertFalse(self.options[0]["on_permission_request"].active)
+        self.assertFalse(self.options[0]["on_permission_request"].consumed)
+        self.assertIsNone(self.current_task)
+
+    def test_successful_process_matrix_does_not_add_descriptor_diagnostics(self):
+        self.run_matrix()
+        self.assertNotIn("process_descriptor", self.report)
+
+    def test_descriptor_rejection_with_cleanup_failure_still_attempts_delete_and_outer_cleanup(self):
+        schema = offered().tools[0].input_schema
+        schema["properties"]["mode"]["enum"] = ["async"]
+        metadata = offered(schema)
+        self.fault = ("workspace", "disconnect")
+        with patch(f"{__name__}.offered", return_value=metadata):
+            report = self.run_report_boundary()
+        self.assertEqual(report["reason"], "process_cleanup_failed")
+        self.assertNotIn("process_descriptor", report)
+        self.assertNotIn(("workspace", "execute"), self.calls)
+        self.assertEqual(self.calls[-2:], [("workspace", "disconnect"), ("workspace", "delete")])
+        self.assertEqual(self.outer_cleanup, ["abort", "disconnect", "stop"])
 
     def test_pairs_change_only_native_policy_and_use_identical_commands(self):
         self.run_matrix()

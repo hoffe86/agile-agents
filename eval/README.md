@@ -1198,6 +1198,20 @@ validator checks the fixed `command`, `mode=sync`, `initial_wait=30` and optiona
 description; incompatible/missing constraints fail with
 `process_descriptor_incompatible`. No JSON-schema dependency is introduced.
 
+On that failure only, `process_descriptor` identifies the validator's rejection
+stage, reason, known property and constraint keyword. It reports the rejected
+node's shape/type and allowlisted schema keywords, plus presence/type/required
+status for the five known arguments. Unknown names are counted (saturated at
+100), never printed. Descriptions, defaults, enum values, reference targets,
+commands and paths are not emitted; the parent re-allowlists every field.
+This is diagnostic evidence, not relaxed schema support or execution credit.
+Hosted run `40745023717` (SDK 1.0.28 / runtime 1.0.105, protocol 3) failed before
+the first process execution with `process_descriptor_incompatible`; it recorded
+neither the descriptor nor the rejecting constraint and has no artifacts.
+The actual hosted bash schema therefore remains unverified. A new approved
+no-model hosted qualification is needed to identify the constraint before a
+compatibility change can be justified; local contract tests are not a substitute.
+
 | Executable control | Required evidence before the stage can pass |
 |---|---|
 | Workspace read/write | Native `/usr/bin/python3 -I` writes a fresh start record, roundtrips a file, and emits exact completion markers |

@@ -751,6 +751,12 @@ def safe_failure_report(output: str, *, root: Path | None = None,
             report["passed"] = [item for item in CHECKS
                                 if item in candidate.get("passed", [])]
             process_controls = candidate.get("process_controls")
+            if (candidate.get("status") == "fail"
+                    and candidate.get("check") == "native_process_sandbox"
+                    and candidate.get("reason") == "process_descriptor_incompatible"
+                    and type(candidate.get("process_descriptor")) is dict):
+                report["process_descriptor"] = _safe_process_descriptor(
+                    candidate["process_descriptor"])
             if candidate.get("check") == "native_process_sandbox" and type(process_controls) is dict:
                 report["process_controls"] = {
                     case: process_controls[case] for case in PROCESS_CASES
@@ -997,70 +1003,175 @@ NETWORK_OUTCOMES = (
     "proxy_credentials", "network_setup_error",
 )
 
+PROCESS_ARGUMENT_NAMES = ("command", "description", "mode", "initial_wait", "timeout")
+# Diagnostic vocabulary only, NOT additional schema support. Unknown names/text
+# never leave the child. Counts saturate at 100; schemas are never serialized.
+PROCESS_SCHEMA_KEYWORDS = (
+    "type", "properties", "required", "additionalProperties", "description", "title",
+    "$schema", "default", "enum", "minimum", "maximum", "minLength", "maxLength",
+    "$ref", "$defs", "definitions", "oneOf", "anyOf", "allOf", "not", "const",
+    "pattern", "format", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+    "items", "nullable", "additionalItems", "unevaluatedProperties",
+)
+PROCESS_DESCRIPTOR_LABELS = {
+    "stage": ("tools", "identity", "schema", "properties", "required", "property", "argument"),
+    "reason": ("shape", "count", "identity", "type", "keywords", "missing",
+               "unsupported", "unsupplied", "bound_shape", "enum_shape",
+               "enum_mismatch", "bound_mismatch"),
+    "property": ("root", *PROCESS_ARGUMENT_NAMES),
+    "keyword": ("none", *PROCESS_SCHEMA_KEYWORDS),
+    "schema_shape": ("mapping", "list", "string", "number", "boolean", "null", "other"),
+    "schema_type": ("absent", "object", "string", "number", "integer", "array",
+                    "boolean", "null", "union", "other"),
+    "required": ("yes", "no", "unknown"),
+}
+
+
+def _safe_process_descriptor(diagnostic: dict) -> dict:
+    """Re-allowlist the fixed diagnostic at the untrusted subprocess boundary."""
+    safe = {
+        key: diagnostic[key] for key, values in PROCESS_DESCRIPTOR_LABELS.items()
+        if type(diagnostic.get(key)) is str and diagnostic[key] in values
+    }
+    if type(diagnostic.get("keywords")) is list:
+        safe["keywords"] = [
+            key for key in PROCESS_SCHEMA_KEYWORDS if key in diagnostic["keywords"]]
+    if type(diagnostic.get("required_arguments")) is list:
+        safe["required_arguments"] = [
+            key for key in PROCESS_ARGUMENT_NAMES if key in diagnostic["required_arguments"]]
+    for key in ("unknown_keywords", "unknown_properties", "unknown_required"):
+        if type(diagnostic.get(key)) is int and 0 <= diagnostic[key] <= 100:
+            safe[key] = diagnostic[key]
+    properties = diagnostic.get("properties")
+    if type(properties) is dict:
+        safe["properties"] = {
+            name: {
+                key: properties[name][key] for key in ("schema_shape", "schema_type", "required")
+                if type(properties[name].get(key)) is str
+                and properties[name][key] in PROCESS_DESCRIPTOR_LABELS[key]
+            }
+            for name in PROCESS_ARGUMENT_NAMES if type(properties.get(name)) is dict
+        }
+    return safe
+
+
+class _ProcessDescriptorFailure(CheckFailure):
+    def __init__(self, diagnostic: dict) -> None:
+        super().__init__("process_descriptor_incompatible")
+        self.diagnostic = diagnostic
+
 
 def _process_arguments(metadata_result: object, command: str) -> dict:
     """Validate only the small primitive schema subset used by this fixed probe.
 
     SDK 1.0.28 BuiltinToolInputSchema discards properties on decoding; current
     metadata retains them. Never reconstruct constraints from descriptor prose.
+    Each rejection carries its own fixed-label reason, without changing acceptance.
     """
+    properties = None
+    required = None
+
+    def shape(value):
+        return {dict: "mapping", list: "list", str: "string", int: "number",
+                float: "number", bool: "boolean", type(None): "null"}.get(type(value), "other")
+
+    def schema_type(value):
+        if type(value) is not dict or "type" not in value:
+            return "absent"
+        kind = value["type"]
+        if type(kind) is list:
+            return "union"
+        return kind if type(kind) is str and kind in (
+            "object", "string", "number", "integer", "array", "boolean", "null") else "other"
+
+    def check(condition, stage, reason, node, name="root", keyword="none"):
+        if condition:
+            return
+        diagnostic = {
+            "stage": stage, "reason": reason, "property": name, "keyword": keyword,
+            "schema_shape": shape(node), "schema_type": schema_type(node),
+        }
+        if type(node) is dict:
+            diagnostic["keywords"] = [key for key in PROCESS_SCHEMA_KEYWORDS if key in node]
+            diagnostic["unknown_keywords"] = min(100, len(set(node) - set(PROCESS_SCHEMA_KEYWORDS)))
+        if type(properties) is dict:
+            diagnostic["unknown_properties"] = min(100, len(set(properties) - set(PROCESS_ARGUMENT_NAMES)))
+            diagnostic["properties"] = {
+                key: {
+                    "schema_shape": shape(properties[key]), "schema_type": schema_type(properties[key]),
+                    "required": ("yes" if key in required else "no") if type(required) is list else "unknown",
+                } for key in PROCESS_ARGUMENT_NAMES if key in properties
+            }
+        if type(required) is list:
+            diagnostic["required_arguments"] = [key for key in PROCESS_ARGUMENT_NAMES if key in required]
+            diagnostic["unknown_required"] = min(100, sum(
+                type(key) is not str or key not in PROCESS_ARGUMENT_NAMES for key in required))
+        raise _ProcessDescriptorFailure(diagnostic)
+
     tools = getattr(metadata_result, "tools", None)
-    require(type(tools) is list and len(tools) == 1, "process_descriptor_incompatible")
+    check(type(tools) is list, "tools", "shape", tools)
+    check(len(tools) == 1, "tools", "count", tools)
     tool = tools[0]
-    require(getattr(tool, "name", None) == "bash" and not getattr(tool, "mcp_server_name", None),
-            "process_descriptor_incompatible")
+    check(getattr(tool, "name", None) == "bash" and not getattr(tool, "mcp_server_name", None),
+          "identity", "identity", None)
     schema = getattr(tool, "input_schema", None)
-    require(type(schema) is dict and schema.get("type") == "object"
-            and set(schema) <= {
-                "type", "properties", "required", "additionalProperties",
-                "description", "title", "$schema",
-            }, "process_descriptor_incompatible")
+    check(type(schema) is dict, "schema", "shape", schema)
     properties = schema.get("properties")
     required = schema.get("required", [])
-    require(type(properties) is dict and type(required) is list
-            and all(type(key) is str for key in required)
-            and set(properties) <= {"command", "description", "mode", "initial_wait", "timeout"}
-            and {"command", "mode", "initial_wait"} <= set(properties)
-            and type(schema.get("additionalProperties", False)) is bool,
-            "process_descriptor_incompatible")
+    check(schema.get("type") == "object", "schema", "type", schema, keyword="type")
+    check(set(schema) <= {
+        "type", "properties", "required", "additionalProperties", "description", "title", "$schema",
+    }, "schema", "keywords", schema)
+    check(type(properties) is dict, "properties", "shape", properties, keyword="properties")
+    check(type(required) is list and all(type(key) is str for key in required),
+          "required", "shape", required, keyword="required")
+    check(set(properties) <= set(PROCESS_ARGUMENT_NAMES),
+          "properties", "unsupported", schema, keyword="properties")
+    check({"command", "mode", "initial_wait"} <= set(properties),
+          "properties", "missing", schema, keyword="properties")
+    check(type(schema.get("additionalProperties", False)) is bool,
+          "schema", "shape", schema.get("additionalProperties"), keyword="additionalProperties")
     if "$schema" in schema:
-        require(schema["$schema"] in (
+        check(schema["$schema"] in (
             "http://json-schema.org/draft-07/schema#",
             "https://json-schema.org/draft/2020-12/schema",
-        ), "process_descriptor_incompatible")
+        ), "schema", "unsupported", schema, keyword="$schema")
     arguments = {"command": command, "mode": "sync", "initial_wait": PROCESS_TIMEOUT}
     if "description" in properties:
         arguments["description"] = "Fixed native boundary qualification"
-    require(set(required) <= set(arguments), "process_descriptor_incompatible")
+    check(set(required) <= set(arguments), "required", "unsupplied", schema, keyword="required")
     for name, spec in properties.items():
-        require(type(spec) is dict and set(spec) <= {
+        check(type(spec) is dict, "property", "shape", spec, name)
+        check(set(spec) <= {
             "type", "description", "title", "default", "enum",
             "minimum", "maximum", "minLength", "maxLength",
-        } and spec.get("type") in ("string", "number", "integer"),
-                "process_descriptor_incompatible")
+        }, "property", "keywords", spec, name)
+        check(spec.get("type") in ("string", "number", "integer"),
+              "property", "type", spec, name, "type")
         kind = spec["type"]
         numeric = kind in ("number", "integer")
         for key in ("minimum", "maximum", "minLength", "maxLength"):
             if key in spec:
-                require(type(spec[key]) in (int, float)
-                        and (numeric if key in ("minimum", "maximum")
-                             else kind == "string" and type(spec[key]) is int and spec[key] >= 0),
-                        "process_descriptor_incompatible")
+                check(type(spec[key]) in (int, float)
+                      and (numeric if key in ("minimum", "maximum")
+                           else kind == "string" and type(spec[key]) is int and spec[key] >= 0),
+                      "property", "bound_shape", spec, name, key)
         if "enum" in spec:
-            require(type(spec["enum"]) is list and bool(spec["enum"])
-                    and all(type(value) in ((int, float) if numeric else (str,))
-                            for value in spec["enum"]), "process_descriptor_incompatible")
+            check(type(spec["enum"]) is list and bool(spec["enum"])
+                  and all(type(value) in ((int, float) if numeric else (str,))
+                          for value in spec["enum"]), "property", "enum_shape", spec, name, "enum")
         if name not in arguments:
             continue
         value = arguments[name]
-        require(type(value) in ((int, float) if kind == "number"
-                                else (int,) if kind == "integer" else (str,)),
-                "process_descriptor_incompatible")
-        require("enum" not in spec or value in spec["enum"], "process_descriptor_incompatible")
+        check(type(value) in ((int, float) if kind == "number"
+                             else (int,) if kind == "integer" else (str,)),
+              "argument", "type", spec, name, "type")
+        check("enum" not in spec or value in spec["enum"],
+              "argument", "enum_mismatch", spec, name, "enum")
         size = value if numeric else len(value)
-        require(size >= spec.get("minimum" if numeric else "minLength", size)
-                and size <= spec.get("maximum" if numeric else "maxLength", size),
-                "process_descriptor_incompatible")
+        lower, upper = ("minimum", "maximum") if numeric else ("minLength", "maxLength")
+        check(size >= spec.get(lower, size), "argument", "bound_mismatch", spec, name, lower)
+        check(size <= spec.get(upper, size), "argument", "bound_mismatch", spec, name, upper)
     return arguments
 
 
@@ -1447,7 +1558,11 @@ async def qualify_native_processes(client, root: Path, report: dict, bounded, on
                     "process_permission_mismatch")
             await bounded(session.rpc.tools.initialize_and_validate())
             tool_metadata = await bounded(session.rpc.tools.get_current_metadata())
-            arguments = _process_arguments(tool_metadata, command)
+            try:
+                arguments = _process_arguments(tool_metadata, command)
+            except _ProcessDescriptorFailure as exc:
+                report["process_descriptor"] = exc.diagnostic
+                raise
             permission.active = True
             task = asyncio.create_task(session.rpc.tools.execute(
                 ToolsExecuteRequest(name="bash", arguments=arguments, tool_call_id="native-process"),
