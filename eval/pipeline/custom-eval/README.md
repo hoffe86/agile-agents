@@ -20,16 +20,20 @@ A run has two halves, kept in separate trust zones:
 
 - **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, drives
   `dev-lead` through the Copilot CLI up to its plan gate, waits for a human approval, resumes
-  the *same* session, and captures `produced.diff` against the staged baseline.
-- **Scorer** (`../score_custom_eval.py`) reads only the recorded JSONL logs, `state.json` and
-  `produced.diff`. Trajectory is scored with **DeepEval** (`ToolCorrectnessMetric`); acceptance
-  goes to a pluggable judge. It runs no git and no workspace code, so it can hold judge
+  the *same* session, captures `produced.diff` against the staged baseline, and then runs the
+  task's acceptance **checks** (see below) in that workspace, recording `checks.json`.
+- **Scorer** (`../score_custom_eval.py`) reads only the recorded JSONL logs, `state.json`,
+  `produced.diff` and `checks.json`. Trajectory is scored with **DeepEval**
+  (`ToolCorrectnessMetric`); command results decide build/test/render criteria; the rest goes
+  to a pluggable judge. It runs no git and no workspace code, so it can hold judge
   credentials safely.
 
 The live agent is **not OS-sandboxed** — it runs with every tool allowed on the host, which
-is why the runner refuses to start without `--unsandboxed`. A sandboxed worker is
-[#22](https://github.com/hoffe86/agile-agents/issues/22); until then behavioural criteria
-(builds, tests, lint) are `UNVERIFIED` by design, never judged from source.
+is why the runner refuses to start without `--unsandboxed`. The checks run in that same trust
+zone, after the diff is captured (so build output never becomes evidence), with an
+allowlisted environment that carries no tokens or cloud credentials. That adds nothing the
+agent could not already do; it is not isolation. A sandboxed worker is
+[#22](https://github.com/hoffe86/agile-agents/issues/22).
 
 Profiles populate the six required Stage-0 fields from the shipped template, set
 `backlog.create_tasks: false`, quote `infrastructure.deploy_verify: "off"`, and use
@@ -63,7 +67,9 @@ architecture-reviewer, security-reviewer, test-reviewer, infra-review).
 # Local: phase 1 stops at the plan gate and prints dev-lead's plan; approve interactively.
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --unsandboxed
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\dry --dry-run   # stage only
-# Score one or more runs. --judge none leaves every acceptance criterion UNVERIFIED.
+# Re-run only the acceptance checks of a finished run, e.g. after installing a missing tool.
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --phase verify --unsandboxed
+# Score one or more runs. --judge none leaves criteria without a passing check UNVERIFIED.
 python eval/pipeline/score_custom_eval.py $env:TEMP\ce\task-05 --judge azure-openai --output summary.json
 ```
 
@@ -77,9 +83,13 @@ In CI, run **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`
 
 | Job | Holds | Does |
 |---|---|---|
-| `plan` | Copilot token, read-only `GITHUB_TOKEN` | phase 1; writes the plan to the step summary |
-| `implement` | same | waits on the **`eval-approval`** environment — its required reviewers *are* the plan gate — then resumes with `--approve` |
+| `plan` | Copilot token, read-only `GITHUB_TOKEN` | phase 1; writes the plan to the step summary (runs the checks only if dev-lead skipped the gate) |
+| `implement` | same | waits on the **`eval-approval`** environment — its required reviewers *are* the plan gate — then resumes with `--approve` and runs the checks |
 | `score` | OIDC (`id-token: write`) for the judge only | DeepEval + judge over the recorded files |
+
+The agent jobs install .NET 9 for the C# tasks; `kubectl`, `az` and Docker come with the
+runner image. `actionlint` (task 06) is not installed, so that criterion reports
+`UNVERIFIED` in CI.
 
 Repository setup: secret `EVAL_COPILOT_TOKEN` (a dedicated, low-privilege account — the
 unsandboxed agent can read its own environment), environment `eval-approval` with required
@@ -109,6 +119,45 @@ so a pass means the contract was honoured, not that the run was optimal. `any` e
 deliverable skills whose author varies (an ADR may be drafted by dev-lead or a reviewer).
 Task-10 lists criterion 2 under `unverifiable` with its reason (see fixture boundaries).
 
+## Acceptance checks
+
+A criterion about behaviour — it builds, its tests pass, it renders, it validates — is
+decided by running a command, not by a model reading source. `expectations.yaml` declares
+those commands:
+
+```yaml
+checks:
+  - criterion: 1
+    run: [dotnet, build, Orders.slnx, -warnaserror]   # argv, never a shell string
+  - criterion: 3
+    run: ["{python}", -m, pytest, -q, -p, no:cacheprovider]
+    requires: [["{python}", -m, pytest, --version]]  # probe; failing => UNVERIFIED
+    on_pass: judge          # passing proves only part of the criterion
+    timeout: 600            # seconds, 1-3600; cwd: is workspace-relative
+  - criterion: 1
+    run: [az, bicep, build, --file, main.bicep, --stdout]
+    fail_if_output_matches: '\(\d+,\d+\) : (Warning|Error) '   # exit 0 but linter warned
+```
+
+Per criterion: any check **failed** or **timed out** → `FAIL`, whatever the judge says; else
+any **unavailable** (tool not on `PATH`, probe failed) → `UNVERIFIED` — a missing toolchain is
+never charged to the agent; else all passed → `PASS`, unless a check says `on_pass: judge`,
+in which case the judge grades the remaining clause (with `--judge none` it stays
+`UNVERIFIED`). Command output is also shown to the judge as untrusted evidence. Declared
+checks with no matching `checks.json` leave their criteria `UNVERIFIED`; rerun
+`--phase verify`. Checks run only for runs that reached `complete` or `gate_skipped`.
+
+| Task | Checked | Left to the judge |
+|---|---|---|
+| 01 | c1 build `-warnaserror`; c3 `dotnet test` (+judge) | c2, c4 |
+| 02 | c3 pytest (+judge: monkeypatch-free); c4 `mypy --strict` (needs mypy + fastapi) | c1, c2, c5 |
+| 03 | c1 `az bicep build` of module and consumer, no warnings | c2–c5 |
+| 06 | c1 `actionlint` | c2–c5 |
+| 07 | c1 unit tests, c2 integration tests (needs Docker), both +judge | c3 per-file coverage |
+| 09 | c1 build `-warnaserror` and `dotnet test` | c2–c5 |
+| 10 | c1 `kubectl kustomize` for dev, staging, prod | c3+ (c2 is unverifiable) |
+| 04, 05, 08 | — documentation deliverables | all |
+
 ### What the first live runs showed
 
 Spikes on CLI 1.0.105 (task-02, task-05), reproduced in the
@@ -137,7 +186,8 @@ See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptu
 
 The scorer combines them: a skipped plan gate or any failing trajectory metric makes the run
 **failed** whatever the judge says; a pending or refused approval is **unverified**; otherwise
-the judge's verdict decides. Exit codes: 0 resolved, 1 failed, 2 partial, 3 unverified,
+the acceptance verdict decides, after command checks have overridden the judge on the
+criteria they cover. Exit codes: 0 resolved, 1 failed, 2 partial, 3 unverified,
 4 setup error.
 
 Every selected task belongs in the denominator of any outcome report.
@@ -162,8 +212,8 @@ Original inputs are comparison evidence, never answers or seeded credit.
   Offline inventory/mutation tests protect those exact inputs.
   The solution contains only the production project, so test and coverage commands allow
   restore/build of newly authored test projects rather than using `--no-build`.
-  This command correction does not establish runtime readiness: no generated code,
-  Testcontainers database, restore, or test command is executed by these contract checks.
+  The offline contract tests execute nothing; only a live run's acceptance checks restore,
+  build and run the authored tests, and the integration suite needs Docker.
 - Task 10's chart has the six named resources and no `Ingress` resource. Environment-specific
   `ingress.host` values are copied into the application's `PUBLIC_BASE_URL` ConfigMap setting.
   The prompt's equivalence criterion mentioning ingress hosts therefore remains ambiguous for

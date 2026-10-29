@@ -131,16 +131,28 @@ class EvalCustomWorkflowTests(unittest.TestCase):
             "trajectory": [{"name": "skills:coding", "score": 0.0, "passed": False,
                             "reason": HOSTILE}],
             "acceptance": {"verdict": "UNVERIFIED"}, "errors": [HOSTILE],
+            "checks": [{"criterion": 1, "command": HOSTILE, "status": "failed",
+                        "reason": HOSTILE}],
         }]}
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "custom-eval-summary.json").write_text(json.dumps(report), "utf-8")
             out = self.run_body("score", "Write summary", {"RUNNER_TEMP": tmp, "JUDGE": "none"})
         self.assertIn("| skills:coding | 0.0 | False |", out)
+        self.assertIn("| command c1 | - | failed |", out)
         self.assertNotIn("](https://", out)
         self.assertNotIn("<img", out)
         for line in out.splitlines():
-            if line.startswith("| skills:coding") or line.startswith("| error"):
+            if line.startswith(("| skills:coding", "| error", "| command")):
                 self.assertEqual(len(re.findall(r"(?<!\\)\|", line)), 5, line)
+
+    def test_agent_jobs_install_the_toolchain_the_checks_need(self):
+        for name in ("plan", "implement"):
+            dotnet = [s for s in self.jobs[name]["steps"]
+                      if s.get("uses", "").startswith("actions/setup-dotnet@")]
+            self.assertEqual(len(dotnet), 1, name)
+            self.assertEqual(dotnet[0]["with"]["dotnet-version"], "9.0.x")
+        self.assertNotIn("setup-dotnet", json.dumps(self.jobs["score"]),
+                         "the score job never runs agent code")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,8 @@
 
 `expectations.yaml` sits beside each task's `acceptance.md`. It declares the trajectory
 (which agents dev-lead should delegate to, which skills each agent should invoke, which
-it must not) and whether the mandatory plan-approval gate applies. Criteria are never
+it must not), whether the mandatory plan-approval gate applies, and which criteria a
+command can decide (`checks`: build, test, type-check, render). Criteria are never
 restated there: they are parsed verbatim from `acceptance.md`, because a restated
 criterion is a fork and forks drift.
 """
@@ -33,6 +34,29 @@ class Criterion:
 
 
 @dataclass(frozen=True)
+class Check:
+    """A command whose exit code decides (part of) one criterion, run without a shell.
+
+    `requires` lists probe commands; if one cannot run, the check is unavailable and the
+    criterion is UNVERIFIED -- a missing tool is never an agent failure. `on_pass: judge`
+    means the command is necessary but not sufficient: the judge still decides the rest.
+    """
+
+    criterion: int
+    run: tuple[str, ...]
+    cwd: str = "."
+    timeout: int = 600
+    requires: tuple[tuple[str, ...], ...] = ()
+    on_pass: str = "pass"
+    fail_if_output_matches: str | None = None
+
+
+ON_PASS_VALUES = ("pass", "judge")
+DEFAULT_CHECK_TIMEOUT = 600
+MAX_CHECK_TIMEOUT = 3600
+
+
+@dataclass(frozen=True)
 class Expectations:
     task: str
     root_agent: str
@@ -43,6 +67,7 @@ class Expectations:
     implementation_agents: tuple[str, ...] | None = None
     criteria: tuple[Criterion, ...] = ()
     unverifiable: dict[int, str] = field(default_factory=dict)
+    checks: tuple[Check, ...] = ()
 
 
 def parse_acceptance(text: str) -> tuple[Criterion, ...]:
@@ -88,11 +113,67 @@ def _by_agent(value: object, where: str) -> dict[str, tuple[str, ...]]:
     return {str(agent): _names(skills, f"{where}.{agent}") for agent, skills in value.items()}
 
 
+def _argv(value: object, where: str) -> tuple[str, ...]:
+    if (not isinstance(value, list) or not value
+            or not all(isinstance(v, str) and v.strip() for v in value)):
+        raise ExpectationsError(f"{where} must be a nonempty list of nonempty strings")
+    return tuple(value)
+
+
+def _checks(value: object, ids: set[int], unverifiable: dict[int, str]) -> tuple[Check, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ExpectationsError("checks must be a list")
+    known = {"criterion", "run", "cwd", "timeout", "requires", "on_pass",
+             "fail_if_output_matches"}
+    checks: list[Check] = []
+    for i, item in enumerate(value):
+        where = f"checks[{i}]"
+        if not isinstance(item, dict):
+            raise ExpectationsError(f"{where} must be a mapping")
+        unknown = sorted(set(item) - known)
+        if unknown:
+            raise ExpectationsError(f"{where} has unknown keys: {unknown}")
+        cid = item.get("criterion")
+        if not isinstance(cid, int) or isinstance(cid, bool) or cid not in ids:
+            raise ExpectationsError(f"{where} names unknown criterion {cid!r}")
+        if cid in unverifiable:
+            raise ExpectationsError(f"{where}: criterion {cid} is also declared unverifiable")
+        cwd = item.get("cwd", ".")
+        parts = Path(cwd).parts if isinstance(cwd, str) else ()
+        if (not isinstance(cwd, str) or not cwd.strip() or Path(cwd).is_absolute()
+                or ".." in parts or cwd.startswith(("/", "\\"))):
+            raise ExpectationsError(f"{where}.cwd must be a relative path inside the workspace")
+        timeout = item.get("timeout", DEFAULT_CHECK_TIMEOUT)
+        if (not isinstance(timeout, int) or isinstance(timeout, bool)
+                or not 1 <= timeout <= MAX_CHECK_TIMEOUT):
+            raise ExpectationsError(f"{where}.timeout must be 1..{MAX_CHECK_TIMEOUT} seconds")
+        requires_raw = item.get("requires") or []
+        if not isinstance(requires_raw, list):
+            raise ExpectationsError(f"{where}.requires must be a list of commands")
+        requires = tuple(_argv(r, f"{where}.requires[{j}]") for j, r in enumerate(requires_raw))
+        on_pass = item.get("on_pass", "pass")
+        if on_pass not in ON_PASS_VALUES:
+            raise ExpectationsError(f"{where}.on_pass must be one of {ON_PASS_VALUES}")
+        pattern = item.get("fail_if_output_matches")
+        if pattern is not None:
+            if not isinstance(pattern, str) or not pattern:
+                raise ExpectationsError(f"{where}.fail_if_output_matches must be a regex")
+            try:
+                re.compile(pattern)
+            except re.error:
+                raise ExpectationsError(f"{where}.fail_if_output_matches is not a regex") from None
+        checks.append(Check(cid, _argv(item.get("run"), f"{where}.run"), cwd, timeout,
+                            requires, on_pass, pattern))
+    return tuple(checks)
+
+
 def from_mapping(data: object, task: str, criteria: tuple[Criterion, ...]) -> Expectations:
     if not isinstance(data, dict):
         raise ExpectationsError("expectations must be a mapping")
     known = {"schema", "root_agent", "plan_gate", "agents", "skills", "forbidden_skills",
-             "implementation_agents", "unverifiable"}
+             "implementation_agents", "unverifiable", "checks"}
     unknown = sorted(set(data) - known)
     if unknown:
         raise ExpectationsError(f"unknown keys: {unknown}")
@@ -133,6 +214,7 @@ def from_mapping(data: object, task: str, criteria: tuple[Criterion, ...]) -> Ex
         forbidden_skills=forbidden,
         implementation_agents=None if impl is None else _names(impl, "implementation_agents"),
         criteria=criteria, unverifiable=unverifiable,
+        checks=_checks(data.get("checks"), ids, unverifiable),
     )
 
 

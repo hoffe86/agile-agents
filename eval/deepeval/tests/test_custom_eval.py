@@ -13,8 +13,9 @@ from pathlib import Path
 import pytest
 
 from agile_eval.adapters.copilot_trace import parse_log
-from agile_eval.custom_eval import judges, runner, scorer
+from agile_eval.custom_eval import checks, judges, runner, scorer
 from agile_eval.custom_eval.expectations import (
+    Check,
     Criterion,
     ExpectationsError,
     from_mapping,
@@ -91,6 +92,37 @@ def test_from_mapping_accepts_any_agent_and_known_unverifiable():
                        "t", CRITERIA)
     assert exp.skills["any"] == ("pr-description",)
     assert exp.unverifiable == {2: "why"}
+
+
+def test_from_mapping_parses_checks_with_defaults():
+    exp = from_mapping(_base(checks=[
+        {"criterion": 1, "run": ["dotnet", "build"]},
+        {"criterion": 1, "run": ["{python}", "-m", "pytest"], "cwd": "src/app", "timeout": 30,
+         "requires": [["{python}", "-m", "pytest", "--version"]], "on_pass": "judge",
+         "fail_if_output_matches": "Warning"},
+    ]), "t", CRITERIA)
+    assert exp.checks[0] == Check(1, ("dotnet", "build"))
+    assert exp.checks[1].requires == (("{python}", "-m", "pytest", "--version"),)
+    assert exp.checks[1].on_pass == "judge" and exp.checks[1].cwd == "src/app"
+
+
+@pytest.mark.parametrize("check", [
+    {"criterion": 9, "run": ["x"]},
+    {"criterion": 2, "run": ["x"]},  # also declared unverifiable below
+    {"criterion": True, "run": ["x"]},
+    {"criterion": 1, "run": []},
+    {"criterion": 1, "run": "dotnet build"},
+    {"criterion": 1, "run": ["x"], "cwd": "../outside"},
+    {"criterion": 1, "run": ["x"], "cwd": "/abs"},
+    {"criterion": 1, "run": ["x"], "timeout": 0},
+    {"criterion": 1, "run": ["x"], "on_pass": "maybe"},
+    {"criterion": 1, "run": ["x"], "fail_if_output_matches": "("},
+    {"criterion": 1, "run": ["x"], "requires": [[]]},
+    {"criterion": 1, "run": ["x"], "shell": True},
+])
+def test_from_mapping_rejects_invalid_checks(check):
+    with pytest.raises(ExpectationsError):
+        from_mapping(_base(checks=[check], unverifiable={2: "why"}), "t", CRITERIA)
 
 
 # --- trajectory + DeepEval metrics -------------------------------------------------------
@@ -210,6 +242,119 @@ def test_azure_judge_requires_endpoint_configuration(monkeypatch):
         judges.azure_openai_model()
 
 
+def test_model_judge_sees_command_results_as_evidence(monkeypatch):
+    seen = {}
+
+    class FakeModel:
+        def generate(self, prompt):
+            seen["prompt"] = prompt
+            return "1. PASS - ok\n2. PASS - ok\nVERDICT: RESOLVED", 0.0
+
+    monkeypatch.setattr(judges, "azure_openai_model", FakeModel)
+    judges.judge("azure-openai", "t", CRITERIA, {}, "diff", command_evidence="BUILD-OUTPUT")
+    assert "<command-results>\nBUILD-OUTPUT\n</command-results>" in seen["prompt"]
+
+
+# --- command checks ---------------------------------------------------------------------
+
+PY = "{python}"
+
+
+def _run(tmp_path, check: Check) -> dict:
+    (tmp_path / "ws").mkdir(exist_ok=True)
+    return checks.run_check(check, 0, tmp_path / "ws", tmp_path, checks.check_env())
+
+
+@pytest.mark.parametrize("check,status,reason", [
+    (Check(1, (PY, "-c", "print('ok')")), "passed", "exit code 0"),
+    (Check(1, (PY, "-c", "raise SystemExit(3)")), "failed", "exit code 3"),
+    (Check(1, (PY, "-c", "print('x.bicep(1,2) : Warning no-unused: y')"),
+           fail_if_output_matches=r"\(\d+,\d+\) : Warning "),
+     "failed", "output matched the failure pattern"),
+    (Check(1, ("no-such-tool-xyz", "build")), "unavailable", "no-such-tool-xyz is not installed"),
+    (Check(1, (PY, "-c", "print(1)"), requires=((PY, "-c", "raise SystemExit(1)"),)),
+     "unavailable", "failed"),
+    (Check(1, (PY, "-c", "print(1)"), cwd="missing"), "failed", "does not exist"),
+    (Check(1, (PY, "-c", "import time; time.sleep(30)"), timeout=1), "timeout", "timed out"),
+])
+def test_run_check_statuses(tmp_path, check, status, reason):
+    result = _run(tmp_path, check)
+    assert result["status"] == status
+    assert reason in result["reason"]
+
+
+def test_run_check_never_passes_credentials_to_agent_code(tmp_path, monkeypatch):
+    monkeypatch.setenv("COPILOT_GITHUB_TOKEN", "tok-secret")
+    monkeypatch.setenv("AZURE_CLIENT_SECRET", "az-secret")
+    script = "import os; print(sorted(k for k in os.environ if 'SECRET' in k or 'TOKEN' in k))"
+    result = _run(tmp_path, Check(1, (PY, "-c", script)))
+    assert result["status"] == "passed"
+    assert "[]" in result["output_tail"] and "secret" not in result["output_tail"]
+
+
+def test_run_checks_writes_matching_results(tmp_path):
+    exp = from_mapping(_base(checks=[{"criterion": 2, "run": [PY, "-c", "print(2)"]}]),
+                       "t", CRITERIA)
+    (tmp_path / "ws").mkdir()
+    checks.run_checks(exp, tmp_path / "ws", tmp_path)
+    results = checks.load_results(tmp_path, exp)
+    assert results and results[0]["status"] == "passed"
+    assert (tmp_path / "checks" / "check-00.log").is_file()
+    other = from_mapping(_base(checks=[{"criterion": 2, "run": [PY, "-c", "print(3)"]}]),
+                         "t", CRITERIA)
+    assert checks.load_results(tmp_path, other) is None
+
+
+def _judgement(*statuses: str, reason: str = "judge says") -> judges.Judgement:
+    rows = [judges.CriterionResult(i + 1, s, reason) for i, s in enumerate(statuses)]
+    return judges.Judgement("j", rows, None, judges.verdict_for(list(statuses)), [])
+
+
+def _result(index: int, criterion: int, status: str) -> dict:
+    return {"index": index, "criterion": criterion, "command": f"cmd{index}", "status": status,
+            "reason": "r", "cwd": "."}
+
+
+@pytest.mark.parametrize("on_pass,statuses,judged,expected", [
+    ("pass", ["passed"], "UNVERIFIED", "PASS"),
+    ("pass", ["passed", "failed"], "PASS", "FAIL"),
+    ("pass", ["passed", "timeout"], "PASS", "FAIL"),
+    ("pass", ["passed", "unavailable"], "PASS", "UNVERIFIED"),
+    ("judge", ["passed"], "FAIL", "FAIL"),
+    ("judge", ["passed"], "PASS", "PASS"),
+    ("judge", ["failed"], "PASS", "FAIL"),
+])
+def test_apply_checks_merge_rule(on_pass, statuses, judged, expected):
+    exp = from_mapping(_base(checks=[{"criterion": 1, "run": [f"cmd{i}"], "on_pass": on_pass}
+                                     for i in range(len(statuses))]), "t", CRITERIA)
+    results = [_result(i, 1, s) for i, s in enumerate(statuses)]
+    judgement = _judgement(judged, "PASS")
+    checks.apply_checks(judgement, exp, results)
+    assert judgement.criteria[0].status == expected
+    assert judgement.criteria[1].status == "PASS"
+    assert judgement.verdict == judges.verdict_for([expected, "PASS"])
+
+
+def test_apply_checks_without_results_leaves_checked_criteria_unverified():
+    exp = from_mapping(_base(checks=[{"criterion": 1, "run": ["x"]}]), "t", CRITERIA)
+    judgement = _judgement("PASS", "PASS")
+    checks.apply_checks(judgement, exp, None)
+    assert judgement.criteria[0].status == "UNVERIFIED"
+    assert "not run" in judgement.criteria[0].reason
+    assert judgement.verdict == "UNVERIFIED"
+
+
+def test_none_judge_gets_real_verdicts_from_commands():
+    exp = from_mapping(_base(checks=[{"criterion": 1, "run": ["a"]},
+                                     {"criterion": 2, "run": ["b"], "on_pass": "judge"}]),
+                       "t", CRITERIA)
+    judgement = judges.judge("none", "p", CRITERIA, {}, "diff")
+    checks.apply_checks(judgement, exp, [dict(_result(0, 1, "passed"), command="a"),
+                                         dict(_result(1, 2, "passed"), command="b")])
+    assert [r.status for r in judgement.criteria] == ["PASS", "UNVERIFIED"]
+    assert judgement.criteria[1].reason == "commands passed; the remaining clause needs a judge"
+
+
 # --- runner -----------------------------------------------------------------------------
 
 needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
@@ -264,6 +409,32 @@ def test_phase2_refuses_a_run_that_is_not_awaiting_approval(tmp_path):
                         "--unsandboxed", "--approve"]) == 4
 
 
+def test_verify_refuses_a_run_without_a_finished_change(tmp_path):
+    runner.write_state(runner.Paths(tmp_path), {"task": "task-02", "status": "awaiting_approval"})
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "verify",
+                        "--unsandboxed"]) == 4
+    assert not (tmp_path / checks.CHECKS_FILE).exists()
+
+
+def test_verify_runs_agent_code_so_needs_the_unsandboxed_acknowledgement(tmp_path):
+    with pytest.raises(SystemExit):
+        runner.main(["task-02", "--out", str(tmp_path), "--phase", "verify"])
+
+
+def test_runner_verify_records_check_counts_only_for_finished_runs(tmp_path):
+    exp = from_mapping(_base(checks=[{"criterion": 1, "run": [PY, "-c", "print(1)"]},
+                                     {"criterion": 2, "run": ["no-such-tool-xyz"]}]),
+                       "t", CRITERIA)
+    paths = runner.Paths(tmp_path)
+    paths.workspace.mkdir()
+    pending = {"status": "awaiting_approval"}
+    runner._verify(exp, paths, pending)
+    assert "checks" not in pending and not (tmp_path / checks.CHECKS_FILE).exists()
+    done = {"status": "gate_skipped"}
+    runner._verify(exp, paths, done)
+    assert done["checks"] == {"passed": 1, "unavailable": 1}
+
+
 # --- scorer -----------------------------------------------------------------------------
 
 @pytest.mark.parametrize("args,expected", [
@@ -296,6 +467,12 @@ def test_score_recorded_run_end_to_end(tmp_path):
                                "baseline": baseline, "session_id": "s", "phases": {}})
     (paths.workspace / "new_file.py").write_text("x = 1\n", encoding="utf-8")
     runner.capture_diff(paths, baseline)
+    exp = load(TASKS / "task-02-python-di-refactor")
+    recorded = [{"index": i, "criterion": c.criterion, "command": checks.display(c.run),
+                 "cwd": c.cwd, "status": "passed" if c.criterion == 3 else "failed",
+                 "reason": "r", "output_tail": "tail"} for i, c in enumerate(exp.checks)]
+    (run / checks.CHECKS_FILE).write_text(json.dumps({"schema": 1, "results": recorded}),
+                                          encoding="utf-8")
     output = tmp_path / "summary.json"
 
     code = scorer.main([str(run), "--judge", "none", "--output", str(output)])
@@ -306,8 +483,18 @@ def test_score_recorded_run_end_to_end(tmp_path):
     assert row["status"] == "failed" and code == scorer.EXIT["failed"]
     assert row["plan_gate"]["passed"] is False
     assert {m["name"] for m in row["trajectory"]} >= {"delegation", "skills:coding"}
-    assert row["acceptance"]["verdict"] == "UNVERIFIED"
+    statuses = {r["id"]: r["status"] for r in row["acceptance"]["criteria"]}
+    assert statuses == {1: "UNVERIFIED", 2: "UNVERIFIED", 3: "UNVERIFIED", 4: "FAIL",
+                        5: "UNVERIFIED"}
+    assert row["acceptance"]["verdict"] == "FAILED"
+    assert [c["status"] for c in row["checks"]] == ["passed", "failed"]
+    assert "output_tail" not in row["checks"][0]
     assert row["usage"] == {"premiumRequests": 1}
+
+    (run / checks.CHECKS_FILE).unlink()
+    row = scorer.score_run(run, "none", TASKS)
+    assert row["acceptance"]["verdict"] == "UNVERIFIED"
+    assert row["checks"] is None and "--phase verify" in row["errors"][0]
 
 
 def test_scoring_an_unreadable_run_is_a_setup_error(tmp_path):

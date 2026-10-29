@@ -8,7 +8,7 @@ on:
         type: string
         default: task-05
       judge:
-        description: 'Acceptance judge; none leaves every criterion UNVERIFIED'
+        description: 'Acceptance judge; none leaves criteria without a passing command check UNVERIFIED'
         type: choice
         options: [none, azure-openai]
         default: none
@@ -22,7 +22,9 @@ on:
 #   implement  same agent, resumed after a human approves the eval-approval environment.
 #   score      DeepEval trajectory + judge; reads recorded files only, never runs agent output,
 #              and is the only job that can mint an OIDC token for the Azure OpenAI judge.
-# The agent jobs hold the Copilot token and a read-only GITHUB_TOKEN, nothing else.
+# The agent jobs hold the Copilot token and a read-only GITHUB_TOKEN, nothing else. Whichever
+# of them finishes the change also runs the task's acceptance checks (build / test / render)
+# in the agent's workspace with a scrubbed environment; a tool missing here is UNVERIFIED.
 permissions:
   contents: read
 
@@ -71,6 +73,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
+
+      # The .NET tasks target net9.0 and use .slnx (SDK 9.0.200+) in their acceptance checks.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '9.0.x'
 
       - name: Install the pinned evaluation lock and Copilot CLI
         run: |
@@ -162,6 +169,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '9.0.x'
 
       - name: Install the pinned evaluation lock and Copilot CLI
         run: |
@@ -268,15 +279,19 @@ jobs:
               return re.sub(r"([\\`*_\[\]()!|#~])", r"\\\1", text)[:300]
 
           lines = [f"## custom-eval score: {cell(report['status'])} (judge: {cell(os.environ['JUDGE'])})",
-                   "Trajectory is DeepEval ToolCorrectness over recorded skill and delegation calls; "
-                   "the judge reads the captured diff only and executes nothing, so behavioural "
-                   "criteria stay UNVERIFIED until a sandboxed verifier exists (#22).", "",
+                   "Trajectory is DeepEval ToolCorrectness over recorded skill and delegation calls. "
+                   "Build, test and render criteria are decided by the acceptance commands the agent "
+                   "job ran (a missing tool is UNVERIFIED, never FAIL); the judge grades the rest "
+                   "from the captured diff and executes nothing.", "",
                    "| check | score | result | reason |", "|---|---|---|---|"]
           for row in report["results"]:
               for m in [row.get("plan_gate")] + row.get("trajectory", []):
                   if m:
                       lines.append(f"| {cell(m['name'])} | {cell(m['score'])} | {cell(m['passed'])} "
                                    f"| {cell(m['reason'])} |")
+              for c in row.get("checks") or []:
+                  lines.append(f"| command c{cell(c.get('criterion'))} | - | {cell(c.get('status'))} "
+                               f"| {cell(c.get('command'))}: {cell(c.get('reason'))} |")
               verdict = row.get("acceptance", {}).get("verdict", "-")
               lines.append(f"| acceptance | - | {cell(verdict)} | judge {cell(report.get('judge'))} |")
               for err in row.get("errors", []):

@@ -52,9 +52,9 @@ supplies telemetry/configuration safeguards and a fail-on-call model stub.
 live: `agile_eval.custom_eval` stages a task, drives dev-lead through the Copilot CLI
 across a human plan-approval gate, and scores the run with DeepEval — plan gate,
 delegation, and **per-agent skill invocation** against each task's
-`expectations.yaml` — plus an optional model judge over the captured diff for the
-acceptance criteria. The judge executes nothing, so behavioural criteria stay
-`UNVERIFIED` until #22.
+`expectations.yaml` — plus command checks for build, test and render criteria and an
+optional model judge over the captured diff for the rest. A missing tool leaves its
+criterion `UNVERIFIED`, never failed.
 [`pipeline/swe-bench-subset/`](pipeline/swe-bench-subset/README.md) retains a
 25-instance manifest, not an installed dataset or an executable suite.
 The [outcome rubric](pipeline/scoring-rubric.md) records how acceptance evidence is

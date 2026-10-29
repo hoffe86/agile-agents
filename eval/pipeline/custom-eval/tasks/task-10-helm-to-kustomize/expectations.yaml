@@ -13,3 +13,10 @@ forbidden_skills:
   review-lead: [code-review-checklist, code-review]
 unverifiable:
   2: "literal ingress-host equivalence versus the six-resource, no-Ingress baseline is unresolved (acceptance-grading section 5)"
+checks:
+  - criterion: 1
+    run: [kubectl, kustomize, deploy/kustomize/orders-api/overlays/dev]
+  - criterion: 1
+    run: [kubectl, kustomize, deploy/kustomize/orders-api/overlays/staging]
+  - criterion: 1
+    run: [kubectl, kustomize, deploy/kustomize/orders-api/overlays/prod]

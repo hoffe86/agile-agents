@@ -69,16 +69,18 @@ def test_firstparty_imports_follow_approved_ownership_without_delayed_cycles():
         "custom_eval.expectations": set(),
         "custom_eval.trajectory": {"adapters.copilot_trace"},
         "custom_eval.judges": {"custom_eval.expectations"},
+        "custom_eval.checks": {"custom_eval.expectations", "custom_eval.judges"},
         "custom_eval.metrics": {
             "adapters.copilot_trace", "custom_eval.expectations",
             "custom_eval.trajectory", "metrics.local_model",
         },
         "custom_eval.runner": {
-            "_console", "adapters.copilot_trace", "custom_eval.expectations",
-            "custom_eval.trajectory",
+            "_console", "adapters.copilot_trace", "custom_eval.checks",
+            "custom_eval.expectations", "custom_eval.trajectory",
         },
         "custom_eval.scorer": {
-            "_console", "adapters.copilot_trace", "custom_eval.expectations",
+            "_console", "adapters.copilot_trace", "custom_eval.checks",
+            "custom_eval.expectations",
             "custom_eval.judges", "custom_eval.metrics", "custom_eval.runner",
         },
         "report_skill_usage": {"_console", "adapters.copilot_trace", "metrics.local_model"},

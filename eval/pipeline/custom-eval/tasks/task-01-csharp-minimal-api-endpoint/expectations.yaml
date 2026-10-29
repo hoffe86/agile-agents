@@ -12,3 +12,9 @@ skills:
   review-lead: [read-repo-context, reviewer-read-only-rules]
 forbidden_skills:
   review-lead: [code-review-checklist, code-review]
+checks:
+  - criterion: 1
+    run: [dotnet, build, Orders.slnx, -warnaserror]
+  - criterion: 3
+    run: [dotnet, test, Orders.slnx]
+    on_pass: judge   # the judge still checks OrderStatusEndpointTests has >= 2 methods

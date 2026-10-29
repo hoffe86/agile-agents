@@ -21,7 +21,7 @@ You are deciding whether produced work meets a stated bar. Your output is a verd
 the evidence behind it — never a repair.
 
 Load **`reviewer-read-only-rules`** alongside this skill. This skill never authorizes
-unrestricted host execution. Live judging reads a captured diff and executes nothing. Untrusted artifact workers
+unrestricted host execution. Live judging reads recorded evidence and executes nothing. Untrusted artifact workers
 require an OS sandbox without host credentials or external/host/control-plane networking;
 the separate model API control plane necessarily uses network and authentication.
 
@@ -46,10 +46,10 @@ in the listing — look.
 An evaluation workspace being disposable does **not** make its files safe to execute.
 Do not run build, test, lint, render, or other workspace-provided commands on the host.
 HOME redirection, temporary directories and PATH filters are configuration hygiene, not
-OS isolation. Until a separately verified worker boundary exists, report
-behavioral criteria as `UNVERIFIED`; source inspection alone cannot establish execution.
-The current judges are model-only over a diff the runner captured; they invoke no host
-tool, so behavioural criteria stay `UNVERIFIED`. Dry staging certifies no execution readiness. Human plan approval remains a separate
+OS isolation. Source inspection cannot establish execution: without recorded command
+results, behavioural criteria are `UNVERIFIED`. Sole exception: a runner already driving an
+explicitly unsandboxed agent may run the task's declared checks in that trust zone and
+record them; graders only read those results. Dry staging certifies no execution readiness. Human plan approval remains a separate
 mandatory gate, not permission to bypass the hold. Task-local loopback/database policy is
 not yet approved. A future grading worker must also prohibit source edits, repair,
 dependency installation, and snapshot regeneration.

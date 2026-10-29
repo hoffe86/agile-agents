@@ -223,8 +223,14 @@ earlier shell harness was deleted (#24) and the tasks sat as data only.
 - **Acceptance is a pluggable judge**, `none` or Azure OpenAI via DeepEval's `AzureOpenAIModel`
   with an Entra token only. It reads a diff the *runner* captured and executes nothing, so the
   scorer never runs git or code in an agent-written workspace and can hold judge credentials.
-  Build/test execution (the `BaseMetric` reference below) waits for the sandbox in #22;
-  behavioural criteria are `UNVERIFIED` until then.
+- **Build, test and render criteria are decided by command checks**, not by the judge. Each
+  task's `expectations.yaml` may declare `checks:` (argv, cwd, timeout, tool probes). The
+  *runner* executes them right after capturing the diff, in the agent's own explicitly
+  unsandboxed trust zone with a scrubbed environment, and records `checks.json`; the scorer
+  only reads it. A failed or timed-out check is `FAIL` whatever the judge says; a missing tool
+  is `UNVERIFIED`, never `FAIL`; `on_pass: judge` leaves a criterion's remaining clause to the
+  judge. This is not isolation — the sandboxed worker is still #22 — but it adds no exposure
+  the `--unsandboxed` agent did not already have.
 - **The plan gate is honoured by splitting the run.** Phase 1 runs to the gate; a human
   approves (interactively, or the `eval-approval` environment in `eval-custom.yml`); phase 2
   resumes the same Copilot session. A run that delegates implementation before approval is

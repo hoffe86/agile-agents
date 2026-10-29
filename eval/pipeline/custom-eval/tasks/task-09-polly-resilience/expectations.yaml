@@ -12,3 +12,8 @@ skills:
   review-lead: [read-repo-context, reviewer-read-only-rules]
 forbidden_skills:
   review-lead: [code-review-checklist, code-review]
+checks:
+  - criterion: 1
+    run: [dotnet, build, Pricing.slnx, -warnaserror]
+  - criterion: 1
+    run: [dotnet, test, Pricing.slnx]

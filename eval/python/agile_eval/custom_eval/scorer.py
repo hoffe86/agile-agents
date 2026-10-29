@@ -5,9 +5,12 @@
 
 Each run directory is one produced by run_custom_eval.py. The trajectory -- did dev-lead
 stop at the plan gate, delegate to the expected agents, and did each agent invoke the
-skills it is expected to -- is scored deterministically. The diff the runner captured
-against the staged baseline is the judge's evidence; the scorer runs no git and no
-workspace code, so it is safe in a job that holds judge credentials.
+skills it is expected to -- is scored deterministically. Acceptance evidence is what the
+runner recorded in the agent's trust zone: the diff against the staged baseline, and
+`checks.json`, the exit codes of the task's declared build / test / render commands.
+Failing commands fail their criterion outright; the judge grades what no command covers.
+The scorer runs no git and no workspace code, so it is safe in a job that holds judge
+credentials.
 
 Exit codes follow acceptance-grading: 0 resolved / 1 failed / 2 partial /
 3 unverified (or approval still pending) / 4 setup or judge environment error.
@@ -22,6 +25,7 @@ from pathlib import Path
 
 from agile_eval._console import use_utf8_stdio
 from agile_eval.adapters.copilot_trace import parse_log_text, verify_schema
+from agile_eval.custom_eval.checks import CHECKS_FILE, apply_checks, evidence, load_results
 from agile_eval.custom_eval.expectations import ExpectationsError, load
 from agile_eval.custom_eval.judges import JUDGES, JudgeError, judge
 from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric, skill_metrics
@@ -84,18 +88,20 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
     except Exception:
         row["errors"].append("DeepEval trajectory measurement failed; check the pinned environment")
         return row
+    results = load_results(run, exp)
     try:
         judgement = judge(
             judge_name, (resolve_task(tasks_root, state["task"]) / "prompt.md").read_text(
                 encoding="utf-8"),
             exp.criteria, exp.unverifiable,
-            produced_diff(paths),
+            produced_diff(paths), command_evidence=evidence(results),
         )
     except JudgeError as exc:
         row["errors"].append(str(exc))
         return row
     if judgement.contract_errors:
         row["errors"] += [f"judge contract: {e}" for e in judgement.contract_errors]
+    apply_checks(judgement, exp, results)
 
     trajectory_ok = all(m.passed for m in trajectory)
     row.update(
@@ -104,8 +110,13 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
         plan_gate=gate.to_dict(),
         trajectory=[m.to_dict() for m in trajectory],
         acceptance=judgement.to_dict(),
+        checks=None if results is None else [
+            {k: v for k, v in r.items() if k != "output_tail"} for r in results],
         usage=combined.result.get("usage") if combined.result else None,
     )
+    if exp.checks and results is None and state["status"] in ("complete", "gate_skipped"):
+        row["errors"].append(f"no matching {CHECKS_FILE}; run run_custom_eval.py --phase verify "
+                             "to execute the acceptance checks")
     return row
 
 
@@ -149,6 +160,9 @@ def main(argv: list[str] | None = None) -> int:
             line += f"  (trajectory: {', '.join(failing)})"
         if r.get("acceptance"):
             line += f"  acceptance={r['acceptance']['verdict']}"
+        if r.get("checks"):
+            passed = sum(c["status"] == "passed" for c in r["checks"])
+            line += f"  checks={passed}/{len(r['checks'])} passed"
         print(line)
         for e in r["errors"]:
             print(f"  ERROR: {e}")

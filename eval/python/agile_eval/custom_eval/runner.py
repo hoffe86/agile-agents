@@ -7,6 +7,9 @@
     approve  a human approves: interactively, or with --approve (CI: an environment
              protection rule is the human gate, this flag only records it).
     phase 2  the same session resumes with the approval message.
+    checks   once a run is complete (or skipped the gate), the task's declared build /
+             test / render commands run in the workspace -> checks.json. `--phase verify`
+             re-runs only these against an existing run.
 
 Live runs execute an agent with every tool allowed against a staged workspace on this
 host. That is not an OS sandbox (#22), so the runner refuses to start without
@@ -27,7 +30,8 @@ from pathlib import Path
 
 from agile_eval._console import use_utf8_stdio
 from agile_eval.adapters.copilot_trace import parse_log_text, verify_schema
-from agile_eval.custom_eval.expectations import ExpectationsError, load
+from agile_eval.custom_eval.checks import run_checks
+from agile_eval.custom_eval.expectations import Expectations, ExpectationsError, load
 from agile_eval.custom_eval.trajectory import IMPLEMENTATION_AGENTS, check_plan_gate
 
 ROOT_AGENT = "agile-agents-core:dev-lead"
@@ -39,6 +43,8 @@ DEFAULT_MAX_AI_CREDITS = 300
 MIN_AI_CREDITS = 30
 STATE_FILE = "state.json"
 DIFF_FILE = "produced.diff"
+# Run statuses whose workspace holds a finished change the acceptance checks can test.
+VERIFIABLE = ("complete", "gate_skipped")
 EVIDENCE_EXCLUDES = (":(exclude,glob)**/bin/**", ":(exclude,glob)**/obj/**",
                      ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.venv/**")
 # Defence in depth only -- see capture_diff.
@@ -233,6 +239,7 @@ def phase1(args: argparse.Namespace, task_dir: Path, paths: Paths) -> dict:
         state["status"] = "awaiting_approval" if gate.honoured else "gate_skipped"
     state["plan_message"] = trace.final_message
     _capture(paths, state)
+    _verify(exp, paths, state)
     write_state(paths, state)
     return state
 
@@ -243,6 +250,32 @@ def _capture(paths: Paths, state: dict) -> None:
     except SetupError as exc:
         state["status"] = "setup_error"
         state.setdefault("errors", []).append(str(exc))
+
+
+def _verify(exp: Expectations, paths: Paths, state: dict) -> None:
+    """Run the acceptance checks once the agent is done. After the diff capture, so
+    build output never reaches the evidence. Failures grade the run, not the harness."""
+    if state["status"] not in VERIFIABLE or not exp.checks:
+        return
+    try:
+        report = run_checks(exp, paths.workspace, paths.run)
+    except OSError:
+        state.setdefault("errors", []).append("acceptance checks could not record results")
+        return
+    statuses = [r["status"] for r in report["results"]]
+    state["checks"] = {s: statuses.count(s) for s in sorted(set(statuses))}
+
+
+def verify(args: argparse.Namespace, paths: Paths) -> dict:
+    """Re-run only the acceptance checks against a finished run (e.g. after installing a tool)."""
+    state = read_state(paths)
+    if state.get("status") not in VERIFIABLE:
+        raise SetupError(f"verify needs status {' or '.join(VERIFIABLE)}, "
+                         f"found {state.get('status')}")
+    exp = load(resolve_task(args.tasks_root, state["task"]))
+    _verify(exp, paths, state)
+    write_state(paths, state)
+    return state
 
 
 def phase2(args: argparse.Namespace, paths: Paths) -> dict:
@@ -262,6 +295,7 @@ def phase2(args: argparse.Namespace, paths: Paths) -> dict:
     state["phases"]["2"] = {"exit_code": code, "schema_errors": problems}
     state["status"] = "setup_error" if code == -1 or problems else "complete"
     _capture(paths, state)
+    _verify(load(resolve_task(args.tasks_root, state["task"])), paths, state)
     write_state(paths, state)
     return state
 
@@ -272,7 +306,8 @@ def main(argv: list[str] | None = None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("task", help="task folder name or prefix, e.g. task-02")
     ap.add_argument("--out", type=Path, required=True, help="run directory for this task")
-    ap.add_argument("--phase", choices=("1", "2", "all"), default="all")
+    ap.add_argument("--phase", choices=("1", "2", "all", "verify"), default="all",
+                    help="verify re-runs only the acceptance checks of a finished run")
     ap.add_argument("--approve", action="store_true",
                     help="record human plan approval obtained outside this process (CI)")
     ap.add_argument("--unsandboxed", action="store_true",
@@ -287,10 +322,14 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f"--max-ai-credits must be at least {MIN_AI_CREDITS}")
     if not args.dry_run and not args.unsandboxed:
         ap.error("live runs are not OS-sandboxed (#22); pass --unsandboxed to proceed")
-    if args.dry_run and args.phase == "2":
+    if args.dry_run and args.phase in ("2", "verify"):
         ap.error("--dry-run applies to phase 1 only")
     paths = Paths(args.out)
     try:
+        if args.phase == "verify":
+            state = verify(args, paths)
+            print(f"verify: {state.get('checks', {})}")
+            return 0
         if args.phase in ("1", "all"):
             task_dir = resolve_task(args.tasks_root, args.task)
             state = phase1(args, task_dir, paths)

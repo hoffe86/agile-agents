@@ -52,6 +52,7 @@ resolved / verified. A staging report is not an outcome score.
 Historical results in [`../baselines.md`](../baselines.md) keep their original
 contracts and limitations; they are not retroactively recomputed. The offline
 DeepEval skill score is a different measurement and cannot replace those results
-in a trend line. Custom-eval outcomes are produced by `score_custom_eval.py`; behavioural
-criteria stay UNVERIFIED until sandboxed execution exists
+in a trend line. Custom-eval outcomes are produced by `score_custom_eval.py`. Build, test
+and render criteria are decided by the command checks the runner records (`checks.json`):
+a failed check is FAIL, a missing tool is UNVERIFIED. The run is not OS-sandboxed
 ([#22](https://github.com/hoffe86/agile-agents/issues/22)).
