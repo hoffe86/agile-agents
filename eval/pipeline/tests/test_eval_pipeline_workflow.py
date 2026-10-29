@@ -1,4 +1,4 @@
-"""Offline contracts for workflow provisioning, dispatch, scoring and the live hold."""
+"""Offline contracts for workflow provisioning, dispatch and DeepEval scoring."""
 
 from contextlib import chdir, redirect_stdout
 import io
@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -19,69 +18,22 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "eval-pipeline-outcome.yml"
-RUN_EVAL = ROOT / "eval" / "pipeline" / "run-eval.sh"
 SKILLS_WORKFLOW = ROOT / ".github" / "workflows" / "eval-skills.yml"
 FIXTURE = "eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl"
 SCORER = "eval/deepeval/report_skill_usage.py"
 REPORT = "eval/pipeline/runs/skill-usage-summary.json"
 
 
-def _bash_path(bash, path):
-    if os.name != "nt":
-        return str(path)
-    if "Git" in bash:
-        resolved = Path(path).resolve().as_posix()
-        return f"/{resolved[0].lower()}{resolved[2:]}"
-    result = subprocess.run(
-        [bash, "-c", 'wslpath -a "$1"', "--", str(path)],
-        check=True, capture_output=True, text=True,
+def _copy_scoring_sources(root: Path) -> None:
+    """Copy only trusted scorer code and its static fixture into an isolated checkout."""
+    for relative in (SCORER, FIXTURE):
+        destination = root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, destination)
+    shutil.copytree(
+        ROOT / "eval/python", root / "eval/python",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    return result.stdout.strip()
-
-
-def _find_bash():
-    if os.name == "nt":
-        for candidate in (
-            Path("C:/Program Files/Git/bin/bash.exe"),
-            Path("C:/Program Files/Git/usr/bin/bash.exe"),
-        ):
-            if candidate.is_file():
-                return str(candidate)
-    return shutil.which("bash")
-
-
-def _run_bash(bash, script, env_updates):
-    exports = "\n".join(
-        f"export {key}={shlex.quote(value)}" for key, value in env_updates.items()
-    )
-    return subprocess.run(
-        [bash, "-c", f"{exports}\n{script}"],
-        check=False, capture_output=True, text=True,
-    )
-
-
-def _install_cli_sentinel(bash, temp_dir):
-    tools = temp_dir / "bin"
-    tools.mkdir(parents=True)
-    sentinel = temp_dir / "copilot-invoked"
-    executable = tools / "copilot"
-    executable.write_text(
-        '#!/usr/bin/env bash\nprintf invoked > "$COPILOT_SENTINEL"\n',
-        encoding="utf-8", newline="\n",
-    )
-    executable.chmod(0o755)
-    return _bash_path(bash, tools), _bash_path(bash, sentinel), sentinel
-
-
-def _run_actual_runner(bash, args, env_updates):
-    # Python is a prelaunch prerequisite; keep the actual interpreter on Windows too.
-    env_updates = dict(env_updates)
-    env_updates["PATH"] = (
-        _bash_path(bash, Path(sys.executable).parent) + ":" + env_updates.get("PATH", "")
-    )
-    runner = shlex.quote(_bash_path(bash, RUN_EVAL))
-    command = "bash " + runner + " " + " ".join(shlex.quote(arg) for arg in args)
-    return _run_bash(bash, command, env_updates)
 
 
 class EvalPipelineWorkflowTests(unittest.TestCase):
@@ -94,10 +46,8 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         cls.job = cls.workflow["jobs"]["pipeline-outcome"]
         cls.steps = {step.get("name"): step for step in cls.job["steps"]}
         cls.scoring = cls.steps["Score existing recorded skill invocation"]["run"]
-        cls.guard = cls.steps["Validate mode and enforce live hold"]["run"]
-        cls.staging = cls.steps["Stage fixtures without execution"]["run"]
 
-    def default_env(self):
+    def default_env(self) -> dict[str, str]:
         inputs = self.workflow["on"]["workflow_dispatch"]["inputs"]
         return {
             key: inputs[expression.removeprefix("${{ inputs.").removesuffix(" }}")]["default"]
@@ -105,13 +55,7 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
             if expression.startswith("${{ inputs.")
         }
 
-    def bash(self):
-        bash = _find_bash()
-        if not bash:
-            self.skipTest("bash is not installed")
-        return bash
-
-    def execute_python(self, source, root, env):
+    def execute_python(self, source: str, root: Path, env: dict[str, str]) -> None:
         # Execute the exact trusted workflow body, never trace contents.
         with chdir(root), patch.dict(os.environ, env), patch.object(sys, "argv", []):
             exec(compile(source, "<workflow-step>", "exec"), {"__name__": "__main__"})
@@ -120,18 +64,16 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         self.assertEqual(set(self.workflow["on"]), {"workflow_dispatch"})
         self.assertEqual(
             set(self.workflow["on"]["workflow_dispatch"]["inputs"]),
-            {"mode", "trace_path", "expected_skills", "suite", "task_filter",
-             "pass_threshold", "dry_run"},
+            {"trace_path", "expected_skills"},
         )
+        self.assertIn("DeepEval", self.workflow["name"])
+        self.assertEqual(set(self.default_env()), {"TRACE_PATH", "EXPECTED_SKILLS"})
 
-    def test_default_actually_scores_synthetic_fixture_not_staging(self):
+    def test_default_scores_synthetic_fixture(self):
         inputs = self.workflow["on"]["workflow_dispatch"]["inputs"]
-        self.assertEqual(inputs["mode"]["default"], "offline-score")
-        self.assertEqual(inputs["mode"]["options"], ["offline-score", "fixture-staging"])
         self.assertEqual(inputs["trace_path"]["default"], FIXTURE)
         self.assertEqual(json.loads(inputs["expected_skills"]["default"]), ["fixture-skill-a"])
-        self.assertEqual(inputs["dry_run"]["type"], "boolean")
-        self.assertEqual(inputs["dry_run"]["default"], "true")
+        self.assertTrue(all(value["type"] == "string" for value in inputs.values()))
         self.assertIn("SYNTHETIC", inputs["trace_path"]["description"])
         self.assertEqual(set(self.workflow["jobs"]), {"pipeline-outcome"})
         self.assertEqual(self.job["if"], "${{ github.event_name == 'workflow_dispatch' }}")
@@ -169,36 +111,29 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         for step in self.job["steps"]:
             self.assertNotIn("${{", step.get("run", ""))
 
-    def test_live_hold_precedes_checkout_and_all_provisioning(self):
-        self.assertEqual(self.job["steps"][0]["name"], "Validate mode and enforce live hold")
-        self.assertNotIn("if", self.job["steps"][0])
-        for mode in ("offline-score", "fixture-staging"):
-            for dry_run in ("false", "", "TRUE"):
-                with self.subTest(mode=mode, dry_run=dry_run):
-                    result = _run_bash(
-                        self.bash(), self.guard,
-                        self.default_env() | {"EVAL_MODE": mode, "DRY_RUN": dry_run},
-                    )
-                    self.assertEqual(result.returncode, 2, result.stderr)
-                    self.assertIn("live evaluation is disabled", result.stdout)
-                    self.assertIn("no execution or offline substitution", result.stdout)
-
-    def test_invalid_mode_and_threshold_fail_closed(self):
-        for overrides in (
-            {"EVAL_MODE": "live"}, {"EVAL_MODE": ""},
-            *({"PASS_THRESHOLD": value} for value in ("-1", "101", "1.5", "", "75; echo invalid")),
+    def test_only_active_scoring_entrypoint_remains_and_legacy_ci_references_are_absent(self):
+        for path in (
+            "eval/pipeline/run_eval.py", "eval/pipeline/run-eval.sh",
+            "eval/pipeline/run-eval.ps1", "eval/pipeline/shell_judge.py",
+            "eval/pipeline/score-judge.sh", "eval/pipeline/score-judge.ps1",
+            "eval/pipeline/custom-eval/prepare_inputs.py", "eval/deepeval/score_workspace.py",
         ):
-            with self.subTest(overrides=overrides):
-                result = _run_bash(self.bash(), self.guard, self.default_env() | overrides)
-                self.assertEqual(result.returncode, 2, result.stderr)
-        for value in ("0", "75", "100", "075"):
-            with self.subTest(valid=value):
-                result = _run_bash(
-                    self.bash(), self.guard, self.default_env() | {"PASS_THRESHOLD": value},
-                )
-                self.assertEqual(result.returncode, 0, result.stderr)
+            with self.subTest(path=path):
+                self.assertFalse((ROOT / path).exists(), path)
+                self.assertNotIn(path, self.workflow_text)
+                self.assertNotIn(path, repr(self.skills))
+        for obsolete in (
+            "EVAL_MODE", "EVAL_SUITE", "TASK_FILTER", "PASS_THRESHOLD", "DRY_RUN",
+            "fixture-staging", "test_authorization.py",
+        ):
+            with self.subTest(obsolete=obsolete):
+                self.assertNotIn(obsolete, self.workflow_text + repr(self.skills))
+        step = self.steps["Score existing recorded skill invocation"]
+        self.assertNotIn("if", step)
+        self.assertNotIn("continue-on-error", step)
+        self.assertEqual(step["id"], "scoring")
 
-    def test_both_modes_get_python_hash_locked_wheels_and_dependency_checks_first(self):
+    def test_both_workflows_get_python_hash_locked_wheels_and_dependency_checks_first(self):
         for job, consumer in (
             (self.job, "Score existing recorded skill invocation"),
             (self.skills["jobs"]["runtime-contracts"],
@@ -236,9 +171,6 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
             self.assertEqual(steps[ordered[4]]["run"], "python eval/deepeval/check_environment.py")
             self.assertEqual(job["env"]["DEEPEVAL_TELEMETRY_OPT_OUT"], "1")
             self.assertEqual(job["env"]["EVAL_REQUIRE_DEEPEVAL"], "1")
-        names = [step.get("name") for step in self.job["steps"]]
-        self.assertLess(names.index("Require real DeepEval and its deterministic contract"),
-                        names.index("Stage fixtures without execution"))
         lock = (ROOT / "eval/deepeval/requirements.lock.txt").read_text("utf-8")
         self.assertIn("-r requirements-yaml.lock.txt", lock)
         yaml_lock = (ROOT / "eval/deepeval/requirements-yaml.lock.txt").read_text("utf-8")
@@ -251,7 +183,9 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
             for job in workflow["jobs"].values():
                 for step in job["steps"]:
                     command = step.get("run", "")
-                    for path in re.findall(r"\b(?:eval|scripts)/[\w./-]+\.(?:py|txt|jsonl)\b", command):
+                    for path in re.findall(
+                        r"\b(?:eval|scripts)/[\w./-]+\.(?:py|ps1|sh|txt|jsonl)\b", command,
+                    ):
                         with self.subTest(path=path):
                             self.assertTrue((ROOT / path).is_file(), path)
                     args = command.split()
@@ -263,8 +197,9 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
                         for path in args[args.index("pytest") + 1:]:
                             if not path.startswith("-"):
                                 self.assertTrue((ROOT / path).is_dir(), path)
+                                self.assertTrue(list((ROOT / path).rglob("test_*.py")), path)
         self.assertTrue((ROOT / FIXTURE).is_file())
-        self.assertTrue(RUN_EVAL.is_file())
+        self.assertTrue((ROOT / SCORER).is_file())
 
     def test_ordinary_ci_preserves_matrix_unittest_pytest_and_trajectory(self):
         job = self.skills["jobs"]["runtime-contracts"]
@@ -273,7 +208,6 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         for directory, selector in (
             ("eval/pipeline/tests", "test_dependency_environment.py"),
             ("eval/pipeline/tests", "test_eval_pipeline_workflow.py"),
-            ("eval/pipeline/tests", "test_authorization.py"),
             ("eval/pipeline/trajectory", "test_check_trajectory.py"),
             ("scripts/tests", "test_runtime_contracts.py"),
         ):
@@ -374,6 +308,28 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
                     self.assertEqual(result.exception.code, 2)
                     cli.assert_not_called()
 
+    def test_directory_symlink_escape_and_dangling_input_link_are_rejected(self) -> None:
+        for dangling in (False, True):
+            with self.subTest(dangling=dangling), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp) / "repo"
+                logs = root / "logs"
+                logs.mkdir(parents=True)
+                outside = Path(temp) / "outside"
+                if not dangling:
+                    outside.mkdir()
+                    (outside / "trace.jsonl").write_text("", encoding="utf-8")
+                try:
+                    (logs / "linked").symlink_to(outside, target_is_directory=True)
+                except OSError:
+                    self.skipTest("directory symlinks unavailable on this host")
+                with patch("runpy.run_path") as cli:
+                    with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as result:
+                        self.execute_python(
+                            self.scoring, root, self.default_env() | {"TRACE_PATH": "logs"},
+                        )
+                    self.assertEqual(result.exception.code, 2)
+                    cli.assert_not_called()
+
     def test_existing_output_cannot_be_overwritten(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -411,55 +367,26 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
                 cli.assert_not_called()
                 self.assertEqual(list(outside.iterdir()), [])
 
-    def test_staging_filter_is_literal_and_threshold_is_not_reinterpreted(self):
-        bash = self.bash()
-        with tempfile.TemporaryDirectory() as temp:
-            marker = Path(temp) / "expanded"
-            captured = Path(temp) / "args"
-            payload = '$(printf executed > "$INJECTION_MARKER")'
-            env = self.default_env() | {
-                "EVAL_MODE": "fixture-staging", "TASK_FILTER": payload, "PASS_THRESHOLD": "75",
-                "INJECTION_MARKER": _bash_path(bash, marker),
-                "CAPTURED_ARGS": _bash_path(bash, captured),
-            }
-            script = 'bash() { printf "%s\\0" "$@" > "$CAPTURED_ARGS"; }\n' + self.guard + self.staging
-            result = _run_bash(bash, script, env)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertFalse(marker.exists(), "task_filter was evaluated as shell syntax")
-            self.assertEqual(captured.read_bytes().decode().rstrip("\0").split("\0"), [
-                "eval/pipeline/run-eval.sh", "--suite", "custom-eval",
-                "--task-filter", payload, "--pass-threshold", "75", "--dry-run",
-            ])
-
-    def test_modes_are_exclusive_and_runner_failure_is_not_swallowed(self):
-        for name, mode in (
-            ("Score existing recorded skill invocation", "offline-score"),
-            ("Stage fixtures without execution", "fixture-staging"),
-        ):
-            self.assertEqual(self.steps[name]["if"], f"inputs.mode == '{mode}'")
-            self.assertNotIn("continue-on-error", self.steps[name])
-        result = _run_bash(
-            self.bash(), "bash() { return 2; }\n" + self.staging, self.default_env(),
-        )
-        self.assertEqual(result.returncode, 2)
-
     def test_artifacts_are_summary_only_bounded_and_uploaded_on_failure(self):
         uploads = [step for step in self.job["steps"]
                    if step.get("uses", "").startswith("actions/upload-artifact@")]
-        self.assertEqual(len(uploads), 2)
-        for step, mode, path in zip(uploads, ("offline-score", "fixture-staging"),
-                                    (REPORT, "eval/pipeline/runs/*/summary.json")):
-            self.assertEqual(step["if"], f"always() && inputs.dry_run && inputs.mode == '{mode}'")
-            self.assertEqual(step["with"]["path"], path)
-            self.assertEqual(step["with"]["if-no-files-found"], "error")
-            self.assertEqual(step["with"]["retention-days"], "7")
+        self.assertEqual(len(uploads), 1)
+        step = uploads[0]
+        self.assertEqual(step["if"], "always() && steps.scoring.outputs.summary_ready == 'true'")
+        self.assertEqual(step["with"]["path"], REPORT)
+        self.assertEqual(step["with"]["if-no-files-found"], "error")
+        self.assertEqual(step["with"]["retention-days"], "7")
         self.assertEqual(self.steps["Write summary"]["if"], "always()")
+        self.assertEqual(
+            self.steps["Write summary"]["env"],
+            {"SUMMARY_READY": "${{ steps.scoring.outputs.summary_ready }}"},
+        )
 
-    def test_summary_labels_fixture_scope_errors_staging_and_live_refusal(self):
+    def test_summary_labels_fixture_scope_and_errors_without_raw_trace_or_labels(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             summary = root / "step-summary.md"
-            env = self.default_env() | {"GITHUB_STEP_SUMMARY": str(summary)}
+            env = self.default_env() | {"GITHUB_STEP_SUMMARY": str(summary), "SUMMARY_READY": ""}
             body = self.steps["Write summary"]["run"]
             self.execute_python(body, root, env)
             text = summary.read_text("utf-8")
@@ -475,58 +402,156 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
                 "expected_skills": ["untrusted-markdown"], "raw": "never-rendered",
             }), encoding="utf-8")
             summary.unlink()
-            self.execute_python(body, root, env | {"TRACE_PATH": "existing-logs"})
+            self.execute_python(
+                body, root, env | {"TRACE_PATH": "existing-logs", "SUMMARY_READY": "true"},
+            )
             text = summary.read_text("utf-8")
             self.assertIn("provenance is not established", text)
             self.assertIn('"status": "failed"', text)
             self.assertNotIn("untrusted-markdown", text)
             self.assertNotIn("never-rendered", text)
             summary.unlink()
-            self.execute_python(body, root, env | {"EVAL_MODE": "fixture-staging"})
-            self.assertIn("Fixture preflight/staging only", summary.read_text("utf-8"))
-            summary.unlink()
-            self.execute_python(body, root, env | {"DRY_RUN": "false"})
+            # A pre-existing file is not evidence that this job measured anything.
+            self.execute_python(body, root, env)
             text = summary.read_text("utf-8")
-            self.assertIn("Live request refused", text)
+            self.assertIn("No scoring summary produced", text)
             self.assertNotIn('"status":', text)
 
-    def test_runner_rejects_invalid_threshold_before_live_guard_or_cli(self):
-        bash = self.bash()
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            tools, sentinel_path, sentinel = _install_cli_sentinel(bash, root)
-            raw_threshold = "75; printf injected"
-            result = _run_actual_runner(
-                bash, [
-                    "--suite", "custom-eval", "--pass-threshold", raw_threshold,
-                    "--output-root", _bash_path(bash, root / "runs"),
-                ],
-                {"PATH": f"{tools}:/usr/bin:/bin:{os.environ.get('PATH', '')}",
-                 "COPILOT_SENTINEL": sentinel_path},
-            )
-            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-            output = result.stdout + result.stderr
-            self.assertIn("pass-threshold must be an integer from 0 through 100", output)
-            self.assertNotIn(raw_threshold, output)
-            self.assertNotIn("live evaluation is disabled", output)
-            self.assertFalse(sentinel.exists(), "invalid threshold reached the CLI")
+    def test_summary_path_resolution_errors_render_failure_without_publishing_stale_scores(self) -> None:
+        body = self.steps["Write summary"]["run"]
+        for error_type in (ValueError, OSError, RuntimeError):
+            for failing_path in ("fixture", "trace"):
+                for stale_report in (False, True):
+                    with self.subTest(
+                        error=error_type.__name__, failing_path=failing_path,
+                        stale_report=stale_report,
+                    ), tempfile.TemporaryDirectory() as temp:
+                        root = Path(temp)
+                        summary = root / "step-summary.md"
+                        report = root / REPORT
+                        stale_contents = json.dumps({
+                            "status": "passed", "measured": 1, "total": 1, "threshold": 1.0,
+                            "raw": "stale-report-must-not-be-rendered",
+                        })
+                        if stale_report:
+                            report.parent.mkdir(parents=True)
+                            report.write_text(stale_contents, encoding="utf-8")
+                        env = self.default_env() | {
+                            "TRACE_PATH": "existing-logs",
+                            "GITHUB_STEP_SUMMARY": str(summary),
+                        }
+                        resolutions = []
+                        if failing_path == "trace":
+                            resolutions.append(root / FIXTURE)
+                        resolutions.append(error_type("path resolution failed"))
+                        # SUMMARY_READY must be absent, even if set by the test runner.
+                        with patch.dict(os.environ, {}, clear=True), patch.object(
+                            Path, "resolve", autospec=True, side_effect=resolutions,
+                        ) as resolve:
+                            self.execute_python(body, root, env)
+                        expected_paths = [Path(FIXTURE)]
+                        if failing_path == "trace":
+                            expected_paths.append(Path("existing-logs"))
+                        self.assertEqual(
+                            [call.args[0] for call in resolve.call_args_list], expected_paths,
+                        )
+                        text = summary.read_text(encoding="utf-8")
+                        self.assertIn("## DeepEval offline scoring", text)
+                        self.assertIn(
+                            "No scoring summary produced; consult the failed step. No score inferred.",
+                            text,
+                        )
+                        self.assertIn("provenance is not established", text)
+                        self.assertIn("Acceptance scoring remains UNVERIFIED", text)
+                        self.assertNotIn("SYNTHETIC fixture demonstration", text)
+                        self.assertNotIn("```json", text)
+                        for field in ("status", "measured", "total", "threshold"):
+                            self.assertNotIn(f'"{field}":', text)
+                        self.assertNotIn("stale-report-must-not-be-rendered", text)
+                        if stale_report:
+                            self.assertEqual(report.read_text(encoding="utf-8"), stale_contents)
+                        else:
+                            self.assertFalse(report.exists())
 
-    def test_non_dry_runner_refuses_live_evaluation_before_invoking_cli(self):
-        bash = self.bash()
+    def test_embedded_workflow_measures_with_real_deepeval_and_propagates_exit_codes(self) -> None:
+        cases = (
+            (["fixture-skill-a"], None, 0, "passed", 1.0, 1),
+            (["missing-skill"], None, 1, "failed", 0.0, 1),
+            (["fixture-skill-a"], "not-json\n", 2, "schema_error", None, 0),
+        )
+        for expected, contents, code, status, score, measured in cases:
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                _copy_scoring_sources(root)
+                if contents is not None:
+                    (root / FIXTURE).write_text(contents, encoding="utf-8")
+                outputs = root / "step-output"
+                result = subprocess.run(
+                    [sys.executable, "-c", self.scoring],
+                    cwd=root, env=dict(
+                        os.environ,
+                        **(self.default_env() | {"EXPECTED_SKILLS": json.dumps(expected)}),
+                        GITHUB_OUTPUT=str(outputs), DEEPEVAL_TELEMETRY_OPT_OUT="1",
+                        DEEPEVAL_DISABLE_PROGRESS_BAR="1", EVAL_REQUIRE_DEEPEVAL="1",
+                    ),
+                    capture_output=True, text=True, timeout=90,
+                )
+                self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+                report = json.loads((root / REPORT).read_text(encoding="utf-8"))
+                self.assertEqual(report["status"], status)
+                self.assertEqual(report["measured"], measured)
+                self.assertEqual(report["total"], 1)
+                self.assertEqual(report["results"][0]["score"], score)
+                self.assertEqual(report["metric"], "ToolCorrectnessMetric")
+                self.assertEqual(report["deepeval_version"], "4.1.8")
+                self.assertEqual(outputs.read_text(encoding="utf-8"), "summary_ready=true\n")
+
+    def test_unsupported_cli_options_are_rejected_not_mapped_to_offline_scoring(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            tools, sentinel_path, sentinel = _install_cli_sentinel(bash, root)
-            result = _run_actual_runner(
-                bash, [
-                    "--suite", "custom-eval", "--pass-threshold", "75",
-                    "--output-root", _bash_path(bash, root / "runs"),
-                ],
-                {"PATH": f"{tools}:/usr/bin:/bin:{os.environ.get('PATH', '')}",
-                 "COPILOT_SENTINEL": sentinel_path},
-            )
-            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-            self.assertIn("live evaluation is disabled", result.stderr)
-            self.assertFalse(sentinel.exists(), "live refusal must precede CLI invocation")
+            _copy_scoring_sources(root)
+            for arguments in (
+                ["--mode", "live"], ["--dry-run"], ["--suite", "custom-eval"],
+                ["--task-filter", ".*"], ["--pass-threshold", "75"],
+            ):
+                with self.subTest(arguments=arguments):
+                    result = subprocess.run(
+                        [sys.executable, SCORER, FIXTURE, "--score",
+                         "--expect-skill", "fixture-skill-a", "--output", REPORT, *arguments],
+                        cwd=root, capture_output=True, text=True, timeout=30,
+                    )
+                    self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                    self.assertIn("unrecognized arguments", result.stderr)
+                    self.assertFalse((root / REPORT).exists())
+
+    def test_validation_failure_cannot_publish_existing_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _copy_scoring_sources(root)
+            report = root / REPORT
+            report.parent.mkdir(parents=True)
+            report.write_text("untrusted existing report", encoding="utf-8")
+            outputs = root / "step-output"
+            env = self.default_env() | {"GITHUB_OUTPUT": str(outputs)}
+            with patch("runpy.run_path") as cli:
+                with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as result:
+                    self.execute_python(self.scoring, root, env)
+                self.assertEqual(result.exception.code, 2)
+                cli.assert_not_called()
+            self.assertFalse(outputs.exists())
+            self.assertEqual(report.read_text(encoding="utf-8"), "untrusted existing report")
+
+    def test_unexpected_scorer_exception_propagates_without_publishing_a_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "log.jsonl").write_text("", encoding="utf-8")
+            outputs = root / "step-output"
+            env = self.default_env() | {"TRACE_PATH": "log.jsonl", "GITHUB_OUTPUT": str(outputs)}
+            with patch("runpy.run_path", side_effect=RuntimeError("scorer failed")):
+                with self.assertRaisesRegex(RuntimeError, "scorer failed"):
+                    self.execute_python(self.scoring, root, env)
+            self.assertFalse(outputs.exists())
+            self.assertFalse((root / REPORT).exists())
 
 
 if __name__ == "__main__":

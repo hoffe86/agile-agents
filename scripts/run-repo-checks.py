@@ -37,8 +37,6 @@ def commands_for(check: str) -> list[list[str]]:
              "-p", "test_*.py", "-v"],
             [python, "-m", "unittest", "discover", "-s", "eval/pipeline/tests",
              "-p", "test_eval_pipeline_workflow.py", "-v"],
-            [python, "-m", "unittest", "discover", "-s", "eval/pipeline/tests",
-             "-p", "test_authorization.py", "-v"],
             [python, "-m", "unittest", "discover", "-s", "eval/pipeline/trajectory",
              "-p", "test_check_trajectory.py", "-v"],
             [python, "-m", "pytest", "-q", "eval/pipeline/custom-eval/tests",

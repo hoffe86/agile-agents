@@ -240,64 +240,31 @@ in `solution-profile.yaml` under `backlog.platform` + `backlog.url`. Task creati
 
 ### Eval harness (`eval/`)
 
-Shared Python implementation lives in [`eval/python/agile_eval/`](eval/python/agile_eval/).
-Existing script paths remain executable entrypoints; library callers use explicit
-`agile_eval.*` imports from the single `eval/python` source root.
+**DeepEval is the sole active pipeline scorer**
+([ADR 0015](docs/adr/0015-deepeval-for-pipeline-evaluation.md)). It measures coverage
+of expected skill identities in existing Copilot JSONL traces using the pinned
+offline metric. It does not launch agents, call models or execute generated artifacts.
+Recorded invocation is not successful skill use, task acceptance or L2 outcome credit.
 
-The eval harness is the suite's **measurement frame** — it makes quality a number, not a vibe,
-so two questions have evidence-based answers: *is the suite getting better or worse over time?*
-and *did change X actually help?* (run before/after, compare the delta). Quantitative
-measurement is the foundation every other quality lever is judged against.
+| Evaluation responsibility | Evidence |
+|---|---|
+| [DeepEval pipeline scoring](eval/deepeval/README.md) | Recorded expected-skill coverage; setup/schema errors remain distinct from measured failures |
+| [Deterministic L0 trajectory checks](eval/pipeline/trajectory/README.md) | RPI ordering, gates and cost telemetry in harness event logs ([ADR 0008](docs/adr/0008-layered-evaluation-strategy.md)) |
+| [Waza skill evaluation](eval/skills/README.md) | Individual-skill routing, invocation and efficacy ([ADR 0014](docs/adr/0014-skill-evaluation-with-waza.md)) |
 
-**Two suites, one runner:**
+Use `eval/deepeval/report_skill_usage.py` with `--score`, repeated
+`--expect-skill` values and a local `--output` JSON destination.
+[Installation and command reference](eval/deepeval/README.md) are separate from
+the [evaluation overview](eval/README.md).
+Shared implementation remains in `eval/python/agile_eval`, without shadowing
+third-party `deepeval`.
 
-| Suite | Source | Size | Answers |
-|---|---|---|---|
-| `swe-bench-subset/` | Stratified slice of [SWE-bench Verified](https://www.swebench.com/verified.html) | 25 tasks · 8 repos · 3 difficulty bands | External, comparable-to-literature score |
-| `custom-eval/` | Hand-written framework-shaped tasks (C#, Python, Bicep, GHA, Helm, ADR, threat-model) | 10 tasks | Internal, breadth-of-framework score |
-
-**Metrics.** Every task scores one of three statuses; SWE-bench mirrors the upstream definition
-so numbers stay comparable to the public leaderboard:
-
-| Status | Meaning | SWE-bench equivalent |
-|---|---|---|
-| ✅ `resolved` | All acceptance criteria met; build green; tests green | All `FAIL_TO_PASS` pass **and** no `PASS_TO_PASS` regression |
-| 🟡 `partial` | ≥1 criterion met; remaining failures non-catastrophic (artefact still compiles/runs) | Some `FAIL_TO_PASS` pass; no `PASS_TO_PASS` regression |
-| ❌ `failed` | No criterion met, build broken, or a test regressed | Patch doesn't apply, build broken, or `PASS_TO_PASS` regresses |
-
-Per run the harness writes `summary.json` with absolute counts and the derived rates —
-**resolved % / partial % / failed %** (each = count ÷ total). **Resolved %** is the headline
-metric; the runner exits `0` when `resolved% ≥ pass-threshold` (default `60`), `1` otherwise, so
-it can gate CI. Every run appends a row to [`eval/baselines.md`](eval/baselines.md) — the
-committed trend line; diff against it after any non-trivial agent or skill change. Full
-definitions in [`eval/pipeline/scoring-rubric.md`](eval/pipeline/scoring-rubric.md); methodology and the
-add-a-task contract in [`eval/README.md`](eval/README.md); composition rationale in
-[ADR 0002](docs/adr/0002-self-benchmarking-harness-composition.md).
-
-**Run it** locally with `eval/pipeline/run-eval.ps1` (Windows) / `eval/pipeline/run-eval.sh` (POSIX), or on demand
-via the [`Eval · pipeline outcome`](.github/workflows/eval-pipeline-outcome.yml) workflow (`workflow_dispatch` → pick suite,
-task-filter, threshold; `summary.json` lands in the run summary and `eval/pipeline/runs/` is uploaded as
-an artifact). The separate, default-off `native_only` input runs no-model boundary
-qualification instead, with sanitized check logs and no grades or run artifacts.
-It does not release the live controller hold; see [CI modes](eval/README.md#ci-on-demand).
-
-**Layered evaluation.** This outcome eval is the top of a pyramid ([ADR 0008](docs/adr/0008-layered-evaluation-strategy.md)):
-a free, deterministic **L0 trajectory eval** ([`eval/pipeline/trajectory/`](eval/pipeline/trajectory/README.md))
-asserts each run's [`run-event-log`](plugins/agile-agents-core/skills/run-event-log/SKILL.md) stream conformed to the RPI
-shape (dev-lead bookends, research→implement→test→**test-bar gate**→review ordering, reviewer
-gate_checks, cost telemetry). It runs on every push/PR via the
-[`Eval · pipeline trajectory`](.github/workflows/eval-pipeline-trajectory.yml) workflow — no credits, no model — and
-catches process failures the outcome eval is blind to (e.g. a run that produces a plausible
-artifact while its gates never fire). An L1 review-detection eval is planned.
-
-> **Status:** the single Python runner **holds all live execution** before staging,
-> SDK startup or model calls. `custom-eval` dry runs only preflight/stage fixtures;
-> held grading returns `UNVERIFIED` for valid inputs, not a measured score.
-> Executable per-task scorer overrides and the live CLI invocation helper were removed.
-> **SWE-bench task-prep** (dataset fetch + repo checkout) is also unwired. Future execution
-> requires separately approved implementation, safe isolation and human approval—not just
-> dataset preparation. The workflow stays manual and non-gating.
-> See [`eval/README.md`](eval/README.md#scoring).
+The ten [custom benchmark tasks](eval/pipeline/custom-eval/README.md), the
+25-instance [SWE-bench manifest](eval/pipeline/swe-bench-subset/README.md), and
+[historical baselines](eval/baselines.md) are retained as data and historical
+evidence, not runnable suites. There is no workspace stager or outcome judge.
+Live execution and sandbox work remain deferred to
+[#22](https://github.com/hoffe86/agile-agents/issues/22).
 
 ### `metadata.model_tier` frontmatter convention
 Each Copilot agent records an **advisory preference**, not a model selector
@@ -336,7 +303,7 @@ The roster has 0 light, 4 mid, and 11 heavy agents; `light` remains a supported 
 
 **Dogfood test bar.** At repository root, activate a Python environment with
 `eval/deepeval/requirements.lock.txt` hash-installed
-([setup and supported Python versions](eval/deepeval/README.md#run-it)) and put `pwsh` on `PATH`. The profile's
+([setup and supported Python versions](eval/deepeval/README.md#install-and-verify)) and put `pwsh` on `PATH`. The profile's
 `lint.command` and `unit_test.command` call `python scripts/run-repo-checks.py lint`
 and `python scripts/run-repo-checks.py unit`. The helper stops on any failed command
 or missing prerequisite. Unit checks use unittest for script, pipeline-workflow,

@@ -219,25 +219,19 @@ class RequiredImportTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
-    def test_authorization_suite_runs_as_a_separate_step_on_both_operating_systems(self):
+    def test_surviving_workflow_suites_run_separately_on_both_operating_systems(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/eval-skills.yml").read_text(encoding="utf-8"))
         job = workflow["jobs"]["runtime-contracts"]
         self.assertEqual(job["strategy"]["matrix"]["os"], ["ubuntu-latest", "windows-latest"])
         self.assertEqual(job["runs-on"], "${{ matrix.os }}")
         self.assertNotIn("if", job)
         steps = job["steps"]
-        workflow_test = next(
-            i for i, step in enumerate(steps)
-            if step.get("run") == (
-                "python -m unittest discover -s eval/pipeline/tests -p test_eval_pipeline_workflow.py -v"
-            )
-        )
-        for offset, module in enumerate(("test_authorization.py",), start=1):
+        for module in ("test_dependency_environment.py", "test_eval_pipeline_workflow.py"):
             with self.subTest(module=module):
-                step = steps[workflow_test + offset]
-                self.assertEqual(
-                    step["run"], f"python -m unittest discover -s eval/pipeline/tests -p {module} -v",
-                )
+                command = f"python -m unittest discover -s eval/pipeline/tests -p {module} -v"
+                matches = [step for step in steps if step.get("run") == command]
+                self.assertEqual(len(matches), 1)
+                step = matches[0]
                 self.assertNotIn("if", step)
                 self.assertFalse(step.get("continue-on-error", False))
 

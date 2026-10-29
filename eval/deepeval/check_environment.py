@@ -14,15 +14,12 @@ def verify() -> None:
 
     configure_offline()
     import deepeval
-    from deepeval.metrics import BaseMetric, ToolCorrectnessMetric
+    from deepeval.metrics import ToolCorrectnessMetric
     from deepeval.test_case import LLMTestCase, ToolCall, ToolCallParams
-    from agile_eval.metrics.acceptance import AcceptanceMetric
     from agile_eval.metrics.local_model import stub_model
 
     if importlib.metadata.version("deepeval") != "4.1.8":
         raise RuntimeError("ADR 0015 requires deepeval==4.1.8")
-    if not issubclass(AcceptanceMetric, BaseMetric):
-        raise RuntimeError("AcceptanceMetric must use the real DeepEval BaseMetric")
     # Exercise ADR 0015's deterministic constructor + score contract. This model
     # raises if called, rather than falling back to a real provider.
     metric = ToolCorrectnessMetric(

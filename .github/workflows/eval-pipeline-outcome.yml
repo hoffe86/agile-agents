@@ -1,15 +1,8 @@
-name: Eval · pipeline offline scoring
+name: Eval · DeepEval offline scoring
 
 on:
   workflow_dispatch:
     inputs:
-      mode:
-        description: 'Offline skill measurement or legacy fixture staging (neither grades L2 acceptance)'
-        type: choice
-        options:
-          - offline-score
-          - fixture-staging
-        default: offline-score
       trace_path:
         description: 'Repository-relative existing JSONL file/directory; default is a SYNTHETIC fixture'
         type: string
@@ -18,25 +11,6 @@ on:
         description: 'JSON array of expected recorded skill identities; same expectations for every input'
         type: string
         default: '["fixture-skill-a"]'
-      suite:
-        description: 'Fixture-staging mode only: evaluation suite'
-        type: choice
-        options:
-          - custom-eval
-          - swe-bench-subset
-        default: custom-eval
-      task_filter:
-        description: 'Fixture-staging mode only: task ID regex'
-        type: string
-        default: '.*'
-      pass_threshold:
-        description: 'Fixture-staging only: legacy resolved percent (0-100); skill threshold stays 1.0'
-        type: string
-        default: '0'
-      dry_run:
-        description: 'Safety hold: must remain true; false requests live execution and FAILS CLOSED'
-        type: boolean
-        default: true
 
 # No fresh agents, model calls, generated-code execution, SDK or sandbox provisioning.
 # Native experimentation is deferred to https://github.com/hoffe86/agile-agents/issues/22.
@@ -50,13 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      EVAL_MODE: ${{ inputs.mode }}
       TRACE_PATH: ${{ inputs.trace_path }}
       EXPECTED_SKILLS: ${{ inputs.expected_skills }}
-      EVAL_SUITE: ${{ inputs.suite }}
-      TASK_FILTER: ${{ inputs.task_filter }}
-      PASS_THRESHOLD: ${{ inputs.pass_threshold }}
-      DRY_RUN: ${{ inputs.dry_run }}
       EVAL_REQUIRE_DEEPEVAL: '1'
       DEEPEVAL_TELEMETRY_OPT_OUT: '1'
       DEEPEVAL_DISABLE_PROGRESS_BAR: '1'
@@ -65,21 +34,6 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Validate mode and enforce live hold
-        run: |
-          if [[ ! "$PASS_THRESHOLD" =~ ^[0-9]{1,3}$ ]] || (( 10#$PASS_THRESHOLD > 100 )); then
-            echo "::error::pass_threshold must be an integer from 0 through 100"
-            exit 2
-          fi
-          if [[ "$DRY_RUN" != "true" ]]; then
-            echo "::error::live evaluation is disabled; no execution or offline substitution performed (issue #22)"
-            exit 2
-          fi
-          case "$EVAL_MODE" in
-            offline-score|fixture-staging) ;;
-            *) echo "::error::unsupported offline mode"; exit 2 ;;
-          esac
-
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
@@ -93,8 +47,8 @@ jobs:
           python -m venv "$RUNNER_TEMP/eval-venv"
           echo "$RUNNER_TEMP/eval-venv/bin" >> "$GITHUB_PATH"
 
-      # Only trusted dependency download needs PyPI. Both modes use the same lock,
-      # including PyYAML for staging; no runtime download or provider credentials.
+      # Only trusted dependency download needs PyPI; no runtime download or
+      # provider credentials. Keep the shared evaluation lock unchanged.
       - name: Download hash-verified evaluation wheels
         run: >-
           python -m pip --isolated download --index-url https://pypi.org/simple
@@ -113,7 +67,7 @@ jobs:
         run: python eval/deepeval/check_environment.py
 
       - name: Score existing recorded skill invocation
-        if: inputs.mode == 'offline-score'
+        id: scoring
         shell: python
         run: |
           import json
@@ -135,7 +89,7 @@ jobs:
               # Do not let directory collection follow file symlinks out of checkout.
               if source.is_dir():
                   for entry in source.rglob("*"):
-                      if entry.suffix.lower() in {".log", ".jsonl"}:
+                      if entry.is_symlink() or entry.suffix.lower() in {".log", ".jsonl"}:
                           if not entry.resolve(strict=True).is_relative_to(root):
                               raise ValueError
               expected = json.loads(os.environ["EXPECTED_SKILLS"])
@@ -156,63 +110,55 @@ jobs:
               *(f"--expect-skill={skill}" for skill in expected),
               "--output", str(output),
           ]
-          runpy.run_path("eval/deepeval/report_skill_usage.py", run_name="__main__")
-
-      - name: Stage fixtures without execution
-        if: inputs.mode == 'fixture-staging'
-        run: |
-          RUN_ARGS=(--suite "$EVAL_SUITE" --task-filter "$TASK_FILTER" --pass-threshold "$PASS_THRESHOLD" --dry-run)
-          bash eval/pipeline/run-eval.sh "${RUN_ARGS[@]}"
+          try:
+              runpy.run_path("eval/deepeval/report_skill_usage.py", run_name="__main__")
+          finally:
+              # Measured failures also produce summaries. Validation failures must
+              # never publish a pre-existing report or a symlink target.
+              if output.resolve() == output and output.is_file():
+                  with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as outputs:
+                      outputs.write("summary_ready=true\n")
 
       - name: Write summary
         if: always()
         shell: python
+        env:
+          SUMMARY_READY: ${{ steps.scoring.outputs.summary_ready }}
         run: |
           import json
           import os
           from pathlib import Path
 
-          lines = ["## Offline evaluation",
+          lines = ["## DeepEval offline scoring",
                    "Scope: expected recorded skill invocation only; NOT successful tool completion, task quality or L2 resolved acceptance.",
-                   "Acceptance scoring remains UNVERIFIED. Live execution remains held (issue #22)."]
-          if os.environ["DRY_RUN"] != "true":
-              lines.append("Live request refused; no offline substitution or measurement.")
-          elif os.environ["EVAL_MODE"] == "offline-score":
+                   "Acceptance scoring remains UNVERIFIED. Live execution is unavailable (issue #22)."]
+          try:
               fixture = Path("eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl").resolve()
-              if Path(os.environ["TRACE_PATH"]).resolve() == fixture:
-                  lines.append("SYNTHETIC fixture demonstration — NOT a current-harness benchmark.")
-              else:
-                  lines.append("Existing repository traces; provenance is not established by this measurement.")
-              report = Path("eval/pipeline/runs/skill-usage-summary.json")
-              if report.is_file():
-                  data = json.loads(report.read_text(encoding="utf-8"))
-                  # Do not render operator labels or transcript data into Markdown.
-                  fields = ("status", "measured", "total", "threshold")
-                  lines.extend(["```json", json.dumps({key: data[key] for key in fields}), "```"])
-              else:
-                  lines.append("No scoring summary produced; consult the failed step. No score inferred.")
-          elif os.environ["EVAL_MODE"] == "fixture-staging":
-              lines.append("Fixture preflight/staging only; no skill measurement or acceptance result.")
+              is_fixture = Path(os.environ["TRACE_PATH"]).resolve() == fixture
+          except (ValueError, OSError, RuntimeError):
+              # Invalid paths must not break reporting of the validation failure.
+              is_fixture = False
+          if is_fixture:
+              lines.append("SYNTHETIC fixture demonstration — NOT a current-harness benchmark.")
           else:
-              lines.append("Unsupported mode; no measurement.")
+              lines.append("Existing repository traces; provenance is not established by this measurement.")
+          report = Path("eval/pipeline/runs/skill-usage-summary.json")
+          if os.environ.get("SUMMARY_READY") == "true" and report.is_file():
+              data = json.loads(report.read_text(encoding="utf-8"))
+              # Do not render operator labels or transcript data into Markdown.
+              fields = ("status", "measured", "total", "threshold")
+              lines.extend(["```json", json.dumps({key: data[key] for key in fields}), "```"])
+          else:
+              lines.append("No scoring summary produced; consult the failed step. No score inferred.")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
               summary.write("\n\n".join(lines) + "\n")
 
       # Explicit summary allowlist, never runs/** or raw session transcripts.
       - name: Upload scoring summary
-        if: always() && inputs.dry_run && inputs.mode == 'offline-score'
+        if: always() && steps.scoring.outputs.summary_ready == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: skill-invocation-${{ github.run_id }}
           path: eval/pipeline/runs/skill-usage-summary.json
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload staging summaries
-        if: always() && inputs.dry_run && inputs.mode == 'fixture-staging'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: fixture-staging-${{ github.run_id }}
-          path: eval/pipeline/runs/*/summary.json
           if-no-files-found: error
           retention-days: 7

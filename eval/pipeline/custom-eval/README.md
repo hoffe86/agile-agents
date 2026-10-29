@@ -15,31 +15,18 @@ profile, and versioned input declaration:
 | `inputs.json` | Versioned list of required baseline inputs and their workspace destinations |
 | `baseline/` | Minimal synthetic or task-directed source inputs; never includes the requested answer |
 
-`run-eval.ps1` and `run-eval.sh` both use `agile_eval.prepare_inputs` in dry-run mode
-([implementation](../../python/agile_eval/prepare_inputs.py)); the local `prepare_inputs.py`
-path remains an executable delegate. It validates every
-selected profile and every declared source/destination path before creating workspaces,
-then stages the input files and both profile copies. Missing or unsafe inputs produce a
-structured `setup_error` and exit 2 before any agent or judge invocation. `--dry-run`
-performs the same staging and validation rather than only printing a command.
-
-The original inputs are also copied to `runs/<run-id>/baseline/<task-id>/`, outside the
-produced workspace, with a manifest whose hashes are checked against the canonical repository
-fixtures. The manifest is not independently trusted, and file mode bits are not an OS access
-boundary. No workspace-local pointer is written. Because the current runner cannot enforce a
-separate OS identity/access boundary, live agent evaluation is blocked; only dry-run staging is
-available until a real sandbox is wired.
+These are retained **benchmark data**, not a runnable suite. No workspace stager,
+agent runner or acceptance scorer is supplied. Source-consistency tests inspect
+the fixtures without executing their declared commands. Live execution and its
+sandbox boundary are deferred to
+[#22](https://github.com/hoffe86/agile-agents/issues/22).
 
 Profiles populate the six required Stage-0 fields from the shipped template, set
 `backlog.create_tasks: false`, quote `infrastructure.deploy_verify: "off"`, and use
 `quality_gates.test_bar` check blocks (`lint`, `typecheck`, `unit_test`,
 `integration_test`, `coverage`) with argv lists. Documentation-only tasks disable the
-test bar with an explicit reason. Empty lifecycle/test-discipline fields in the source
-repository's own profile are unrelated and remain untouched.
-
-The noninteractive runner never bypasses dev-lead's mandatory plan-approval gate. In addition,
-live evaluation currently fails closed before model invocation because no OS sandbox is
-available. Dry runs validate and stage fixtures without invoking the CLI.
+test bar with an explicit reason. These declarations describe intended task conditions;
+they do not authorize execution or bypass dev-lead's mandatory plan-approval gate.
 
 ## The 10 tasks
 
@@ -60,9 +47,9 @@ The 10 tasks together touch every author agent (coding × 2 stacks — implement
 tests that cover it, infrastructure, architect) and every reviewer agent (code-reviewer,
 architecture-reviewer, security-reviewer, test-reviewer, infra-review).
 
-## How tasks are scored
+## Interpreting acceptance evidence
 
-See [`../scoring-rubric.md`](../scoring-rubric.md) §Custom for the long form. Short form:
+See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptual rubric:
 
 - **resolved** — all acceptance criteria in `acceptance.md` pass
 - **partial** — at least one criterion passes; the rest fail non-catastrophically
@@ -71,15 +58,11 @@ See [`../scoring-rubric.md`](../scoring-rubric.md) §Custom for the long form. S
 - **setup_error** — fixture or judge environment/contract error, not an agent failure
 - **blocked_approval** / **skipped** — mandatory human gate / dry run, not outcomes
 
-Every selected task remains in the summary denominator. Default scorers emit structured
-claimed/normalized verdicts and per-criterion verification; see the rubric for exit policy.
-They validate staged originals against the canonical repository fixture and consume only
-declared originals as integrity-checked comparison evidence, never answers or seeded credit.
-Current live scorers return `UNVERIFIED` without invoking a model or host tool.
-
-For tasks where execution is impractical (e.g., #08 threat model — narrative deliverable), a
-**human reviewer scores manually** against the criteria. The harness logs the criteria to make
-manual scoring fast (`runs/<run-id>/<task-id>.log` includes the criteria checklist).
+Every selected task belongs in the denominator of any future outcome report.
+Original inputs are comparison evidence, never answers or seeded credit.
+Narrative deliverables can be reviewed manually against the criteria. The active
+[DeepEval scorer](../../deepeval/README.md) measures recorded skill invocation;
+it does not establish these acceptance outcomes.
 
 ### Fixture boundaries
 
@@ -97,7 +80,7 @@ manual scoring fast (`runs/<run-id>/<task-id>.log` includes the criteria checkli
 - Task 07's implementation and PostgreSQL repository are working pre-existing code. No
   requested unit or integration tests or coverage results are seeded. Its input declaration
   lists the seven production/solution files individually, excluding local build output.
-  Offline inventory/mutation tests protect those exact inputs and staging hashes.
+  Offline inventory/mutation tests protect those exact inputs.
   The solution contains only the production project, so test and coverage commands allow
   restore/build of newly authored test projects rather than using `--no-build`.
   This command correction does not establish runtime readiness: no generated code,
@@ -120,7 +103,7 @@ A downstream fork can:
 3. Adjust each task's `solution-profile.yaml` to match their real profile (region, compliance
    framework, allowed runtimes).
 
-The harness will pick up any new task folder automatically — no manifest update needed.
+Task folders are data; adding one does not register or execute a benchmark.
 
 ## Adding a new task — checklist
 
@@ -129,4 +112,4 @@ The harness will pick up any new task folder automatically — no manifest updat
 - [ ] `acceptance.md` has 3-5 criteria, each verifiable
 - [ ] `solution-profile.yaml` supplies required Stage-0 fields and actual per-check commands
 - [ ] `inputs.json` declares every required baseline input, or an empty list when none exists
-- [ ] First baseline run recorded in `../baselines.md`
+- [ ] Any measured result records its method and limitations in [`../../baselines.md`](../../baselines.md); fixture presence alone is not a result
