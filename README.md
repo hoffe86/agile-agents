@@ -259,12 +259,13 @@ the [evaluation overview](eval/README.md).
 Shared implementation remains in `eval/python/agile_eval`, without shadowing
 third-party `deepeval`.
 
-The ten [custom benchmark tasks](eval/pipeline/custom-eval/README.md), the
-25-instance [SWE-bench manifest](eval/pipeline/swe-bench-subset/README.md), and
-[historical baselines](eval/baselines.md) are retained as data and historical
-evidence, not runnable suites. There is no workspace stager or outcome judge.
-Live execution and sandbox work remain deferred to
-[#22](https://github.com/hoffe86/agile-agents/issues/22).
+The ten [custom benchmark tasks](eval/pipeline/custom-eval/README.md) run live:
+dev-lead is driven through the Copilot CLI across a human plan gate, and DeepEval
+scores the plan gate, delegation and per-agent skill invocation, with an optional
+model judge for acceptance. Runs are not OS-sandboxed yet
+([#22](https://github.com/hoffe86/agile-agents/issues/22)). The 25-instance
+[SWE-bench manifest](eval/pipeline/swe-bench-subset/README.md) and
+[historical baselines](eval/baselines.md) remain data and historical evidence.
 
 ### `metadata.model_tier` frontmatter convention
 Each Copilot agent records an **advisory preference**, not a model selector

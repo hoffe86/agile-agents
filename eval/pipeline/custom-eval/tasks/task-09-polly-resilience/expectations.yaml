@@ -1,0 +1,14 @@
+# Trajectory expectations for task-09-polly-resilience; criteria stay verbatim in acceptance.md.
+# Skills are the contract's core loads only -- see eval/pipeline/custom-eval/README.md.
+schema: 1
+root_agent: dev-lead
+plan_gate: required
+agents: [coding, review-lead, code-reviewer, security-reviewer]
+skills:
+  dev-lead: [read-repo-context, dev-lead-templates]
+  coding: [read-repo-context, development-practices, testing-practices, csharp-implementation, csharp-testing]
+  code-reviewer: [read-repo-context, reviewer-read-only-rules, code-review-checklist]
+  security-reviewer: [read-repo-context, reviewer-read-only-rules]
+  review-lead: [read-repo-context, reviewer-read-only-rules]
+forbidden_skills:
+  review-lead: [code-review-checklist, code-review]

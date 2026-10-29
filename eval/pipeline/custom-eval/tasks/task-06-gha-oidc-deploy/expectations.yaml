@@ -1,0 +1,14 @@
+# Trajectory expectations for task-06-gha-oidc-deploy; criteria stay verbatim in acceptance.md.
+# Skills are the contract's core loads only -- see eval/pipeline/custom-eval/README.md.
+schema: 1
+root_agent: dev-lead
+plan_gate: required
+agents: [infrastructure, review-lead, infrastructure-reviewer, security-reviewer]
+skills:
+  dev-lead: [read-repo-context, dev-lead-templates]
+  infrastructure: [read-repo-context, iac-best-practices, cicd-pipeline-implementation]
+  infrastructure-reviewer: [read-repo-context, reviewer-read-only-rules]
+  security-reviewer: [read-repo-context, reviewer-read-only-rules]
+  review-lead: [read-repo-context, reviewer-read-only-rules]
+forbidden_skills:
+  review-lead: [code-review-checklist, code-review]

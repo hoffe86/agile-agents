@@ -1,9 +1,9 @@
 # Outcome evidence rubric
 
-This is a conceptual reference for retained benchmark tasks and historical
-results, **not an active workspace scorer or CLI exit contract**. Active pipeline
-scoring measures recorded skill invocation; see
-[`../deepeval/README.md`](../deepeval/README.md).
+This defines the outcome vocabulary. For the custom tasks it is implemented by
+`../score_custom_eval.py` (see [`custom-eval/README.md`](custom-eval/README.md)),
+which adds one rule: a skipped plan gate or a failing trajectory metric makes the
+run `failed` whatever the acceptance judge says.
 Grading doctrine remains in
 [`acceptance-grading`](../../plugins/agile-agents-core/skills/acceptance-grading/SKILL.md).
 
@@ -20,14 +20,14 @@ criterion to be verified, not a plausible answer or an unchanged seeded input.
 | `unverified` | Missing evidence prevents a verified outcome; no resolved credit |
 | `setup_error` | Fixture/environment error, not demonstrated agent failure |
 
-Blocked approvals and skipped tasks are not measured outcomes. Missing tools
+Blocked or pending approvals score `unverified`, never resolved. Missing tools
 are not failures of produced work. Preserve uncertainty and verified failures
 explicitly rather than allowing a claimed verdict or permissive threshold to
 grant credit.
 
 Original inputs under each task's `baseline/` are comparison evidence, not
-answers. `inputs.json` describes their intended workspace destinations. No
-staging or verification runtime is supplied. Native build/render/test claims
+answers. `inputs.json` describes their intended workspace destinations. The runner
+stages them; no verification runtime executes the result yet. Native build/render/test claims
 require native-tool evidence; source plausibility is not a substitute.
 
 **Task-10's literal ingress-host equivalence is unresolved**: the six-resource
@@ -52,5 +52,6 @@ resolved / verified. A staging report is not an outcome score.
 Historical results in [`../baselines.md`](../baselines.md) keep their original
 contracts and limitations; they are not retroactively recomputed. The offline
 DeepEval skill score is a different measurement and cannot replace those results
-in a trend line. Live outcome execution remains deferred to
-[#22](https://github.com/hoffe86/agile-agents/issues/22).
+in a trend line. Custom-eval outcomes are produced by `score_custom_eval.py`; behavioural
+criteria stay UNVERIFIED until sandboxed execution exists
+([#22](https://github.com/hoffe86/agile-agents/issues/22)).

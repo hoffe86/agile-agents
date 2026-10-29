@@ -210,6 +210,28 @@ statistical significance become requirements.
 **Keep the harness as-is.** Rejected: it neither answers trajectory questions nor addresses the
 twin duplication, and the defects found on 2026-08-19 show the status quo is not stable.
 
+## Amendment (2026-10) — the custom-eval tasks run on DeepEval
+
+The decision is unchanged; this records how it landed for the ten custom-eval tasks after the
+earlier shell harness was deleted (#24) and the tasks sat as data only.
+
+- **Trajectory is the primary score.** Each task's `expectations.yaml` declares the plan gate,
+  the agents dev-lead must delegate to, and the skills *each* agent must invoke. Every list is
+  one DeepEval `ToolCorrectnessMetric` (`skills:<agent>`, `delegation`), so a miss is attributed
+  to the agent that should have loaded the skill. Plain metric functions wrap the DeepEval
+  metric; no `BaseMetric` subclass was needed.
+- **Acceptance is a pluggable judge**, `none` or Azure OpenAI via DeepEval's `AzureOpenAIModel`
+  with an Entra token only. It reads a diff the *runner* captured and executes nothing, so the
+  scorer never runs git or code in an agent-written workspace and can hold judge credentials.
+  Build/test execution (the `BaseMetric` reference below) waits for the sandbox in #22;
+  behavioural criteria are `UNVERIFIED` until then.
+- **The plan gate is honoured by splitting the run.** Phase 1 runs to the gate; a human
+  approves (interactively, or the `eval-approval` environment in `eval-custom.yml`); phase 2
+  resumes the same Copilot session. A run that delegates implementation before approval is
+  scored failed.
+- **First live finding:** delegated sub-agents are not offered the `skill` tool on CLI 1.0.105,
+  so per-agent skill expectations fail — the trajectory question this ADR set out to answer,
+  now measured rather than anecdotal. See `eval/pipeline/custom-eval/README.md`.
 ## References
 
 - [ADR 0014](0014-skill-evaluation-with-waza.md) — skills-layer decision this complements;

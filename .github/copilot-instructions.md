@@ -65,9 +65,10 @@ agent/                               Marketplace root
 │   │                                defines keys, not identical project values
 │   ├── plugin/marketplace.json      Marketplace listing (agile-agents-marketplace,
 │   │                                pluginRoot ./plugins)
-│   └── workflows/                   5 workflows -> CI checks audit-references,
+│   └── workflows/                   6 workflows -> CI checks audit-references,
 │                                    check-agents-md-in-sync, trajectory,
-│                                    plugin-versions, skill-quality
+│                                    plugin-versions, skill-quality; plus the
+│                                    manual eval-custom live dev-lead run
 ├── plugins/                         One folder per plugin
 │   ├── VENDORED.md                  Index of vendored skills across all plugins
 │   ├── agile-agents-core/           The autonomous-coding agent harness
@@ -90,10 +91,11 @@ agent/                               Marketplace root
 │                                    check-skill-tokens.ps1, check-instructions-drift.py,
 │                                    gen-trigger-evals.py, run-trigger-evals.ps1
 ├── eval/                            One folder per unit of evaluation
-│   ├── deepeval/                    offline recorded-skill scoring — ADR 0015
-│   ├── python/agile_eval/           shared trace adapter + offline scorer
-│   ├── pipeline/                    deterministic trajectory (L0) + retained
-│   │                                custom-eval / swe-bench benchmark data — ADR 0008
+│   ├── deepeval/                    DeepEval scoring env + tests — ADR 0015
+│   ├── python/agile_eval/           shared trace adapter, skill scorer, and the
+│   │                                custom_eval runner/scorer (live dev-lead)
+│   ├── pipeline/                    deterministic trajectory (L0) + custom-eval
+│   │                                tasks (live, DeepEval-scored) + swe-bench data
 │   ├── skills/                      grades SKILLS — s0-routing + s1-invocation +
 │   │                                s2-efficacy — ADR 0014
 │   └── baselines.md                 every tier's numbers, in one place

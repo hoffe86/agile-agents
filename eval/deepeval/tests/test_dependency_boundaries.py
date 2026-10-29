@@ -66,6 +66,21 @@ def test_firstparty_imports_follow_approved_ownership_without_delayed_cycles():
         "_console": set(),
         "adapters.copilot_trace": set(),
         "metrics.local_model": set(),
+        "custom_eval.expectations": set(),
+        "custom_eval.trajectory": {"adapters.copilot_trace"},
+        "custom_eval.judges": {"custom_eval.expectations"},
+        "custom_eval.metrics": {
+            "adapters.copilot_trace", "custom_eval.expectations",
+            "custom_eval.trajectory", "metrics.local_model",
+        },
+        "custom_eval.runner": {
+            "_console", "adapters.copilot_trace", "custom_eval.expectations",
+            "custom_eval.trajectory",
+        },
+        "custom_eval.scorer": {
+            "_console", "adapters.copilot_trace", "custom_eval.expectations",
+            "custom_eval.judges", "custom_eval.metrics", "custom_eval.runner",
+        },
         "report_skill_usage": {"_console", "adapters.copilot_trace", "metrics.local_model"},
     }
     assert graph == {

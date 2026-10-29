@@ -13,13 +13,23 @@ profile, and versioned input declaration:
 | `acceptance.md` | 3-5 explicit, verifiable pass criteria |
 | `solution-profile.yaml` | Synthetic profile conforming to the shipped solution-profile contract |
 | `inputs.json` | Versioned list of required baseline inputs and their workspace destinations |
+| `expectations.yaml` | Trajectory contract: plan gate, which agents dev-lead delegates to, which skills each one must invoke |
 | `baseline/` | Minimal synthetic or task-directed source inputs; never includes the requested answer |
 
-These are retained **benchmark data**, not a runnable suite. No workspace stager,
-agent runner or acceptance scorer is supplied. Source-consistency tests inspect
-the fixtures without executing their declared commands. Live execution and its
-sandbox boundary are deferred to
-[#22](https://github.com/hoffe86/agile-agents/issues/22).
+A run has two halves, kept in separate trust zones:
+
+- **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, drives
+  `dev-lead` through the Copilot CLI up to its plan gate, waits for a human approval, resumes
+  the *same* session, and captures `produced.diff` against the staged baseline.
+- **Scorer** (`../score_custom_eval.py`) reads only the recorded JSONL logs, `state.json` and
+  `produced.diff`. Trajectory is scored with **DeepEval** (`ToolCorrectnessMetric`); acceptance
+  goes to a pluggable judge. It runs no git and no workspace code, so it can hold judge
+  credentials safely.
+
+The live agent is **not OS-sandboxed** — it runs with every tool allowed on the host, which
+is why the runner refuses to start without `--unsandboxed`. A sandboxed worker is
+[#22](https://github.com/hoffe86/agile-agents/issues/22); until then behavioural criteria
+(builds, tests, lint) are `UNVERIFIED` by design, never judged from source.
 
 Profiles populate the six required Stage-0 fields from the shipped template, set
 `backlog.create_tasks: false`, quote `infrastructure.deploy_verify: "off"`, and use
@@ -47,6 +57,73 @@ The 10 tasks together touch every author agent (coding × 2 stacks — implement
 tests that cover it, infrastructure, architect) and every reviewer agent (code-reviewer,
 architecture-reviewer, security-reviewer, test-reviewer, infra-review).
 
+## Running
+
+```powershell
+# Local: phase 1 stops at the plan gate and prints dev-lead's plan; approve interactively.
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --unsandboxed
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\dry --dry-run   # stage only
+# Score one or more runs. --judge none leaves every acceptance criterion UNVERIFIED.
+python eval/pipeline/score_custom_eval.py $env:TEMP\ce\task-05 --judge azure-openai --output summary.json
+```
+
+Needs the Copilot CLI on `PATH` (pinned `1.0.105` in CI), `COPILOT_GITHUB_TOKEN`, and the
+hash-locked environment from [`../../deepeval/README.md`](../../deepeval/README.md).
+`--max-ai-credits` caps each phase (minimum 30). The `azure-openai` judge authenticates with
+Entra only — `az login` locally, federated `azure/login` in CI; no API key is accepted — and
+reads `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`.
+
+In CI, run **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`) by hand:
+
+| Job | Holds | Does |
+|---|---|---|
+| `plan` | Copilot token, read-only `GITHUB_TOKEN` | phase 1; writes the plan to the step summary |
+| `implement` | same | waits on the **`eval-approval`** environment — its required reviewers *are* the plan gate — then resumes with `--approve` |
+| `score` | OIDC (`id-token: write`) for the judge only | DeepEval + judge over the recorded files |
+
+Repository setup: secret `EVAL_COPILOT_TOKEN` (a dedicated, low-privilege account — the
+unsandboxed agent can read its own environment), environment `eval-approval` with required
+reviewers, and for the Azure judge the variables `EVAL_AZURE_CLIENT_ID`,
+`EVAL_AZURE_TENANT_ID`, `EVAL_AZURE_OPENAI_ENDPOINT`, `EVAL_AZURE_OPENAI_DEPLOYMENT`.
+
+## Trajectory expectations
+
+`expectations.yaml` says what a correct *process* looks like, independent of the output:
+
+```yaml
+schema: 1
+root_agent: dev-lead
+plan_gate: required            # phase 1 must not delegate to an implementing agent
+agents: [coding, review-lead, code-reviewer]   # every one must be delegated to
+skills:                        # per agent: each must be invoked by that agent
+  coding: [read-repo-context, development-practices, python-implementation]
+  any: [architecture-decision-records]          # invoked by anyone in the run
+forbidden_skills:
+  review-lead: [code-review-checklist]          # the orchestrator performs no lens
+```
+
+Each agent's skill list scores as its own DeepEval metric (`skills:<agent>`), so a miss is
+attributed to the agent that should have loaded the skill. Lists hold the **core contract
+loads** an agent's own definition makes mandatory — not every skill a good run might touch —
+so a pass means the contract was honoured, not that the run was optimal. `any` exists for
+deliverable skills whose author varies (an ADR may be drafted by dev-lead or a reviewer).
+Task-10 lists criterion 2 under `unverifiable` with its reason (see fixture boundaries).
+
+### What the first live runs showed
+
+Spikes on CLI 1.0.105 (task-02, task-05), reproduced in the
+`copilot-subagent-session.jsonl` fixture:
+
+- **Sub-agents cannot invoke skills.** The `skill` tool is not offered inside a delegated
+  agent, so `coding` made zero skill calls: `skills:coding` scores **0.0** and the run fails.
+  This is the harness's most important open finding, and exactly what per-agent skill
+  scoring exists to catch.
+- **The plan gate is skipped in prompt mode.** Under `-p`, dev-lead implemented without
+  waiting; the runner records `gate_skipped` and the run scores failed. An interactive
+  approval path over ACP (`copilot --acp`) is the candidate fix.
+- The unsandboxed coding sub-agent read outside its workspace, and a 60-credit cap was hit
+  mid-run — size `--max-ai-credits` per task.
+
 ## Interpreting acceptance evidence
 
 See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptual rubric:
@@ -58,11 +135,13 @@ See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptu
 - **setup_error** — fixture or judge environment/contract error, not an agent failure
 - **blocked_approval** / **skipped** — mandatory human gate / dry run, not outcomes
 
-Every selected task belongs in the denominator of any future outcome report.
+The scorer combines them: a skipped plan gate or any failing trajectory metric makes the run
+**failed** whatever the judge says; a pending or refused approval is **unverified**; otherwise
+the judge's verdict decides. Exit codes: 0 resolved, 1 failed, 2 partial, 3 unverified,
+4 setup error.
+
+Every selected task belongs in the denominator of any outcome report.
 Original inputs are comparison evidence, never answers or seeded credit.
-Narrative deliverables can be reviewed manually against the criteria. The active
-[DeepEval scorer](../../deepeval/README.md) measures recorded skill invocation;
-it does not establish these acceptance outcomes.
 
 ### Fixture boundaries
 
@@ -103,7 +182,7 @@ A downstream fork can:
 3. Adjust each task's `solution-profile.yaml` to match their real profile (region, compliance
    framework, allowed runtimes).
 
-Task folders are data; adding one does not register or execute a benchmark.
+Adding a task folder registers it with the runner; nothing runs until someone dispatches it.
 
 ## Adding a new task — checklist
 
@@ -112,4 +191,5 @@ Task folders are data; adding one does not register or execute a benchmark.
 - [ ] `acceptance.md` has 3-5 criteria, each verifiable
 - [ ] `solution-profile.yaml` supplies required Stage-0 fields and actual per-check commands
 - [ ] `inputs.json` declares every required baseline input, or an empty list when none exists
+- [ ] `expectations.yaml` names the delegated agents and each one's core skill loads
 - [ ] Any measured result records its method and limitations in [`../../baselines.md`](../../baselines.md); fixture presence alone is not a result

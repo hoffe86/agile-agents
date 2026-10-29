@@ -27,10 +27,10 @@ errors are reported separately from measured failures.
 Recorded invocation is **not** successful tool completion, correct skill use,
 task acceptance or an authenticated benchmark of the current harness. The
 synthetic demonstration fixture proves the scoring wiring, not harness quality.
-Workspace-outcome scoring and live execution are unavailable; sandbox/controller
-work is deferred to [#22](https://github.com/hoffe86/agile-agents/issues/22).
-There is no runner, fixture-staging command, judge compatibility layer or
-readiness API. Legacy/live options are not aliases for offline scoring.
+Live end-to-end runs exist only for the custom-eval tasks (next section); they are
+**not OS-sandboxed**, and sandbox/controller work is deferred to
+[#22](https://github.com/hoffe86/agile-agents/issues/22).
+Legacy/live options of this offline scorer are not aliases for anything else.
 
 The cold-start scorer regression permits only trusted CPython Windows version
 probing and urllib3's loopback IPv6 capability bind. It rejects external
@@ -48,13 +48,17 @@ module owns discovery, scoring and sanitized summaries; the offline model helper
 supplies telemetry/configuration safeguards and a fail-on-call model stub.
 `deepeval/` owns the operational entrypoint, locked dependencies and scorer tests.
 
-[`pipeline/custom-eval/`](pipeline/custom-eval/README.md) retains ten benchmark
-task specifications, profiles, input declarations and baseline source files.
+[`pipeline/custom-eval/`](pipeline/custom-eval/README.md) holds ten tasks that run
+live: `agile_eval.custom_eval` stages a task, drives dev-lead through the Copilot CLI
+across a human plan-approval gate, and scores the run with DeepEval — plan gate,
+delegation, and **per-agent skill invocation** against each task's
+`expectations.yaml` — plus an optional model judge over the captured diff for the
+acceptance criteria. The judge executes nothing, so behavioural criteria stay
+`UNVERIFIED` until #22.
 [`pipeline/swe-bench-subset/`](pipeline/swe-bench-subset/README.md) retains a
 25-instance manifest, not an installed dataset or an executable suite.
-Their source-consistency tests do not stage workspaces or execute fixture commands.
-The [outcome rubric](pipeline/scoring-rubric.md) records how to interpret task
-acceptance evidence; it is not an implemented scorer.
+The [outcome rubric](pipeline/scoring-rubric.md) records how acceptance evidence is
+interpreted; the custom-eval scorer implements it.
 
 [`baselines.md`](baselines.md) contains historical measurements with their
 original limitations. These are not recomputed or promoted to current scores.
