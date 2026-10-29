@@ -2,7 +2,8 @@
 """Compose this repository's offline test-bar commands without shell chaining.
 
 Run from the repository root with the Python environment containing
-eval/deepeval/requirements.txt. Every child uses that same interpreter.
+eval/deepeval/requirements.lock.txt installed with --require-hashes (see its README).
+Every child uses that same interpreter; CPython 3.11 developer checks remain valid.
 """
 from __future__ import annotations
 
@@ -28,6 +29,10 @@ def commands_for(check: str) -> list[list[str]]:
         ]
     if check == "unit":
         return [
+            [python, "-m", "pip", "check"],
+            [python, "eval/deepeval/check_environment.py"],
+            [python, "-m", "unittest", "discover", "-s", "eval/pipeline/tests",
+             "-p", "test_dependency_environment.py", "-v"],
             [python, "-m", "unittest", "discover", "-s", "scripts/tests",
              "-p", "test_*.py", "-v"],
             [python, "-m", "unittest", "discover", "-s", "eval/pipeline/tests",

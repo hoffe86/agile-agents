@@ -1,4 +1,4 @@
-"""Model providers for the DeepEval spike.
+"""Offline configuration and a fail-on-call model for deterministic DeepEval metrics.
 
 Two concerns live here, both driven by findings recorded in ADR 0015.
 
@@ -8,8 +8,8 @@ imported for its side effect before any DeepEval import that might initialise te
 
 **Model selection.** Some metrics need a real model (Task Completion, Plan Adherence);
 others need one only to satisfy a constructor and never call it (`ToolCorrectness` scored
-correctly with `llm_calls=0`). `StubModel` covers the latter without a key, so the
-skill-bypass measurement runs with no credentials and no network at all.
+correctly with `llm_calls=0`). The stub covers the latter without a key. No live model
+provider is exposed here.
 """
 
 from __future__ import annotations
@@ -17,13 +17,22 @@ from __future__ import annotations
 import os
 
 # Set before DeepEval is imported anywhere -- opting out after the fact is too late.
-os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "1")
+os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "1"
 os.environ.setdefault("DEEPEVAL_DISABLE_PROGRESS_BAR", "1")
 
 
 def configure_offline() -> None:
-    """Force the no-telemetry, no-cloud posture. Safe to call repeatedly."""
+    """Disable telemetry, update checks and ambient config before DeepEval import.
+
+    These settings are not an OS sandbox or a general no-upload guarantee.
+    The scorer uses synchronous measure(), not the evaluate() reporting runner.
+    """
     os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "1"
+    os.environ["DEEPEVAL_UPDATE_WARNING_OPT_IN"] = "0"
+    os.environ["DEEPEVAL_DISABLE_PROGRESS_BAR"] = "1"
+    # Do not let a local .env opt the offline path back into telemetry or updates.
+    os.environ["DEEPEVAL_DISABLE_DOTENV"] = "1"
+    os.environ["DEEPEVAL_DISABLE_LEGACY_KEYFILE"] = "1"
 
 
 class StubModelCalled(AssertionError):
@@ -61,28 +70,10 @@ def stub_model(name: str = "stub-no-llm"):
         def generate(self, *args, **kwargs):
             raise StubModelCalled(
                 "stub_model() was asked to generate. A metric assumed deterministic now "
-                "needs an LLM -- pick a real provider rather than widening this stub."
+                "needs an LLM -- offline scoring cannot continue."
             )
 
         async def a_generate(self, *args, **kwargs):
             return self.generate(*args, **kwargs)
 
     return _StubModel()
-
-
-def azure_openai_model(**overrides):
-    """Azure OpenAI provider, for the metrics that genuinely need a model.
-
-    Reads the standard DeepEval Azure variables. Supports Entra ID via
-    `azure_ad_token_provider`, so CI can stay passwordless rather than holding a key:
-
-        AZURE_OPENAI_ENDPOINT     e.g. https://<resource>.openai.azure.com/
-        AZURE_DEPLOYMENT_NAME     the deployment, not the model
-        AZURE_MODEL_NAME          e.g. gpt-4.1
-        OPENAI_API_VERSION        e.g. 2025-01-01-preview
-        AZURE_OPENAI_API_KEY      omit when using Entra ID
-    """
-    configure_offline()
-    from deepeval.models import AzureOpenAIModel
-
-    return AzureOpenAIModel(**overrides)

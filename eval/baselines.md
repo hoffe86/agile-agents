@@ -1,7 +1,14 @@
 # Baselines
 
-Append-only log of harness runs. One row per `(suite, run-id)` pair. The harness writes a row
-automatically; humans may add a `Notes` clarification afterwards.
+Append-only, **manually maintained** log of harness runs. One row per `(suite, run-id)`
+pair. Runners write local `summary.json` and a separate versioned
+`run-provenance.json`; they do not append rows here.
+
+Historical rows and retained summaries without a trusted provenance binding remain
+**legacy/unattributed**. They are not reproducibility evidence and must not be
+backfilled with today's revision, input hashes or requested model identities.
+No historical transcripts need to be opened or uploaded to classify these records.
+See [provenance and its trust boundary](README.md#retained-run-provenance).
 
 | Run ID                              | Date       | Commit SHA | Suite              | Resolved | Partial | Failed | Notes                              |
 |-------------------------------------|------------|------------|--------------------|----------|---------|--------|------------------------------------|
@@ -156,7 +163,6 @@ invokes nothing at all. Blocked on isolation, not on credits. See
 **The transferable lesson:** a contaminated baseline does not error — it returns a
 plausible number that reads like a result. Verify the control pass invoked nothing before
 believing any delta.
-
 
 
 

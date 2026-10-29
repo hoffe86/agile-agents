@@ -52,7 +52,8 @@ import tempfile
 try:
     import yaml
 except ImportError:  # pragma: no cover - environment problem, not a repo defect
-    print("error: PyYAML is required (pip install pyyaml)", file=sys.stderr)
+    print("error: PyYAML is required (python -m pip install --require-hashes "
+          "--only-binary=:all: -r eval/deepeval/requirements-yaml.lock.txt)", file=sys.stderr)
     raise SystemExit(3)
 
 FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)

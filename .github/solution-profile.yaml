@@ -241,7 +241,7 @@ quality_gates:
     mutation_score_threshold_percent: 0  # 0 → mutation gate disabled (Stryker / mutmut etc.).
     # Per-check overrides. Leave `command: ""` to use the per-stack default from
     # commands.yaml. Set `enabled: false` to skip a check explicitly (with a note in PR).
-    # Run at repo root with eval/deepeval/requirements.txt installed in the active
+    # Run at repo root with eval/deepeval/requirements.lock.txt hash-installed in the active
     # Python environment and pwsh available. The helper propagates every failure.
     lint:
       command: "python scripts/run-repo-checks.py lint"

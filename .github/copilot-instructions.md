@@ -90,8 +90,10 @@ agent/                               Marketplace root
 │                                    check-skill-tokens.ps1, check-instructions-drift.py,
 │                                    gen-trigger-evals.py, run-trigger-evals.ps1
 ├── eval/                            One folder per unit of evaluation
-│   ├── pipeline/                    grades RUNS   — trajectory (L0) + custom-eval /
-│   │                                swe-bench-subset (L2) + run-eval — ADR 0008
+│   ├── deepeval/                    offline recorded-skill scoring — ADR 0015
+│   ├── python/agile_eval/           shared trace adapter + offline scorer
+│   ├── pipeline/                    deterministic trajectory (L0) + retained
+│   │                                custom-eval / swe-bench benchmark data — ADR 0008
 │   ├── skills/                      grades SKILLS — s0-routing + s1-invocation +
 │   │                                s2-efficacy — ADR 0014
 │   └── baselines.md                 every tier's numbers, in one place
@@ -414,7 +416,8 @@ for the user to choose, never silently substituted. Preferred fallback may leave
 approved list; static CI is not governance enforcement. Required-policy and Auto
 interactions remain unverified on CLI 1.0.98.
 The dogfood test bar uses `scripts/run-repo-checks.py lint|unit` with the active Python
-environment (`eval/deepeval/requirements.txt`) and `pwsh`; failures propagate immediately.
+environment (`eval/deepeval/requirements.lock.txt`, installed with `--require-hashes`;
+see `eval/deepeval/README.md`) and `pwsh`; failures propagate immediately.
 Preserve the unittest/pytest split from CI, not blanket pytest discovery.
 
 ### Skill format

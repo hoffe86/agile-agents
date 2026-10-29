@@ -1,213 +1,189 @@
-# DeepEval spike — pipeline (agent / E2E) evaluation
+# DeepEval — offline scoring reference
 
-Status: **spike**. Decision and risks in [ADR 0015](../../docs/adr/0015-deepeval-for-pipeline-evaluation.md).
-The native harness in [`../pipeline/`](../pipeline/) remains available. Both outcome
-judges now share the strict structured contract in [`../grading.py`](../grading.py).
+The operational command scores **existing Copilot JSONL traces** with pinned
+DeepEval **4.1.8**. It measures recorded skill invocation, not workspace
+acceptance or current-harness benchmark quality. For responsibilities, retained
+benchmark data and the Waza/L0 boundaries, see the [evaluation overview](../README.md).
+The adoption decision is [ADR 0015](../../docs/adr/0015-deepeval-for-pipeline-evaluation.md).
+Live execution is unavailable and deferred to
+[#22](https://github.com/hoffe86/agile-agents/issues/22).
 
-**Live scoring is currently disabled.** DeepEval is still available for offline parser,
-metric-contract, and fixture tests, but `run_judge` returns `UNVERIFIED` without sending
-workspace content to a model or invoking host tools. Live agent runs are blocked by the
-pipeline runner until a credential-free, network-disabled OS sandbox is available.
+## Install and verify
 
-## What this proves
-
-ADR 0015 adopts DeepEval for the pipeline layer, gated on a spike answering two questions.
-Both are now answered, on real data:
-
-**1. Can a Copilot CLI run be turned into a DeepEval trace?** Yes. `copilot -p … --output-format json` emits
-newline-delimited JSON carrying `id` / `parentId` / `timestamp` — already a span tree.
-[`adapters/copilot_trace.py`](adapters/copilot_trace.py) reconstructs the ordered tool
-calls from it. DeepEval ships integrations for LangChain, OpenAI, Anthropic and others but
-none for Copilot CLI; this adapter is that missing piece.
-
-**2. Does it run offline, without a subscription?** Yes. Verified on DeepEval 4.1.8 with no
-login, no API key, telemetry opted out and `HTTP(S)_PROXY` blackholed — with the proxy
-itself falsified first, so the result is not a silent success.
-
-The measurement that matters falls out of it: **invoking a skill is a tool call named
-`skill`**, so skill bypass is directly observable.
-
-```json
-{"toolName":"skill","arguments":{"skill":"architecture-decision-records"}}
-```
-
-## Run it
+The reproducibility target is **CPython 3.12 x64**, native Windows and Ubuntu.
+The same lock supports **CPython 3.11 x64** developer checks. ARM, PyPy,
+Alpine/musl and other Python versions are not locked targets.
+Create a fresh environment rather than modifying an existing workspace environment.
 
 ```bash
-python -m venv eval/deepeval/.venv
-eval/deepeval/.venv/Scripts/python -m pip install -r eval/deepeval/requirements.txt
+# Windows: py -3.12 -m venv <new-venv>, then <new-venv>/Scripts/Activate.ps1
+# Ubuntu: python3.12 -m venv <new-venv>, then source <new-venv>/bin/activate
+# An installed CPython 3.11 can be used for developer checks.
 
-# tests (the parsing half needs no DeepEval and no network)
-eval/deepeval/.venv/Scripts/python -m pytest eval/deepeval/tests -q
-
-# measure skill usage across existing run logs — no credentials, no new runs
-python eval/deepeval/report_skill_usage.py eval/pipeline/runs \
-    --expect-skill architecture-decision-records
+# Trusted provisioning: only this download step needs PyPI.
+python -m pip --isolated download --index-url https://pypi.org/simple \
+    --require-hashes --only-binary=:all: \
+    --dest <wheelhouse> -r eval/deepeval/requirements.lock.txt
+# Offline install: exact wheels, no source builds or index fallback.
+python -m pip --isolated install --no-index --find-links <wheelhouse> \
+    --require-hashes --only-binary=:all: -r eval/deepeval/requirements.lock.txt
+python -m pip check
+python eval/deepeval/check_environment.py
 ```
 
-`DEEPEVAL_TELEMETRY_OPT_OUT=1` is set in code before DeepEval is imported
-([`metrics/local_model.py`](metrics/local_model.py)), because opting out after import is
-too late. Set it in CI as well — belt and braces.
+The environment check requires the real third-party import, exact version and
+deterministic `ToolCorrectnessMetric` score using a fail-on-call model stub.
+First-party libraries import as `agile_eval.*` from `eval/python`; that source
+root does not shadow third-party `deepeval`.
 
-## Outcome grading
+## Commands
 
-`metrics/acceptance.py` replaces the `score-judge.{sh,ps1}` twin pair with one Python
-implementation, exposed two ways:
+Run from the repository root with the locked environment active:
 
 ```bash
-# scorer — 0 resolved / 1 failed / 2 partial / 3 unverified / 4 setup or judge error
-python eval/deepeval/score_workspace.py <workspace> <acceptance.md> \
-    --isolated-home <dir> --baseline-dir <immutable-dir> --result-json <result.json>
+# Synthetic fixture demonstration — NOT a current-harness benchmark.
+python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl --score --expect-skill fixture-skill-a --output eval/pipeline/runs/skill-fixture-summary.json
 
-# contract check, no CLI call and no network
-python eval/deepeval/score_workspace.py --self-test
+# Existing logs — no credentials or new agent runs.
+python eval/deepeval/report_skill_usage.py path/to/existing/logs --score --expect-skill architecture-decision-records --output eval/pipeline/runs/skill-usage-summary.json
+
+# Human-readable, stdlib-only parsing report; no DeepEval import.
+python eval/deepeval/report_skill_usage.py path/to/existing/logs --expect-skill architecture-decision-records
 ```
 
-`AcceptanceMetric` is a real DeepEval `BaseMetric` (checked with `issubclass`, because
-DeepEval type-checks with `isinstance` and duck typing is rejected), so it composes with
-`evaluate()` and the rest of the framework.
-
-**Parity is tested, not asserted.** The verdict parser is exercised against the exact cases
-`score-judge.sh --self-test` uses. Exactly one anchored final verdict and one numbered
-PASS/FAIL/UNVERIFIED line per actual acceptance criterion are required. Missing, duplicate,
-or malformed lines produce `setup_error` (`judge_contract`), not an agent failure.
-Native PowerShell/Bash scorers and runner scoring/summary paths are tested with a local
-fake judge, without paid calls. Historical task-04 agreement does not validate the new contract.
-
-Two deliberate differences from the shell judge:
-
-- **Its orientation is a file index rather than a dump.** The old prompt inlined file contents and told
-  the grader to decide "strictly from those artifacts", so a truncated listing became
-  evidence of absence — a task was once failed for missing tests that existed and passed.
-  The intended live judge uses a file index for orientation, but current scorer entry points
-  return `UNVERIFIED` without passing workspace content to a model or invoking tools.
-- **Doctrine lives in the `acceptance-grading` skill**, not in the prompt. The prompt is a
-  shim that loads it. Restating grading rules in an eval-private template is the same
-  fork-then-drift that caused the MADR mismatch.
-
-`UNVERIFIED` denies resolved credit: score 0, exit 3, and `metric.success=False` even
-with threshold 0. Verified failures remain in the per-criterion record; FAIL+UNVERIFIED
-with no verified pass normalizes to FAILED, while all-unverified is UNVERIFIED. JSON
-reports `claimed_verdict`, normalized status, criterion ids/statuses, `complete`
-(verification), `contract_valid`, and `error_kind`. CLI nonzero exit, timeout, and missing
-CLI are setup/judge errors (exit 4), not fabricated agent failures.
-
-Regression expectation corrected explicitly: `test_metric_surfaces_unverified_in_the_reason`
-formerly asserted `metric.measure(Case()) == 1.0` for a claimed RESOLVED response with an
-UNVERIFIED criterion. That assertion rewarded unknown evidence as full success. It now
-asserts score `0.0` and `is_successful() is False`; this is a corrected invalid expectation,
-not a weakened test. Bare/duplicate verdict and timeout/missing-CLI tests now assert
-structured judge/setup errors instead of invented agent failures.
-
-Immutable originals are validated against the staged manifest and hashes before and after
-scoring preflight. Pass `--baseline-dir` from the harness; without it, only the canonical sibling
-`<run>/ws/<task>` / `<run>/baseline/<task>` layout is accepted. Agent-editable metadata
-cannot redirect the scorer to arbitrary paths. Originals are integrity-checked comparison
-inputs, not produced answers or baseline credit; mode bits do not provide an OS access
-boundary. Task-10's literal ingress-host equivalence versus
-the six-resource no-Ingress baseline remains unresolved: inability to verify it must be
-UNVERIFIED, as must other native-tool gaps.
-
-Run the complete offline suite (uses the existing `.venv`; PyYAML supports fixture staging):
-
-```bash
-eval/deepeval/.venv/Scripts/python -m pytest eval/deepeval/tests \
-    eval/pipeline/custom-eval/tests eval/pipeline/trajectory/test_check_trajectory.py -q
-```
-
-On Windows the native tests use PowerShell 7 and Git Bash; on Unix they use `pwsh` and
-`bash`. Shells run by absolute executable path (the native `Git/usr/bin/bash.exe`, not
-the PATH-extending wrapper). Utilities are individually exposed in a temporary command
-directory, never by adding a shell's host directory such as `/usr/bin` to PATH.
-Missing-Python tests verify interpreter absence and fake-CLI resolution in the native
-shell before checking the full ten-task setup-error summary.
-Scoring segments run as offline units with a local fake CLI. Live custom-eval is
-blocked by the sandbox hold before the mandatory human plan-approval gate, which remains
-separately required for any future live path.
-
-## Findings so far
-
-**Task-04 did *not* bypass its skill — until isolation was switched on.** The two
-contaminated runs invoked `architecture-decision-records`; the two isolated runs did not.
-The likely mechanism is that contaminated runs loaded the *installed* `agile-agents-core
-v0.14.0` agent while isolated runs load the working tree at `v0.16.0` — which is exactly
-what isolation exists to reveal. Two runs either side is a signal to investigate, not a
-conclusion.
-
-**The eval has been rewarding skill bypass.** Correlating skill invocation with output
-shape shows it cleanly:
-
-| Run | Skill invoked | ADR shape produced | Judge |
-|---|---|---|---|
-| contaminated ×2 | yes (v0.14.0 skill → MADR) | `Context and Problem Statement / Decision Drivers / …` | partial |
-| isolated ×2 | no | `Status / Context / Decision / Consequences / Alternatives / Related decisions` | resolved |
-
-Task-04's criterion 2 demands "all six MADR sections in order: Status, Context, Decision,
-Consequences, Alternatives, Related decisions" — a list that is neither upstream MADR nor
-this repo's Nygard house style. The runs that consulted a skill produced something the
-criterion rejected; the runs that consulted nothing produced what the criterion happened to
-describe. **A criterion that restates a convention it does not own can invert the incentive
-it was meant to create.** This is the concrete case behind the `acceptance-grading` rule
-that the skill wins and the judge reports the drift as an eval defect.
-
-**Task-04 did *not* bypass its skill.** Both real runs invoked
-`architecture-decision-records`. The earlier skill-bypass hypothesis rested on three
-anecdotes; the first actual measurement contradicts it for this task. Whether that is
-because the prompt now names the skill is a separate question, and one this tooling can
-answer by comparing runs.
-
-**The eval session was contaminated by the developer's environment — and isolation fixes
-it.** `--plugin-dir` does not override an already-installed plugin of the same name, so runs
-were measuring the installed `agile-agents-core v0.14.0` rather than the working tree at
-`v0.16.0`. Plugins install at **User** scope under the home directory, so pointing
-`USERPROFILE` / `HOME` at a throwaway directory removes them and leaves `--plugin-dir` as the
-only source. Proven by probe: the question that returned stale installed text now returns the
-working-tree text. Auth does not survive isolation, so the run needs `GH_TOKEN` supplied —
-which is how CI would do it anyway. This is a **precondition** for trusting any number here.
-
-**`skills_offered` is not a denominator.** `session.skills_loaded` lists *registered* skills
-(User-scope plugins and builtins), not those supplied via `--plugin-dir`, which resolve on
-demand. An isolated session reports 2 loaded skills while happily invoking a `--plugin-dir`
-one. Use `skills_invoked` to measure bypass; do not compute a rate against `skills_offered`.
-See ADR 0015.
-
-## Why the schema guard exists
-
-The CLI log format is undocumented. An adapter bound to it fails **silently**: rename
-`tool.execution_start` and the trace comes back empty — which is indistinguishable from an
-agent that invoked nothing. That is the same shape as the three defects found on
-2026-08-19, all of which produced plausible numbers while measuring nothing.
-
-`verify_schema()` turns that into a visible complaint, and the tests mutate the fixture to
-prove the guard actually fires rather than assuming it would. `report_skill_usage.py`
-exits `2` on schema drift specifically so it cannot be mistaken for an agent result.
-
-The test fixture is distilled from a real run log, sanitised of absolute paths — not
-hand-written, so it cannot drift into agreeing with the parser.
-
-## Models
-
-Two categories, per ADR 0015:
-
-| Metric | Needs a model? |
+| Argument | Contract |
 |---|---|
-| `ToolCorrectness` (skill bypass) | Constructor requires one; **never invokes it** (`llm_calls=0`). `stub_model()` satisfies it with no credentials. |
-| Custom `BaseMetric` (build/test outcome) | No — it runs commands. |
-| Task Completion, Plan Adherence, Plan Quality, Step Efficiency | Yes, genuinely. |
+| `path` | Single UTF-8 JSONL log or a directory; defaults to `eval/pipeline/runs` |
+| `--score` | Opt into real pinned DeepEval measurement |
+| `--expect-skill NAME` | Repeatable expected identity; scoring requires at least one nonempty value |
+| `--output FILE.json` | Required with `--score`, forbidden without it; local JSON summary |
 
-For the last row, `azure_openai_model()` wraps DeepEval's `AzureOpenAIModel`, which accepts
-either `AZURE_OPENAI_API_KEY` or `azure_ad_token_provider` — so Azure OpenAI (including a
-deployment inside an AI Foundry resource) works, and CI can stay passwordless via Entra ID.
-Ollama is supported natively for a fully local judge.
+Directories are searched recursively for `.log` and `.jsonl` files in sorted
+order, excluding `.copilot-home` and `.copilot` process-log trees.
+All selected logs receive the same expectations; narrow the selection or score
+files separately for tasks with different requirements.
+Legacy runner and live-execution options are unsupported, not offline aliases.
 
-DeepEval is **pinned** — `ToolCorrectness` being deterministic despite demanding a model is
-an implementation detail, not a documented contract.
+The output parent directory is created if needed. A destination that aliases
+an input, including a hard link, is rejected before scoring/writing. Errors
+checking file identity fail closed. An existing distinct output may be replaced.
 
-## Not done yet
+### Measurement
 
-- Isolated Copilot configuration root, without which the numbers above measure the
-  developer's machine rather than the branch.
-- Trajectory metrics (Plan Adherence against the Stage 4 plan) — needs the span tree built
-  into nested DeepEval spans, not just the flat ordered tool list.
-- Outcome grading via custom `BaseMetric`, hosting the `acceptance-grading` skill.
-- Deciding the fate of `../pipeline/` — replace, or keep as the fallback ADR 0015 names.
+`--score` calls real `ToolCorrectnessMetric.measure()` synchronously with
+`evaluation_params=[ToolCallParams.INPUT_PARAMETERS]`. Calls are projected to
+`ToolCall(name="skill", input_parameters={"skill": identity})`; prompts, tool
+outputs and non-identity arguments never reach the metric.
+
+- Expected identities and recorded calls are deduplicated.
+- Score is matched unique expected identities / unique expected identities.
+- Expected A with called B scores **0**, even though both use the skill tool.
+- One of two expected identities scores **0.5**.
+- Extra calls, ordering and repeat invocations do not affect coverage.
+- The fixed pass threshold is **1.0**, without rounding away partial evidence.
+
+Negative demonstrations (each deliberately exits 1):
+
+```bash
+python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl --score --expect-skill fixture-skill-b --output eval/pipeline/runs/skill-fixture-negative.json
+python eval/deepeval/report_skill_usage.py eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl --score --expect-skill fixture-skill-a --expect-skill fixture-skill-b --output eval/pipeline/runs/skill-fixture-partial.json
+```
+
+### Input errors and results
+
+The adapter tolerates ordinary non-JSON banners but rejects malformed JSON event
+lines (including duplicate fields and nonfinite numbers), non-object events/data,
+malformed tool arguments or skill identities, unknown tool events, invalid UTF-8,
+and dry-run/setup placeholders. Required signals include tool starts, assistant
+turn starts and a nonempty registered-skills list. Missing signals are schema
+errors, not proof of skill bypass.
+
+| Scoring exit | JSON status | Meaning |
+|---|---|---|
+| 0 | `passed`, `passed: true` | Every selected input measured 1.0 |
+| 1 | `failed`, `passed: false` | At least one measured score below 1.0 |
+| 2 | `schema_error` or `setup_error`, `passed: null` | Invalid trace/input, no inputs, dependency or measurement failure |
+
+Argument errors and unusable output also exit 2; no JSON is promised when the
+destination cannot be used. Errors take precedence over measured failures in a
+mixed directory. Without `--score`, the text report exits 0 for valid expected
+invocations, 1 for bypass/no logs, and 2 for schema/input errors.
+
+JSON schema 1 records `metric`, `deepeval_version`, `scope`, `expected_skills`,
+`threshold`, `status`, `passed`, `total`, `measured`, `results` and `errors`.
+Each result contains a one-based `input_index` in sorted input order, `status`,
+nullable `score`/`passed`, and sanitized structural errors. It omits filenames,
+paths, prompts, tool outputs, raw arguments, metric reasons and exception text.
+Do not put secrets in operator-supplied expectation labels.
+
+## Offline boundary
+
+The synchronous measure call uses a **fail-on-call model stub**, no
+`available_tools` (which activates an LLM path), no `evaluate()` runner and hence
+no runner cache or hosted report/upload. Code forces telemetry/update checks off
+and disables dotenv/legacy-keyfile loading **before importing DeepEval**.
+Set `DEEPEVAL_TELEMETRY_OPT_OUT=1` in the environment too.
+
+The cold-start regression audits network/process attempts from import through
+measurement, even with synthetic ambient keys and telemetry/update opt-ins, and
+asserts only the requested local summary is created. It does not prewarm platform
+metadata or override socket capabilities. It permits only two narrow trusted
+initialization operations: CPython's Windows metadata `cmd.exe /c "ver"` from
+`platform._syscmd_ver`, and urllib3's IPv6 capability bind to `::1` on port 0.
+Neither is an external connection, model/agent run, or recorded command/artifact
+execution. Connection/DNS attempts and other process/bind attempts are rejected
+and recorded even if a dependency catches the exception.
+
+This is evidence for the exercised offline scoring path, **not** a claim of zero
+subprocesses or zero socket operations, and not an OS sandbox.
+A supplied log is not authenticated model/runtime evidence. Recorded invocation
+does not prove successful completion, correct skill use, task quality or L2
+resolved credit. `skill-scoring-demo.jsonl` is synthetic;
+`copilot-session.jsonl` is the sanitized real-log adapter regression.
+
+## Tests and local gates
+
+```bash
+# PowerShell: $env:EVAL_REQUIRE_DEEPEVAL = '1'
+export EVAL_REQUIRE_DEEPEVAL=1
+export DEEPEVAL_TELEMETRY_OPT_OUT=1
+python -m pytest eval/deepeval/tests eval/pipeline/custom-eval/tests -q
+python -m unittest discover -s eval/pipeline/tests -p test_dependency_environment.py -v
+python scripts/run-repo-checks.py lint
+python scripts/run-repo-checks.py unit
+```
+
+`EVAL_REQUIRE_DEEPEVAL=1` makes dependency-dependent pytest tests fail on a
+missing/broken import instead of skipping. Tests exercise real identity scores,
+malformed inputs, dependency failures, output alias protection, cold startup,
+canonical imports and rejection of retired entrypoints/options.
+Benchmark consistency tests inspect source data without running its commands.
+The local selectors preserve the unittest/pytest split and deterministic
+trajectory checks.
+
+## Dependency maintenance
+
+`requirements.txt` is maintainer input, not an installation command.
+`requirements.lock.txt` pins the complete transitive pip closure rooted at
+DeepEval **4.1.8**, pytest **9.1.1** and PyYAML **6.0.3**.
+`requirements-yaml.lock.txt` owns shared PyYAML hashes for lightweight skill checks.
+The interpreter's bundled pip bootstraps installation; no extra manager is needed.
+
+Hashes cover downloaded wheel bytes. Pure-Python wheels share hashes; native
+wheels cover CPython 3.11/3.12 Windows `win_amd64` and Ubuntu `manylinux` x86_64.
+`colorama` is Windows-only. Pip selects compatible wheels and fails closed otherwise.
+
+For an explicitly approved dependency change:
+
+1. Retain unaffected versions and review resolution with pip's dry-run report;
+   do not blanket-upgrade the closure. ADR 0015's DeepEval pin is binding.
+2. Download exact wheels on supported Python/platform targets with
+   `--only-binary=:all:` and hash each approved artifact with `python -m pip hash`.
+3. Check installed metadata, including extras and environment markers.
+   Cross-target downloads do not prove native execution.
+4. Repeat hash-verified installation, `pip check`, the required-import gate and
+   offline tests in clean native environments.
+
+Dependency tests verify the installed closure and use a local metadata-only wheel
+to prove tampered/missing hashes and missing artifacts fail without index fallback
+or generated package-code execution.

@@ -9,14 +9,11 @@ when DeepEval is absent so the schema guard stays runnable on its own.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from adapters.copilot_trace import (  # noqa: E402
+from agile_eval.adapters.copilot_trace import (
     SKILL_TOOL_NAME,
     parse_log,
     parse_log_text,
@@ -133,14 +130,13 @@ def test_renamed_tool_event_silently_empties_the_trace():
 # --- DeepEval integration ---------------------------------------------------------
 
 
-def test_tool_correctness_measures_skill_bypass():
+def test_tool_correctness_measures_skill_bypass(deepeval_module):
     """End-to-end: trace -> DeepEval -> a score that discriminates bypass."""
-    deepeval = pytest.importorskip("deepeval", reason="DeepEval not installed")
     from deepeval.metrics import ToolCorrectnessMetric
-    from deepeval.test_case import LLMTestCase, ToolCall
+    from deepeval.test_case import LLMTestCase, ToolCall, ToolCallParams
 
-    from adapters.copilot_trace import to_deepeval_tools
-    from metrics.local_model import stub_model
+    from agile_eval.adapters.copilot_trace import to_deepeval_tools
+    from agile_eval.metrics.local_model import stub_model
 
     invoked = parse_log(FIXTURE)
     bypassed = parse_log_text(
@@ -151,9 +147,11 @@ def test_tool_correctness_measures_skill_bypass():
         )
     )
 
-    expected = [ToolCall(name=SKILL_TOOL_NAME)]
+    expected = [ToolCall(name=SKILL_TOOL_NAME,
+                         input_parameters={"skill": "architecture-decision-records"})]
 
-    m_ok = ToolCorrectnessMetric(model=stub_model())
+    m_ok = ToolCorrectnessMetric(model=stub_model(), async_mode=False,
+                                 evaluation_params=[ToolCallParams.INPUT_PARAMETERS])
     m_ok.measure(
         LLMTestCase(
             input="write an ADR",
@@ -163,7 +161,8 @@ def test_tool_correctness_measures_skill_bypass():
         )
     )
 
-    m_bad = ToolCorrectnessMetric(model=stub_model())
+    m_bad = ToolCorrectnessMetric(model=stub_model(), async_mode=False,
+                                  evaluation_params=[ToolCallParams.INPUT_PARAMETERS])
     m_bad.measure(
         LLMTestCase(
             input="write an ADR",
