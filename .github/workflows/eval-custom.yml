@@ -37,6 +37,9 @@ env:
   DEEPEVAL_TELEMETRY_OPT_OUT: '1'
   DEEPEVAL_DISABLE_PROGRESS_BAR: '1'
   PIP_DISABLE_PIP_VERSION_CHECK: '1'
+  # task-06's acceptance check; a pinned release, verified against its published checksum.
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
 
 jobs:
   plan:
@@ -74,10 +77,21 @@ jobs:
         with:
           node-version: '22'
 
-      # The .NET tasks target net9.0 and use .slnx (SDK 9.0.200+) in their acceptance checks.
+      # The .NET tasks target net10.0 and use .slnx in their acceptance checks.
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
+
+      - name: Install actionlint
+        run: &install-actionlint |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
+          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/actionlint" actionlint
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/actionlint/actionlint" -version
 
       - name: Install the pinned evaluation lock and Copilot CLI
         run: |
@@ -172,7 +186,10 @@ jobs:
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
+
+      - name: Install actionlint
+        run: *install-actionlint
 
       - name: Install the pinned evaluation lock and Copilot CLI
         run: |

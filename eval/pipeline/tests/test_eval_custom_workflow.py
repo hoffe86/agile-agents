@@ -150,9 +150,16 @@ class EvalCustomWorkflowTests(unittest.TestCase):
             dotnet = [s for s in self.jobs[name]["steps"]
                       if s.get("uses", "").startswith("actions/setup-dotnet@")]
             self.assertEqual(len(dotnet), 1, name)
-            self.assertEqual(dotnet[0]["with"]["dotnet-version"], "9.0.x")
+            self.assertEqual(dotnet[0]["with"]["dotnet-version"], "10.0.x")
+            lint = [s for s in self.jobs[name]["steps"] if s.get("name") == "Install actionlint"]
+            self.assertEqual(len(lint), 1, name)
+            self.assertIn("sha256sum --check --strict", lint[0]["run"])
+            self.assertIn('>> "$GITHUB_PATH"', lint[0]["run"])
+        self.assertRegex(self.wf["env"]["ACTIONLINT_VERSION"], r"^\d+\.\d+\.\d+$")
+        self.assertRegex(self.wf["env"]["ACTIONLINT_SHA256"], r"^[0-9a-f]{64}$")
         self.assertNotIn("setup-dotnet", json.dumps(self.jobs["score"]),
                          "the score job never runs agent code")
+        self.assertNotIn("actionlint", json.dumps(self.jobs["score"]))
 
 
 if __name__ == "__main__":

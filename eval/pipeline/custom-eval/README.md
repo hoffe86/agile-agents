@@ -87,9 +87,9 @@ In CI, run **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`
 | `implement` | same | waits on the **`eval-approval`** environment — its required reviewers *are* the plan gate — then resumes with `--approve` and runs the checks |
 | `score` | OIDC (`id-token: write`) for the judge only | DeepEval + judge over the recorded files |
 
-The agent jobs install .NET 9 for the C# tasks; `kubectl`, `az` and Docker come with the
-runner image. `actionlint` (task 06) is not installed, so that criterion reports
-`UNVERIFIED` in CI.
+The agent jobs install .NET 10 for the C# tasks and a pinned, checksum-verified `actionlint`
+for task 06; `kubectl`, `az` and Docker come with the runner image. Locally, a tool missing
+from `PATH` leaves its criterion `UNVERIFIED`.
 
 Repository setup: secret `EVAL_COPILOT_TOKEN` (a dedicated, low-privilege account — the
 unsandboxed agent can read its own environment), environment `eval-approval` with required
