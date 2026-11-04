@@ -45,15 +45,20 @@ def produced_diff(paths: Paths) -> str:
     return text or "(no changes were produced)"
 
 
-def outcome(state_status: str, gate_ok: bool | None, trajectory_ok: bool, verdict: str) -> str:
+def outcome(state_status: str, gate_ok: bool | None, trajectory_ok: bool | None, verdict: str,
+            *, gate_required: bool = False) -> str:
     if state_status == "setup_error":
         return "setup_error"
     if state_status == "plan_rejected":
         return "failed"
+    if gate_ok is False:
+        return "failed"
     if state_status == "blocked_approval" or state_status == "awaiting_approval":
         return "unverified"
-    if gate_ok is False or not trajectory_ok or verdict == "FAILED":
+    if trajectory_ok is False or verdict == "FAILED":
         return "failed"
+    if trajectory_ok is None or (gate_required and gate_ok is None):
+        return "unverified"
     return {"RESOLVED": "resolved", "PARTIAL": "partial"}.get(verdict, "unverified")
 
 
@@ -135,7 +140,8 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
     results = load_results(run, exp)
     try:
         judgement = judge(
-            "none" if run_status == "plan_rejected" else judge_name,
+            "none" if run_status in ("plan_rejected", "blocked_approval", "awaiting_approval")
+            else judge_name,
             (resolve_task(tasks_root, state["task"]) / "prompt.md").read_text(
                 encoding="utf-8"),
             exp.criteria, exp.unverifiable,
@@ -148,10 +154,12 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
         row["errors"] += [f"judge contract: {e}" for e in judgement.contract_errors]
     apply_checks(judgement, exp, results)
 
-    trajectory_ok = all(m.passed for m in trajectory)
+    trajectory_ok = (False if any(m.passed is False for m in trajectory)
+                     else None if any(m.passed is None for m in trajectory) else True)
     row.update(
         status="setup_error" if judgement.contract_errors else outcome(
-            run_status, gate.passed, trajectory_ok, judgement.verdict),
+            run_status, gate.passed, trajectory_ok, judgement.verdict,
+            gate_required=exp.plan_gate == "required"),
         plan_gate=gate.to_dict(),
         trajectory=[m.to_dict() for m in trajectory],
         acceptance=judgement.to_dict(),
@@ -198,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         return 4
     for r in rows:
         line = f"{r.get('task', r['run'])}: {r['status']}"
-        failing = [m["name"] for m in r.get("trajectory", []) if not m["passed"]]
+        failing = [m["name"] for m in r.get("trajectory", []) if m["passed"] is False]
         if r.get("plan_gate", {}).get("passed") is False:
             failing.insert(0, "plan_gate")
         if failing:

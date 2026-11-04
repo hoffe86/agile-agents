@@ -61,6 +61,7 @@ class ToolInvocation:
     timestamp: str | None = None
     parent_call_id: str | None = None
     agent: str | None = None  # None = the top-level agent (the one given `--agent`)
+    success: bool | None = None  # None = no verifiable completion in the log
 
     @property
     def delegated_agent(self) -> str | None:
@@ -176,6 +177,7 @@ def parse_log_text(text: str) -> Trace:
     unparsable = 0
     errors: list[str] = []
     subagents: dict[str, str] = {}
+    completions: dict[str, bool] = {}
     final_message: str | None = None
     result: dict[str, Any] | None = None
 
@@ -220,6 +222,13 @@ def parse_log_text(text: str) -> Trace:
                     parent_call_id=data.get("parentToolCallId"),
                 )
             )
+        elif etype == "tool.execution_complete":
+            call_id, success = data.get("toolCallId"), data.get("success")
+            if isinstance(call_id, str) and isinstance(success, bool):
+                if call_id in completions and completions[call_id] != success:
+                    errors.append(f"tool call {call_id}: conflicting completion outcomes")
+                else:
+                    completions[call_id] = success
         elif etype == "subagent.started":
             call_id, agent = data.get("toolCallId"), data.get("agentName")
             if not isinstance(call_id, str) or not isinstance(agent, str) or not agent.strip():
@@ -249,6 +258,7 @@ def parse_log_text(text: str) -> Trace:
                 prompt = content
 
     for tool in tools:
+        tool.success = completions.get(tool.call_id)
         if tool.parent_call_id is None:
             continue
         agent = subagents.get(tool.parent_call_id)

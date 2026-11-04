@@ -112,7 +112,7 @@ jobs:
             --unsandboxed --max-ai-credits "$MAX_AI_CREDITS"
           # state.json is writable by the unsandboxed agent: allowlist before it drives a job.
           status=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$RUN_DIR/state.json" || true)
-          case "$status" in awaiting_approval|gate_skipped|complete) ;; *) status=invalid ;; esac
+          case "$status" in awaiting_approval|blocked_approval|gate_skipped|complete) ;; *) status=invalid ;; esac
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
       - name: Show the plan to the approver
@@ -133,10 +133,12 @@ jobs:
               fence = "`" * max(3, run + 1)
               return f"{fence}text\n{text}\n{fence}"
           status = state.get("status")
-          known = {"awaiting_approval", "gate_skipped", "complete", "setup_error"}
+          known = {"awaiting_approval", "blocked_approval", "gate_skipped", "complete", "setup_error"}
           lines = [f"## custom-eval phase 1: {status if status in known else 'invalid state'}"]
           if status == "awaiting_approval":
               lines.append("The simulated approver (llm, eval-only) decides this plan in the approve job.")
+          elif status == "blocked_approval":
+              lines.append("The approval request could not be verified; the approver and phase 2 will not run.")
           elif status == "gate_skipped":
               lines += ["dev-lead implemented before approval; phase 2 will not run.",
                         fenced("\n".join(map(str, state.get("gate", {}).get("violations", []))))]
@@ -366,7 +368,10 @@ jobs:
           path: ${{ env.RUN_DIR }}
 
       - uses: azure/login@eec3c95657c1536435858eda1f3ff5437fee8474 # v2.3.0
-        if: ${{ inputs.judge == 'azure-openai' }}
+        if: >-
+          ${{ inputs.judge == 'azure-openai' &&
+              (needs.plan.outputs.status == 'gate_skipped' ||
+               needs.plan.outputs.status == 'complete' || needs.implement.result == 'success') }}
         with:
           client-id: ${{ vars.EVAL_AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.EVAL_AZURE_TENANT_ID }}

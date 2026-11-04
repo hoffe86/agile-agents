@@ -20,15 +20,17 @@ criterion to be verified, not a plausible answer or an unchanged seeded input.
 | `unverified` | Missing evidence prevents a verified outcome; no resolved credit |
 | `setup_error` | Fixture/environment error, not demonstrated agent failure |
 
-Blocked or pending approvals score `unverified`, never resolved. Missing tools
-are not failures of produced work. Preserve uncertainty and verified failures
-explicitly rather than allowing a claimed verdict or permissive threshold to
-grant credit.
+Blocked or pending approvals score `unverified` unless a pre-approval gate violation
+is already proven. An unverified required gate or skill completion cannot receive
+resolved credit. Missing tools are not failures of produced work. Preserve uncertainty
+and verified failures explicitly rather than allowing a claimed verdict or permissive
+threshold to grant credit.
 
 Original inputs under each task's `baseline/` are comparison evidence, not
-answers. `inputs.json` describes their intended workspace destinations. The runner
-stages them; no verification runtime executes the result yet. Native build/render/test claims
-require native-tool evidence; source plausibility is not a substitute.
+answers. `inputs.json` describes their intended workspace destinations. The runner stages
+them and, once the run finishes or skips the gate, executes declared acceptance checks in
+the unsandboxed workspace. Native build/render/test claims require native-tool evidence;
+source plausibility is not a substitute.
 
 **Task-10's literal ingress-host equivalence is unresolved**: the six-resource
 baseline has no Ingress (its `ingress.host` configures `PUBLIC_BASE_URL`).

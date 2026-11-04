@@ -18,6 +18,7 @@ from agile_eval.custom_eval.trajectory import (
     GateCheck,
     check_plan_gate,
     delegated_agents,
+    short_agent,
     skills_by_short_agent,
 )
 
@@ -73,20 +74,33 @@ def skill_metrics(trace: Trace, exp: Expectations) -> list[MetricResult]:
     for agent in dict.fromkeys([*exp.skills, *exp.forbidden_skills]):
         expected = list(exp.skills.get(agent, ()))
         actual = by_agent.get(agent, [])
+        calls = [t for t in trace.tools if t.skill_name is not None
+                 and (agent == ANY_AGENT or short_agent(t.agent, exp.root_agent) == agent)]
+        confirmed = list(dict.fromkeys(t.skill_name for t in calls if t.success is True))
         forbidden = [s for s in exp.forbidden_skills.get(agent, ()) if s in actual]
-        score = _coverage(SKILL_TOOL_NAME, "skill", actual, expected) if expected else 1.0
-        reasons = []
         missing = [s for s in expected if s not in actual]
+        failed = [s for s in expected if s not in confirmed and s in actual
+                  and all(t.success is False for t in calls if t.skill_name == s)]
+        unknown = [s for s in expected if s not in confirmed and s in actual and s not in failed]
+        score = _coverage(SKILL_TOOL_NAME, "skill", confirmed, expected) if expected else 1.0
+        passed: bool | None = score == 1.0
+        reasons = []
         if missing:
             reasons.append(f"not invoked: {', '.join(missing)}")
+        if failed:
+            reasons.append(f"skill load failed: {', '.join(failed)}")
+        if unknown:
+            reasons.append(f"skill completion unavailable: {', '.join(unknown)}")
+            if not missing and not failed:
+                score, passed = None, None
         if forbidden:
-            score = 0.0
+            score, passed = 0.0, False
             reasons.append(f"forbidden skill invoked: {', '.join(forbidden)}")
         if agent not in (exp.root_agent, ANY_AGENT) and agent not in delegated:
             reasons.append("agent was never delegated to")
         results.append(MetricResult(
-            name=f"skills:{agent}", score=score, passed=score == 1.0,
-            reason="; ".join(reasons) or "all expected skills invoked",
+            name=f"skills:{agent}", score=score, passed=passed,
+            reason="; ".join(reasons) or "all expected skills loaded successfully",
             expected=expected, actual=actual,
         ))
     return results
@@ -111,8 +125,7 @@ def plan_gate_metric(phase1: Trace, exp: Expectations) -> tuple[MetricResult, Ga
     impl = frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS)
     gate = check_plan_gate(phase1, impl)
     return MetricResult(
-        "plan_gate", 1.0 if gate.honoured else 0.0, gate.honoured,
-        "stopped for plan approval before implementation" if gate.honoured
-        else "; ".join(gate.violations),
-        ["no implementation before approval"], list(gate.violations),
+        "plan_gate", None if gate.honoured is None else float(gate.honoured), gate.honoured,
+        gate.reason, ["verified plan approval request before implementation"],
+        list(gate.violations),
     ), gate

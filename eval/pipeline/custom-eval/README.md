@@ -19,8 +19,10 @@ profile, and versioned input declaration:
 A run has two halves, kept in separate trust zones:
 
 - **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, attempts
-  to drive `dev-lead` through the Copilot CLI to its plan gate, has an LLM judge the plan, resumes
-  the *same* session only if it approves, captures `produced.diff` against the staged baseline,
+  to drive `dev-lead` through the Copilot CLI to its plan gate, and is intended to have an LLM
+  judge the plan before resuming the *same* session. The current prompt-mode transport cannot
+  verify the approval request, so that path is blocked rather than simulated from an unverified
+  pause. The runner captures `produced.diff` against the staged baseline
   and then runs the task's acceptance **checks** (see below) in that workspace, recording
   `checks.json`.
 - **Scorer** (`../score_custom_eval.py`) reads only the recorded JSONL logs, `state.json`,
@@ -65,7 +67,7 @@ architecture-reviewer, security-reviewer, test-reviewer, infra-review).
 ## Running
 
 ```powershell
-# Local: if phase 1 reaches the plan gate, the LLM decides it before phase 2.
+# Local: the current prompt-mode transport cannot verify the plan-approval request.
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --unsandboxed
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\dry --dry-run   # stage only
 # Alternatively, run the three phases separately with a fresh output directory.
@@ -117,6 +119,17 @@ any task-specific ones under `plan_approval:` in `expectations.yaml` (needs
 and the plan message — what a human sees — never `acceptance.md`. If no plan message was
 captured, the decision is rejected as `UNVERIFIED` without making a model call.
 
+The judge and decision-record implementation are present, but **the live approval path is
+not yet connected**: prompt-mode CLI does not expose `ask_user` to the runner. A run with
+no observed pre-approval implementation is therefore `blocked_approval`, not a passed gate;
+an existing `awaiting_approval` state cannot bypass the missing request evidence. The SDK
+input handler received a synthetic top-level request when the probe agent explicitly
+granted `ask_user`; `dev-lead` does not currently list that grant. Cold resume did not
+replay the pending request, so a later message is not proof that the original request was
+answered. SDK integration and the live Azure-backed workflow still need verification.
+The violation detector recognizes implementing-agent delegations and top-level write tools;
+it does not detect writes performed through shell commands.
+
 The decision is written to `plan-approval.json`, labelled `llm-simulated`, and scored as its
 own metric, `Plan approval (llm-simulated)`. A rejection **ends the run** as **failed**
 (`plan_rejected`): there is no re-plan round. It is evidence about the plan, never a human
@@ -135,7 +148,7 @@ sandboxed: the agent can access credentials available to the invoking user.
 ```yaml
 schema: 1
 root_agent: dev-lead
-plan_gate: required            # phase 1 must not delegate to an implementing agent
+plan_gate: required            # approval must be requested before implementation
 agents: [coding, review-lead, code-reviewer]   # every one must be delegated to
 skills:                        # per agent: each must be invoked by that agent
   coding: [read-repo-context, development-practices, python-implementation]
@@ -145,7 +158,9 @@ forbidden_skills:
 ```
 
 Each agent's skill list scores as its own DeepEval metric (`skills:<agent>`), so a miss is
-attributed to the agent that should have loaded the skill. Lists hold the **core contract
+attributed to the agent that should have loaded the skill. Tool-call starts are reported as
+attempts; a load receives credit only when its matching completion reports success. A
+missing completion is `UNVERIFIED`, not a pass or an agent failure. Lists hold the **core contract
 loads** an agent's own definition makes mandatory — not every skill a good run might touch —
 so a pass means the contract was honoured, not that the run was optimal. `any` exists for
 deliverable skills whose author varies (an ADR may be drafted by dev-lead or a reviewer).
@@ -195,11 +210,13 @@ checks with no matching `checks.json` leave their criteria `UNVERIFIED`; rerun
 Spikes on CLI 1.0.105 (task-02, task-05), reproduced in the
 `copilot-subagent-session.jsonl` fixture:
 
-- **Sub-agents cannot invoke skills.** The `skill` tool is not offered inside a delegated
-  agent, so `coding` made zero skill calls: `skills:coding` scores **0.0** and the run fails.
-  This is the harness's most important open finding, and exactly what per-agent skill
-  scoring exists to catch.
-- **The plan gate is skipped in prompt mode.** Under `-p`, dev-lead implemented without
+- **The harness's delegated agents did not invoke skills.** The `skill` tool was not
+  offered inside the delegated `coding` agent, so `skills:coding` scores **0.0** and the
+  run fails. In a separate synthetic SDK probe, granting `skill` to a delegated agent
+  exposed the tool and produced successfully attributed calls. The harness agents do not
+  currently list that grant; this is not evidence that delegated skills are impossible
+  in the CLI.
+- **The plan gate can be skipped in prompt mode.** Under `-p`, dev-lead implemented without
   waiting; the runner records `gate_skipped` and the run scores failed. A separate CLI
   1.0.105 probe reported `ask_user` unavailable in prompt mode even without
   `--no-ask-user`. An SDK probe received `ask_user` through its input handler, but
@@ -217,6 +234,7 @@ See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptu
 - **unverified** — a criterion cannot be checked; no resolved credit, with reasons
 - **setup_error** — fixture or judge environment/contract error, not an agent failure
 - **awaiting_approval** — the simulated decision is pending; **unverified**
+- **blocked_approval** — the approval request could not be verified; **unverified**
 - **dry_run** — staged only; not a scored outcome
 
 The scorer combines them: a skipped plan gate or any failing trajectory metric makes the run

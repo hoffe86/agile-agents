@@ -2,8 +2,8 @@
 
     phase 1  the unchanged task prompt, non-interactive. A dev-lead that honours its
              contract stops after presenting the plan for approval.
-    gate     the trace is checked for implementation begun before approval. Skipped
-             gate -> status gate_skipped, phase 2 never runs.
+    gate     implementation before approval -> gate_skipped. Without a verified
+             approval request -> blocked_approval; phase 2 never runs.
     approve  EVAL-ONLY simulated plan approval. An LLM grades the plan against
              custom-eval/plan-approval.md (+ the task's plan_approval criteria) and
              approves only if all pass, else plan_rejected. `--phase approve` runs
@@ -231,8 +231,9 @@ def phase1(args: argparse.Namespace, task_dir: Path, paths: Paths) -> dict:
         state["status"] = "complete"
     else:
         gate = check_plan_gate(trace, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS))
-        state["gate"] = {"honoured": gate.honoured, "violations": list(gate.violations)}
-        state["status"] = "awaiting_approval" if gate.honoured else "gate_skipped"
+        state["gate"] = {"honoured": gate.honoured, "violations": list(gate.violations),
+                         "reason": gate.reason}
+        state["status"] = "gate_skipped" if gate.honoured is False else "blocked_approval"
     state["plan_message"] = trace.final_message
     # The agent could reach the run directory: never let it pre-seed an approval.
     (paths.run / plan_approval.APPROVAL_FILE).unlink(missing_ok=True)
@@ -276,6 +277,18 @@ def verify(args: argparse.Namespace, paths: Paths) -> dict:
     return state
 
 
+def _require_verified_gate(paths: Paths, exp: Expectations) -> None:
+    try:
+        trace = parse_log_text(paths.log(1).read_text(encoding="utf-8"))
+    except OSError:
+        raise SetupError("plan approval needs a readable phase1.jsonl") from None
+    if verify_schema(trace, require_skills_offered=False):
+        raise SetupError("phase 1 trace cannot verify the plan approval gate")
+    gate = check_plan_gate(trace, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS))
+    if gate.honoured is not True:
+        raise SetupError(f"plan approval gate not verified: {gate.reason}")
+
+
 def approve(args: argparse.Namespace, paths: Paths) -> dict:
     """Simulated (LLM) plan approval. Runs no agent; records plan-approval.json."""
     state = read_state(paths)
@@ -283,6 +296,7 @@ def approve(args: argparse.Namespace, paths: Paths) -> dict:
         raise SetupError(f"plan approval needs status awaiting_approval, found {state.get('status')}")
     task_dir = resolve_task(args.tasks_root, state["task"])
     exp = load(task_dir)
+    _require_verified_gate(paths, exp)
     criteria = plan_approval.load_rubric(args.tasks_root.parent / plan_approval.RUBRIC_FILE,
                                          exp.plan_approval)
     try:
@@ -321,6 +335,7 @@ def phase2(args: argparse.Namespace, paths: Paths) -> dict:
         return _rejected(paths, state)
     if state["status"] == "plan_rejected":
         raise SetupError("recorded plan decision conflicts with the run state")
+    _require_verified_gate(paths, exp)
     cmd = copilot_command(args.copilot, APPROVAL_MESSAGE, state["session_id"],
                           args.max_ai_credits, plugin_dirs(repo_root()))
     state["approved"] = True

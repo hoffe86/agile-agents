@@ -59,7 +59,11 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         self.assertNotIn("run_custom_eval", json.dumps(score), "the agent never runs where OIDC is")
         self.assertNotIn("EVAL_COPILOT_TOKEN", json.dumps(score))
         login = _steps(score)["azure/login@eec3c95657c1536435858eda1f3ff5437fee8474"]
-        self.assertEqual(login["if"], "${{ inputs.judge == 'azure-openai' }}")
+        login_gate = " ".join(login["if"].split())
+        self.assertIn("inputs.judge == 'azure-openai'", login_gate)
+        self.assertIn("needs.plan.outputs.status == 'gate_skipped'", login_gate)
+        self.assertIn("needs.plan.outputs.status == 'complete'", login_gate)
+        self.assertIn("needs.implement.result == 'success'", login_gate)
 
     def test_simulated_approver_holds_oidc_and_never_the_agent_token(self):
         approve = self.jobs["approve"]
@@ -159,7 +163,16 @@ class EvalCustomWorkflowTests(unittest.TestCase):
 
     def test_phase1_status_output_is_allowlisted(self):
         run = _steps(self.jobs["plan"])["Phase 1 - run dev-lead up to the plan gate"]["run"]
-        self.assertIn("awaiting_approval|gate_skipped|complete) ;; *) status=invalid", run)
+        self.assertIn("awaiting_approval|blocked_approval|gate_skipped|complete) ;; *) status=invalid", run)
+
+    def test_unverified_approval_is_reported_as_blocked(self):
+        with tempfile.TemporaryDirectory() as run_dir:
+            Path(run_dir, "state.json").write_text(json.dumps({
+                "status": "blocked_approval", "plan_message": "No verified approval request",
+            }), encoding="utf-8")
+            out = self.run_body("plan", "Show the plan to the approver", {"RUN_DIR": run_dir})
+        self.assertIn("phase 1: blocked_approval", out)
+        self.assertIn("approver and phase 2 will not run", out)
 
     def test_plan_summary_renders_agent_text_inert(self):
         with tempfile.TemporaryDirectory() as run_dir:

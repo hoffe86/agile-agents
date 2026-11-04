@@ -69,6 +69,42 @@ def test_span_tree_is_preserved(trace):
     assert any(t.parent_id for t in trace.tools)
 
 
+@pytest.mark.parametrize("completion,expected", [(True, True), (False, False), (None, None)])
+def test_tool_completion_is_matched_by_call_id(completion, expected):
+    events = [
+        {"type": "tool.execution_start",
+         "data": {"toolCallId": "skill-1", "toolName": "skill", "arguments": {"skill": "x"}}},
+    ]
+    if completion is not None:
+        events.append({"type": "tool.execution_complete",
+                       "data": {"toolCallId": "skill-1", "success": completion}})
+    trace = parse_log_text("\n".join(json.dumps(event) for event in events))
+    assert trace.tools[0].skill_name == "x"
+    assert trace.tools[0].success is expected
+
+
+def test_non_boolean_completion_is_not_success_evidence():
+    events = [
+        {"type": "tool.execution_start",
+         "data": {"toolCallId": "skill-1", "toolName": "skill", "arguments": {"skill": "x"}}},
+        {"type": "tool.execution_complete",
+         "data": {"toolCallId": "skill-1", "success": "true"}},
+    ]
+    trace = parse_log_text("\n".join(json.dumps(event) for event in events))
+    assert trace.tools[0].success is None
+
+
+def test_conflicting_tool_completions_are_a_schema_error():
+    events = [
+        {"type": "tool.execution_start",
+         "data": {"toolCallId": "skill-1", "toolName": "skill", "arguments": {"skill": "x"}}},
+        {"type": "tool.execution_complete", "data": {"toolCallId": "skill-1", "success": True}},
+        {"type": "tool.execution_complete", "data": {"toolCallId": "skill-1", "success": False}},
+    ]
+    trace = parse_log_text("\n".join(json.dumps(event) for event in events))
+    assert any("conflicting completion" in error for error in trace.schema_errors)
+
+
 def test_non_json_lines_are_tolerated(trace):
     """Real logs interleave harness banners with CLI JSON."""
     assert trace.events_unparsable >= 1, "fixture should contain a non-JSON line"

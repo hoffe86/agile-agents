@@ -28,19 +28,20 @@ def short_agent(name: str | None, root: str) -> str:
 
 @dataclass(frozen=True)
 class GateCheck:
-    honoured: bool
+    honoured: bool | None
     violations: tuple[str, ...]
+    reason: str
 
 
 def check_plan_gate(
     phase1: Trace, implementation_agents: frozenset[str] = IMPLEMENTATION_AGENTS
 ) -> GateCheck:
-    """Did phase 1 stop before implementation began?
+    """Check for implementation before approval; do not infer a verified pause.
 
     Phase 1 runs the unchanged task prompt non-interactively. A dev-lead that honours
-    its contract ends that phase presenting the plan for approval; one that delegates to
-    an implementation agent, or writes files itself, skipped the gate. Writes made via a
-    shell command are not detectable from the trace.
+    its contract asks for plan approval before implementation. Prompt-mode CLI does not
+    expose the user-input request, so absence of implementation cannot prove the gate
+    was reached. Writes made via a shell command are not detectable from the trace.
     """
     violations: list[str] = []
     for _, delegated in phase1.delegations:
@@ -50,7 +51,10 @@ def check_plan_gate(
     for tool in phase1.tools_for(None):
         if tool.name in WRITE_TOOLS:
             violations.append(f"top-level agent used {tool.name} before plan approval")
-    return GateCheck(honoured=not violations, violations=tuple(dict.fromkeys(violations)))
+    violations = list(dict.fromkeys(violations))
+    if violations:
+        return GateCheck(False, tuple(violations), "; ".join(violations))
+    return GateCheck(None, (), "plan approval request could not be verified in prompt mode")
 
 
 def skills_by_short_agent(trace: Trace, root: str) -> dict[str, list[str]]:

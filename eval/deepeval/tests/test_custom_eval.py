@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from agile_eval.adapters.copilot_trace import parse_log
+from agile_eval.adapters.copilot_trace import parse_log, parse_log_text
 from agile_eval.custom_eval import checks, judges, plan_approval, runner, scorer
 from agile_eval.custom_eval.expectations import (
     Check,
@@ -142,13 +142,57 @@ def test_fixture_attribution_and_gate_violation(trace):
     assert "coding" in gate.violations[0]
 
 
+def _trace_with_events(*events):
+    return parse_log_text("\n".join(json.dumps(event) for event in events))
+
+
+def _skill_trace(skill, outcome, agent="coding"):
+    events = [
+        {"type": "tool.execution_start", "data": {
+            "toolName": "task", "toolCallId": "parent",
+            "arguments": {"agent_type": agent}}},
+        {"type": "subagent.started", "data": {"toolCallId": "parent", "agentName": agent}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": "skill", "toolCallId": "skill-1", "parentToolCallId": "parent",
+            "arguments": {"skill": skill}}},
+    ]
+    if outcome is not None:
+        events.append({"type": "tool.execution_complete",
+                       "data": {"toolCallId": "skill-1", "success": outcome}})
+    return _trace_with_events(*events)
+
+
+@pytest.mark.parametrize("tool", ["view", "ask_user"])
+def test_no_implementation_does_not_prove_a_plan_approval_request(tool):
+    trace = _trace_with_events(
+        {"type": "assistant.turn_start", "data": {}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": tool, "toolCallId": "call", "arguments": {"question": "Approve the plan?"}}},
+        {"type": "assistant.message", "data": {"content": "The plan looks ready."}},
+    )
+    gate = check_plan_gate(trace)
+    assert gate.honoured is None and not gate.violations
+    assert "could not be verified" in gate.reason
+
+
+def test_top_level_writes_still_fail_the_plan_gate():
+    trace = _trace_with_events(
+        {"type": "tool.execution_start", "data": {
+            "toolName": "apply_patch", "toolCallId": "write", "arguments": "patch"}},
+    )
+    gate = check_plan_gate(trace)
+    assert gate.honoured is False
+    assert "apply_patch" in gate.reason
+
+
 def test_deepeval_metrics_score_skills_per_agent(trace):
     pytest.importorskip("deepeval")
     from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric, skill_metrics
 
     exp = load(TASKS / "task-02-python-di-refactor")
     by_name = {m.name: m for m in skill_metrics(trace, exp)}
-    assert by_name["skills:dev-lead"].passed is True
+    assert by_name["skills:dev-lead"].passed is None
+    assert "completion unavailable" in by_name["skills:dev-lead"].reason
     assert by_name["skills:coding"].score == 0.0
     assert "python-implementation" in by_name["skills:coding"].reason
     assert "never delegated" in by_name["skills:code-reviewer"].reason
@@ -177,8 +221,59 @@ def test_any_agent_skill_is_satisfied_by_whoever_loads_it(trace):
     from agile_eval.custom_eval.metrics import skill_metrics
 
     exp = from_mapping(_base(agents=[], skills={"any": ["test-bar-gate"]}), "t", CRITERIA)
-    (metric,) = skill_metrics(trace, exp)
+    (metric,) = skill_metrics(_skill_trace("test-bar-gate", True), exp)
     assert metric.passed is True
+
+
+@pytest.mark.parametrize(("completion", "passed", "reason"), [
+    (True, True, "loaded successfully"),
+    (False, False, "skill load failed"),
+    (None, None, "skill completion unavailable"),
+])
+def test_skill_metric_requires_successful_completion_for_the_correct_agent(
+        completion, passed, reason):
+    pytest.importorskip("deepeval")
+    from agile_eval.custom_eval.metrics import skill_metrics
+
+    exp = from_mapping(_base(agents=["coding"], skills={"coding": ["testing-practices"]}),
+                       "t", CRITERIA)
+    (metric,) = skill_metrics(_skill_trace("testing-practices", completion), exp)
+    assert metric.passed is passed
+    assert reason in metric.reason
+    assert metric.actual == ["testing-practices"]
+    if completion is None:
+        assert metric.score is None
+
+
+def test_successful_skill_load_by_another_agent_does_not_satisfy_the_expected_agent():
+    pytest.importorskip("deepeval")
+    from agile_eval.custom_eval.metrics import skill_metrics
+
+    exp = from_mapping(_base(agents=["coding", "architect"],
+                             skills={"coding": ["testing-practices"]}), "t", CRITERIA)
+    (metric,) = skill_metrics(_skill_trace("testing-practices", True, "architect"), exp)
+    assert metric.passed is False
+    assert "not invoked: testing-practices" in metric.reason
+
+
+def test_successful_retry_satisfies_a_previously_failed_skill():
+    pytest.importorskip("deepeval")
+    from agile_eval.custom_eval.metrics import skill_metrics
+
+    events = []
+    for call_id, success in [("first", False), ("retry", True)]:
+        events.extend([
+            {"type": "tool.execution_start", "data": {
+                "toolName": "skill", "toolCallId": call_id,
+                "arguments": {"skill": "read-repo-context"}}},
+            {"type": "tool.execution_complete",
+             "data": {"toolCallId": call_id, "success": success}},
+        ])
+    exp = from_mapping(_base(agents=[], skills={"dev-lead": ["read-repo-context"]}),
+                       "t", CRITERIA)
+    (metric,) = skill_metrics(_trace_with_events(*events), exp)
+    assert metric.passed is True
+    assert metric.actual == ["read-repo-context"]
 
 
 # --- judge ------------------------------------------------------------------------------
@@ -394,6 +489,31 @@ def test_run_phase_refuses_without_a_token(tmp_path, monkeypatch):
         runner.run_phase(["copilot"], runner.Paths(tmp_path), 1, 10)
 
 
+@needs_git
+def test_phase1_blocks_when_a_plan_approval_request_cannot_be_verified(tmp_path, monkeypatch):
+    paths = runner.Paths(tmp_path / "run")
+    log = "\n".join(json.dumps(event) for event in [
+        {"type": "user.message", "data": {"content": "requirement"}},
+        {"type": "assistant.turn_start", "data": {}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": "view", "toolCallId": "call", "arguments": {}}},
+        {"type": "assistant.message", "data": {"content": "Plan ready for approval."}},
+    ])
+
+    def run_phase(cmd, paths, phase, timeout):
+        paths.log(phase).write_text(log, encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    args = runner.argparse.Namespace(copilot="copilot", max_ai_credits=30, timeout=30,
+                                     dry_run=False)
+    state = runner.phase1(args, TASKS / "task-05-pr-description", paths)
+    assert state["status"] == "blocked_approval"
+    assert state["gate"]["honoured"] is None
+    assert "could not be verified" in state["gate"]["reason"]
+    assert not (paths.run / plan_approval.APPROVAL_FILE).exists()
+
+
 def test_phase2_without_a_decision_fails_closed(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
     monkeypatch.setattr(plan_approval, "decide", lambda *a, **k: pytest.fail("judge ran"))
@@ -577,8 +697,48 @@ def _awaiting(tmp_path) -> runner.Paths:
     return paths
 
 
+@pytest.fixture
+def verified_gate(monkeypatch):
+    # The prompt-mode transport cannot supply this yet; exercise the decision path
+    # separately from the tests that prove the real gate refuses missing evidence.
+    monkeypatch.setattr(runner, "_require_verified_gate", lambda *args: None)
+
+
+def test_phase_approve_refuses_a_stale_awaiting_state_without_gate_evidence(
+        tmp_path, monkeypatch, capsys):
+    _awaiting(tmp_path)
+    monkeypatch.setattr(plan_approval, "decide", lambda *a, **k: pytest.fail("judge ran"))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 4
+    assert "needs a readable phase1.jsonl" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("with_implementation", [False, True])
+def test_phase_approve_refuses_unverified_or_violated_gate(
+        tmp_path, monkeypatch, capsys, with_implementation):
+    paths = _awaiting(tmp_path)
+    tool, arguments = ("task", {"agent_type": "coding"}) if with_implementation else ("view", {})
+    paths.log(1).write_text("\n".join(json.dumps(event) for event in [
+        {"type": "assistant.turn_start", "data": {}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": tool, "toolCallId": "call", "arguments": arguments}},
+    ]), encoding="utf-8")
+    monkeypatch.setattr(plan_approval, "decide", lambda *a, **k: pytest.fail("judge ran"))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 4
+    assert "gate not verified" in capsys.readouterr().out
+
+
+def test_phase2_refuses_a_valid_decision_without_gate_evidence(tmp_path, monkeypatch, capsys):
+    _awaiting(tmp_path)
+    count = len(plan_approval.load_rubric(RUBRIC))
+    plan_approval.write(tmp_path, _plan_decision(*(["PASS"] * count)))
+    monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 4
+    assert "needs a readable phase1.jsonl" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("status", ["PASS", "FAIL"])
-def test_phase_approve_records_the_decision_and_runs_no_agent(tmp_path, monkeypatch, status):
+def test_phase_approve_records_the_decision_and_runs_no_agent(
+        tmp_path, monkeypatch, status, verified_gate):
     n = len(plan_approval.load_rubric(RUBRIC))
     _approver(monkeypatch, _answer(*([status] * n)))
     monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
@@ -599,7 +759,7 @@ def test_human_approval_options_are_not_available(tmp_path, old_option, capsys):
     assert "unrecognized arguments" in capsys.readouterr().err
 
 
-def test_phase_approve_judge_failure_is_a_setup_error(tmp_path, monkeypatch):
+def test_phase_approve_judge_failure_is_a_setup_error(tmp_path, monkeypatch, verified_gate):
     _approver(monkeypatch, "garbage")
     paths = _awaiting(tmp_path)
     assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 4
@@ -625,7 +785,8 @@ def test_phase2_refuses_an_approval_missing_a_rubric_criterion(tmp_path, monkeyp
     assert runner.read_state(paths)["status"] == "awaiting_approval"
 
 
-def test_phase2_uses_an_approved_record_without_calling_the_judge(tmp_path, monkeypatch):
+def test_phase2_uses_an_approved_record_without_calling_the_judge(
+        tmp_path, monkeypatch, verified_gate):
     paths = _awaiting(tmp_path)
     count = len(plan_approval.load_rubric(RUBRIC))
     plan_approval.write(tmp_path, _plan_decision(*(["PASS"] * count)))
@@ -654,7 +815,8 @@ def test_phase2_uses_an_approved_record_without_calling_the_judge(tmp_path, monk
     ("UNVERIFIED", "plan_rejected", None, []),
 ])
 def test_all_phases_automatically_use_the_simulated_approver(
-        tmp_path, monkeypatch, status, expected_status, approved_by, expected_calls):
+        tmp_path, monkeypatch, status, expected_status, approved_by, expected_calls,
+        verified_gate):
     count = len(plan_approval.load_rubric(RUBRIC))
     _approver(monkeypatch, _answer(*([status] * count)))
 
@@ -689,9 +851,14 @@ def test_all_phases_automatically_use_the_simulated_approver(
     (("complete", True, True, "FAILED"), "failed"),
     (("complete", True, True, "PARTIAL"), "partial"),
     (("complete", None, True, "RESOLVED"), "resolved"),
+    (("complete", True, None, "RESOLVED"), "unverified"),
 ])
 def test_outcome(args, expected):
     assert scorer.outcome(*args) == expected
+
+
+def test_complete_required_gate_without_evidence_is_unverified():
+    assert scorer.outcome("complete", None, True, "RESOLVED", gate_required=True) == "unverified"
 
 
 def test_aggregate_takes_the_worst_status():
@@ -742,7 +909,7 @@ def test_score_recorded_run_end_to_end(tmp_path, monkeypatch):
 
     # CI: the approve job's rejection sits beside a state.json still awaiting it.
     runner.write_state(paths, {**runner.read_state(paths), "status": "awaiting_approval"})
-    assert scorer.score_run(run, "none", TASKS)["status"] == "unverified"
+    assert scorer.score_run(run, "none", TASKS)["status"] == "failed"
     (run / plan_approval.APPROVAL_FILE).write_text(
         json.dumps({"approver": plan_approval.SIMULATED, "approved": True}), encoding="utf-8")
     row = scorer.score_run(run, "none", TASKS)
@@ -770,6 +937,30 @@ def test_scorer_requires_approval_for_a_completed_run_with_a_required_gate(tmp_p
     row = scorer.score_run(tmp_path, "none", TASKS)
     assert row["status"] == "setup_error"
     assert "missing plan-approval.json" in row["errors"]
+
+
+@pytest.mark.parametrize("status", ["blocked_approval", "awaiting_approval"])
+def test_unfinished_approval_never_calls_the_acceptance_model(tmp_path, monkeypatch, status):
+    pytest.importorskip("deepeval")
+    paths = runner.Paths(tmp_path)
+    runner.write_state(paths, {"task": "task-02-python-di-refactor", "status": status})
+    paths.log(1).write_text("\n".join(json.dumps(event) for event in [
+        {"type": "assistant.turn_start", "data": {}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": "view", "toolCallId": "call", "arguments": {}}},
+    ]), encoding="utf-8")
+    paths.diff.write_text("", encoding="utf-8")
+    real_judge = scorer.judge
+
+    def no_acceptance_model(name, *args, **kwargs):
+        assert name == "none"
+        return real_judge(name, *args, **kwargs)
+
+    monkeypatch.setattr(scorer, "judge", no_acceptance_model)
+    row = scorer.score_run(tmp_path, "azure-openai", TASKS)
+    assert row["status"] == "unverified"
+    assert row["plan_gate"]["passed"] is None
+    assert row["acceptance"]["judge"] == "none"
 
 
 def test_scorer_rejects_a_completed_run_with_a_rejected_plan(tmp_path):
