@@ -394,19 +394,22 @@ def test_run_phase_refuses_without_a_token(tmp_path, monkeypatch):
         runner.run_phase(["copilot"], runner.Paths(tmp_path), 1, 10)
 
 
-def test_phase2_without_approval_blocks_instead_of_running(tmp_path):
+def test_phase2_without_a_decision_fails_closed(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
+    monkeypatch.setattr(plan_approval, "decide", lambda *a, **k: pytest.fail("judge ran"))
     paths = runner.Paths(tmp_path)
     runner.write_state(paths, {"task": "task-05", "status": "awaiting_approval",
                                "session_id": "s", "phases": {}})
     assert runner.main(["task-05", "--out", str(tmp_path), "--phase", "2",
-                        "--unsandboxed"]) == 0
-    assert runner.read_state(paths)["status"] == "blocked_approval"
+                        "--unsandboxed"]) == 4
+    assert "run --phase approve first" in capsys.readouterr().out
+    assert runner.read_state(paths)["status"] == "awaiting_approval"
 
 
 def test_phase2_refuses_a_run_that_is_not_awaiting_approval(tmp_path):
     runner.write_state(runner.Paths(tmp_path), {"status": "gate_skipped"})
     assert runner.main(["task-05", "--out", str(tmp_path), "--phase", "2",
-                        "--unsandboxed", "--approve"]) == 4
+                        "--unsandboxed"]) == 4
 
 
 def test_verify_refuses_a_run_without_a_finished_change(tmp_path):
@@ -457,6 +460,13 @@ def _answer(*statuses: str) -> str:
     return "\n".join(lines + ["VERDICT: RESOLVED"])
 
 
+def _plan_decision(*statuses: str) -> plan_approval.PlanDecision:
+    criteria = tuple(Criterion(i, f"criterion {i}") for i in range(1, len(statuses) + 1))
+    judgement = judges.parse_contract(_answer(*statuses), criteria, plan_approval.SIMULATED)
+    return plan_approval.PlanDecision(plan_approval.SIMULATED,
+                                      all(status == "PASS" for status in statuses), judgement)
+
+
 def test_shared_rubric_loads_and_task_criteria_number_on():
     shared = plan_approval.load_rubric(RUBRIC)
     assert len(shared) >= 5
@@ -480,23 +490,40 @@ def test_from_mapping_parses_plan_approval_and_requires_the_gate():
 def test_simulated_approver_approves_only_when_every_criterion_passes(monkeypatch):
     seen = {}
     _approver(monkeypatch, _answer("PASS", "PASS"), seen)
-    decision = plan_approval.decide("llm", "REQ", CRITERIA, "PLAN <b>")
+    decision = plan_approval.decide("REQ", CRITERIA, "PLAN <b>")
     assert decision.approved and decision.approver == plan_approval.SIMULATED
     assert "<requirement>\nREQ\n</requirement>" in seen["prompt"]
     assert "<plan>\nPLAN <b>\n</plan>" in seen["prompt"]
     assert "untrusted" in seen["prompt"]
 
 
+@pytest.mark.parametrize("plan", [None, "", " \n"])
+def test_missing_plan_is_rejected_without_a_model_call(tmp_path, monkeypatch, plan):
+    monkeypatch.setattr(plan_approval, "azure_openai_model",
+                        lambda: pytest.fail("judge ran without a plan"))
+    decision = plan_approval.decide("requirement", CRITERIA, plan)
+    assert decision.approved is False
+    assert [row.status for row in decision.judgement.criteria] == ["UNVERIFIED", "UNVERIFIED"]
+    assert decision.judgement.claimed_verdict is None
+    plan_approval.write(tmp_path, decision)
+    assert plan_approval.read(tmp_path, CRITERIA)["approved"] is False
+
+
+def test_simulated_approver_requires_criteria():
+    with pytest.raises(judges.JudgeError, match="at least one criterion"):
+        plan_approval.decide("requirement", (), "plan")
+
+
 @pytest.mark.parametrize("statuses", [("PASS", "FAIL"), ("PASS", "UNVERIFIED")])
 def test_simulated_approver_rejects_a_failed_or_unverified_criterion(monkeypatch, statuses):
     _approver(monkeypatch, _answer(*statuses))
-    assert plan_approval.decide("llm", "r", CRITERIA, "plan").approved is False
+    assert plan_approval.decide("r", CRITERIA, "plan").approved is False
 
 
 def test_simulated_approver_contract_break_is_a_judge_error_not_a_rejection(monkeypatch):
     _approver(monkeypatch, "looks good to me, approved")
     with pytest.raises(judges.JudgeError, match="contract"):
-        plan_approval.decide("llm", "r", CRITERIA, "plan")
+        plan_approval.decide("r", CRITERIA, "plan")
 
 
 def test_simulated_approver_hides_sdk_error_text(monkeypatch):
@@ -506,22 +533,40 @@ def test_simulated_approver_hides_sdk_error_text(monkeypatch):
 
     monkeypatch.setattr(plan_approval, "azure_openai_model", Exploding)
     with pytest.raises(judges.JudgeError) as info:
-        plan_approval.decide("llm", "r", CRITERIA, "plan")
+        plan_approval.decide("r", CRITERIA, "plan")
     assert "secret" not in str(info.value)
-
-
-def test_only_the_llm_approver_is_simulated():
-    with pytest.raises(judges.JudgeError):
-        plan_approval.decide("human", "r", CRITERIA, "plan")
 
 
 @pytest.mark.parametrize("content", [
     "not json", json.dumps([]), json.dumps({"approver": "human", "approved": True}),
     json.dumps({"approver": plan_approval.SIMULATED, "approved": "yes"}),
+    json.dumps({"approver": plan_approval.SIMULATED, "approved": True}),
 ])
 def test_read_ignores_records_that_are_not_a_simulated_decision(tmp_path, content):
     (tmp_path / plan_approval.APPROVAL_FILE).write_text(content, encoding="utf-8")
     assert plan_approval.read(tmp_path) is None
+
+
+@pytest.mark.parametrize(("statuses", "approved", "valid"), [
+    (("PASS", "PASS"), True, True),
+    (("PASS", "FAIL"), False, True),
+    (("PASS", "UNVERIFIED"), False, True),
+    (("PASS", "FAIL"), True, False),
+    (("PASS", "PASS"), False, False),
+    (("PASS",), True, False),
+])
+def test_read_requires_a_complete_and_consistent_judgement(tmp_path, statuses, approved, valid):
+    record = _plan_decision(*statuses).to_dict()
+    record["approved"] = approved
+    (tmp_path / plan_approval.APPROVAL_FILE).write_text(json.dumps(record), encoding="utf-8")
+    assert (plan_approval.read(tmp_path, CRITERIA) is not None) is valid
+
+
+def test_read_rejects_duplicate_criterion_ids(tmp_path):
+    record = _plan_decision("PASS", "PASS").to_dict()
+    record["judgement"]["criteria"][1]["id"] = 1
+    (tmp_path / plan_approval.APPROVAL_FILE).write_text(json.dumps(record), encoding="utf-8")
+    assert plan_approval.read(tmp_path, CRITERIA) is None
 
 
 def _awaiting(tmp_path) -> runner.Paths:
@@ -538,8 +583,7 @@ def test_phase_approve_records_the_decision_and_runs_no_agent(tmp_path, monkeypa
     _approver(monkeypatch, _answer(*([status] * n)))
     monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
     paths = _awaiting(tmp_path)
-    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve",
-                        "--approver", "llm"]) == 0
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 0
     state = runner.read_state(paths)
     approved = status == "PASS"
     assert state["status"] == ("awaiting_approval" if approved else "plan_rejected")
@@ -547,34 +591,93 @@ def test_phase_approve_records_the_decision_and_runs_no_agent(tmp_path, monkeypa
     assert plan_approval.read(tmp_path)["approved"] is approved
 
 
-def test_phase_approve_requires_the_llm_approver(tmp_path):
-    with pytest.raises(SystemExit):
-        runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"])
+@pytest.mark.parametrize("old_option", [("--approver", "human"), ("--approve",)])
+def test_human_approval_options_are_not_available(tmp_path, old_option, capsys):
+    with pytest.raises(SystemExit) as exc:
+        runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve", *old_option])
+    assert exc.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
 
 
 def test_phase_approve_judge_failure_is_a_setup_error(tmp_path, monkeypatch):
     _approver(monkeypatch, "garbage")
     paths = _awaiting(tmp_path)
-    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve",
-                        "--approver", "llm"]) == 4
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 4
     assert runner.read_state(paths)["status"] == "awaiting_approval"
     assert plan_approval.read(tmp_path) is None
 
 
-def test_phase2_llm_approve_needs_the_recorded_decision(tmp_path):
-    _awaiting(tmp_path)
-    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed",
-                        "--approve", "--approver", "llm"]) == 4
-
-
-def test_phase2_llm_approve_stops_on_a_recorded_rejection(tmp_path, monkeypatch):
+def test_phase2_stops_on_a_recorded_rejection(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
     paths = _awaiting(tmp_path)
-    plan_approval.write(tmp_path, plan_approval.PlanDecision(
-        plan_approval.SIMULATED, False, _judgement("FAIL")))
-    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed",
-                        "--approve", "--approver", "llm"]) == 0
+    count = len(plan_approval.load_rubric(RUBRIC))
+    plan_approval.write(tmp_path, _plan_decision("FAIL", *(["PASS"] * (count - 1))))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 0
     assert runner.read_state(paths)["status"] == "plan_rejected"
+
+
+def test_phase2_refuses_an_approval_missing_a_rubric_criterion(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
+    paths = _awaiting(tmp_path)
+    count = len(plan_approval.load_rubric(RUBRIC))
+    plan_approval.write(tmp_path, _plan_decision(*(["PASS"] * (count - 1))))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 4
+    assert runner.read_state(paths)["status"] == "awaiting_approval"
+
+
+def test_phase2_uses_an_approved_record_without_calling_the_judge(tmp_path, monkeypatch):
+    paths = _awaiting(tmp_path)
+    count = len(plan_approval.load_rubric(RUBRIC))
+    plan_approval.write(tmp_path, _plan_decision(*(["PASS"] * count)))
+    monkeypatch.setattr(plan_approval, "decide", lambda *a, **k: pytest.fail("judge ran"))
+    calls = []
+
+    def run_phase(cmd, paths, phase, timeout):
+        calls.append((phase, cmd))
+        shutil.copyfile(FIXTURE, paths.log(phase))
+        return 0
+
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    monkeypatch.setattr(runner, "_capture", lambda *a: None)
+    monkeypatch.setattr(runner, "_verify", lambda *a: None)
+
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 0
+    state = runner.read_state(paths)
+    assert state["status"] == "complete" and state["approved_by"] == plan_approval.SIMULATED
+    assert len(calls) == 1 and calls[0][0] == 2
+    assert runner.APPROVAL_MESSAGE in calls[0][1]
+
+
+@pytest.mark.parametrize(("status", "expected_status", "approved_by", "expected_calls"), [
+    ("PASS", "complete", plan_approval.SIMULATED, [2]),
+    ("FAIL", "plan_rejected", None, []),
+    ("UNVERIFIED", "plan_rejected", None, []),
+])
+def test_all_phases_automatically_use_the_simulated_approver(
+        tmp_path, monkeypatch, status, expected_status, approved_by, expected_calls):
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _approver(monkeypatch, _answer(*([status] * count)))
+
+    def phase1(args, task_dir, paths):
+        return runner.read_state(_awaiting(paths.run))
+
+    calls = []
+
+    def run_phase(cmd, paths, phase, timeout):
+        calls.append(phase)
+        shutil.copyfile(FIXTURE, paths.log(phase))
+        return 0
+
+    monkeypatch.setattr(runner, "phase1", phase1)
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    monkeypatch.setattr(runner, "_capture", lambda *a: None)
+    monkeypatch.setattr(runner, "_verify", lambda *a: None)
+
+    assert runner.main(["task-02", "--out", str(tmp_path), "--unsandboxed"]) == 0
+    state = runner.read_state(runner.Paths(tmp_path))
+    assert state["status"] == expected_status
+    assert state.get("approved_by") == approved_by
+    assert calls == expected_calls
 
 
 @pytest.mark.parametrize("args,expected", [
@@ -598,13 +701,13 @@ def test_aggregate_takes_the_worst_status():
 
 
 @needs_git
-def test_score_recorded_run_end_to_end(tmp_path):
+def test_score_recorded_run_end_to_end(tmp_path, monkeypatch):
     pytest.importorskip("deepeval")
     run = tmp_path / "run"
     paths = runner.Paths(run)
     baseline = runner.stage(TASKS / "task-02-python-di-refactor", paths)
     shutil.copyfile(FIXTURE, paths.log(1))
-    runner.write_state(paths, {"task": "task-02-python-di-refactor", "status": "complete",
+    runner.write_state(paths, {"task": "task-02-python-di-refactor", "status": "gate_skipped",
                                "baseline": baseline, "session_id": "s", "phases": {}})
     (paths.workspace / "new_file.py").write_text("x = 1\n", encoding="utf-8")
     runner.capture_diff(paths, baseline)
@@ -640,11 +743,61 @@ def test_score_recorded_run_end_to_end(tmp_path):
     # CI: the approve job's rejection sits beside a state.json still awaiting it.
     runner.write_state(paths, {**runner.read_state(paths), "status": "awaiting_approval"})
     assert scorer.score_run(run, "none", TASKS)["status"] == "unverified"
-    plan_approval.write(run, plan_approval.PlanDecision(
-        plan_approval.SIMULATED, False, _judgement("FAIL")))
+    (run / plan_approval.APPROVAL_FILE).write_text(
+        json.dumps({"approver": plan_approval.SIMULATED, "approved": True}), encoding="utf-8")
     row = scorer.score_run(run, "none", TASKS)
+    assert row["status"] == "setup_error" and "invalid plan-approval.json" in row["errors"]
+
+    count = len(plan_approval.load_rubric(RUBRIC))
+    plan_approval.write(run, _plan_decision("FAIL", *(["PASS"] * (count - 1))))
+    real_judge = scorer.judge
+
+    def no_acceptance_model(name, *args, **kwargs):
+        assert name == "none"
+        return real_judge(name, *args, **kwargs)
+
+    monkeypatch.setattr(scorer, "judge", no_acceptance_model)
+    row = scorer.score_run(run, "azure-openai", TASKS)
     assert row["status"] == "failed"
     assert row["plan_approval"]["passed"] is False
+    assert row["acceptance"]["judge"] == "none"
+
+
+def test_scorer_requires_approval_for_a_completed_run_with_a_required_gate(tmp_path):
+    runner.write_state(runner.Paths(tmp_path), {
+        "task": "task-02-python-di-refactor", "status": "complete",
+    })
+    row = scorer.score_run(tmp_path, "none", TASKS)
+    assert row["status"] == "setup_error"
+    assert "missing plan-approval.json" in row["errors"]
+
+
+def test_scorer_rejects_a_completed_run_with_a_rejected_plan(tmp_path):
+    runner.write_state(runner.Paths(tmp_path), {
+        "task": "task-02-python-di-refactor", "status": "complete",
+    })
+    count = len(plan_approval.load_rubric(RUBRIC))
+    plan_approval.write(tmp_path, _plan_decision("FAIL", *(["PASS"] * (count - 1))))
+    row = scorer.score_run(tmp_path, "none", TASKS)
+    assert row["status"] == "setup_error"
+    assert "recorded plan decision conflicts with the run state" in row["errors"]
+
+
+def test_scorer_accepts_a_completed_run_with_a_valid_simulated_approval(tmp_path):
+    pytest.importorskip("deepeval")
+    paths = runner.Paths(tmp_path)
+    runner.write_state(paths, {
+        "task": "task-02-python-di-refactor", "status": "complete",
+        "approved_by": plan_approval.SIMULATED,
+    })
+    count = len(plan_approval.load_rubric(RUBRIC))
+    plan_approval.write(tmp_path, _plan_decision(*(["PASS"] * count)))
+    shutil.copyfile(FIXTURE, paths.log(1))
+    paths.diff.write_text("synthetic diff\n", encoding="utf-8")
+    row = scorer.score_run(tmp_path, "none", TASKS)
+    assert row["status"] == "failed"
+    assert row["plan_approval"]["passed"] is True
+    assert row["plan_gate"]["passed"] is False
 
 
 def test_approval_metric_lists_the_failing_criteria():
@@ -654,15 +807,6 @@ def test_approval_metric_lists_the_failing_criteria():
     assert metric["name"] == "Plan approval (llm-simulated)"
     assert metric["passed"] is False and metric["score"] == 0.5
     assert metric["reason"] == "rejected: 2. FAIL - no risks"
-
-
-def test_approval_metric_lists_the_failing_criteria():
-    decision = plan_approval.PlanDecision(
-        plan_approval.SIMULATED, False, _judgement("PASS", "FAIL", reason="no risks")).to_dict()
-    metric = scorer.approval_metric(decision)
-    assert metric["name"] == "Plan approval (llm-simulated)"
-    assert metric["passed"] is False and metric["score"] == 0.5
-    assert "2. FAIL - no risks" in metric["reason"]
 
 
 def test_scoring_an_unreadable_run_is_a_setup_error(tmp_path):
@@ -687,6 +831,8 @@ def test_scorer_without_a_captured_diff_is_a_setup_error(tmp_path):
     shutil.copyfile(FIXTURE, paths.log(1))
     runner.write_state(paths, {"task": "task-02-python-di-refactor", "status": "complete",
                                "baseline": baseline, "phases": {}})
+    count = len(plan_approval.load_rubric(RUBRIC))
+    plan_approval.write(paths.run, _plan_decision(*(["PASS"] * count)))
     row = scorer.score_run(paths.run, "none", TASKS)
     assert row["status"] == "setup_error"
     assert "produced.diff" in row["errors"][0]

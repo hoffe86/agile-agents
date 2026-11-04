@@ -90,7 +90,27 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
         row["errors"].append(f"run status {state['status']} cannot be scored")
         return row
     # In CI the approve job records the decision beside a state.json still awaiting it.
-    decision = plan_approval.read(run)
+    decision = None
+    if (run / plan_approval.APPROVAL_FILE).exists():
+        try:
+            criteria = plan_approval.load_rubric(tasks_root.parent / plan_approval.RUBRIC_FILE,
+                                                 exp.plan_approval)
+        except ExpectationsError as exc:
+            row["errors"].append(f"plan approval rubric: {exc}")
+            return row
+        decision = plan_approval.read(run, criteria)
+        if decision is None:
+            row["errors"].append(f"invalid {plan_approval.APPROVAL_FILE}")
+            return row
+    elif (state.get("approved_by") == plan_approval.SIMULATED
+          or state["status"] == "plan_rejected"
+          or (state["status"] == "complete" and exp.plan_gate == "required")):
+        row["errors"].append(f"missing {plan_approval.APPROVAL_FILE}")
+        return row
+    if decision and ((state["status"] == "plan_rejected" and decision["approved"])
+                     or (state["status"] == "complete" and not decision["approved"])):
+        row["errors"].append("recorded plan decision conflicts with the run state")
+        return row
     run_status = state["status"]
     if decision is not None and not decision["approved"]:
         run_status = "plan_rejected"
@@ -115,7 +135,8 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
     results = load_results(run, exp)
     try:
         judgement = judge(
-            judge_name, (resolve_task(tasks_root, state["task"]) / "prompt.md").read_text(
+            "none" if run_status == "plan_rejected" else judge_name,
+            (resolve_task(tasks_root, state["task"]) / "prompt.md").read_text(
                 encoding="utf-8"),
             exp.criteria, exp.unverifiable,
             produced_diff(paths), command_evidence=evidence(results),

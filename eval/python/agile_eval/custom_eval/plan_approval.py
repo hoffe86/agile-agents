@@ -23,13 +23,16 @@ from pathlib import Path
 from agile_eval.custom_eval.expectations import Criterion, ExpectationsError, parse_acceptance
 from agile_eval.custom_eval.judges import (
     MAX_EVIDENCE_CHARS,
+    STATUSES,
+    VERDICTS,
+    CriterionResult,
     Judgement,
     JudgeError,
     azure_openai_model,
     parse_contract,
+    verdict_for,
 )
 
-APPROVERS = ("human", "llm")
 SIMULATED = "llm-simulated"
 RUBRIC_FILE = "plan-approval.md"
 APPROVAL_FILE = "plan-approval.json"
@@ -93,11 +96,18 @@ VERDICT: RESOLVED|PARTIAL|FAILED|UNVERIFIED
 """
 
 
-def decide(approver: str, requirement: str, criteria: tuple[Criterion, ...],
+def decide(requirement: str, criteria: tuple[Criterion, ...],
            plan: str | None) -> PlanDecision:
-    if approver != "llm":
-        raise JudgeError(f"no simulated approver for {approver!r}")
-    plan = (plan or "").strip() or "(dev-lead presented no plan message)"
+    if not criteria:
+        raise JudgeError("simulated plan approver needs at least one criterion")
+    if not isinstance(plan, str) or not plan.strip():
+        judgement = Judgement(
+            SIMULATED,
+            [CriterionResult(c.id, "UNVERIFIED", "no plan message was captured") for c in criteria],
+            None, "UNVERIFIED", [],
+        )
+        return PlanDecision(SIMULATED, False, judgement)
+    plan = plan.strip()
     if len(plan) > MAX_EVIDENCE_CHARS:
         plan = plan[:MAX_EVIDENCE_CHARS] + "\n[plan truncated]"
     model = azure_openai_model()
@@ -121,13 +131,34 @@ def write(run: Path, decision: PlanDecision) -> None:
                                      encoding="utf-8", newline="\n")
 
 
-def read(run: Path) -> dict | None:
-    """The recorded decision, or None. Malformed -> None: treat as never decided."""
+def read(run: Path, criteria: tuple[Criterion, ...] | None = None) -> dict | None:
+    """Read a complete, internally consistent simulated decision, or None."""
     try:
         data = json.loads((run / APPROVAL_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if (not isinstance(data, dict) or data.get("approver") != SIMULATED
             or not isinstance(data.get("approved"), bool)):
+        return None
+    judgement = data.get("judgement")
+    if (not isinstance(judgement, dict) or judgement.get("judge") != SIMULATED
+            or judgement.get("contract_errors") != []):
+        return None
+    claimed = judgement.get("claimed_verdict")
+    if claimed not in VERDICTS and (claimed is not None or data["approved"]):
+        return None
+    rows = judgement.get("criteria")
+    if not isinstance(rows, list) or not rows:
+        return None
+    if any(not isinstance(row, dict) or type(row.get("id")) is not int
+           or row.get("status") not in STATUSES or not isinstance(row.get("reason"), str)
+           or not row["reason"].strip() for row in rows):
+        return None
+    expected_ids = ([criterion.id for criterion in criteria] if criteria is not None
+                    else list(range(1, len(rows) + 1)))
+    statuses = [row["status"] for row in rows]
+    if ([row["id"] for row in rows] != expected_ids
+            or judgement.get("verdict") != verdict_for(statuses)
+            or data["approved"] != all(status == "PASS" for status in statuses)):
         return None
     return data

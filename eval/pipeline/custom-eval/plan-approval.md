@@ -1,6 +1,6 @@
 # Plan-approval rubric (simulated human approver)
 
-The criteria the **simulated** approver (`run_custom_eval.py --approver llm`) applies to
+The criteria the **simulated** LLM approver (`run_custom_eval.py --phase approve`) applies to
 the plan dev-lead presents at its Stage 4 gate. They are what a careful human reviewer
 checks before letting the pipeline run autonomously, derived from the plan-approval
 prompt dev-lead is required to render

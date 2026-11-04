@@ -18,12 +18,13 @@ profile, and versioned input declaration:
 
 A run has two halves, kept in separate trust zones:
 
-- **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, drives
-  `dev-lead` through the Copilot CLI up to its plan gate, waits for a human approval, resumes
-  the *same* session, captures `produced.diff` against the staged baseline, and then runs the
-  task's acceptance **checks** (see below) in that workspace, recording `checks.json`.
+- **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, attempts
+  to drive `dev-lead` through the Copilot CLI to its plan gate, has an LLM judge the plan, resumes
+  the *same* session only if it approves, captures `produced.diff` against the staged baseline,
+  and then runs the task's acceptance **checks** (see below) in that workspace, recording
+  `checks.json`.
 - **Scorer** (`../score_custom_eval.py`) reads only the recorded JSONL logs, `state.json`,
-  `produced.diff` and `checks.json`. Trajectory is scored with **DeepEval**
+  `plan-approval.json`, `produced.diff` and `checks.json`. Trajectory is scored with **DeepEval**
   (`ToolCorrectnessMetric`); command results decide build/test/render criteria; the rest goes
   to a pluggable judge. It runs no git and no workspace code, so it can hold judge
   credentials safely.
@@ -64,31 +65,33 @@ architecture-reviewer, security-reviewer, test-reviewer, infra-review).
 ## Running
 
 ```powershell
-# Local: phase 1 stops at the plan gate and prints dev-lead's plan; approve interactively.
+# Local: if phase 1 reaches the plan gate, the LLM decides it before phase 2.
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --unsandboxed
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\dry --dry-run   # stage only
+# Alternatively, run the three phases separately with a fresh output directory.
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\split --phase 1 --unsandboxed
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\split --phase approve
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\split --phase 2 --unsandboxed
 # Re-run only the acceptance checks of a finished run, e.g. after installing a missing tool.
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --phase verify --unsandboxed
-# Simulated plan gate (eval-only): an LLM judges the plan, then phase 2 acts on its decision.
-python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --phase approve --approver llm
-python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --phase 2 --approve --approver llm --unsandboxed
 # Score one or more runs. --judge none leaves criteria without a passing check UNVERIFIED.
 python eval/pipeline/score_custom_eval.py $env:TEMP\ce\task-05 --judge azure-openai --output summary.json
 ```
 
 Needs the Copilot CLI on `PATH` (pinned `1.0.105` in CI), `COPILOT_GITHUB_TOKEN`, and the
 hash-locked environment from [`../../deepeval/README.md`](../../deepeval/README.md).
-`--max-ai-credits` caps each phase (minimum 30). The `azure-openai` judge authenticates with
-Entra only — `az login` locally, federated `azure/login` in CI; no API key is accepted — and
-reads `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`.
+`--max-ai-credits` caps each phase (minimum 30). The plan approver always uses Azure OpenAI;
+the acceptance judge is selected separately. Azure OpenAI authenticates with Entra only —
+`az login` locally, federated `azure/login` in CI; no API key is accepted — and reads
+`AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`.
 
 In CI, run **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`) by hand:
 
 | Job | Holds | Does |
 |---|---|---|
 | `plan` | Copilot token, read-only `GITHUB_TOKEN` | phase 1; writes the plan to the step summary (runs the checks only if dev-lead skipped the gate) |
-| `approve` | OIDC only; runs no agent | `approver: llm` only — the simulated approver judges the plan and outputs `approved` or `rejected` |
-| `implement` | same as `plan` | `approver: human` waits on the **`eval-approval`** environment — its required reviewers *are* the plan gate; `approver: llm` runs only on an `approved` decision. Then resumes with `--approve` and runs the checks |
+| `approve` | OIDC only; runs no agent | the simulated approver judges the plan and outputs `approved` or `rejected` |
+| `implement` | same as `plan` | runs only when `approve` succeeds with an `approved` decision, then resumes and runs the checks |
 | `score` | OIDC (`id-token: write`) for the judge only | DeepEval + judge over the recorded files |
 
 The agent jobs install .NET 10 for the C# tasks and a pinned, checksum-verified `actionlint`
@@ -96,33 +99,34 @@ for task 06; `kubectl`, `az` and Docker come with the runner image. Locally, a t
 from `PATH` leaves its criterion `UNVERIFIED`.
 
 Repository setup: secret `EVAL_COPILOT_TOKEN` (a dedicated, low-privilege account — the
-unsandboxed agent can read its own environment), environment `eval-approval` with required
-reviewers, and for the Azure judge the variables `EVAL_AZURE_CLIENT_ID`,
+unsandboxed agent can read its own environment), and the Azure judge variables `EVAL_AZURE_CLIENT_ID`,
 `EVAL_AZURE_TENANT_ID`, `EVAL_AZURE_OPENAI_ENDPOINT`, `EVAL_AZURE_OPENAI_DEPLOYMENT`.
-`approver: llm` needs those same four variables and no `eval-approval` reviewer.
+The Entra identity needs a GitHub OIDC federated credential for the workflow's branch and
+access to the Azure OpenAI deployment. No approval environment or human reviewer is needed.
 
 ## Simulated plan approval (eval-only)
 
 dev-lead's Stage 4 plan approval is a quality gate, so an unattended run can have it judged
-rather than rubber-stamped. With `--approver llm`, the Azure OpenAI judge grades the plan
+rather than rubber-stamped. The Azure OpenAI judge grades the plan
 against [`plan-approval.md`](plan-approval.md) — seven shared criteria (Definition of Done and
 scope, decomposition, coverage of the stated acceptance criteria, derived criteria shown
 separately, assumptions and risks, no scope expansion, approval asked before execution) plus
 any task-specific ones under `plan_approval:` in `expectations.yaml` (needs
 `plan_gate: required`). Each criterion is `PASS`, `FAIL` or `UNVERIFIED`; the plan is
 **approved only if every criterion passes**. The approver sees the requirement (`prompt.md`)
-and the plan message — what a human sees — never `acceptance.md`.
+and the plan message — what a human sees — never `acceptance.md`. If no plan message was
+captured, the decision is rejected as `UNVERIFIED` without making a model call.
 
 The decision is written to `plan-approval.json`, labelled `llm-simulated`, and scored as its
 own metric, `Plan approval (llm-simulated)`. A rejection **ends the run** as **failed**
 (`plan_rejected`): there is no re-plan round. It is evidence about the plan, never a human
-approval — the harness's own gate is unchanged, and a human run (`--approver human`, the
-default) behaves exactly as before.
+approval — the harness's own human gate outside evaluation is unchanged.
 
 Trust: the approve step holds the judge credentials but runs no agent. Phase 1 deletes any
 pre-existing `plan-approval.json`, and in CI `implement` is gated on the `approve` job's
-output — not on anything the agent can write — while `score` takes the record from the
-`approve` job's artifact.
+successful output and a complete decision record — not on anything the agent can write —
+while `score` takes the record from the `approve` job's artifact. Local runs are not
+sandboxed: the agent can access credentials available to the invoking user.
 
 ## Trajectory expectations
 
@@ -196,8 +200,10 @@ Spikes on CLI 1.0.105 (task-02, task-05), reproduced in the
   This is the harness's most important open finding, and exactly what per-agent skill
   scoring exists to catch.
 - **The plan gate is skipped in prompt mode.** Under `-p`, dev-lead implemented without
-  waiting; the runner records `gate_skipped` and the run scores failed. An interactive
-  approval path over ACP (`copilot --acp`) is the candidate fix.
+  waiting; the runner records `gate_skipped` and the run scores failed. A separate CLI
+  1.0.105 probe reported `ask_user` unavailable in prompt mode even without
+  `--no-ask-user`. An SDK probe received `ask_user` through its input handler, but
+  integration with the harness's plan capture and separate approval job is unverified.
 - The unsandboxed coding sub-agent read outside its workspace, and a 60-credit cap was hit
   mid-run — size `--max-ai-credits` per task.
 
@@ -210,14 +216,14 @@ See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptu
 - **failed** — no acceptance criterion passes, or the build is broken
 - **unverified** — a criterion cannot be checked; no resolved credit, with reasons
 - **setup_error** — fixture or judge environment/contract error, not an agent failure
-- **blocked_approval** / **skipped** — mandatory human gate / dry run, not outcomes
+- **awaiting_approval** — the simulated decision is pending; **unverified**
+- **dry_run** — staged only; not a scored outcome
 
 The scorer combines them: a skipped plan gate or any failing trajectory metric makes the run
 **failed** whatever the judge says, as does a plan the simulated approver rejected; a pending
-or refused human approval is **unverified**; otherwise
-the acceptance verdict decides, after command checks have overridden the judge on the
-criteria they cover. Exit codes: 0 resolved, 1 failed, 2 partial, 3 unverified,
-4 setup error.
+decision is **unverified**. Otherwise the acceptance verdict decides, after command checks
+have overridden the judge on the criteria they cover. Exit codes: 0 resolved, 1 failed,
+2 partial, 3 unverified, 4 setup error.
 
 Every selected task belongs in the denominator of any outcome report.
 Original inputs are comparison evidence, never answers or seeded credit.

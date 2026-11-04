@@ -41,10 +41,8 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         inputs = self.wf["on"]["workflow_dispatch"]["inputs"]
         self.assertEqual(inputs["judge"]["default"], "none")
         self.assertEqual(inputs["judge"]["options"], ["none", "azure-openai"])
-        self.assertEqual(inputs["approver"]["default"], "human")
-        self.assertEqual(inputs["approver"]["options"], ["human", "llm"])
-        self.assertEqual(inputs["approver"]["default"], "human")
-        self.assertEqual(inputs["approver"]["options"], ["human", "llm"])
+        self.assertNotIn("approver", inputs)
+        self.assertNotIn("inputs.approver", self.text)
         self.assertTrue(re.fullmatch(r"task-\d{2}", inputs["task"]["default"]))
         self.assertIn("(( MAX_AI_CREDITS >= 30 && MAX_AI_CREDITS <= 2000 ))",
                       _steps(self.jobs["plan"])["Validate inputs"]["run"])
@@ -67,15 +65,15 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         approve = self.jobs["approve"]
         self.assertEqual(approve["permissions"], {"contents": "read", "id-token": "write"})
         self.assertEqual(approve["needs"], "plan")
-        self.assertIn("inputs.approver == 'llm'", approve["if"])
-        self.assertIn("needs.plan.outputs.status == 'awaiting_approval'", approve["if"])
+        self.assertEqual(approve["if"],
+                         "${{ needs.plan.outputs.status == 'awaiting_approval' }}")
         body = json.dumps(approve)
         self.assertNotIn("EVAL_COPILOT_TOKEN", body)
         self.assertNotIn("--unsandboxed", body, "the approver runs no agent")
         self.assertNotIn("setup-dotnet", body)
         decide = _steps(approve)["Simulated plan approval (LLM, eval-only)"]["run"]
         self.assertIn("--phase approve", decide)
-        self.assertIn("--approver llm", decide)
+        self.assertNotIn("--approver", decide)
         self.assertIn('["approved"] is True else "rejected"', decide)
 
     def test_copilot_token_is_scoped_to_the_agent_steps(self):
@@ -86,19 +84,37 @@ class EvalCustomWorkflowTests(unittest.TestCase):
             ("implement", "Phase 2 - resume the same session with the recorded approval"),
         ])
 
-    def test_plan_gate_is_the_human_environment_or_the_simulated_decision(self):
+    def test_plan_gate_requires_the_successful_simulated_decision(self):
         implement = self.jobs["implement"]
         self.assertEqual(implement["needs"], ["plan", "approve"])
-        self.assertEqual(implement["environment"],
-                         "${{ inputs.approver == 'human' && 'eval-approval' || '' }}")
+        self.assertNotIn("environment", implement)
         gate = " ".join(implement["if"].split())
         self.assertIn("needs.plan.outputs.status == 'awaiting_approval'", gate)
-        self.assertIn("(inputs.approver == 'human' || needs.approve.outputs.decision == 'approved')",
-                      gate)
+        self.assertIn("needs.approve.result == 'success'", gate)
+        self.assertIn("needs.approve.outputs.decision == 'approved'", gate)
         phase2 = _steps(implement)["Phase 2 - resume the same session with the recorded approval"]
         self.assertIn("--phase 2", phase2["run"])
-        self.assertIn("--approve", phase2["run"])
-        self.assertIn('--approver "$APPROVER"', phase2["run"])
+        self.assertNotIn("--approve", phase2["run"])
+
+    def test_simulated_decision_artifact_is_required_and_restored_from_approve(self):
+        approval_upload = next(
+            step for step in self.jobs["approve"]["steps"]
+            if step.get("uses", "").startswith("actions/upload-artifact@"))
+        self.assertEqual(approval_upload["with"]["name"], "custom-eval-approval")
+        self.assertEqual(approval_upload["with"]["if-no-files-found"], "error")
+        downloads = [
+            step for step in self.jobs["implement"]["steps"]
+            if step.get("uses", "").startswith("actions/download-artifact@")
+        ]
+        self.assertEqual([step["with"]["name"] for step in downloads],
+                         ["custom-eval-plan", "custom-eval-approval"])
+        self.assertNotIn("if", downloads[1])
+        score_downloads = [
+            step for step in self.jobs["score"]["steps"]
+            if step.get("uses", "").startswith("actions/download-artifact@")
+        ]
+        self.assertEqual(score_downloads[-1]["with"]["name"], "custom-eval-approval")
+        self.assertEqual(score_downloads[-1]["if"], "${{ needs.approve.result == 'success' }}")
 
     def test_approval_summary_renders_judge_reasons_inert(self):
         with tempfile.TemporaryDirectory() as run_dir:
@@ -150,17 +166,16 @@ class EvalCustomWorkflowTests(unittest.TestCase):
             Path(run_dir, "state.json").write_text(json.dumps({
                 "status": "awaiting_approval", "task": HOSTILE, "plan_message": HOSTILE + "\n````",
             }), encoding="utf-8")
-            out = self.run_body("plan", "Show the plan to the approver",
-                                {"RUN_DIR": run_dir, "APPROVER": "human"})
+            out = self.run_body("plan", "Show the plan to the approver", {"RUN_DIR": run_dir})
         self.assertIn("phase 1: awaiting_approval", out)
+        self.assertIn("simulated approver (llm, eval-only)", out)
         self.assertNotIn("https://evil", out.split("`````text", 1)[0])
         self.assertIn("`````text\n" + HOSTILE + "\n````\n`````", out)
 
     def test_plan_summary_rejects_unknown_status(self):
         with tempfile.TemporaryDirectory() as run_dir:
             Path(run_dir, "state.json").write_text(json.dumps({"status": HOSTILE}), "utf-8")
-            out = self.run_body("plan", "Show the plan to the approver",
-                                {"RUN_DIR": run_dir, "APPROVER": "human"})
+            out = self.run_body("plan", "Show the plan to the approver", {"RUN_DIR": run_dir})
         self.assertIn("phase 1: invalid state", out)
         self.assertNotIn("evil", out.split("plan message", 1)[0])
 

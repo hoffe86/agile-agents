@@ -4,14 +4,11 @@
              contract stops after presenting the plan for approval.
     gate     the trace is checked for implementation begun before approval. Skipped
              gate -> status gate_skipped, phase 2 never runs.
-    approve  plan approval. --approver human (default): a human approves interactively, or
-             with --approve (CI: an environment protection rule is the human gate, this
-             flag only records it). --approver llm: EVAL-ONLY simulated approver -- an LLM
-             grades the plan against custom-eval/plan-approval.md (+ the task's
-             plan_approval criteria) and approves only if all pass, else plan_rejected.
-             `--phase approve` runs just that decision and no agent, so CI can give it
-             judge credentials without the Copilot token; `--phase 2 --approve
-             --approver llm` then resumes on the recorded decision.
+    approve  EVAL-ONLY simulated plan approval. An LLM grades the plan against
+             custom-eval/plan-approval.md (+ the task's plan_approval criteria) and
+             approves only if all pass, else plan_rejected. `--phase approve` runs
+             just that decision and no agent, so CI can give it judge credentials
+             without the Copilot token. `--phase 2` needs the recorded decision.
     phase 2  the same session resumes with the approval message.
     checks   once a run is complete (or skipped the gate), the task's declared build /
              test / render commands run in the workspace -> checks.json. `--phase verify`
@@ -29,7 +26,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -211,14 +207,6 @@ def read_state(paths: Paths) -> dict:
         raise SetupError("no readable state.json in the run directory; run phase 1 first") from None
 
 
-def _approve_interactively(summary: str | None) -> bool:
-    if not sys.stdin.isatty():
-        return False
-    print("\n--- dev-lead's last message (the plan presented for approval) ---")
-    print(summary or "(no final message captured)")
-    return input("\nApprove this plan and resume? [y/N] ").strip().lower() in {"y", "yes"}
-
-
 def phase1(args: argparse.Namespace, task_dir: Path, paths: Paths) -> dict:
     exp = load(task_dir)
     baseline = stage(task_dir, paths)
@@ -301,8 +289,7 @@ def approve(args: argparse.Namespace, paths: Paths) -> dict:
         requirement = (task_dir / "prompt.md").read_text(encoding="utf-8")
     except OSError:
         raise SetupError(f"cannot read {task_dir.name}/prompt.md") from None
-    decision = plan_approval.decide(args.approver, requirement, criteria,
-                                    state.get("plan_message"))
+    decision = plan_approval.decide(requirement, criteria, state.get("plan_message"))
     plan_approval.write(paths.run, decision)
     state["plan_approval"] = {"approver": decision.approver, "approved": decision.approved}
     if not decision.approved:
@@ -320,39 +307,31 @@ def _rejected(paths: Paths, state: dict) -> dict:
 
 def phase2(args: argparse.Namespace, paths: Paths) -> dict:
     state = read_state(paths)
-    if state.get("status") != "awaiting_approval":
+    if state.get("status") not in ("awaiting_approval", "plan_rejected"):
         raise SetupError(f"phase 2 needs status awaiting_approval, found {state.get('status')}")
-    if args.approver == "llm":
-        if args.approve:
-            # CI: the approve job decided; its job output gated this one. Re-check the record.
-            recorded = plan_approval.read(paths.run)
-            if recorded is None:
-                raise SetupError("--approve --approver llm needs the recorded "
-                                 f"{plan_approval.APPROVAL_FILE} from --phase approve")
-            if not recorded["approved"]:
-                return _rejected(paths, state)
-        else:
-            state = approve(args, paths)
-            if state["status"] == "plan_rejected":
-                return state
-        approved_by = plan_approval.SIMULATED
-    elif args.approve or _approve_interactively(state.get("plan_message")):
-        approved_by = "human"
-    else:
-        state["status"] = "blocked_approval"
-        write_state(paths, state)
-        return state
+    task_dir = resolve_task(args.tasks_root, state["task"])
+    exp = load(task_dir)
+    criteria = plan_approval.load_rubric(args.tasks_root.parent / plan_approval.RUBRIC_FILE,
+                                         exp.plan_approval)
+    recorded = plan_approval.read(paths.run, criteria)
+    if recorded is None:
+        raise SetupError(f"phase 2 needs a valid {plan_approval.APPROVAL_FILE}; "
+                         "run --phase approve first")
+    if not recorded["approved"]:
+        return _rejected(paths, state)
+    if state["status"] == "plan_rejected":
+        raise SetupError("recorded plan decision conflicts with the run state")
     cmd = copilot_command(args.copilot, APPROVAL_MESSAGE, state["session_id"],
                           args.max_ai_credits, plugin_dirs(repo_root()))
     state["approved"] = True
-    state["approved_by"] = approved_by
+    state["approved_by"] = plan_approval.SIMULATED
     code = run_phase(cmd, paths, 2, args.timeout)
     trace = parse_log_text(paths.log(2).read_text(encoding="utf-8"))
     problems = verify_schema(trace, require_skills_offered=False)
     state["phases"]["2"] = {"exit_code": code, "schema_errors": problems}
     state["status"] = "setup_error" if code == -1 or problems else "complete"
     _capture(paths, state)
-    _verify(load(resolve_task(args.tasks_root, state["task"])), paths, state)
+    _verify(exp, paths, state)
     write_state(paths, state)
     return state
 
@@ -364,12 +343,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("task", help="task folder name or prefix, e.g. task-02")
     ap.add_argument("--out", type=Path, required=True, help="run directory for this task")
     ap.add_argument("--phase", choices=("1", "approve", "2", "all", "verify"), default="all",
-                    help="approve runs only the simulated plan approval (--approver llm); "
+                    help="approve runs only the simulated LLM plan approval; "
                          "verify re-runs only the acceptance checks of a finished run")
-    ap.add_argument("--approver", choices=plan_approval.APPROVERS, default="human",
-                    help="who decides the plan gate; llm is an EVAL-ONLY simulated human")
-    ap.add_argument("--approve", action="store_true",
-                    help="record a plan approval obtained outside this process (CI)")
     ap.add_argument("--unsandboxed", action="store_true",
                     help="acknowledge the agent runs with all tools on this host (#22)")
     ap.add_argument("--dry-run", action="store_true", help="stage and print; run no agent")
@@ -384,8 +359,6 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("live runs are not OS-sandboxed (#22); pass --unsandboxed to proceed")
     if args.dry_run and args.phase in ("approve", "2", "verify"):
         ap.error("--dry-run applies to phase 1 only")
-    if args.phase == "approve" and args.approver != "llm":
-        ap.error("--phase approve runs the simulated approver; pass --approver llm")
     paths = Paths(args.out)
     try:
         if args.phase == "verify":
@@ -402,6 +375,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"phase 1: {state['status']}")
             if args.phase == "1" or state["status"] != "awaiting_approval":
                 return 0 if state["status"] != "setup_error" else 4
+            state = approve(args, paths)
+            print(f"plan approval ({plan_approval.SIMULATED}): {state['status']}")
         state = phase2(args, paths)
         print(f"phase 2: {state['status']}")
         return 4 if state["status"] == "setup_error" else 0
