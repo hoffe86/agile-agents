@@ -98,6 +98,9 @@ jobs:
       - name: Offline pipeline workflow regressions
         run: python -m unittest discover -s eval/pipeline/tests -p test_eval_pipeline_workflow.py -v
 
+      - name: Offline custom-eval workflow regressions
+        run: python -m unittest discover -s eval/pipeline/tests -p test_eval_custom_workflow.py -v
+
       - name: Offline trajectory regressions
         run: python -m unittest discover -s eval/pipeline/trajectory -p test_check_trajectory.py -v
 

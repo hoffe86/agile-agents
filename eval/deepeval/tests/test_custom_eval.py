@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from agile_eval.adapters.copilot_trace import parse_log
-from agile_eval.custom_eval import checks, judges, runner, scorer
+from agile_eval.custom_eval import checks, judges, plan_approval, runner, scorer
 from agile_eval.custom_eval.expectations import (
     Check,
     Criterion,
@@ -437,8 +437,149 @@ def test_runner_verify_records_check_counts_only_for_finished_runs(tmp_path):
 
 # --- scorer -----------------------------------------------------------------------------
 
+# --- simulated plan approval ------------------------------------------------------------
+
+RUBRIC = TASKS.parent / plan_approval.RUBRIC_FILE
+
+
+def _approver(monkeypatch, answer: str, seen: dict | None = None):
+    class FakeModel:
+        def generate(self, prompt):
+            if seen is not None:
+                seen["prompt"] = prompt
+            return answer, 0.0
+
+    monkeypatch.setattr(plan_approval, "azure_openai_model", FakeModel)
+
+
+def _answer(*statuses: str) -> str:
+    lines = [f"{i}. {s} - reason {i}" for i, s in enumerate(statuses, 1)]
+    return "\n".join(lines + ["VERDICT: RESOLVED"])
+
+
+def test_shared_rubric_loads_and_task_criteria_number_on():
+    shared = plan_approval.load_rubric(RUBRIC)
+    assert len(shared) >= 5
+    combined = plan_approval.load_rubric(RUBRIC, ("names the risky migration",))
+    assert combined[:-1] == shared
+    assert combined[-1] == Criterion(len(shared) + 1, "names the risky migration")
+
+
+def test_missing_rubric_is_an_expectations_error(tmp_path):
+    with pytest.raises(ExpectationsError, match="rubric"):
+        plan_approval.load_rubric(tmp_path / "nope.md")
+
+
+def test_from_mapping_parses_plan_approval_and_requires_the_gate():
+    exp = from_mapping(_base(plan_approval=["  lists the\n migration "]), "t", CRITERIA)
+    assert exp.plan_approval == ("lists the migration",)
+    with pytest.raises(ExpectationsError, match="plan_gate"):
+        from_mapping(_base(plan_gate="not_applicable", plan_approval=["x"]), "t", CRITERIA)
+
+
+def test_simulated_approver_approves_only_when_every_criterion_passes(monkeypatch):
+    seen = {}
+    _approver(monkeypatch, _answer("PASS", "PASS"), seen)
+    decision = plan_approval.decide("llm", "REQ", CRITERIA, "PLAN <b>")
+    assert decision.approved and decision.approver == plan_approval.SIMULATED
+    assert "<requirement>\nREQ\n</requirement>" in seen["prompt"]
+    assert "<plan>\nPLAN <b>\n</plan>" in seen["prompt"]
+    assert "untrusted" in seen["prompt"]
+
+
+@pytest.mark.parametrize("statuses", [("PASS", "FAIL"), ("PASS", "UNVERIFIED")])
+def test_simulated_approver_rejects_a_failed_or_unverified_criterion(monkeypatch, statuses):
+    _approver(monkeypatch, _answer(*statuses))
+    assert plan_approval.decide("llm", "r", CRITERIA, "plan").approved is False
+
+
+def test_simulated_approver_contract_break_is_a_judge_error_not_a_rejection(monkeypatch):
+    _approver(monkeypatch, "looks good to me, approved")
+    with pytest.raises(judges.JudgeError, match="contract"):
+        plan_approval.decide("llm", "r", CRITERIA, "plan")
+
+
+def test_simulated_approver_hides_sdk_error_text(monkeypatch):
+    class Exploding:
+        def generate(self, prompt):
+            raise RuntimeError("https://secret.example token=abc")
+
+    monkeypatch.setattr(plan_approval, "azure_openai_model", Exploding)
+    with pytest.raises(judges.JudgeError) as info:
+        plan_approval.decide("llm", "r", CRITERIA, "plan")
+    assert "secret" not in str(info.value)
+
+
+def test_only_the_llm_approver_is_simulated():
+    with pytest.raises(judges.JudgeError):
+        plan_approval.decide("human", "r", CRITERIA, "plan")
+
+
+@pytest.mark.parametrize("content", [
+    "not json", json.dumps([]), json.dumps({"approver": "human", "approved": True}),
+    json.dumps({"approver": plan_approval.SIMULATED, "approved": "yes"}),
+])
+def test_read_ignores_records_that_are_not_a_simulated_decision(tmp_path, content):
+    (tmp_path / plan_approval.APPROVAL_FILE).write_text(content, encoding="utf-8")
+    assert plan_approval.read(tmp_path) is None
+
+
+def _awaiting(tmp_path) -> runner.Paths:
+    paths = runner.Paths(tmp_path)
+    runner.write_state(paths, {"task": "task-02-python-di-refactor",
+                               "status": "awaiting_approval", "session_id": "s",
+                               "plan_message": "the plan", "phases": {}})
+    return paths
+
+
+@pytest.mark.parametrize("status", ["PASS", "FAIL"])
+def test_phase_approve_records_the_decision_and_runs_no_agent(tmp_path, monkeypatch, status):
+    n = len(plan_approval.load_rubric(RUBRIC))
+    _approver(monkeypatch, _answer(*([status] * n)))
+    monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
+    paths = _awaiting(tmp_path)
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve",
+                        "--approver", "llm"]) == 0
+    state = runner.read_state(paths)
+    approved = status == "PASS"
+    assert state["status"] == ("awaiting_approval" if approved else "plan_rejected")
+    assert state["plan_approval"]["approved"] is approved
+    assert plan_approval.read(tmp_path)["approved"] is approved
+
+
+def test_phase_approve_requires_the_llm_approver(tmp_path):
+    with pytest.raises(SystemExit):
+        runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"])
+
+
+def test_phase_approve_judge_failure_is_a_setup_error(tmp_path, monkeypatch):
+    _approver(monkeypatch, "garbage")
+    paths = _awaiting(tmp_path)
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve",
+                        "--approver", "llm"]) == 4
+    assert runner.read_state(paths)["status"] == "awaiting_approval"
+    assert plan_approval.read(tmp_path) is None
+
+
+def test_phase2_llm_approve_needs_the_recorded_decision(tmp_path):
+    _awaiting(tmp_path)
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed",
+                        "--approve", "--approver", "llm"]) == 4
+
+
+def test_phase2_llm_approve_stops_on_a_recorded_rejection(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
+    paths = _awaiting(tmp_path)
+    plan_approval.write(tmp_path, plan_approval.PlanDecision(
+        plan_approval.SIMULATED, False, _judgement("FAIL")))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed",
+                        "--approve", "--approver", "llm"]) == 0
+    assert runner.read_state(paths)["status"] == "plan_rejected"
+
+
 @pytest.mark.parametrize("args,expected", [
     (("setup_error", True, True, "RESOLVED"), "setup_error"),
+    (("plan_rejected", True, True, "RESOLVED"), "failed"),
     (("blocked_approval", True, True, "RESOLVED"), "unverified"),
     (("complete", False, True, "RESOLVED"), "failed"),
     (("complete", True, False, "RESOLVED"), "failed"),
@@ -495,6 +636,33 @@ def test_score_recorded_run_end_to_end(tmp_path):
     row = scorer.score_run(run, "none", TASKS)
     assert row["acceptance"]["verdict"] == "UNVERIFIED"
     assert row["checks"] is None and "--phase verify" in row["errors"][0]
+
+    # CI: the approve job's rejection sits beside a state.json still awaiting it.
+    runner.write_state(paths, {**runner.read_state(paths), "status": "awaiting_approval"})
+    assert scorer.score_run(run, "none", TASKS)["status"] == "unverified"
+    plan_approval.write(run, plan_approval.PlanDecision(
+        plan_approval.SIMULATED, False, _judgement("FAIL")))
+    row = scorer.score_run(run, "none", TASKS)
+    assert row["status"] == "failed"
+    assert row["plan_approval"]["passed"] is False
+
+
+def test_approval_metric_lists_the_failing_criteria():
+    decision = plan_approval.PlanDecision(
+        plan_approval.SIMULATED, False, _judgement("PASS", "FAIL", reason="no risks")).to_dict()
+    metric = scorer.approval_metric(decision)
+    assert metric["name"] == "Plan approval (llm-simulated)"
+    assert metric["passed"] is False and metric["score"] == 0.5
+    assert metric["reason"] == "rejected: 2. FAIL - no risks"
+
+
+def test_approval_metric_lists_the_failing_criteria():
+    decision = plan_approval.PlanDecision(
+        plan_approval.SIMULATED, False, _judgement("PASS", "FAIL", reason="no risks")).to_dict()
+    metric = scorer.approval_metric(decision)
+    assert metric["name"] == "Plan approval (llm-simulated)"
+    assert metric["passed"] is False and metric["score"] == 0.5
+    assert "2. FAIL - no risks" in metric["reason"]
 
 
 def test_scoring_an_unreadable_run_is_a_setup_error(tmp_path):

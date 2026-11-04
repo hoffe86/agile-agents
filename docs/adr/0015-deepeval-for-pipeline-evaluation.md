@@ -235,6 +235,12 @@ earlier shell harness was deleted (#24) and the tasks sat as data only.
   approves (interactively, or the `eval-approval` environment in `eval-custom.yml`); phase 2
   resumes the same Copilot session. A run that delegates implementation before approval is
   scored failed.
+- **The plan gate can be simulated, for evaluation only.** `--approver llm` has the Azure
+  OpenAI judge grade the plan against a shared rubric (`plan-approval.md`) plus task-specific
+  `plan_approval:` criteria; it approves only if every criterion passes, and a rejection
+  fails the run. The record is labelled `llm-simulated` and is never treated as human
+  approval; dev-lead's own gate is unchanged. In CI the decision comes from a job that runs
+  no agent, so the agent cannot forge it.
 - **First live finding:** delegated sub-agents are not offered the `skill` tool on CLI 1.0.105,
   so per-agent skill expectations fail — the trajectory question this ADR set out to answer,
   now measured rather than anecdotal. See `eval/pipeline/custom-eval/README.md`.

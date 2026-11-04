@@ -68,6 +68,8 @@ class Expectations:
     criteria: tuple[Criterion, ...] = ()
     unverifiable: dict[int, str] = field(default_factory=dict)
     checks: tuple[Check, ...] = ()
+    # Task-specific criteria for the simulated plan approver, after the shared rubric.
+    plan_approval: tuple[str, ...] = ()
 
 
 def parse_acceptance(text: str) -> tuple[Criterion, ...]:
@@ -173,7 +175,7 @@ def from_mapping(data: object, task: str, criteria: tuple[Criterion, ...]) -> Ex
     if not isinstance(data, dict):
         raise ExpectationsError("expectations must be a mapping")
     known = {"schema", "root_agent", "plan_gate", "agents", "skills", "forbidden_skills",
-             "implementation_agents", "unverifiable", "checks"}
+             "implementation_agents", "unverifiable", "checks", "plan_approval"}
     unknown = sorted(set(data) - known)
     if unknown:
         raise ExpectationsError(f"unknown keys: {unknown}")
@@ -209,12 +211,16 @@ def from_mapping(data: object, task: str, criteria: tuple[Criterion, ...]) -> Ex
         if not isinstance(reason, str) or not reason.strip():
             raise ExpectationsError(f"unverifiable criterion {key} needs a reason")
         unverifiable[key] = reason.strip()
+    plan_approval = _names(data.get("plan_approval"), "plan_approval")
+    if plan_approval and gate != "required":
+        raise ExpectationsError("plan_approval criteria need plan_gate: required")
     return Expectations(
         task=task, root_agent=root, plan_gate=gate, agents=agents, skills=skills,
         forbidden_skills=forbidden,
         implementation_agents=None if impl is None else _names(impl, "implementation_agents"),
         criteria=criteria, unverifiable=unverifiable,
         checks=_checks(data.get("checks"), ids, unverifiable),
+        plan_approval=tuple(" ".join(c.split()) for c in plan_approval),
     )
 
 

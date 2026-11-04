@@ -69,6 +69,9 @@ python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --uns
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\dry --dry-run   # stage only
 # Re-run only the acceptance checks of a finished run, e.g. after installing a missing tool.
 python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --phase verify --unsandboxed
+# Simulated plan gate (eval-only): an LLM judges the plan, then phase 2 acts on its decision.
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --phase approve --approver llm
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --phase 2 --approve --approver llm --unsandboxed
 # Score one or more runs. --judge none leaves criteria without a passing check UNVERIFIED.
 python eval/pipeline/score_custom_eval.py $env:TEMP\ce\task-05 --judge azure-openai --output summary.json
 ```
@@ -84,7 +87,8 @@ In CI, run **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`
 | Job | Holds | Does |
 |---|---|---|
 | `plan` | Copilot token, read-only `GITHUB_TOKEN` | phase 1; writes the plan to the step summary (runs the checks only if dev-lead skipped the gate) |
-| `implement` | same | waits on the **`eval-approval`** environment — its required reviewers *are* the plan gate — then resumes with `--approve` and runs the checks |
+| `approve` | OIDC only; runs no agent | `approver: llm` only — the simulated approver judges the plan and outputs `approved` or `rejected` |
+| `implement` | same as `plan` | `approver: human` waits on the **`eval-approval`** environment — its required reviewers *are* the plan gate; `approver: llm` runs only on an `approved` decision. Then resumes with `--approve` and runs the checks |
 | `score` | OIDC (`id-token: write`) for the judge only | DeepEval + judge over the recorded files |
 
 The agent jobs install .NET 10 for the C# tasks and a pinned, checksum-verified `actionlint`
@@ -95,6 +99,30 @@ Repository setup: secret `EVAL_COPILOT_TOKEN` (a dedicated, low-privilege accoun
 unsandboxed agent can read its own environment), environment `eval-approval` with required
 reviewers, and for the Azure judge the variables `EVAL_AZURE_CLIENT_ID`,
 `EVAL_AZURE_TENANT_ID`, `EVAL_AZURE_OPENAI_ENDPOINT`, `EVAL_AZURE_OPENAI_DEPLOYMENT`.
+`approver: llm` needs those same four variables and no `eval-approval` reviewer.
+
+## Simulated plan approval (eval-only)
+
+dev-lead's Stage 4 plan approval is a quality gate, so an unattended run can have it judged
+rather than rubber-stamped. With `--approver llm`, the Azure OpenAI judge grades the plan
+against [`plan-approval.md`](plan-approval.md) — seven shared criteria (Definition of Done and
+scope, decomposition, coverage of the stated acceptance criteria, derived criteria shown
+separately, assumptions and risks, no scope expansion, approval asked before execution) plus
+any task-specific ones under `plan_approval:` in `expectations.yaml` (needs
+`plan_gate: required`). Each criterion is `PASS`, `FAIL` or `UNVERIFIED`; the plan is
+**approved only if every criterion passes**. The approver sees the requirement (`prompt.md`)
+and the plan message — what a human sees — never `acceptance.md`.
+
+The decision is written to `plan-approval.json`, labelled `llm-simulated`, and scored as its
+own metric, `Plan approval (llm-simulated)`. A rejection **ends the run** as **failed**
+(`plan_rejected`): there is no re-plan round. It is evidence about the plan, never a human
+approval — the harness's own gate is unchanged, and a human run (`--approver human`, the
+default) behaves exactly as before.
+
+Trust: the approve step holds the judge credentials but runs no agent. Phase 1 deletes any
+pre-existing `plan-approval.json`, and in CI `implement` is gated on the `approve` job's
+output — not on anything the agent can write — while `score` takes the record from the
+`approve` job's artifact.
 
 ## Trajectory expectations
 
@@ -185,7 +213,8 @@ See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptu
 - **blocked_approval** / **skipped** — mandatory human gate / dry run, not outcomes
 
 The scorer combines them: a skipped plan gate or any failing trajectory metric makes the run
-**failed** whatever the judge says; a pending or refused approval is **unverified**; otherwise
+**failed** whatever the judge says, as does a plan the simulated approver rejected; a pending
+or refused human approval is **unverified**; otherwise
 the acceptance verdict decides, after command checks have overridden the judge on the
 criteria they cover. Exit codes: 0 resolved, 1 failed, 2 partial, 3 unverified,
 4 setup error.

@@ -41,6 +41,10 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         inputs = self.wf["on"]["workflow_dispatch"]["inputs"]
         self.assertEqual(inputs["judge"]["default"], "none")
         self.assertEqual(inputs["judge"]["options"], ["none", "azure-openai"])
+        self.assertEqual(inputs["approver"]["default"], "human")
+        self.assertEqual(inputs["approver"]["options"], ["human", "llm"])
+        self.assertEqual(inputs["approver"]["default"], "human")
+        self.assertEqual(inputs["approver"]["options"], ["human", "llm"])
         self.assertTrue(re.fullmatch(r"task-\d{2}", inputs["task"]["default"]))
         self.assertIn("(( MAX_AI_CREDITS >= 30 && MAX_AI_CREDITS <= 2000 ))",
                       _steps(self.jobs["plan"])["Validate inputs"]["run"])
@@ -59,6 +63,21 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         login = _steps(score)["azure/login@eec3c95657c1536435858eda1f3ff5437fee8474"]
         self.assertEqual(login["if"], "${{ inputs.judge == 'azure-openai' }}")
 
+    def test_simulated_approver_holds_oidc_and_never_the_agent_token(self):
+        approve = self.jobs["approve"]
+        self.assertEqual(approve["permissions"], {"contents": "read", "id-token": "write"})
+        self.assertEqual(approve["needs"], "plan")
+        self.assertIn("inputs.approver == 'llm'", approve["if"])
+        self.assertIn("needs.plan.outputs.status == 'awaiting_approval'", approve["if"])
+        body = json.dumps(approve)
+        self.assertNotIn("EVAL_COPILOT_TOKEN", body)
+        self.assertNotIn("--unsandboxed", body, "the approver runs no agent")
+        self.assertNotIn("setup-dotnet", body)
+        decide = _steps(approve)["Simulated plan approval (LLM, eval-only)"]["run"]
+        self.assertIn("--phase approve", decide)
+        self.assertIn("--approver llm", decide)
+        self.assertIn('["approved"] is True else "rejected"', decide)
+
     def test_copilot_token_is_scoped_to_the_agent_steps(self):
         holders = [(job, step.get("name")) for job, body in self.jobs.items()
                    for step in body["steps"] if "EVAL_COPILOT_TOKEN" in json.dumps(step)]
@@ -67,14 +86,32 @@ class EvalCustomWorkflowTests(unittest.TestCase):
             ("implement", "Phase 2 - resume the same session with the recorded approval"),
         ])
 
-    def test_human_gate_is_an_environment_on_the_resume_job(self):
+    def test_plan_gate_is_the_human_environment_or_the_simulated_decision(self):
         implement = self.jobs["implement"]
-        self.assertEqual(implement["needs"], "plan")
-        self.assertEqual(implement["environment"], "eval-approval")
-        self.assertEqual(implement["if"], "${{ needs.plan.outputs.status == 'awaiting_approval' }}")
+        self.assertEqual(implement["needs"], ["plan", "approve"])
+        self.assertEqual(implement["environment"],
+                         "${{ inputs.approver == 'human' && 'eval-approval' || '' }}")
+        gate = " ".join(implement["if"].split())
+        self.assertIn("needs.plan.outputs.status == 'awaiting_approval'", gate)
+        self.assertIn("(inputs.approver == 'human' || needs.approve.outputs.decision == 'approved')",
+                      gate)
         phase2 = _steps(implement)["Phase 2 - resume the same session with the recorded approval"]
         self.assertIn("--phase 2", phase2["run"])
         self.assertIn("--approve", phase2["run"])
+        self.assertIn('--approver "$APPROVER"', phase2["run"])
+
+    def test_approval_summary_renders_judge_reasons_inert(self):
+        with tempfile.TemporaryDirectory() as run_dir:
+            Path(run_dir, "plan-approval.json").write_text(json.dumps({
+                "approver": "llm-simulated", "approved": False,
+                "judgement": {"criteria": [{"id": 1, "status": "FAIL", "reason": HOSTILE}]},
+            }), encoding="utf-8")
+            out = self.run_body("approve", "Write summary", {"RUN_DIR": run_dir})
+        self.assertIn("(llm-simulated, eval-only): rejected", out)
+        self.assertNotIn("](https://", out)
+        self.assertNotIn("<img", out)
+        row = [line for line in out.splitlines() if line.startswith("| 1 |")][0]
+        self.assertEqual(len(re.findall(r"(?<!\\)\|", row)), 4, row)
 
     def test_actions_are_pinned_and_checkouts_drop_credentials(self):
         for job in self.jobs.values():
@@ -113,7 +150,8 @@ class EvalCustomWorkflowTests(unittest.TestCase):
             Path(run_dir, "state.json").write_text(json.dumps({
                 "status": "awaiting_approval", "task": HOSTILE, "plan_message": HOSTILE + "\n````",
             }), encoding="utf-8")
-            out = self.run_body("plan", "Show the plan to the approver", {"RUN_DIR": run_dir})
+            out = self.run_body("plan", "Show the plan to the approver",
+                                {"RUN_DIR": run_dir, "APPROVER": "human"})
         self.assertIn("phase 1: awaiting_approval", out)
         self.assertNotIn("https://evil", out.split("`````text", 1)[0])
         self.assertIn("`````text\n" + HOSTILE + "\n````\n`````", out)
@@ -121,7 +159,8 @@ class EvalCustomWorkflowTests(unittest.TestCase):
     def test_plan_summary_rejects_unknown_status(self):
         with tempfile.TemporaryDirectory() as run_dir:
             Path(run_dir, "state.json").write_text(json.dumps({"status": HOSTILE}), "utf-8")
-            out = self.run_body("plan", "Show the plan to the approver", {"RUN_DIR": run_dir})
+            out = self.run_body("plan", "Show the plan to the approver",
+                                {"RUN_DIR": run_dir, "APPROVER": "human"})
         self.assertIn("phase 1: invalid state", out)
         self.assertNotIn("evil", out.split("plan message", 1)[0])
 

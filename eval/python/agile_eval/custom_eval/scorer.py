@@ -14,7 +14,8 @@ credentials.
 
 Exit codes follow acceptance-grading: 0 resolved / 1 failed / 2 partial /
 3 unverified (or approval still pending) / 4 setup or judge environment error.
-A trajectory failure or a skipped plan gate counts as failed.
+A trajectory failure, a skipped plan gate, or a plan the simulated approver rejected
+counts as failed.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from pathlib import Path
 
 from agile_eval._console import use_utf8_stdio
 from agile_eval.adapters.copilot_trace import parse_log_text, verify_schema
+from agile_eval.custom_eval import plan_approval
 from agile_eval.custom_eval.checks import CHECKS_FILE, apply_checks, evidence, load_results
 from agile_eval.custom_eval.expectations import ExpectationsError, load
 from agile_eval.custom_eval.judges import JUDGES, JudgeError, judge
@@ -46,11 +48,26 @@ def produced_diff(paths: Paths) -> str:
 def outcome(state_status: str, gate_ok: bool | None, trajectory_ok: bool, verdict: str) -> str:
     if state_status == "setup_error":
         return "setup_error"
+    if state_status == "plan_rejected":
+        return "failed"
     if state_status == "blocked_approval" or state_status == "awaiting_approval":
         return "unverified"
     if gate_ok is False or not trajectory_ok or verdict == "FAILED":
         return "failed"
     return {"RESOLVED": "resolved", "PARTIAL": "partial"}.get(verdict, "unverified")
+
+
+def approval_metric(decision: dict) -> dict:
+    """The simulated approver's decision, shaped like the DeepEval metric rows."""
+    criteria = (decision.get("judgement") or {}).get("criteria") or []
+    passed = sum(c.get("status") == "PASS" for c in criteria)
+    failing = "; ".join(f"{c.get('id')}. {c.get('status')} - {c.get('reason')}"
+                        for c in criteria if c.get("status") != "PASS")
+    return {"name": f"Plan approval ({decision['approver']})",
+            "score": round(passed / len(criteria), 3) if criteria else 0.0,
+            "passed": decision["approved"],
+            "reason": "approved: every criterion passed" if decision["approved"]
+            else f"rejected: {failing or 'no criteria recorded'}"}
 
 
 def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
@@ -72,6 +89,13 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
     if state["status"] in ("dry_run", "staged", "setup_error"):
         row["errors"].append(f"run status {state['status']} cannot be scored")
         return row
+    # In CI the approve job records the decision beside a state.json still awaiting it.
+    decision = plan_approval.read(run)
+    run_status = state["status"]
+    if decision is not None and not decision["approved"]:
+        run_status = "plan_rejected"
+    if decision is not None:
+        row["plan_approval"] = approval_metric(decision)
 
     phase1_text = paths.log(1).read_text(encoding="utf-8") if paths.log(1).exists() else ""
     phase2_text = paths.log(2).read_text(encoding="utf-8") if paths.log(2).exists() else ""
@@ -106,7 +130,7 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
     trajectory_ok = all(m.passed for m in trajectory)
     row.update(
         status="setup_error" if judgement.contract_errors else outcome(
-            state["status"], gate.passed, trajectory_ok, judgement.verdict),
+            run_status, gate.passed, trajectory_ok, judgement.verdict),
         plan_gate=gate.to_dict(),
         trajectory=[m.to_dict() for m in trajectory],
         acceptance=judgement.to_dict(),
@@ -158,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
             failing.insert(0, "plan_gate")
         if failing:
             line += f"  (trajectory: {', '.join(failing)})"
+        if r.get("plan_approval"):
+            line += f"  plan={'approved' if r['plan_approval']['passed'] else 'rejected'}"
         if r.get("acceptance"):
             line += f"  acceptance={r['acceptance']['verdict']}"
         if r.get("checks"):
