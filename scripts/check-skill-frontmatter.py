@@ -45,6 +45,7 @@ Usage:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import re
 import sys
 import tempfile
@@ -76,6 +77,15 @@ CORE_MODEL_TIERS = {
     "security-reviewer": "heavy",
     "test-reviewer": "heavy",
 }
+CORE_SKILLS = frozenset({
+    "acceptance-grading", "acquire-codebase-knowledge", "architecture-decision-records",
+    "artifact-coverage", "backlog-item-standards", "cloud-native-patterns",
+    "code-localisation", "code-review", "cost-budget", "data-engineering-practices",
+    "data-science-practices", "deploy-verify", "dev-lead-templates",
+    "development-practices", "engineering-judgement", "iac-best-practices",
+    "read-repo-context", "reviewer-read-only-rules", "run-event-log",
+    "solution-profile-interview", "test-bar-gate", "testing-practices",
+})
 NATIVE_AGENT_FIELDS = {
     "name", "description", "model", "tools", "agents", "argument-hint",
     "handoffs", "target", "infer", "user-invocable", "disable-model-invocation",
@@ -238,11 +248,9 @@ def inspect_profile(path: str) -> list[str]:
         label = f"cost_envelope.model_tiers.{tier}"
         if tier not in ("heavy", "mid", "light"):
             defects.append(f"invalid tier {tier!r}; expected heavy / mid / light")
-        if isinstance(models, str):
-            models = [models]  # Legacy single-string tier; no coercion of other types.
         if not isinstance(models, list) or not models or any(
                 not isinstance(model, str) or not model.strip() for model in models):
-            defects.append(f"`{label}` must be a nonempty model string or nonempty list of strings")
+            defects.append(f"`{label}` must be a nonempty list of model strings")
             continue
         for model in models:
             if model in seen:
@@ -301,12 +309,44 @@ def scan(repo_root: str):
                 yield "agent", label, path, ["missing core agent (ADR 0007 inventory)"]
 
 
+def inspect_catalog(repo_root: str) -> list[str]:
+    """Current distribution and local links; not a consumer capability registry."""
+    root = Path(repo_root)
+    plugins = root / "plugins"
+    defects = []
+    actual = {p.name for p in plugins.iterdir() if p.is_dir()}
+    if actual != {"agile-agents-core"}:
+        defects.append(f"plugin inventory: expected core only, got {sorted(actual)}")
+    core = plugins / "agile-agents-core"
+    skills = core / "skills"
+    actual = {p.name for p in skills.iterdir() if p.is_dir()} if skills.is_dir() else set()
+    if actual != CORE_SKILLS:
+        defects.append(f"skill inventory: missing {sorted(CORE_SKILLS - actual)}, "
+                       f"unexpected {sorted(actual - CORE_SKILLS)}")
+    for name in sorted(CORE_SKILLS & actual):
+        if not (skills / name / "SKILL.md").is_file():
+            defects.append(f"missing skill entry point: {name}")
+    for path in sorted(core.rglob("*.md")):
+        # Fenced templates contain illustrative paths, not Markdown links.
+        body = re.sub(r"(?ms)^(`{3,}|~{3,})[^\n]*\n.*?^\1[ \t]*$", "",
+                      path.read_text(encoding="utf-8"))
+        for link in re.findall(r"\]\(([^ )]+)(?: \"[^\"]*\")?\)", body):
+            target = link.split("#", 1)[0]
+            if not target or re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", target):
+                continue
+            if not (path.parent / target).is_file():
+                defects.append(f"dangling local link: {path.relative_to(root)} -> {link}")
+    return defects
+
+
 def run(repo_root: str) -> int:
     total, failures = 0, []
     for kind, label, path, defects in scan(repo_root):
         total += 1
         for defect in defects:
             failures.append((kind, label, path, defect))
+    for defect in inspect_catalog(repo_root):
+        failures.append(("catalog", "distribution", os.path.join(repo_root, "plugins"), defect))
 
     if failures:
         print("Frontmatter check failed:\n")

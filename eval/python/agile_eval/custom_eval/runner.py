@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -71,6 +72,11 @@ class Paths:
     def copilot_home(self) -> Path:
         return self.run / ".copilot-home"
 
+    @property
+    def home(self) -> Path:
+        # CI and report readers already exclude this runtime-state tree.
+        return self.copilot_home / "home"
+
     def log(self, phase: int) -> Path:
         return self.run / f"phase{phase}.jsonl"
 
@@ -100,11 +106,11 @@ def resolve_task(tasks_root: Path, name: str) -> Path:
 
 
 def plugin_dirs(root: Path) -> list[Path]:
-    dirs = sorted(p for p in (root / "plugins").glob("agile-agents-*")
-                  if (p / ".github" / "plugin" / "plugin.json").is_file())
-    if not dirs:
-        raise SetupError("no plugins found under plugins/")
-    return dirs
+    """Only core is the harness; sibling or installed plugins are never fallback inputs."""
+    core = root / "plugins" / "agile-agents-core"
+    if not (core / ".github/plugin/plugin.json").is_file():
+        raise SetupError("core plugin missing; no plugin fallback")
+    return [core]
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -118,19 +124,47 @@ def stage(task_dir: Path, paths: Paths) -> str:
     """Copy declared inputs and the task profile into a fresh git repo; return baseline."""
     if paths.run.exists() and any(paths.run.iterdir()):
         raise SetupError("run directory is not empty; choose a fresh --out")
-    manifest = json.loads((task_dir / "inputs.json").read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads((task_dir / "inputs.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise SetupError("no readable inputs.json") from None
+    if (not isinstance(manifest, dict) or type(manifest.get("version")) is not int
+            or manifest["version"] != 1 or not isinstance(manifest.get("inputs"), list)
+            or set(manifest) - {"version", "provenance", "inputs"}):
+        raise SetupError("inputs.json requires version 1 and an inputs list; unknown fields forbidden")
     ws = paths.workspace
     ws.mkdir(parents=True)
     task_root = task_dir.resolve()
-    for item in manifest.get("inputs", []):
-        src = (task_dir / item["source"]).resolve()
+    for item in manifest["inputs"]:
+        if not isinstance(item, dict) or not all(
+                isinstance(item.get(key), str) and item[key] for key in ("source", "destination")
+        ) or set(item) - {"source", "destination", "required"}:
+            raise SetupError("input requires source and destination")
+        declared_src = task_dir / item["source"]
+        src = declared_src.resolve()
         dest = (ws / item["destination"]).resolve()
-        if task_root not in src.parents or ws.resolve() not in dest.parents:
+        if (Path(item["source"]).is_absolute() or Path(item["destination"]).is_absolute()
+                or task_root not in src.parents or ws.resolve() not in dest.parents):
             raise SetupError("inputs.json path escapes the task or workspace")
+        if (any(p.is_symlink() for p in (declared_src, *declared_src.parents)
+                if p != task_dir and task_dir in p.parents)
+                or any(p.is_symlink() for p in src.rglob("*"))):
+            raise SetupError("input symlinks are not allowed")
+        relative = dest.relative_to(ws.resolve())
+        targets = [relative]
+        if src.is_dir():
+            targets += [relative / p.relative_to(src) for p in src.rglob("*")]
+        if any(part in {".git", ".copilot", ".claude", "plugins", "agents"}
+               for target in targets for part in target.parts):
+            raise SetupError("inputs cannot inject plugins, agents or runtime configuration")
+        if Path(".github/solution-profile.yaml") in targets:
+            raise SetupError("the task profile is staged separately")
         if not src.exists():
             if item.get("required", True):
                 raise SetupError(f"required input missing: {item['source']}")
             continue
+        if dest.exists():
+            raise SetupError(f"duplicate input destination: {item['destination']}")
         dest.parent.mkdir(parents=True, exist_ok=True)
         if src.is_dir():
             shutil.copytree(src, dest)
@@ -178,6 +212,8 @@ def copilot_command(copilot: str, prompt: str, session_id: str, max_credits: int
         "-p", prompt, "--output-format", "json", "--allow-all-tools",
         "--session-id", session_id, "--no-ask-user",
         "--max-ai-credits", str(max_credits), "--no-auto-update",
+        "--sync-session=off",
+        "--secret-env-vars", "COPILOT_GITHUB_TOKEN,GH_TOKEN,GITHUB_TOKEN",
     ]
 
 
@@ -185,8 +221,27 @@ def run_phase(cmd: list[str], paths: Paths, phase: int, timeout: int) -> int:
     token = os.environ.get("COPILOT_GITHUB_TOKEN", "").strip()
     if not token:
         raise SetupError("COPILOT_GITHUB_TOKEN is not set")
+    paths.home.mkdir(parents=True, exist_ok=True)
+    allowed = ("PATH", "SystemRoot", "WINDIR", "TMPDIR", "TEMP", "TMP",
+               "COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN",
+               "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE")
+    env = {key: os.environ[key] for key in allowed if key in os.environ}
+    home = paths.home.resolve()
+    env.update(HOME=str(home), USERPROFILE=str(home),
+               COPILOT_HOME=str(paths.copilot_home.resolve()),
+               XDG_CONFIG_HOME=str(home / ".config"), XDG_CACHE_HOME=str(home / ".cache"),
+               XDG_STATE_HOME=str(home / ".state"), COPILOT_AUTO_UPDATE="false")
+    try:
+        help_result = subprocess.run(
+            [cmd[0], "--no-auto-update", "--help"], cwd=paths.workspace, env=env,
+            capture_output=True, text=True, timeout=20, check=True)
+        flags = set(re.findall(r"--[a-z][a-z-]*", help_result.stdout))
+        if not {"--sync-session", "--secret-env-vars"} <= flags:
+            raise SetupError("CLI must support --sync-session and --secret-env-vars")
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise SetupError(f"cannot verify CLI history-sync opt-out: {exc}") from None
     paths.copilot_home.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, COPILOT_HOME=str(paths.copilot_home), COPILOT_AUTO_UPDATE="false")
+    (paths.run / f"phase{phase}-cli-help.txt").write_text(help_result.stdout, encoding="utf-8")
     with paths.log(phase).open("w", encoding="utf-8", newline="\n") as out:
         try:
             proc = subprocess.run(cmd, cwd=paths.workspace, env=env, stdout=out,

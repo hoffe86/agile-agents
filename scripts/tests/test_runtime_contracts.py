@@ -1,7 +1,8 @@
 """Offline regressions for runtime gates and their instruction contracts."""
 
 import importlib.util
-from contextlib import closing
+from contextlib import closing, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -226,6 +228,10 @@ class ProfileRunnerTests(unittest.TestCase):
     def run_gate(self, runner, cwd, path=None):
         flag = "-ProfilePath" if runner[0] == "pwsh" else "--profile"
         command = runner + ([flag, path] if path else [])
+        status_flags = (["-SmokeStatus", "not_applicable", "-SmokeDetail", "Library fixture"]
+                        if runner[0] == "pwsh" else
+                        ["--smoke-status", "not_applicable", "--smoke-detail", "Library fixture"])
+        command += status_flags
         env = os.environ.copy()
         env.pop("COPILOT_EVENT_LOG", None)
         result = subprocess.run(command, cwd=cwd, env=env, capture_output=True,
@@ -248,6 +254,9 @@ class ProfileRunnerTests(unittest.TestCase):
                 self.assertEqual(code, 2, output)
                 root_profile.write_text(json.dumps(runnable), encoding="utf-8")
                 code, output = self.run_gate(runner, cwd)
+                self.assertEqual(code, 2, output)
+                canonical.write_text(json.dumps(runnable), encoding="utf-8")
+                code, output = self.run_gate(runner, cwd)
                 self.assertEqual(code, 0, output)
                 self.assertIn('"check":"lint"', output.replace(" ", ""))
                 self.assertNotIn("no_stack_match", output)
@@ -258,7 +267,7 @@ class ProfileRunnerTests(unittest.TestCase):
                 self.assertIn("disabled_by_profile", output)
                 code, output = self.run_gate(runner, cwd, "solution-profile.yaml")
                 self.assertEqual(code, 0, output)
-                self.assertNotIn("disabled_by_profile", output)
+                self.assertNotIn('"check":"resolve"', output.replace(" ", ""))
                 code, output = self.run_gate(runner, cwd, "missing.yaml")
                 self.assertEqual(code, 2, output)
 
@@ -270,8 +279,8 @@ class ProfileRunnerTests(unittest.TestCase):
                 canonical.write_text("tech_stack: {primary_languages: [unsupported]}",
                                      encoding="utf-8")
                 code, output = self.run_gate(runner, cwd)
-                self.assertEqual(code, 0, output)
-                self.assertIn("no_stack_match", output)
+                self.assertEqual(code, 2, output)
+                self.assertIn("configuration_gap", output)
 
 
 # Independent oracle: never derive expected names from the contracts under test.
@@ -849,8 +858,11 @@ RECIPE_CONTENT = {
     9: ("SELECT ac_id, text, covered_by, evidence, status FROM requirement_acs",
         "WHERE status = 'uncovered'", "every** criterion", "previously covered rows",
         "backlog.branch_naming", "backlog.commit_convention", "required_commit_trailers",
-        "identity.repo_url", "az repos pr create", "gh pr create",
-        "backlog.pr_link_pattern", "pr-description", "release-notes"),
+        "identity.repo_url", "actually available, applicable solution",
+        "manual publication", "Never guess a CLI",
+        "backlog.pr_link_pattern", "PR body:", "Release notes:",
+        "explicit base/head ref range", "Opening a PR requires explicit approval",
+        "Risk and rollback", "Breaking changes", "failures/skips", "not measured"),
 }
 
 
@@ -1247,7 +1259,7 @@ def boundary_contract_errors(files):
     """Scoped instruction regressions, not a simulation of model obedience."""
     errors = []
     prose = {name: " ".join(text.split()) for name, text in files.items()}
-    trade = prose["trade-off-reporting"]
+    trade = prose["engineering-judgement"]
     for recipe in ("promote to an ADR", "→ write an ADR", "Recommend creating ADR-0001",
                    "Long reasoning belongs in an ADR"):
         if recipe in trade:
@@ -1297,10 +1309,12 @@ def boundary_contract_errors(files):
                      "independent `architecture-reviewer`"):
         if required not in prose["security-reviewer"]:
             errors.append("security analysis missing " + required)
-    for reference in ("language-patterns", "vuln-categories", "secret-patterns",
-                      "vulnerable-packages"):
-        if "../skills/security-review/references/" + reference + ".md" not in files["security-reviewer"]:
-            errors.append("security reference missing " + reference)
+    for requirement in ("actual versions", "authoritative advisories/documentation",
+                        "Missing optional guidance never skips this check",
+                        "report inaccessible evidence", "actual capability",
+                        "read-only compatibility"):
+        if requirement not in prose["security-reviewer"]:
+            errors.append("security evidence missing " + requirement)
 
     lead = files["review-lead"]
     for lens in ("code-reviewer", "security-reviewer"):
@@ -1340,7 +1354,7 @@ class InstructionBoundaryTests(unittest.TestCase):
             name: (CORE / "agents" / (name + ".agent.md")).read_text(encoding="utf-8")
             for name in ("dev-lead", "review-lead", "architecture-reviewer", "security-reviewer")
         }
-        for name in ("trade-off-reporting", "architecture-decision-records"):
+        for name in ("engineering-judgement", "architecture-decision-records"):
             self.files[name] = (CORE / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
 
     def assert_mutation_detected(self, name, old, new, expected):
@@ -1358,7 +1372,7 @@ class InstructionBoundaryTests(unittest.TestCase):
             ("security-reviewer", "across files"),
             ("security-reviewer", "entry points to sinks"),
             ("architecture-reviewer", "Source context"),
-            ("trade-off-reporting", "explicit human request"),
+            ("engineering-judgement", "explicit human request"),
             ("dev-lead", "owns mandatory secret scanning"),
             ("security-reviewer", "otherwise sweep the diff yourself with `search`"),
         ):
@@ -1377,12 +1391,12 @@ class InstructionBoundaryTests(unittest.TestCase):
         ):
             with self.subTest(recipe=recipe):
                 changed = dict(self.files)
-                changed["trade-off-reporting"] += "\n" + recipe
+                changed["engineering-judgement"] += "\n" + recipe
                 self.assertIn("unsolicited ADR recipe", boundary_contract_errors(changed))
 
     def test_explicit_human_adr_request_remains_supported(self):
         self.assert_mutation_detected(
-            "trade-off-reporting", "explicit human request", "autonomous decision",
+            "engineering-judgement", "explicit human request", "autonomous decision",
             "ADR boundary missing explicit human request")
         self.assert_mutation_detected(
             "architecture-decision-records", "only when the user explicitly asks", "automatically",
@@ -1470,142 +1484,48 @@ class InstructionBoundaryTests(unittest.TestCase):
                     "| **Almost always** | `" + lens + "`",
                     "unconditional dispatch missing " + lens)
 
-    def test_security_reference_data_paths_resolve(self):
-        links = re.findall(r"\]\((\.\./skills/security-review/references/[^)]+)\)",
-                           self.files["security-reviewer"])
-        self.assertEqual(len(links), 4)
-        for link in links:
-            with self.subTest(link=link):
-                self.assertTrue((CORE / "agents" / link).is_file(), link)
+    def test_security_evidence_cannot_depend_on_a_retired_watchlist(self):
+        self.assertNotIn("../skills/security-review/", self.files["security-reviewer"])
+        for marker in ("actual versions", "authoritative advisories/documentation",
+                       "Missing optional guidance never skips this check",
+                       "report inaccessible evidence", "actual capability",
+                       "read-only compatibility"):
+            with self.subTest(marker=marker):
+                self.assert_mutation_detected(
+                    "security-reviewer", marker, "removed",
+                    "security evidence missing " + marker)
 
 
 def cloud_contract_errors(files):
-    """Bounded cloud-routing text contracts; these do not execute an agent."""
+    """Neutral IaC owner and provider applicability contracts."""
     errors = []
-    sections = {
-        "infrastructure": ("## Routing", "## Skills you compose with"),
-        "bootstrapper": ("## Deriving the plugin set", "## Approval gate"),
-        "terraform": ("## Applicability", "## 1."),
-        "iac": ("## 1. Naming", "## 2."),
-        "coverage": ("## 2. Establish the supply", "## 3."),
-        "matrix": ("**Azure applicability gate:", "### The IaC-test gap"),
-        "helm": ("## 8. What you do NOT do", ""),
-    }
-    # Complete clauses, not keyword bags: AND must not become OR and an Azure
-    # subset must not turn into permission for every provider. These are written
-    # contracts; no cloud/availability input is evaluated as a routing model.
-    guards = {
-        "infrastructure": "Azure-only skills require both an **installed** capability and "
-                          "`infrastructure.cloud: azure`.",
-        "bootstrapper": "An Azure-only route requires an **installed** capability as well as "
-                        "this applicability — a recommendation is not availability.",
-        "terraform": "This Azure-only skill requires an **installed** capability and "
-                     "`infrastructure.cloud: azure`.",
-        "iac": "load **`azure-platform-grounding`** only when **installed** and "
-               "`infrastructure.cloud: azure`.",
-        "coverage": "Azure-only depth requires an **installed** capability and "
-                    "`infrastructure.cloud: azure`.",
-        "matrix": "Azure-only cells require an **installed** capability and "
-                  "`infrastructure.cloud: azure`.",
-        "helm": "Azure-only depth requires both an installed capability and "
-                "`infrastructure.cloud: azure` (or an explicitly evidenced, documented "
-                "Azure resource subset of a multi-cloud/hybrid target)",
-    }
-    scopes = {
-        "infrastructure": "apply Azure guidance only to that subset.",
-        "bootstrapper": "Recommend Azure-only depth only for that subset.",
-        "terraform": "Apply this skill only to that subset, never the other providers in the repo.",
-        "iac": "Apply Azure guidance only to that subset.",
-        "coverage": "Count coverage only for that subset.",
-        "matrix": "Count Azure-only coverage only for that subset.",
-        "helm": "Apply Azure guidance only to that subset and document that scope in the hand-off.",
-    }
-    for name, (start, end) in sections.items():
-        section = " ".join(files[name].split()).partition(start)[2]
-        text = section.partition(end)[0] if end else section
-        for marker in ("installed", "infrastructure.cloud: azure", "hybrid alone",
-                       "Azure resource subset", "document that scope",
-                       "repo/provider conventions", "hand-off"):
-            if marker.casefold() not in text.casefold():
-                errors.append(name + " missing " + marker)
-        if guards[name] not in text:
-            errors.append(name + " weakened Azure guard")
-        if scopes[name] not in text:
-            errors.append(name + " widened Azure scope")
-        if (name == "bootstrapper"
-                and "recommend Azure-only depth for `infrastructure.cloud: azure`." not in text):
-            errors.append(name + " weakened Azure guard")
-
-    routing = files["infrastructure"].partition("## Routing")[2].partition(
-        "## Skills you compose with")[0]
-    for skill in ("bicep-implementation", "terraform-azure-implementation",
-                  "import-infrastructure-as-code", "azure-deployment-preflight"):
-        rows = [line for line in routing.splitlines()
-                if line.startswith("|") and "`" + skill + "`" in line]
-        if (len(rows) != 1 or "only when installed and the Azure applicability gate above "
-                "is satisfied" not in " ".join(rows[0].split())):
-            errors.append("ungated route " + skill)
-
-    for skill in ("terraform-azure-implementation", "import-infrastructure-as-code"):
-        cell = ("`" + skill + "` — Azure-only, subject to the applicability gate below")
-        if cell not in " ".join(files["matrix"].split()):
-            errors.append("ungated coverage " + skill)
-
-    bootstrap = files["bootstrapper"]
-    if "| `infrastructure.iac_tool` | `terraform` |" in bootstrap:
-        errors.append("provider-blind Terraform recommendation")
-    for marker in ("specific provider-relevant capability", "not availability",
-                   "Do not count generic import support as non-Azure implementation coverage"):
-        if marker not in " ".join(bootstrap.split()):
-            errors.append("bootstrap missing " + marker)
-
-    description = files["terraform"].split("---", 2)[1]
-    if ("Azure-targeted Terraform" not in description
-            or "DO NOT USE for generic `.tf` files or non-Azure Terraform" not in description
-            or "USE FOR any request" in description
-            or 'Triggered by "Terraform"' in description):
-        errors.append("overbroad Terraform description")
-    if "Azure state backend alone does not establish" not in " ".join(files["terraform"].split()):
-        errors.append("backend mistaken for resource provider")
-
     iac = " ".join(files["iac"].split())
     naming = iac.partition("## 1. Naming")[2].partition("## 2.")[0].strip()
-    if "`azure-platform-grounding`" not in naming or "azure-platform-conventions" in iac:
-        errors.append("missing correct platform reference")
+    if "Select provider guidance only with both actual availability and applicability." not in naming:
+        errors.append("missing capability-based platform selection")
     if (not naming.startswith("`infrastructure.naming_convention` takes precedence")
-            or "**Azure-only default:**" not in naming
-            or "Non-Azure targets use repo/provider conventions, not CAF." not in naming
+            or "No provider naming default is supplied here." not in naming
+            or "**Azure-only default:**" in naming
             or "Use the **Microsoft Cloud Adoption Framework abbreviations**" in naming):
         errors.append("generic CAF naming")
-    for marker in ("declared platform's secrets store", "Preserve the repo's selected backend",
+    for marker in ("both actual availability and applicability", "affected resource subset",
+                   "document that scope", "apply guidance only there",
+                   "Clarify missing/conflicting declarations",
+                   "Tool syntax or a state backend does not identify the resource provider",
+                   "repo/provider conventions", "hand-off"):
+        if marker not in naming:
+            errors.append("iac missing " + marker)
+    for marker in ("declared platform's secrets store", "Preserve the selected backend",
                    "tool/provider's preview"):
         if marker not in iac:
             errors.append("platform assumption missing guard " + marker)
-    helm = " ".join(files["helm"].partition("## 1.")[2].partition("## 2.")[0].split())
-    if ("route to `infrastructure` through the guarded route in §8" not in helm
-            or "`azure-kubernetes`" in helm or "`azure-aks`" in helm):
-        errors.append("unguarded early cluster route")
-    cluster_route = " ".join(files["helm"].partition("## 8.")[2].split())
-    if "route to `infrastructure` using the declared cloud and installed capabilities." not in cluster_route:
-        errors.append("cluster route missing installed")
     return errors
 
 
 class CloudInstructionTests(unittest.TestCase):
     def setUp(self):
-        self.files = {
-            name: (CORE / "agents" / (name + ".agent.md")).read_text(encoding="utf-8")
-            for name in ("infrastructure", "bootstrapper")
-        }
-        for key, name in (("iac", "iac-best-practices"), ("coverage", "artifact-coverage"),
-                          ("helm", "helm-kustomize-implementation")):
-            self.files[key] = (CORE / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
-        self.files["matrix"] = (
-            CORE / "skills/artifact-coverage/references/coverage-matrix.md"
-        ).read_text(encoding="utf-8")
-        self.files["terraform"] = (
-            ROOT / "plugins/agile-agents-terraform/skills/terraform-azure-implementation/SKILL.md"
-        ).read_text(encoding="utf-8")
+        self.files = {"iac": (CORE / "skills/iac-best-practices/SKILL.md").read_text(
+            encoding="utf-8")}
 
     def assert_mutation_detected(self, name, old, new, expected):
         changed = dict(self.files)
@@ -1618,91 +1538,23 @@ class CloudInstructionTests(unittest.TestCase):
         self.assertEqual(cloud_contract_errors(self.files), [])
 
     def test_installed_and_cloud_conjunction_cannot_become_disjunction(self):
-        for name, old, new in (
-            ("infrastructure",
-             "both an **installed** capability and `infrastructure.cloud: azure`",
-             "either an **installed** capability or `infrastructure.cloud: azure`"),
-            ("bootstrapper",
-             "an **installed** capability as well as this applicability",
-             "an **installed** capability or this applicability"),
-            ("terraform",
-             "an **installed** capability and `infrastructure.cloud: azure`",
-             "an **installed** capability or `infrastructure.cloud: azure`"),
-            ("iac",
-             "only when **installed** and `infrastructure.cloud: azure`",
-             "when **installed** or `infrastructure.cloud: azure`"),
-            ("coverage",
-             "an **installed** capability and `infrastructure.cloud: azure`",
-             "an **installed** capability or `infrastructure.cloud: azure`"),
-            ("matrix",
-             "an **installed** capability and `infrastructure.cloud: azure`",
-             "an **installed** capability or `infrastructure.cloud: azure`"),
-            ("helm",
-             "both an installed capability and `infrastructure.cloud: azure`",
-             "either an installed capability or `infrastructure.cloud: azure`"),
-        ):
-            with self.subTest(name=name):
-                self.assert_mutation_detected(name, old, new, name + " weakened Azure guard")
-
-    def test_azure_subset_scope_cannot_expand_to_other_providers(self):
-        for name, old, new in (
-            ("infrastructure", "apply Azure guidance only to that subset",
-             "apply Azure guidance to all providers in repository"),
-            ("bootstrapper", "Recommend Azure-only depth only for that subset",
-             "Recommend Azure-only depth for all providers in repository"),
-            ("terraform", "Apply this skill only to that subset, never the other providers in the repo",
-             "Apply this skill to all providers in repository"),
-            ("iac", "Apply Azure guidance only to that subset",
-             "Apply Azure guidance to all providers in repository"),
-            ("coverage", "Count coverage only for that subset",
-             "Count coverage for all providers in repository"),
-            ("matrix", "Count Azure-only coverage only for that subset",
-             "Count Azure-only coverage for all providers in repository"),
-            ("helm", "Apply Azure guidance only to that subset",
-             "Apply Azure guidance to all providers in repository"),
-        ):
-            with self.subTest(name=name):
-                self.assert_mutation_detected(name, old, new, name + " widened Azure scope")
-
-    def test_helm_early_entrypoint_defers_to_guarded_route(self):
         self.assert_mutation_detected(
-            "helm", "route to `infrastructure` through the guarded route in §8",
-            "use the **`azure-kubernetes`** plugin skill or **`azure-aks`** MCP tool",
-            "unguarded early cluster route")
+            "iac", "both actual availability and applicability",
+            "either availability or applicability", "missing capability-based platform selection")
+
+    def test_subset_scope_cannot_expand_to_other_providers(self):
+        self.assert_mutation_detected(
+            "iac", "apply guidance only there", "apply guidance everywhere",
+            "iac missing apply guidance only there")
 
     def test_written_fallback_obligations_on_each_cloud_surface(self):
-        # Prose assertions only, not a matrix of executed cloud/availability inputs.
+        # Solution recipes are not shipped; the retained neutral owner is canonical.
         obligations = {
-            "infrastructure": (
-                "**If no installed skill matches the declared cloud and tool**",
-                "Non-Azure Terraform uses this fallback, not the Azure implementation skill.",
-                "Missing or conflicting cloud declarations need clarification",
-            ),
-            "bootstrapper": (
-                "If no installed skill matches, agents use repo/provider conventions",
-                "Missing or conflicting cloud declarations need clarification",
-            ),
-            "terraform": (
-                "An unavailable skill also takes that fallback",
-                "If this gate is not met, do not apply AVM/CAF/Azure tooling",
-                "use repo/provider conventions", "provider's own documentation",
-                "Missing or conflicting cloud declarations need clarification",
-                "hybrid alone is not Azure evidence", "Apply this skill only to that subset",
-            ),
             "iac": (
-                "If the skill is unavailable, use the declared provider's documentation",
-                "Non-Azure targets use repo/provider conventions, not CAF.",
-                "Missing or conflicting cloud declarations need clarification",
+                "Without matching guidance, use repo/provider conventions and authoritative docs",
+                "report that fallback in the hand-off",
+                "Clarify missing/conflicting declarations",
             ),
-            "coverage": (
-                "otherwise report a gap and repo/provider conventions",
-                "Missing cloud declarations need clarification, not an Azure assumption.",
-            ),
-            "matrix": (
-                "Non-Azure Terraform implementation is a **gap**, not covered by the Azure skill",
-                "use repo/provider conventions and provider documentation",
-            ),
-            "helm": ("Without a matching skill, use repo/provider conventions",),
         }
         for name, clauses in obligations.items():
             for clause in clauses:
@@ -1723,70 +1575,34 @@ class CloudInstructionTests(unittest.TestCase):
                 self.assertEqual(cloud_contract_errors(changed), [])
 
     def test_cloud_and_installation_guards_cannot_be_removed(self):
-        for name in ("infrastructure", "bootstrapper", "terraform", "iac", "coverage", "matrix", "helm"):
-            for marker in ("installed", "infrastructure.cloud: azure"):
-                with self.subTest(name=name, marker=marker):
-                    self.assert_mutation_detected(
-                        name, marker, "removed", name + " missing " + marker)
+        for marker in ("both actual availability and applicability",
+                       "Clarify missing/conflicting declarations"):
+            self.assert_mutation_detected("iac", marker, "removed", "iac missing " + marker)
 
     def test_hybrid_requires_evidence_and_documented_scope(self):
-        for name in ("infrastructure", "bootstrapper", "terraform", "iac", "coverage", "matrix", "helm"):
-            for marker in ("Azure resource subset", "document that scope"):
-                with self.subTest(name=name, marker=marker):
-                    self.assert_mutation_detected(
-                        name, marker, "removed", name + " missing " + marker)
+        for marker in ("affected resource subset", "document that scope"):
+            self.assert_mutation_detected("iac", marker, "removed", "iac missing " + marker)
 
-    def test_azure_routes_cannot_be_ungated_even_with_global_warning(self):
-        for skill in ("bicep-implementation", "terraform-azure-implementation",
-                      "import-infrastructure-as-code", "azure-deployment-preflight"):
-            row = next(line for line in self.files["infrastructure"].splitlines()
-                       if line.startswith("|") and "`" + skill + "`" in line)
-            with self.subTest(skill=skill):
-                self.assert_mutation_detected(
-                    "infrastructure", row, row.split(" | ")[0] + " | **`" + skill + "`** |",
-                    "ungated route " + skill)
-                self.assert_mutation_detected(
-                    "infrastructure", row, row.replace("installed and", "installed or"),
-                    "ungated route " + skill)
-        for skill in ("terraform-azure-implementation", "import-infrastructure-as-code"):
-            with self.subTest(coverage=skill):
-                self.assert_mutation_detected(
-                    "matrix",
-                    "`" + skill + "` — Azure-only, subject to the applicability gate below",
-                    "`" + skill + "` — covers all providers without the applicability gate",
-                    "ungated coverage " + skill)
+    def test_backend_is_not_resource_provider_evidence(self):
+        self.assert_mutation_detected(
+            "iac", "Tool syntax or a state backend does not identify the resource provider",
+            "Tool syntax or a state backend identifies the resource provider",
+            "iac missing Tool syntax or a state backend does not identify the resource provider")
 
-    def test_broad_terraform_triggers_and_recommendations_are_rejected(self):
+    def test_platform_selection_requires_available_capability(self):
         self.assert_mutation_detected(
-            "terraform", "USE FOR writing, modifying or migrating Terraform for a declared Azure target",
-            "USE FOR any request to write, add, modify, or refactor `.tf` files",
-            "overbroad Terraform description")
-        self.assert_mutation_detected(
-            "bootstrapper", "| `infrastructure.iac_tool` + provider needs |",
-            "| `infrastructure.iac_tool` | `terraform` |",
-            "provider-blind Terraform recommendation")
-        self.assert_mutation_detected(
-            "terraform", "Azure state backend alone does not establish",
-            "Azure state backend establishes", "backend mistaken for resource provider")
-
-    def test_correct_platform_reference_is_required_and_resolves(self):
-        for replacement in ("azure-platform-conventions", "removed"):
-            with self.subTest(replacement=replacement):
-                self.assert_mutation_detected(
-                    "iac", "azure-platform-grounding", replacement,
-                    "missing correct platform reference")
-        self.assertTrue((
-            ROOT / "plugins/agile-agents-azure/skills/azure-platform-grounding/SKILL.md"
-        ).is_file())
+            "iac", "Select provider guidance only with both actual availability and applicability.",
+            "load a historical platform skill by name",
+            "missing capability-based platform selection")
 
     def test_generic_caf_and_provider_defaults_are_rejected(self):
         self.assert_mutation_detected(
-            "iac", "**Azure-only default:**",
+            "iac", "No provider naming default is supplied here.",
             "Use the **Microsoft Cloud Adoption Framework abbreviations**",
             "generic CAF naming")
         for marker, legacy in (
             ("declared platform's secrets store", "Key Vault"),
-            ("Preserve the repo's selected backend", "Backend in azurerm"),
+            ("Preserve the selected backend", "Backend in azurerm"),
             ("tool/provider's preview", "Azure preview"),
         ):
             with self.subTest(marker=marker):
@@ -1794,18 +1610,9 @@ class CloudInstructionTests(unittest.TestCase):
                     "iac", marker, legacy, "platform assumption missing guard " + marker)
 
     def test_provider_fallback_and_generic_import_remain_explicit(self):
-        for name in ("infrastructure", "bootstrapper", "terraform", "iac", "coverage", "matrix", "helm"):
-            with self.subTest(name=name):
-                self.assert_mutation_detected(
-                    name, "repo/provider conventions", "Azure conventions",
-                    name + " missing repo/provider conventions")
-        marker = "Do not count generic import support as non-Azure implementation coverage"
         self.assert_mutation_detected(
-            "bootstrapper", marker, "Generic imports cover all providers",
-            "bootstrap missing " + marker)
-        self.assert_mutation_detected(
-            "helm", "installed capabilities", "Azure capabilities",
-            "cluster route missing installed")
+            "iac", "repo/provider conventions", "Azure conventions",
+            "iac missing repo/provider conventions")
 
 
 def testing_contract_errors(files):
@@ -1813,14 +1620,14 @@ def testing_contract_errors(files):
     errors = []
     text = {name: " ".join(body.replace("`", "").split())
             for name, body in files.items()}
-    for name in ("csharp", "python", "polyglot"):
+    for name in ("practices",):
         for marker in ("invoking coding author", "may fix production logic",
                        "never weaken assertions", "Existing tests modified",
                        "what the old assertion claimed", "why it was invalid"):
             if marker not in text[name]:
                 errors.append(name + " missing " + marker)
 
-    for name in ("csharp", "python", "polyglot", "prompt"):
+    for name in ("practices",):
         body = text[name]
         if re.search(r"Don't (?:change|modify) production code|push back to coding", body):
             errors.append(name + " split ownership")
@@ -1829,7 +1636,7 @@ def testing_contract_errors(files):
         if re.search(r"adjust (?:test expectations|expected(?: values)? to pass)", body, re.I):
             errors.append(name + " unsafe expectation repair")
 
-    for name in ("polyglot", "prompt"):
+    for name in ("practices",):
         body = text[name]
         if re.search(
                 r"\b(?:invoke|call|delegate to) (?:the )?(?:polyglot-test-agent|testing-practices)\b",
@@ -1842,8 +1649,8 @@ def testing_contract_errors(files):
         for marker in (".testagent", "80%", "VS Code", "multi-agent pipeline"):
             if marker in body:
                 errors.append(name + " stale " + marker)
-        if "testing-practices" not in body:
-            errors.append(name + " missing shared practices")
+        if "read-repo-context" not in body:
+            errors.append(name + " missing context discovery")
 
     for marker in ("current author", "Do not self-delegate", "Do not re-enter",
                    "installed", "repo conventions", "test manifests", "CI",
@@ -1851,14 +1658,12 @@ def testing_contract_errors(files):
                    "targeted tests", "full suite", "lint", "format",
                    "tech_stack.coverage_threshold", "not measured",
                    "IMPLEMENTATION COMPLETE"):
-        if marker not in text["polyglot"]:
-            errors.append("polyglot missing " + marker)
-    description = files["polyglot"].split("---", 2)[1]
-    if ("name: polyglot-test-agent" not in description
-            or "fallback" not in description
-            or "no matching language testing skill is installed" not in description):
-        errors.append("polyglot identity or fallback drift")
-    if "polyglot-test-agent" not in text["practices"]:
+        if marker not in text["practices"]:
+            errors.append("practices missing " + marker)
+    description = files["practices"].split("---", 2)[1]
+    if "name: testing-practices" not in description or "Technology-neutral" not in description:
+        errors.append("practices identity or scope drift")
+    if "Without matching optional depth, use repo conventions and authoritative framework documentation" not in text["practices"]:
         errors.append("fallback caller missing")
     if "reference only; do not execute its author workflow" not in text["reviewer"]:
         errors.append("reviewer author workflow")
@@ -1868,18 +1673,8 @@ def testing_contract_errors(files):
 class TestingOwnershipTests(unittest.TestCase):
     def setUp(self):
         self.files = {}
-        for key, plugin, skill in (
-            ("csharp", "dotnet", "csharp-testing"),
-            ("python", "python", "python-testing"),
-            ("polyglot", "core", "polyglot-test-agent"),
-            ("practices", "core", "testing-practices"),
-        ):
-            self.files[key] = (
-                ROOT / "plugins" / ("agile-agents-" + plugin) / "skills" / skill / "SKILL.md"
-            ).read_text(encoding="utf-8")
-        self.files["prompt"] = (
-            CORE / "skills/polyglot-test-agent/unit-test-generation.prompt.md"
-        ).read_text(encoding="utf-8")
+        self.files["practices"] = (
+            CORE / "skills/testing-practices/SKILL.md").read_text(encoding="utf-8")
         self.files["reviewer"] = (
             CORE / "agents/test-reviewer.agent.md"
         ).read_text(encoding="utf-8")
@@ -1895,7 +1690,7 @@ class TestingOwnershipTests(unittest.TestCase):
         self.assertEqual(testing_contract_errors(self.files), [])
 
     def test_production_fix_permission_and_assertion_accountability_are_required(self):
-        for name in ("csharp", "python", "polyglot"):
+        for name in ("practices",):
             for marker in ("invoking `coding` author", "may fix production logic",
                            "never weaken assertions", "Existing tests modified",
                            "what the old assertion claimed", "why it was invalid"):
@@ -1904,7 +1699,7 @@ class TestingOwnershipTests(unittest.TestCase):
                         name, marker, "removed", name + " missing " + marker.replace("`", ""))
 
     def test_legacy_production_bans_are_rejected_even_with_new_permission(self):
-        for name in ("csharp", "python", "polyglot", "prompt"):
+        for name in ("practices",):
             for ban in ("Don't change production code to make a test pass — push back to `coding`.",
                         "Don't modify production code to make a test pass."):
                 with self.subTest(name=name, ban=ban):
@@ -1912,8 +1707,8 @@ class TestingOwnershipTests(unittest.TestCase):
                     changed[name] += "\n" + ban
                     self.assertIn(name + " split ownership", testing_contract_errors(changed))
 
-    def test_nonexistent_agents_are_rejected_in_skill_and_adjacent_prompt(self):
-        for name in ("polyglot", "prompt"):
+    def test_nonexistent_agents_are_rejected_in_canonical_owner(self):
+        for name in ("practices",):
             for role in ("generator", "researcher", "planner", "implementer",
                          "builder", "tester", "fixer", "linter"):
                 with self.subTest(name=name, role=role):
@@ -1922,7 +1717,7 @@ class TestingOwnershipTests(unittest.TestCase):
                     self.assertIn(name + " nonexistent agent", testing_contract_errors(changed))
 
     def test_scaffolding_editor_prerequisite_and_invented_target_are_rejected(self):
-        for name in ("polyglot", "prompt"):
+        for name in ("practices",):
             for legacy in (".testagent", "80%", "VS Code", "multi-agent pipeline"):
                 with self.subTest(name=name, legacy=legacy):
                     changed = dict(self.files)
@@ -1930,7 +1725,7 @@ class TestingOwnershipTests(unittest.TestCase):
                     self.assertIn(name + " stale " + legacy, testing_contract_errors(changed))
 
     def test_fallback_cannot_reinvoke_itself_or_its_router(self):
-        for name in ("polyglot", "prompt"):
+        for name in ("practices",):
             for target in ("polyglot-test-agent", "testing-practices"):
                 with self.subTest(name=name, target=target):
                     changed = dict(self.files)
@@ -1938,7 +1733,7 @@ class TestingOwnershipTests(unittest.TestCase):
                     self.assertIn(name + " recursive fallback", testing_contract_errors(changed))
 
     def test_unsafe_failure_advice_and_coding_self_delegation_are_rejected(self):
-        for name in ("csharp", "python", "polyglot", "prompt"):
+        for name in ("practices",):
             for advice, error in (
                 ("Review the test output and adjust test expectations.", "unsafe expectation repair"),
                 ("Adjust expected to pass.", "unsafe expectation repair"),
@@ -1957,25 +1752,25 @@ class TestingOwnershipTests(unittest.TestCase):
                        "not measured", "IMPLEMENTATION COMPLETE"):
             with self.subTest(marker=marker):
                 self.assert_mutation_detected(
-                    "polyglot", marker, "removed", "polyglot missing " + marker)
+                    "practices", marker, "removed", "practices missing " + marker)
 
     def test_shared_practices_and_reference_only_reviewer_are_required(self):
-        for name in ("polyglot", "prompt"):
+        for name in ("practices",):
             with self.subTest(name=name):
                 self.assert_mutation_detected(
-                    name, "testing-practices", "removed", name + " missing shared practices")
+                    name, "read-repo-context", "removed", name + " missing context discovery")
         self.assert_mutation_detected(
             "reviewer", "reference only; do not execute its author workflow",
             "execute its author workflow", "reviewer author workflow")
         self.assert_mutation_detected(
-            "practices", "polyglot-test-agent", "removed", "fallback caller missing")
+            "practices", "Without matching optional depth, use repo conventions and authoritative framework documentation",
+            "Require a named scaffolding package", "fallback caller missing")
 
-    def test_skill_name_and_narrow_fallback_description_are_preserved(self):
-        for marker in ("name: polyglot-test-agent",
-                       "no matching language testing skill is installed"):
+    def test_canonical_owner_identity_and_neutral_scope_are_preserved(self):
+        for marker in ("name: testing-practices", "Technology-neutral"):
             with self.subTest(marker=marker):
                 self.assert_mutation_detected(
-                    "polyglot", marker, "removed", "polyglot identity or fallback drift")
+                    "practices", marker, "removed", "practices identity or scope drift")
 
 
 def legacy_python_environment():
@@ -2018,6 +1813,39 @@ class AgentMetadataTests(unittest.TestCase):
                 self.assertEqual(data["name"], path.name.removesuffix(".agent.md"))
                 actual[data["name"]] = data["metadata"]["model_tier"]
         self.assertEqual(actual, expected)
+
+    def test_all_fifteen_native_skill_grants_preserve_exact_permissions(self):
+        common = ["vscode", "execute", "read", "search", "web", "todo"]
+        docs = ["context7/*", "microsoft-docs/*"]
+        azure = ["azure-mcp/*", "azure-mcp-server/*", "azure/*"]
+        browser = ["playwright/*", "browser"]
+        expected = {
+            "architect": common + azure + docs + ["edit", "agent"] + browser,
+            "infrastructure": common + azure + docs + ["edit", "agent"] + browser,
+            "coding": common + docs + ["edit", "agent"] + browser,
+            "data-scientist": common + docs + ["edit", "agent"] + browser,
+            "backlog-manager": common + docs + ["edit", "agent", "browser", "github/*",
+                "ado/*", "azure-devops/*", "azure-devops-mcp/*", "playwright/*"],
+            "bootstrapper": common + docs + ["edit", "browser", "playwright/*"],
+            "capability-scout": ["vscode", "read", "search", "web", "todo", "execute",
+                                "browser", "playwright/*", "github/*"] + docs,
+            "dev-lead": common + docs + ["agent", "ado/*", "azure-devops/*",
+                                        "azure-devops-mcp/*"] + browser,
+            "review-lead": common + docs + ["agent"] + browser,
+            "infrastructure-reviewer": common + azure + docs + browser,
+        }
+        for name in ("code-reviewer", "architecture-reviewer", "security-reviewer",
+                     "test-reviewer", "data-reviewer"):
+            expected[name] = common + docs + browser
+        self.assertEqual({p.stem.removesuffix(".agent") for p in (CORE / "agents").glob("*.agent.md")},
+                         set(expected))
+        for name, tools in expected.items():
+            with self.subTest(agent=name):
+                header = (CORE / "agents" / f"{name}.agent.md").read_text().split("---", 2)[1]
+                data = self.checker.yaml.safe_load(header)
+                self.assertEqual(data["tools"], tools + ["skill"])
+                self.assertNotIn("tools", data["metadata"])
+                self.assertNotIn("allowed-tools", data)
 
     def test_scan_rejects_dev_lead_reassignment_to_light(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2111,7 +1939,7 @@ class AgentMetadataTests(unittest.TestCase):
                 after_midnight.replace("Second sentence.", "Changed sentence.")),
             expected)
 
-    def test_generators_ignore_annotations_without_swallowing_descriptions(self):
+    def generator_runners(self):
         runners = []
         if shutil.which("pwsh"):
             runners.append(["pwsh", "-NoProfile", "-File",
@@ -2125,6 +1953,53 @@ class AgentMetadataTests(unittest.TestCase):
             elif REQUIRE_RUNNERS:
                 self.fail("bash is required for generator regressions")
         self.assertTrue(runners, "At least one generator runner is required")
+        return runners
+
+    def test_generators_require_canonical_or_explicit_profile(self):
+        for runner in self.generator_runners():
+            with self.subTest(runner=runner[0]), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                script = root / "scripts" / Path(runner[-1]).name
+                script.parent.mkdir()
+                shutil.copyfile(runner[-1], script)
+                references = script.parent / "references"
+                references.mkdir()
+                shutil.copyfile(ROOT / "scripts/references/agents-md-template.md",
+                                references / "agents-md-template.md")
+                (root / ".github/agents").mkdir(parents=True)
+                (root / ".github/skills").mkdir()
+                profile = root / "solution-profile.yaml"
+                profile.write_text("identity:\n  project_name: explicit-only\n", encoding="utf-8")
+                subprocess.run(["git", "init", "-q", str(root)], check=True,
+                               capture_output=True, timeout=30)
+                ps = runner[0] == "pwsh"
+                output = root / "AGENTS.md"
+                command = runner[:-1] + [script.as_posix(),
+                    "-Output" if ps else "--output", output.as_posix()]
+                rejected = subprocess.run(command, cwd=root, capture_output=True,
+                                          text=True, timeout=30)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertFalse(output.exists())
+                canonical = root / ".github/solution-profile.yaml"
+                canonical.write_text("identity:\n  project_name: canonical-profile\n", encoding="utf-8")
+                result = subprocess.run(command, cwd=root, capture_output=True,
+                                        text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("canonical-profile", output.read_text(encoding="utf-8"))
+                self.assertNotIn("explicit-only", output.read_text(encoding="utf-8"))
+                for canonical_present in (True, False):
+                    with self.subTest(canonical_present=canonical_present):
+                        if not canonical_present:
+                            canonical.unlink()
+                        explicit = subprocess.run(
+                            command + ["-ProfilePath" if ps else "--profile", profile.as_posix()],
+                            cwd=root, capture_output=True, text=True, timeout=30)
+                        self.assertEqual(explicit.returncode, 0, explicit.stdout + explicit.stderr)
+                        self.assertIn("explicit-only", output.read_text(encoding="utf-8"))
+                        self.assertNotIn("canonical-profile", output.read_text(encoding="utf-8"))
+
+    def test_generators_ignore_annotations_without_swallowing_descriptions(self):
+        runners = self.generator_runners()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             agents, skills = root / "agents", root / "skills"
@@ -2190,6 +2065,34 @@ class SkillMetadataTests(unittest.TestCase):
                             "---\n\napplies_to: body text is not scope\n", encoding="utf-8")
             return self.checker.inspect(str(path), "skill", "demo")
 
+    def test_catalog_rejects_missing_entries_orphans_and_dangling_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skills = root / "plugins/agile-agents-core/skills"
+            for name in self.checker.CORE_SKILLS:
+                entry = skills / name / "SKILL.md"
+                entry.parent.mkdir(parents=True)
+                entry.write_text("# Fixture\n", encoding="utf-8")
+            self.assertEqual(self.checker.inspect_catalog(tmp), [])
+            entry = skills / sorted(self.checker.CORE_SKILLS)[0] / "SKILL.md"
+            entry.unlink()
+            self.assertIn(f"missing skill entry point: {entry.parent.name}",
+                          self.checker.inspect_catalog(tmp))
+            entry.write_text("# Fixture\n", encoding="utf-8")
+            orphan = skills / "fixture-orphan"
+            orphan.mkdir()
+            self.assertTrue(any("unexpected ['fixture-orphan']" in d
+                                for d in self.checker.inspect_catalog(tmp)))
+            orphan.rmdir()
+            plugin = root / "plugins/fixture-plugin"
+            plugin.mkdir()
+            self.assertTrue(any("plugin inventory" in d for d in self.checker.inspect_catalog(tmp)))
+            plugin.rmdir()
+            entry.write_text("[missing](missing.md)\n", encoding="utf-8")
+            self.assertTrue(any("dangling local link" in d for d in self.checker.inspect_catalog(tmp)))
+            entry.write_text("```markdown\n[example](missing.md)\n```\n", encoding="utf-8")
+            self.assertEqual(self.checker.inspect_catalog(tmp), [])
+
     def test_inherited_metadata_is_preserved_not_a_stringmap(self):
         self.assertEqual(self.inspect(
             "license: MIT\nallowed-tools: [read, edit]\nmetadata:\n"
@@ -2234,7 +2137,7 @@ class SkillMetadataTests(unittest.TestCase):
 
     def test_repository_scope_inventory_and_unique_names(self):
         paths = sorted((ROOT / "plugins").glob("*/skills/*/SKILL.md"))
-        self.assertEqual(len(paths), 62)
+        self.assertEqual(len(paths), 22)
         scopes, names = [], []
         for path in paths:
             with self.subTest(path=path):
@@ -2243,14 +2146,14 @@ class SkillMetadataTests(unittest.TestCase):
                 self.checker.FRONTMATTER.match(path.read_text(encoding="utf-8")).group(1))
             scopes.append(data["metadata"]["applies_to"])
             names.append(data["name"])
-        self.assertEqual(scopes.count("all"), 36)
-        self.assertEqual(len(scopes) - scopes.count("all"), 26)
+        self.assertEqual(scopes.count("all"), 22)
+        self.assertEqual(len(scopes) - scopes.count("all"), 0)
         for path in (CORE / "agents").glob("*.agent.md"):
             data = self.checker.yaml.safe_load(
                 self.checker.FRONTMATTER.match(path.read_text(encoding="utf-8")).group(1))
             names.append(data["name"])
-        self.assertEqual(len(names), 77)
-        self.assertEqual(len(set(names)), 77)
+        self.assertEqual(len(names), 37)
+        self.assertEqual(len(set(names)), 37)
 
     def test_acquire_codebase_retains_upstream_types(self):
         path = CORE / "skills/acquire-codebase-knowledge/SKILL.md"
@@ -2428,15 +2331,15 @@ class ScopeCountDriftTests(unittest.TestCase):
         actual = self.checker.actual_facts(str(ROOT))
         claimed = self.checker.claimed_facts(
             (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8"))
-        self.assertEqual((actual["all_scopes"], actual["scoped"]), (36, 26))
+        self.assertEqual((actual["all_scopes"], actual["scoped"]), (22, 0))
         self.assertEqual(self.checker.compare(actual, claimed), [])
 
     def test_stale_and_removed_scope_claims_fail(self):
         actual = self.checker.actual_facts(str(ROOT))
         text = (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8")
-        for replacement in ("34 `all` / 26 scoped", "36 `all` / 25 scoped", "not counted"):
+        for replacement in ("21 `all` / 0 scoped", "22 `all` / 1 scoped", "not counted"):
             with self.subTest(replacement=replacement):
-                changed = text.replace("36 `all` / 26 scoped", replacement)
+                changed = text.replace("22 `all` / 0 scoped", replacement)
                 self.assertTrue(self.checker.compare(actual, self.checker.claimed_facts(changed)))
 
     def test_count_reads_nested_annotation_not_body_or_fixed_inventory(self):
@@ -2476,15 +2379,15 @@ class AdvisoryProfileTests(unittest.TestCase):
             path.write_text(text, encoding="utf-8")
             return self.checker.inspect_profile(str(path))
 
-    def test_optional_map_and_legacy_strings_remain_compatible(self):
+    def test_optional_map_and_nonempty_model_lists_are_valid(self):
         for text in (
             "{}",
             "cost_envelope: {}",
             "cost_envelope: {model_tiers: {}}",
             "ai_copilot: {approved_models: [a, b, c]}\n"
-            "cost_envelope: {model_tiers: {heavy: a, mid: [b]}}",
+            "cost_envelope: {model_tiers: {heavy: [a], mid: [b]}}",
             "ai_copilot: {approved_models: [a, b, c]}\n"
-            "cost_envelope: {model_tiers: {heavy: [a, b], light: c}}",
+            "cost_envelope: {model_tiers: {heavy: [a, b], light: [c]}}",
             "defaults: &defaults {model_tiers: {heavy: a}}\n"
             "ai_copilot: {approved_models: [b]}\n"
             "cost_envelope: {<<: *defaults, model_tiers: {heavy: [b]}}",
@@ -2504,7 +2407,8 @@ class AdvisoryProfileTests(unittest.TestCase):
             ("cost_envelope: {model_tiers: heavy}", "model_tiers` must be a mapping"),
             ("cost_envelope: {model_tiers: {Heavy: a}}", "invalid tier"),
             ("cost_envelope: {model_tiers: {true: a}}", "invalid tier"),
-            ("cost_envelope: {model_tiers: {heavy: a}}", "not in `ai_copilot.approved_models`"),
+            ("cost_envelope: {model_tiers: {heavy: a}}", "nonempty list of model strings"),
+            ("cost_envelope: {model_tiers: {heavy: [a]}}", "not in `ai_copilot.approved_models`"),
             ("ai_copilot: {approved_models: a}", "list of nonempty model strings"),
             ("ai_copilot: {approved_models: null}", "list of nonempty model strings"),
             ("ai_copilot: {approved_models: [a, a]}", "duplicate model"),
@@ -2532,10 +2436,10 @@ class AdvisoryProfileTests(unittest.TestCase):
 
     def test_merge_overrides_and_reused_aliases_remain_valid(self):
         for tiers in (
-            "{<<: {heavy: a}, heavy: b}",
-            "{<<: [{heavy: a}, {heavy: b}]}",
-            "{<<: [{heavy: a}, {heavy: b}], heavy: c}",
-            "{<<: [&tiers {<<: {heavy: a}, heavy: b}, *tiers]}",
+            "{<<: {heavy: [a]}, heavy: [b]}",
+            "{<<: [{heavy: [a]}, {heavy: [b]}]}",
+            "{<<: [{heavy: [a]}, {heavy: [b]}], heavy: [c]}",
+            "{<<: [&tiers {<<: {heavy: [a]}, heavy: [b]}, *tiers]}",
         ):
             with self.subTest(tiers=tiers):
                 self.assertEqual(self.inspect_text(
@@ -2575,18 +2479,22 @@ class AdvisoryProfileTests(unittest.TestCase):
     def test_valid_root_cli_succeeds_with_ambient_utf8_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "valid-模型"
-            shutil.copytree(CORE / "agents", root / "plugins/agile-agents-core/agents")
+            # The CLI now checks the distribution and links, not just agents.
+            shutil.copytree(CORE, root / "plugins/agile-agents-core")
+            decision = root / "docs/adr/0007-model-tier-convention.md"
+            decision.parent.mkdir(parents=True)
+            decision.write_text("# Synthetic linked decision\n", encoding="utf-8")
             (root / ".github").mkdir()
             (root / ".github/solution-profile.yaml").write_text(
                 "ai_copilot: {approved_models: [modèle-模型]}\n"
-                "cost_envelope: {model_tiers: {heavy: modèle-模型}}\n", encoding="utf-8")
+                "cost_envelope: {model_tiers: {heavy: [modèle-模型]}}\n", encoding="utf-8")
             result = subprocess.run(
                 [sys.executable, "-X", "utf8",
                  str(ROOT / "scripts/check-skill-frontmatter.py"), str(root)],
                 capture_output=True, encoding="utf-8", timeout=20,
                 env=legacy_python_environment())
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Frontmatter check passed: 16 artifacts, all frontmatter valid.",
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Frontmatter check passed: 39 artifacts, all frontmatter valid.",
                           result.stdout)
             self.assertEqual(result.stderr, "")
 
@@ -2601,7 +2509,7 @@ class AdvisoryProfileTests(unittest.TestCase):
         for value in ("null", "false", "42", "{}", "[]", "''", "'  '",
                       "[a, null]", "[a, true]", "[42]", "[{}]", "[[]]", "['  ']"):
             with self.subTest(value=value):
-                self.assertIn("must be a nonempty model string",
+                self.assertIn("must be a nonempty list of model strings",
                               " ".join(self.inspect_text(
                                   "ai_copilot: {approved_models: [a]}\n"
                                   "cost_envelope: {model_tiers: {heavy: " + value + "}}")))
@@ -2611,7 +2519,7 @@ class AdvisoryProfileTests(unittest.TestCase):
                     self.inspect_text("ai_copilot: {approved_models: " + value + "}")))
 
     def test_duplicates_within_and_across_tiers_are_rejected(self):
-        for tiers in ("{heavy: [a, a]}", "{heavy: a, mid: [a]}"):
+        for tiers in ("{heavy: [a, a]}", "{heavy: [a], mid: [a]}"):
             with self.subTest(tiers=tiers):
                 self.assertIn("duplicate model", " ".join(self.inspect_text(
                     "ai_copilot: {approved_models: [a]}\n"
@@ -2623,7 +2531,7 @@ class AdvisoryProfileTests(unittest.TestCase):
             shutil.copytree(CORE / "agents", root / "plugins/agile-agents-core/agents")
             (root / ".github").mkdir()
             (root / ".github/solution-profile.yaml").write_text(
-                "cost_envelope: {model_tiers: {heavy: unapproved}}", encoding="utf-8")
+                "cost_envelope: {model_tiers: {heavy: [unapproved]}}", encoding="utf-8")
             fixture = root / "eval/fixture/.github"
             fixture.mkdir(parents=True)
             (fixture / "solution-profile.yaml").write_text("malformed: [", encoding="utf-8")
@@ -2653,6 +2561,12 @@ class AdvisoryProfileTests(unittest.TestCase):
         template = self.checker.yaml.safe_load(
             (CORE / "skills/solution-profile-interview/references/"
              "solution-profile.template.yaml").read_text(encoding="utf-8"))
+        for check in ("lint", "typecheck", "unit_test", "integration_test", "coverage", "mutation"):
+            self.assertIn("command", template["quality_gates"]["test_bar"][check])
+        self.assertNotIn("stacks", template["quality_gates"]["test_bar"])
+        self.assertEqual(set(template["testing"]["smoke"]), {"command", "url", "timeout_s"})
+        self.assertEqual(set(template["testing"]["e2e"]), {
+            "framework", "base_url", "headless", "parallelism", "flake_retries"})
         tiers = {
             "heavy": ["gpt-6-astra", "claude-opus-5.5"],
             "mid": ["gpt-6.1-sol", "claude-sonnet-5.5"],
@@ -2687,6 +2601,67 @@ class AdvisoryProfileTests(unittest.TestCase):
         for key in ("max_usd_per_run", "max_aiu_per_run", "max_aiu_per_phase",
                     "max_tokens_per_run", "max_minutes_per_run"):
             self.assertEqual(profile["cost_envelope"][key], template["cost_envelope"][key])
+
+
+class TriggerEvalTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            "trigger_evals", ROOT / "scripts/gen-trigger-evals.py")
+        cls.generator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.generator)
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        target = "plugins/agile-agents-core/skills/fixture/SKILL.md"
+        patches = patch.multiple(self.generator, REPO=self.root,
+            SKILL_PATHS={"fixture": target}, CASES=[
+                ("fixture", "positive", "positive", "Use fixture.", "Direct match."),
+                ("fixture", "negative", "negative", "Use another skill.", "Near miss."),
+            ])
+        patches.start()
+        self.addCleanup(patches.stop)
+        path = self.root / target
+        path.parent.mkdir(parents=True)
+        path.write_text("# Fixture\n", encoding="utf-8")
+        for relative, content in self.generator.rendered_files().items():
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+    def test_missing_target_and_orphan_suite_fail(self):
+        self.assertEqual(self.generator.inventory_errors(self.root), [])
+        target = self.root / self.generator.SKILL_PATHS["fixture"]
+        target.unlink()
+        self.assertTrue(any("missing skill" in e
+                            for e in self.generator.inventory_errors(self.root)))
+        target.write_text("# Fixture\n", encoding="utf-8")
+        orphan = self.root / self.generator.EVALS / "orphan/eval.yaml"
+        orphan.parent.mkdir()
+        orphan.write_text("skill: orphan\n", encoding="utf-8")
+        self.assertTrue(any("orphan suite file" in e
+                            for e in self.generator.inventory_errors(self.root)))
+
+    def test_missing_case_kind_and_duplicate_case_fail(self):
+        cases = self.generator.CASES
+        for kind in ("positive", "negative"):
+            with self.subTest(missing=kind), patch.object(
+                    self.generator, "CASES", [c for c in cases if c[2] != kind]):
+                self.assertTrue(any("positive and negative" in e
+                                    for e in self.generator.inventory_errors(self.root)))
+        with patch.object(self.generator, "CASES", cases + [cases[0]]):
+            with self.assertRaisesRegex(ValueError, "duplicate S0 case"):
+                self.generator.rendered_files()
+
+    def test_check_mode_detects_content_drift_without_rewriting(self):
+        with patch.object(sys, "argv", ["gen-trigger-evals.py", "--check"]), redirect_stdout(io.StringIO()):
+            self.assertEqual(self.generator.main(), 0)
+            path = self.root / next(iter(self.generator.rendered_files()))
+            path.write_text("changed", encoding="utf-8")
+            self.assertEqual(self.generator.main(), 1)
+        self.assertEqual(path.read_text(encoding="utf-8"), "changed")
 
 
 class RepoCheckRunnerTests(unittest.TestCase):
@@ -2736,6 +2711,63 @@ class RepoCheckRunnerTests(unittest.TestCase):
         self.assertIn("could not execute", result.stderr)
         self.assertNotIn("must-not-run", result.stdout)
 
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell required")
+    def test_version_validator_accepts_single_plugin_and_rejects_missing_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "plugins/agile-agents-core/.github/plugin/plugin.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"version": "1.2.3"}), encoding="utf-8")
+            marketplace = root / ".github/plugin/marketplace.json"
+            marketplace.parent.mkdir(parents=True)
+            marketplace.write_text(json.dumps({
+                "metadata": {"version": "1.2.3"},
+                "plugins": [{"name": "agile-agents-core", "source": "agile-agents-core",
+                             "version": "1.2.3"}],
+            }), encoding="utf-8")
+            command = ["pwsh", "-NoProfile", "-File", str(ROOT / "scripts/check-plugin-versions.ps1"),
+                       "-RepoRoot", str(root)]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("1 plugins consistent", result.stdout)
+            manifest.unlink()
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("does not exist", result.stdout)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell required")
+    def test_token_wrapper_preserves_argv_and_rejects_over_budget_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = root / "scripts/check-skill-tokens.ps1"
+            script.parent.mkdir()
+            shutil.copyfile(ROOT / "scripts/check-skill-tokens.ps1", script)
+            (root / "plugins/fixture plugin/skills").mkdir(parents=True)
+            fake = root / "waza.ps1"  # PowerShell can invoke this on Windows as well as Unix.
+            for exceeded, exit_code in ((False, 0), (True, 1)):
+                with self.subTest(exceeded=exceeded):
+                    result = {"results": [{"file": "plugins/fixture plugin/skills/demo/SKILL.md",
+                                           "tokens": 300 if exceeded else 100,
+                                           "limit": 200, "exceeded": exceeded}]}
+                    fake.write_text(
+                        "$expected = @('tokens', 'check', 'plugins/fixture plugin/skills', "
+                        "'--format', 'json', '--no-update-check')\n"
+                        "if ($args.Count -ne $expected.Count) { throw 'Unexpected argument count' }\n"
+                        "for ($i = 0; $i -lt $expected.Count; $i++) {\n"
+                        "    if ($args[$i] -cne $expected[$i]) { throw \"Unexpected argument at $i\" }\n"
+                        "}\n"
+                        f"'{json.dumps(result)}'\n", encoding="utf-8")
+                    completed = subprocess.run(
+                        ["pwsh", "-NoProfile", "-File", str(script),
+                         "-WazaPath", str(fake), "-SkipCoverage"],
+                        capture_output=True, text=True, timeout=30)
+                    self.assertEqual(completed.returncode, exit_code,
+                                     completed.stdout + completed.stderr)
+                    self.assertIn("SKILL.md files: 1", completed.stdout)
+                    self.assertIn(f"over budget: {int(exceeded)}", completed.stdout)
+                    self.assertEqual("Token budget exceeded:" in completed.stdout, exceeded)
+                    self.assertEqual("S0 skill checks passed." in completed.stdout, not exceeded)
+
     def test_lint_plan_preserves_all_checks_and_self_tests(self):
         self.assertEqual(self.runner.commands_for("lint"), [
             [sys.executable, "scripts/check-skill-frontmatter.py"],
@@ -2743,6 +2775,7 @@ class RepoCheckRunnerTests(unittest.TestCase):
             ["pwsh", "-NoProfile", "-File", "scripts/audit-references.ps1"],
             [sys.executable, "scripts/check-instructions-drift.py"],
             [sys.executable, "scripts/check-instructions-drift.py", "--self-test"],
+            [sys.executable, "scripts/gen-trigger-evals.py", "--check"],
             ["pwsh", "-NoProfile", "-File", "scripts/check-plugin-versions.ps1"],
         ])
 

@@ -1,6 +1,6 @@
 ---
 name: backlog-item-standards
-description: Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definition of Ready checklist. Load when creating, improving, or reviewing a work item body. Pair with a tracker-mechanics skill (ado-work-items / github-issues) for field mapping and API shape. Used by backlog-manager.
+description: Tracker-agnostic content standards for authoring backlog work items — body structure per work-item type (Epic / Feature / PBI / Issue), writing rules, BDD/Gherkin scenario format, and the Definition of Ready checklist. Load when creating, improving, or reviewing a work item body. Pair with available solution-selected tracker guidance for field mapping and API shape. Used by backlog-manager.
 metadata:
   applies_to: all
 ---
@@ -14,7 +14,7 @@ owns *what a well-formed item looks like*, tracker-agnostically.
 | Layer | Load when |
 |---|---|
 | [`references/work-item-content.md`](references/work-item-content.md) | Writing or reviewing the **body** of an item — structure per type, writing rules, BDD scenarios, Definition of Ready. |
-| A **tracker-mechanics skill** — `ado-work-items` or `github-issues`, shipped in the matching `agile-agents-<tracker>` plugin | Reading from or writing to the tracker — field mapping, formatting, linking, comment templates, sanitisation. Match it to `solution-profile.yaml: backlog.platform`. If no such skill is installed, follow the tracker's own conventions and say so in the hand-off. |
+| **Tracker-mechanics guidance** — select from available descriptions/capabilities via `read-repo-context`, including local skills and installed external plugins | Reading/writing tracker fields, linking, comments and sanitisation. Verify applicability to `backlog.platform` and the task; arbitrary names are valid. Without matching guidance, follow repo/tracker conventions and authoritative documentation and report the fallback. |
 
 ## Rules that apply to both
 

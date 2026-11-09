@@ -6,7 +6,7 @@ plan_gate: required
 agents: [review-lead]
 skills:
   dev-lead: [read-repo-context, dev-lead-templates]
-  any: [pr-description]
+  # PR content now belongs to dev-lead-templates/references/completion.md.
   review-lead: [read-repo-context, reviewer-read-only-rules]
 forbidden_skills:
   review-lead: [code-review-checklist, code-review]

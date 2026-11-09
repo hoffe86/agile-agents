@@ -17,9 +17,7 @@
     set of fields this script actually needs.
 
 .PARAMETER ProfilePath
-    Path to solution-profile.yaml. Default: auto-detect under
-    .github/solution-profile.yaml then ./solution-profile.yaml relative to the
-    repo root.
+    Profile path. Default: .github/solution-profile.yaml relative to the repo root.
 
 .PARAMETER AgentsDir
     Directory containing *.agent.md files. Default: .github/agents/ (or
@@ -208,8 +206,7 @@ function Format-Languages {
 $repoRoot = Get-RepoRoot
 if (-not $ProfilePath) {
     $ProfilePath = Resolve-First @(
-        (Join-Path $repoRoot '.github/solution-profile.yaml'),
-        (Join-Path $repoRoot 'solution-profile.yaml')
+        (Join-Path $repoRoot '.github/solution-profile.yaml')
     )
 }
 if (-not $AgentsDir) {
@@ -301,7 +298,7 @@ if ($SkillsDir) {
 
 $mandatoryList = if ($mandatorySkills.Count -gt 0) { (Sort-Ordinal $mandatorySkills | ForEach-Object { "- ``$_``" }) -join "`n" } else { '_(none configured)_' }
 
-$evalPointer = if (Test-Path (Join-Path $repoRoot 'eval')) { 'see [`./eval/`](eval/)' } else { 'not configured (see plan H2)' }
+$evalPointer = if (Test-Path (Join-Path $repoRoot 'eval')) { 'see [`./eval/`](eval/)' } else { 'not configured' }
 
 # ── render ─────────────────────────────────────────────────────────────────────
 $map = [ordered]@{

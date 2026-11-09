@@ -56,8 +56,7 @@ resolve_first() {
 }
 
 [[ -z "$PROFILE_PATH" ]] && PROFILE_PATH="$(resolve_first \
-  "$repo_root/.github/solution-profile.yaml" \
-  "$repo_root/solution-profile.yaml" || true)"
+  "$repo_root/.github/solution-profile.yaml" || true)"
 # Plugin agents win when present: that directory existing means we are in the marketplace repo,
 # where the shipped suite is what AGENTS.md documents. .github/agents/ is checked second so a
 # *consumer* repo still resolves -- and so a repo-local maintainer agent here (e.g. capability-scout)
@@ -281,7 +280,7 @@ fi
 if [[ -d "$repo_root/eval" ]]; then
   eval_pointer="see [\`./eval/\`](eval/)"
 else
-  eval_pointer="not configured (see plan H2)"
+  eval_pointer="not configured"
 fi
 
 # ── render ────────────────────────────────────────────────────────────────

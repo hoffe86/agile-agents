@@ -1,23 +1,14 @@
 ---
 name: cloud-native-patterns
 description: >-
-  Canonical reference for cloud design patterns, resilience defaults, 12-Factor
-  cloud-native readiness, observability, and HTTP/gRPC API hygiene used by the
-  authoring and review agents. Distils Microsoft Azure Cloud Design Patterns,
-  microservices.io, the Twelve-Factor App, OpenTelemetry semantic conventions,
-  and IETF RFC 9457 (Problem Details) into agent-actionable defaults and
-  anti-patterns. Loaded by coding (apply), review and
-  architecture-reviewer (check).
+  Neutral resilience, consistency, 12-Factor, observability and API contracts
+  for external boundaries, shared resources and deployables. Authors apply;
+  specialist reviewers check without executing author workflows.
 metadata:
   applies_to: all
 ---
 
 # Cloud-native patterns
-
-This skill is **applied** by authoring agents (`coding`,
-`infrastructure`) and **checked** by review agents (`review-lead`,
-`architecture-reviewer`). It is intentionally short and reference-shaped —
-not a tutorial. Look up the citation when you need depth.
 
 ## When to apply
 
@@ -31,7 +22,7 @@ Apply unconditionally when the change involves any of:
 
 Skip for pure in-process refactors with no external boundary.
 
-## 1. Pattern catalogue (Azure Cloud Design Patterns + microservices.io)
+## 1. Pattern catalogue
 
 Cite by name. Reinventing one of these instead of using a vetted implementation
 is a 🟠 Major review finding.
@@ -97,9 +88,9 @@ is a 🟠 Major review finding.
 Treat as hard rules for any deployable. Violations are 🟠 Major.
 
 1. **Codebase** — one repo (or sub-tree) per deployable; many deploys.
-2. **Dependencies** — declared and isolated (`*.csproj`, `requirements.txt` /
-   `pyproject.toml`, `package.json` lockfile committed); no implicit system deps.
-3. **Config** — in environment / Key Vault / App Configuration; **never** in
+2. **Dependencies** — declared, versioned and isolated using the solution's
+   manifests and lockfiles; no implicit system dependencies.
+3. **Config** — in the solution's configuration / secrets stores; **never** in
    code or committed config files for sensitive values.
 4. **Backing services** — treated as attached resources (connection-string in
    config, swappable per environment).
@@ -120,72 +111,48 @@ Treat as hard rules for any deployable. Violations are 🟠 Major.
 12. **Admin processes** — one-off jobs run as the same release in the same
     environment.
 
-## 3. Resilience defaults — .NET
+## 3. Resilience implementation contract
 
-- **HttpClient** — always via `IHttpClientFactory` (named or typed clients);
-  never `new HttpClient()` per call. Configure `Timeout`, default headers, and
-  `User-Agent` at registration.
-- **Resilience pipeline** — use **Microsoft.Extensions.Http.Resilience**
-  (`AddStandardResilienceHandler` for HTTP, or `ResiliencePipelineBuilder` from
-  Polly v8 for custom). Standard pipeline = retry (with jitter) + circuit
-  breaker + timeout + bulkhead. Do **not** hand-roll retries.
-- **Cancellation** — every async public method on a long-running surface
-  accepts `CancellationToken` and propagates it. Honour
-  `HttpContext.RequestAborted` in controllers / minimal-API handlers.
-- **Async correctness** — async-all-the-way. Forbidden: `.Result`, `.Wait()`,
-  `Task.Run` to escape sync, `async void` (except event handlers). In **library**
-  code, await with `.ConfigureAwait(false)`.
-- **Lifetimes** — singletons must not depend on scoped (captive dependency).
-  `DbContext` is scoped. `IHttpClientFactory` is singleton; the `HttpClient` it
-  hands out is short-lived.
-- **EF Core** — `AsNoTracking()` on read paths; project to DTOs (`Select`)
-  rather than materialising entities; explicit `Include` over lazy loading;
-  paginate (`Skip`/`Take`) any unbounded query touched by user input;
-  `IAsyncEnumerable` for streaming.
-- **Options pattern** — `IOptions<T>` (singleton snapshot) /
-  `IOptionsSnapshot<T>` (per request) / `IOptionsMonitor<T>` (live reload).
-  Validate on startup with `.ValidateDataAnnotations().ValidateOnStart()`.
+- Use the solution's established implementation, not a harness-selected package.
+  Verify bounded retries, jitter, transient-error classification, circuit
+  recovery and isolation against the actual dependency's failure modes.
+- Pool reusable clients and connections; bound connect/read/write/pool waits.
+- Propagate cancellation from caller to downstream and background operations.
+  Do not hide cancellation or block an asynchronous execution context.
+- Observe background failures; define ownership, shutdown and backpressure.
+- Validate configuration at startup. Resource lifetimes must be compatible:
+  no long-lived owner retaining a short-lived dependency.
+- Project only required data, avoid N+1 queries and tracking when unnecessary,
+  and paginate or stream bounded results.
 
-## 4. Resilience defaults — Python
+## 4. Solution capability boundary
 
-- **httpx** over `requests` for new code (sync + async, HTTP/2, timeouts
-  first-class). Always set `httpx.Timeout(connect=…, read=…, write=…, pool=…)`.
-- **tenacity** for retries — `retry`, `stop_after_attempt`,
-  `wait_exponential_jitter`, `retry_if_exception_type`. Never hand-roll a retry
-  loop.
-- **circuitbreaker** or `pybreaker` for circuit breakers; pair with tenacity.
-- **asyncio cancellation** — accept and propagate `asyncio.CancelledError`;
-  never swallow it. Use `asyncio.timeout()` (3.11+) for bounded waits.
-- **Concurrency primitives** — `asyncio.Semaphore` for bulkheads;
-  `asyncio.Queue` for backpressure between producers and workers.
-- **Settings** — `pydantic-settings` for typed config from env / `.env`; never
-  read `os.environ` directly in business logic.
-- **HTTP server** — FastAPI + uvicorn/hypercorn; lifespan handlers for
-  start/shutdown; use `BackgroundTasks` for fire-and-forget within a request.
+Select implementation guidance by available description **and** applicability
+to the task, path, runtime/version and provider. Do not equate on-disk files
+with granted runtime capabilities. Without a match, use existing repo
+conventions and authoritative documentation, and report that fallback.
+No framework, package, exporter or cloud provider is selected by this skill.
+Reviewers read these contracts; they never execute an author workflow.
 
 ## 5. Observability defaults
 
-Use OpenTelemetry. Vendor-agnostic by default; export to Application Insights /
-Azure Monitor via OTLP.
+Use the solution's telemetry implementation and declared sinks. OpenTelemetry
+and W3C Trace Context are interoperable references, not package/provider mandates.
 
-- **Three signals.** Traces, metrics, logs — all emitted from the same SDK with
+- **Three signals.** Traces, metrics, logs — correlated with
   shared resource attributes (`service.name`, `service.version`,
   `deployment.environment`).
 - **Context propagation.** W3C `traceparent` + `tracestate` headers in **every**
   outbound HTTP / messaging call. Never invent a custom correlation header.
-- **Structured logging.** Use the platform logger (.NET `ILogger<T>`, Python
-  `logging` with `structlog` or `python-json-logger`). Log fields, not strings:
-  ```csharp
-  _logger.LogInformation("Order {OrderId} accepted for customer {CustomerId}", id, customerId);
-  ```
-  No string concatenation. No PII in logs. No secrets in logs (token, key,
+- **Structured logging.** Use the solution's logger. Log fields, not
+  concatenated strings. No PII in logs. No secrets in logs (token, key,
   password, connection-string, Authorization header).
 - **Metrics** — record the RED signals (Rate, Errors, Duration) per endpoint
   and per outbound dependency; counter + histogram. Use
   [OTel semantic conventions](https://opentelemetry.io/docs/specs/semconv/) for
   metric names — don't invent ad-hoc naming.
-- **Spans** — one span per logical operation; record exceptions with
-  `Activity.RecordException` / `span.record_exception`; set status correctly.
+- **Spans** — one span per logical operation; record exceptions and set status
+  correctly through the solution's instrumentation API.
 - **Health endpoints** — `/health/live` (process up) and `/health/ready`
   (dependencies reachable). Liveness must **never** depend on a downstream — if
   it does, the downstream's outage takes you down.
@@ -193,9 +160,8 @@ Azure Monitor via OTLP.
 ## 6. HTTP / gRPC API hygiene
 
 - **Errors** — return [RFC 9457 Problem Details](https://datatracker.ietf.org/doc/html/rfc9457)
-  (`application/problem+json`). Never return raw stack traces. In ASP.NET use
-  `ProblemDetails` + `IProblemDetailsService`; in FastAPI raise `HTTPException`
-  and shape via an exception handler.
+  (`application/problem+json`) where the API contract uses it. Never return raw
+  stack traces; preserve the solution's public error contract.
 - **Status codes** — use the precise code (201 + `Location` for create, 202 for
   async accept, 204 for empty success, 400 vs 422, 409 for conflict, 412 for
   ETag mismatch, 429 with `Retry-After`, 503 with `Retry-After`). Do not return
@@ -207,34 +173,26 @@ Azure Monitor via OTLP.
   per repo; document. Do not mix.
 - **Pagination** — cursor-based for stable lists; `?limit=` + `?cursor=`. Cap
   page size server-side. **Never** return an unbounded list.
-- **Documentation** — OpenAPI / `Microsoft.AspNetCore.OpenApi` /
-  Swashbuckle / FastAPI auto-schema; every endpoint has request schema, all
-  response codes, and an example.
+- **Documentation** — every endpoint has request schema, all response codes and
+  examples in the solution's API specification; verify it matches behavior.
 - **gRPC** — deadlines on every call; cancellation propagated; status codes
   per [google.rpc.Code](https://grpc.io/docs/guides/status-codes/); reflection
   disabled in production.
 
 ## 7. Anti-patterns (line-level — flag in review)
 
-- **Hand-rolled retry loop** (`for i in range(3): try: ... except: time.sleep(2**i)`)
-  → use Polly / tenacity.
-- **HttpClient without timeout** or **`new HttpClient()` per call** → typed
-  client + resilience handler.
-- **Sync-over-async** (`task.Result`, `task.Wait()`, `task.GetAwaiter().GetResult()`,
-  `asyncio.run()` inside an already-running loop) → make the call site async.
-- **`async void`** outside event handlers → return `Task`.
-- **Missing `CancellationToken` on async public surface** → add it; propagate.
-- **String-concatenated log message** (`$"User {id} did X"` in `LogInformation`)
-  → use the message-template overload.
+- **Hand-rolled retries** → established solution mechanism with bounded policy.
+- **Fresh client per call / no timeout** → reuse pooled resources and bound waits.
+- **Sync-over-async** → keep the execution chain asynchronous.
+- **Unobservable background work** → explicit ownership and error propagation.
+- **Missing cancellation** → accept and propagate the caller's signal.
+- **String-concatenated logs** → structured fields.
 - **Secret / token / Authorization header in logs** → mask or omit.
-- **Unbounded query** on user input (`.ToListAsync()` without `Take`) → paginate.
-- **Lazy loading inside a loop** (N+1) → `Include` or projection.
-- **`DateTime.Now` / `datetime.now()`** for timestamps → `DateTimeOffset.UtcNow`
-  / `datetime.now(timezone.utc)`.
-- **Culture-sensitive parsing** (`int.Parse(s)` without `CultureInfo.InvariantCulture`)
-  on machine-format inputs → use invariant culture.
-- **Singleton holds scoped dependency** (captive dependency) → inject
-  `IServiceScopeFactory` or `IServiceProvider` and create a scope.
+- **Unbounded query** on user input → paginate.
+- **Lazy loading inside a loop** (N+1) → bounded joins or projection.
+- **Ambiguous local timestamps** → explicit UTC/offsets.
+- **Culture-sensitive machine-format parsing** → explicit invariant format.
+- **Captive dependency** → align ownership with resource lifetime.
 - **Dual-write to DB + broker** outside the same transaction → Outbox pattern.
 - **Liveness probe queries the database** → readiness, not liveness.
 - **Catch-and-log-and-continue** that hides failures from the caller → either

@@ -1,9 +1,13 @@
 # `s1-invocation/` — observed-invocation evals (S1)
 
+**Not runnable against current core.** These suites target technical skills
+not shipped by the harness. Custom-eval inputs do not supply these suites'
+targets; their results are not current-core pass claims.
+
 **Not free, not in CI.** These call a real model through Waza's `copilot-sdk` executor.
 S0 (`eval/skills/s0-routing/`) is the offline heuristic tier that gates; this is the ground-truth tier
 that tells you whether the heuristic was right. See
-[ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md).
+[ADR 0014](../../../docs/adr/0014-skill-evaluation-with-waza.md).
 
 ## Running them
 

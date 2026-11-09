@@ -1,35 +1,19 @@
 ---
 name: testing-practices
 description: >-
-  The verification half of the build-and-verify craft — test-behaviour-not-
-  implementation bias, coverage of the changed behaviour, mocking discipline,
-  determinism rules, framework routing, interactive browser debugging, and the
-  never-weaken-a-test boundary. Technology-neutral: detects the framework the
-  repo already uses and routes to whichever language testing skill the project
-  installed. Loaded by the `coding` agent on every task that changes testable
-  code, alongside `development-practices` (its implementation half). USE FOR:
-  covering new or changed behaviour, repairing failing tests, adding edge-case
-  and negative-path tests, setting up fixtures, diagnosing a failure the output
-  doesn't explain. DO NOT USE FOR: reviewing someone else's test diff (that is
-  the `test-reviewer` agent), IaC tests like Terratest / Pester (those belong to
-  the infrastructure agent), or the pre-reviewer automated gate (that is
-  `test-bar-gate`).
+  Technology-neutral author-owned test coverage, deterministic fixtures, E2E
+  diagnosis and assertion integrity. Pair with development-practices for code
+  changes; use alone for test repair. Not independent review or the test-bar gate.
 metadata:
   applies_to: all
 ---
 
 # Testing practices
 
-The craft bar for proving a change works. Paired with
-**`development-practices`** — one agent loads both, because a change is not
-finished when it compiles, it is finished when something demonstrates it
-behaves.
-
-An unreliable test is worse than no test: it costs attention every run and
-teaches the team to ignore red.
-
-`engineering-standards` applies to test code too (tests are code) and is **not
-restated here**. What follows are the testing-specific deltas.
+The current author owns implementation and its tests. Do not self-delegate or
+launch another testing pipeline; reviewers use guidance as reference only.
+The invoking `coding` author may fix production logic within scope; never weaken
+assertions to pass it.
 
 ## 1. Craft bias
 
@@ -41,8 +25,8 @@ restated here**. What follows are the testing-specific deltas.
 - **Prefer real over mocked.** Mock only what you cannot control (network,
   clock, external service, randomness). Over-mocking tests the mock, not the
   code.
-- **Deterministic or delete it.** No sleeps, no ordering dependence, no shared
-  mutable state, no live network. A test you have to re-run is broken.
+- **Deterministic.** Repair sleeps, ordering dependence, shared mutable state and
+  uncontrolled live network; do not delete failing tests to manufacture green.
 - **Never simplify away:** a failing test that reveals a real defect (report it,
   never weaken the assertion), validation / authz / error-path coverage, or an
   explicitly requested case.
@@ -52,11 +36,7 @@ restated here**. What follows are the testing-specific deltas.
 **Never delete, skip, loosen or re-baseline a test to get green.** That is a
 finding, not a fix.
 
-This is the one rule that survives merging implementation and testing into a
-single agent. When the same agent owns the code and its tests, the cheapest path
-to green is always to change the assertion — so treat a red test as evidence
-about the production code until you have proved otherwise, and record the
-verdict:
+Treat a red test as evidence about production code until proven otherwise:
 
 - **The test is right and the code is wrong** → fix the code. Say so in the
   hand-off: which behaviour was wrong, which test caught it.
@@ -72,24 +52,22 @@ a regenerated snapshot asserts nothing about whether the new output is correct.
 
 ## 3. Framework routing
 
-Route by the repo's actual stack (`solution-profile.yaml:
-tech_stack.primary_languages` + `test_frameworks`), not by assumption. **Check
-availability first, then language** — a language skill is a bonus, never a
-precondition:
+Use `read-repo-context` discovery: match actual available descriptions/capabilities
+from local skills and installed external plugins to the task, paths, language and
+test framework/version. Detect existing test manifests, configuration, CI commands
+and test conventions before proposing gaps. No historical skill names or mandatory
+companion catalog. Distinguish absent from ungranted.
 
-- **A skill for the language is available** → invoke it (currently
-  `csharp-testing`, which itself routes to `csharp-xunit`, `csharp-nunit`,
-  `csharp-mstest` or `csharp-tunit` when those separately installed plugin
-  skills are present; `python-testing` then `pytest-coverage` for coverage
-  analysis — all ship in companion plugins and may not be installed). Do not
-  assume the set is fixed.
-- **No skill for the language is available** (TypeScript / Go / Java / Rust /
-  … , or the expected skill isn't installed) → detect the framework the repo
-  already uses (test manifest, config file, CI workflow, existing test files) and
-  follow its conventions. `polyglot-test-agent` is the fallback for
-  cross-language test patterns. Everything else in this skill is
-  language-neutral and still applies. **Say in the hand-off that you worked
-  without a language skill.**
+Without matching optional depth, use repo conventions and authoritative framework
+documentation; do not assume any scaffolding skill is available or applicable. Report the
+fallback in the hand-off. All general testing rules still apply.
+Missing tooling is a reported gap, not permission to install dependencies.
+Run native repo commands for build, targeted tests, full suite, lint and format.
+Use existing coverage tooling; when absent, report **not measured**, never an
+invented percentage. Justify every existing-test change as required by §2.
+In `IMPLEMENTATION COMPLETE`, `Existing tests modified` names what the old
+assertion claimed and why it was invalid. Do not re-enter this workflow as a
+fallback or start a separate agent chain.
 
 Honour `team_communication.code_language` for test names and BDD scenarios, and
 `tech_stack.test_discipline` for whether tests are written before or after the
@@ -97,27 +75,44 @@ production code.
 
 ## 4. Web UI and end-to-end
 
-Three skills, three different questions — all available, pick by deliverable:
+Cover changed user journeys crossing UI/API/service boundaries after unit tests.
+There is no harness default framework. Match actually available guidance to the
+declared framework/version, task and paths; otherwise use repo conventions and
+authoritative docs and report the fallback. Authoring and interactive diagnosis
+are separate capabilities.
 
-- `e2e-testing` — author and run a durable Playwright / Selenium **suite** that
-  ships with the repo and runs in CI. Use it when the deliverable is a test file.
-- `playwright-generate-test` (vendored) — turn a described scenario into a
-  Playwright test by driving the `playwright/*` MCP server through the flow
-  first, so the generated selectors and assertions come from the real page
-  rather than from a guess. Use it inside `e2e-testing`'s workflow when you have
-  a scenario but not yet a test; `e2e-testing` still owns suite structure,
-  fixtures and CI wiring.
-- `webapp-testing` — drive a browser **interactively** through the
-  `playwright/*` MCP tools: open the page, read the accessibility tree, inspect
-  console errors and failed network requests, screenshot. Use it to *find out
-  what is actually wrong* — a 200 response with a white screen, a broken
-  hydration, a CSP violation — none of which an HTTP status check can see.
-  Findings become assertions in the suite; the interactive session itself is not
-  the deliverable.
+Honour **all five** `testing.e2e` fields:
 
-Reach for interactive driving when a test fails for a reason the failure output
-does not explain, or when the smoke slot reports the app up but the UI does not
-work. **Always close the browser when you are done.**
+| Field | Contract |
+|---|---|
+| `framework` | Use the selected suite. `none` is explicit disablement. |
+| `base_url` | Runner target, never a hard-coded spec URL. |
+| `headless` | Committed launch default; headed debugging stays a local override. |
+| `parallelism` | Committed worker/shard count. |
+| `flake_retries` | Committed retry budget, not permission to mask flakes. |
+
+If `framework=none`, report **E2E coverage explicitly disabled by profile; no
+browser-level verification; user-visible regression risk remains**. Do not
+silently skip. A missing framework or empty `base_url` with an enabled framework
+is a **configuration gap: stop and ask**. For other empty options retain native
+defaults and name them; do not invent values.
+
+Inspect the real page, accessibility tree, console errors and failed requests
+before choosing selectors or assertions; HTTP 200 is not UI verification.
+Assert critical journeys and negative paths using stable semantic selectors and
+bounded readiness waits, not sleeps. Use isolated, disposable fixtures; never
+share mutable state or a dev/production database. Reset only owned resources.
+Missing fixture setup is a gap, not a package-install instruction.
+
+Capture trace + screenshot on failure and the solution's CI-compatible report;
+retain evidence under its policy, excluding secrets and PII. Close the browser
+and clean up owned fixtures/processes even on failure. Diagnose unexplained
+failures interactively, then encode the finding in durable suite assertions.
+Run locally and confirm green twice in a row before hand-off.
+
+Pipeline implementation belongs to infrastructure. Pass the existing commands,
+after-unit-test ordering, profile options and evidence/retention requirements;
+do not write provider pipeline recipes here.
 
 ## 5. Hard rules
 
@@ -131,13 +126,14 @@ work. **Always close the browser when you are done.**
 - **No regressions.** Existing tests must still pass. If a change requires
   modifying an existing test, §2 applies.
 - **Test through public APIs.** Don't widen visibility to make something
-  testable; avoid `InternalsVisibleTo` unless the project already uses it. If
+  testable; avoid test-only access grants unless the project already uses them. If
   there is genuinely no alternative, make the smallest visibility change and
   flag it explicitly in the hand-off — a type that is hard to test is usually a
   design signal worth reporting.
 - **One behaviour per test.** No conditionals or loops inside a test.
-- **No flakiness.** Deterministic, parallel-safe, free of real network and disk
-  I/O.
+- **No flakiness.** Unit tests isolate external I/O. Integration tests use
+  controlled, disposable resources, bounded waits and reliable cleanup; never
+  shared services or uncontrolled live network.
 - **Security in fixtures.** No real secrets, tokens, connection strings, or PII
   in test data (`compliance_security.secret_scanning_required`). Use ephemeral or
   generated values, or a sealed test vault.
@@ -158,9 +154,6 @@ work. **Always close the browser when you are done.**
 
 ## 7. Relationship to the automated gate
 
-`test-bar-gate` (lint → typecheck → unit-test → smoke) runs **after** you, as a
-deterministic pre-reviewer gate the orchestrator invokes. It is not a substitute
-for this skill and this skill is not a substitute for it: the gate proves the
-repo's declared commands pass over the combined diff; you prove the changed
-behaviour is actually asserted. If you can predict a gate failure, fix it now —
-a gate failure costs a full corrective round.
+After author verification, the orchestrator runs `test-bar-gate` over the combined
+diff (lint → typecheck → unit-test → smoke). Author tests must assert changed
+behavior; neither check replaces the other.

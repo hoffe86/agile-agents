@@ -4,8 +4,8 @@ description: >-
   Bootstrap or repair `.github/solution-profile.yaml` by discovering what the repo already
   tells you and interviewing the human only for what it can't. Use when the profile is
   missing, when a required field is empty, when onboarding the agent suite into a new repo,
-  or when the user asks to "set up the profile" / "run the interview". Loaded by `dev-lead`
-  at Stage 0 Intake; also runnable standalone by any agent.
+  or when the user asks to "set up the profile" / "run the interview". Used by
+  `bootstrapper`; other agents may read it, but retain their role's write boundaries.
 metadata:
   applies_to: all
 ---
@@ -27,7 +27,7 @@ placeholders."* An empty field is honest; a guessed one is a landmine.
 Read `.github/solution-profile.yaml` if present. **Treat every non-empty value as
 user-confirmed** and never re-ask it.
 
-If the file is absent, **copy the template** — do not retype it. The template ships next to
+If absent, discover first, then **copy the template** in the approved write step — do not retype it. The template ships next to
 this file at `<skill-dir>/references/solution-profile.template.yaml`, where `<skill-dir>` is
 the directory of the `SKILL.md` you just loaded (you know that absolute path — it is how you
 read this). Copy it to `.github/solution-profile.yaml` with a real file copy (`Copy-Item` /
@@ -43,6 +43,20 @@ report the path you tried rather than writing a substitute.
 
 Fill empty fields from filesystem signals — `references/discovery-signals.md` has the full
 map. Do not run builds, install anything, or call the network.
+
+First inventory native repo/path-scoped instructions, available local skills and
+already-installed plugins using `read-repo-context` §1–3. Respect `applyTo` and
+native scopes; do not flatten path instructions. Match descriptions/capabilities
+and applicability, not a catalog or historical names. On-disk is not necessarily
+available; distinguish absent from ungranted before proposing a gap.
+
+Read existing CI/check scripts before deriving verification commands; a manifest
+identifies a stack, not a runnable command. Record the source, working directory
+and prerequisites in the proposal/solution guidance; populate existing
+`quality_gates.test_bar.<check>.command` fields only when confirmed. An enabled
+check without an evidenced command is a configuration gap, never a pass.
+No guessed toolchain, new command schema or framework routing table.
+Personal guidance is optional user-selected input, never a bootstrap requirement.
 
 Record how each value was obtained; step 3 shows it back.
 
@@ -77,7 +91,8 @@ the field is an enum. Accept "skip" / "don't know" and move on.
 
 ### 4. Write
 
-Persist to `.github/solution-profile.yaml`. Update only changed fields; **preserve the
+Present consequential configuration changes for explicit human approval before
+persisting to `.github/solution-profile.yaml`. Update only changed fields; **preserve the
 comments** — they are the field documentation and the only reason the file is readable.
 Never reflow untouched lines.
 
@@ -115,3 +130,7 @@ No user/global settings writes or profile-derived task model overrides.
   template comment; use exactly those.
 - **Existing values win.** If discovery disagrees with a declared value, surface the
   conflict as a `🔍` line for the user to arbitrate — never overwrite silently.
+- **Preserve the schema and six required fields.** Do not add a capability registry.
+- **No automatic instruction edits or adoption.** Existing instructions belong to
+  their repo/user owner; propose changes separately. Profile approval is not install
+  approval, nor permission to relax harness gates or reviewer boundaries.

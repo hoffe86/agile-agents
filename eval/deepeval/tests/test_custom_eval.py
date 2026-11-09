@@ -475,7 +475,8 @@ def test_dry_run_records_a_redacted_command_and_needs_no_token(tmp_path, monkeyp
     assert state["status"] == "dry_run"
     cmd = state["command"]
     assert "<prompt.md>" in cmd and cmd[cmd.index("--agent") + 1] == runner.ROOT_AGENT
-    assert "--no-ask-user" in cmd and cmd.count("--plugin-dir") >= 1
+    assert "--no-ask-user" in cmd and cmd.count("--plugin-dir") == 1
+    assert cmd[cmd.index("--plugin-dir") + 1] == str(runner.repo_root() / "plugins/agile-agents-core")
 
 
 def test_live_run_requires_explicit_unsandboxed_acknowledgement(tmp_path):

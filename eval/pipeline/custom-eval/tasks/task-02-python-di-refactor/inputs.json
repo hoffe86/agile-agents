@@ -6,6 +6,9 @@
     {"source": "baseline/app.py", "destination": "app.py", "required": true},
     {"source": "baseline/tests", "destination": "tests", "required": true},
     {"source": "baseline/requirements.txt", "destination": "requirements.txt", "required": true},
-    {"source": "baseline/requirements-dev.txt", "destination": "requirements-dev.txt", "required": true}
+    {"source": "baseline/requirements-dev.txt", "destination": "requirements-dev.txt", "required": true},
+    {"source": "baseline/.github/skills/python-implementation/SKILL.md", "destination": ".github/skills/python-implementation/SKILL.md", "required": true},
+    {"source": "baseline/.github/skills/python-testing/SKILL.md", "destination": ".github/skills/python-testing/SKILL.md", "required": true},
+    {"source": "baseline/.github/instructions/invoices.instructions.md", "destination": ".github/instructions/invoices.instructions.md", "required": true}
   ]
 }

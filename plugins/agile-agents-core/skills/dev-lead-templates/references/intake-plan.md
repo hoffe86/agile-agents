@@ -82,12 +82,9 @@ from accepted ADRs where used, otherwise design docs / work items. Verify
 relevant codebase, APIs and existing patterns against these sources, not a newly
 invented design.
 
-**Verification means technical research, not only reading this repo.** For an
-API shape, service limit, version behaviour or capability, establish the fact
-with available `context7/*`, `microsoft-docs/*`, `web`, browser or vendor MCP
-tooling. `read-repo-context` §9 gives the source order. The lightweight path owes
-the same verified-fact / assumption accounting as delegated research: "small
-change" describes the diff, not the certainty.
+Verify external facts with available `context7/*`, `microsoft-docs/*`, `web`,
+browser or vendor tooling (`read-repo-context` §9). Lightweight Research owes
+the same facts verified with sources and assumptions with impacts as delegation.
 
 For delegated research, send the requirement, in-scope / out-of-scope, intake
 constraints and binding decision ids / references. Collect a verification sketch
@@ -107,10 +104,6 @@ Carry assumptions forward to Stage 2, Stage 4 and the final report. Relay
 `Data questions to answer before building` in substance, plus your own calls;
 do not digest manageable risks into silence. The human may weigh them differently.
 Record the **approach summary** for the comment on the parent work item.
-
-Spend the effort understanding the requirement here. A fact checked now costs a
-paragraph; the same check after implementation costs tests and corrective work.
-Right-sizing reduces artifacts and ceremony, not understanding.
 
 ## Stage 2
 

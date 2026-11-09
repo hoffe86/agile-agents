@@ -25,7 +25,7 @@
           <mxGeometry x="50" y="1100" width="120" height="104" as="geometry"/>
         </mxCell>
 
-        <mxCell id="n-bootstrap" value="Bootstrap&#10;profile + companion plugins" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;dashed=1;dashPattern=8 8;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="n-bootstrap" value="Bootstrap&#10;profile + selected guidance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;dashed=1;dashPattern=8 8;fontSize=13;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="230" y="110" width="300" height="64" as="geometry"/>
         </mxCell>
         <mxCell id="n-intake" value="Intake&#10;Definition of Done · acceptance criteria verbatim" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#57606a;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">

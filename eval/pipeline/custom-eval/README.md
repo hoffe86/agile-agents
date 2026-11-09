@@ -12,7 +12,7 @@ profile, and versioned input declaration:
 | `prompt.md` | The user-story prompt fed verbatim to `dev-lead` |
 | `acceptance.md` | 3-5 explicit, verifiable pass criteria |
 | `solution-profile.yaml` | Synthetic profile conforming to the shipped solution-profile contract |
-| `inputs.json` | Versioned list of required baseline inputs and their workspace destinations |
+| `inputs.json` | Version-1 explicit source/destination inputs, each with a required flag |
 | `expectations.yaml` | Trajectory contract: plan gate, which agents dev-lead delegates to, which skills each one must invoke |
 | `baseline/` | Minimal synthetic or task-directed source inputs; never includes the requested answer |
 
@@ -45,18 +45,54 @@ Profiles populate the six required Stage-0 fields from the shipped template, set
 test bar with an explicit reason. These declarations describe intended task conditions;
 they do not authorize execution or bypass dev-lead's mandatory plan-approval gate.
 
+## Input staging and isolation
+
+The runner mounts **only `agile-agents-core`**. Each task declares ordinary
+version-1 `inputs`; there is no separate resolver or guidance manifest:
+
+```json
+{
+  "source": "baseline/.github/skills/python-testing/SKILL.md",
+  "destination": ".github/skills/python-testing/SKILL.md",
+  "required": true
+}
+```
+
+Sources must be task-local regular files. Symlinks, escaping/duplicate paths and
+configuration injection (`.git`, `.copilot`, `.claude`, plugins, agents or an
+overwritten task profile) fail setup. Native skill/instruction files are copied
+exactly like source inputs; the runner does not resolve capabilities or emulate
+`applyTo`. Presence is **not invocation**.
+
+Tasks 01/02/03/06/07/08/09/10 explicitly supply only their named technical
+capabilities. Tasks 04/05 need no technical skills. Their minimal, newly authored
+references are MIT test data, not copies of retired skills, scripts or resources.
+Technical skill-use expectations remain required when staged. No user-owned
+package, global skill directory or personal absolute path is a benchmark input.
+
+Live phases isolate HOME, USERPROFILE, COPILOT_HOME and XDG roots, omit ambient
+instruction/plugin/model overrides, and require `--sync-session=off` and
+`--secret-env-vars`. Missing controls fail
+setup. Dry runs stage only: they do not query the CLI or validate its flags.
+This is configuration isolation, **not an OS sandbox**.
+
+Offline tests cover exact staging, path/configuration rejection, core-only
+mounting, environment isolation and required privacy flags. Approval and
+per-agent command/skill evidence remain independently scored. These tests are
+not live compliance evidence; full RPI execution remains `blocked_approval`.
+
 ## The 10 tasks
 
 | # | Slug | Surface |
 |---|---|---|
 | 01 | `csharp-minimal-api-endpoint`       | C# / ASP.NET Minimal API + xUnit (csharp-implementation, csharp-testing) |
-| 02 | `python-di-refactor`                | Python refactor + DI (python-implementation, code-review-checklist) |
+| 02 | `python-di-refactor`                | Python refactor + DI (local python-implementation/python-testing) |
 | 03 | `bicep-storage-waf`                 | Bicep + Azure WAF baseline (bicep-implementation, iac-best-practices) |
-| 04 | `adr-library-tradeoff`              | ADR authoring (architecture-decision-records, trade-off-reporting) |
-| 05 | `pr-description`                    | Release-notes / PR-description authoring (engineering-standards) |
+| 04 | `adr-library-tradeoff`              | ADR authoring (architecture-decision-records, engineering-judgement) |
+| 05 | `pr-description`                    | PR/release artifacts (dev-lead-templates completion reference) |
 | 06 | `gha-oidc-deploy`                   | GitHub Actions + OIDC to Azure (cicd-pipeline-implementation) |
-| 07 | `test-coverage-uplift`              | Unit + integration test backfill (csharp-testing, code-review-checklist) |
-| 08 | `threat-model-api`                  | Threat-modelling (security-reviewer reviewer agent) |
+| 07 | `test-coverage-uplift`              | Unit + integration test backfill (local csharp-testing, independent code-reviewer) |
+| 08 | `threat-model-api`                  | Architect-authored STRIDE document (local minimal threat-model-analyst reference), independent security review |
 | 09 | `polly-resilience`                  | Resilience patterns on HTTP client (cloud-native-patterns, csharp-implementation) |
 | 10 | `helm-to-kustomize`                 | K8s migration (helm-kustomize-implementation, iac-best-practices) |
 
@@ -160,11 +196,23 @@ forbidden_skills:
 Each agent's skill list scores as its own DeepEval metric (`skills:<agent>`), so a miss is
 attributed to the agent that should have loaded the skill. Tool-call starts are reported as
 attempts; a load receives credit only when its matching completion reports success. A
-missing completion is `UNVERIFIED`, not a pass or an agent failure. Lists hold the **core contract
-loads** an agent's own definition makes mandatory — not every skill a good run might touch —
-so a pass means the contract was honoured, not that the run was optimal. `any` exists for
-deliverable skills whose author varies (an ADR may be drafted by dev-lead or a reviewer).
+missing completion is `UNVERIFIED`, not a pass or an agent failure. Lists hold the
+**core contract loads plus explicitly staged consumer capabilities**, not every
+skill a good run might touch. A pass means the measured contract was honoured,
+not that the run was optimal. `any` supports deliverable skills whose author varies;
+it never authorizes a reviewer to write or launch a nested author.
 Task-10 lists criterion 2 under `unverifiable` with its reason (see fixture boundaries).
+
+Current acceptance owners:
+
+- The **code-reviewer agent rubric** owns code quality; its delegation and
+  read-only skills are required. Reviewer forbidden-workflow checks still apply.
+- **dev-lead-templates/references/completion.md** covers
+  intent, real test evidence, rollback, migration/breaking changes and publication
+  approval. Task acceptance judges the requested PR text.
+- `threat-model-analyst` is **task-08-only synthetic author guidance**, not the
+  a general toolkit. Attribution belongs to `architect`;
+  security-reviewer remains independent. No threat-library coverage is claimed.
 
 ## Acceptance checks
 
@@ -205,24 +253,16 @@ checks with no matching `checks.json` leave their criteria `UNVERIFIED`; rerun
 | 10 | c1 `kubectl kustomize` for dev, staging, prod | c3+ (c2 is unverifiable) |
 | 04, 05, 08 | — documentation deliverables | all |
 
-### What the first live runs showed
+### Runtime limitations
 
-Spikes on CLI 1.0.105 (task-02, task-05), reproduced in the
-`copilot-subagent-session.jsonl` fixture:
-
-- **The harness's delegated agents did not invoke skills.** The `skill` tool was not
-  offered inside the delegated `coding` agent, so `skills:coding` scores **0.0** and the
-  run fails. In a separate synthetic SDK probe, granting `skill` to a delegated agent
-  exposed the tool and produced successfully attributed calls. The harness agents do not
-  currently list that grant; this is not evidence that delegated skills are impossible
-  in the CLI.
-- **The plan gate can be skipped in prompt mode.** Under `-p`, dev-lead implemented without
-  waiting; the runner records `gate_skipped` and the run scores failed. A separate CLI
-  1.0.105 probe reported `ask_user` unavailable in prompt mode even without
-  `--no-ask-user`. An SDK probe received `ask_user` through its input handler, but
-  integration with the harness's plan capture and separate approval job is unverified.
-- The unsandboxed coding sub-agent read outside its workspace, and a 60-credit cap was hit
-  mid-run — size `--max-ai-credits` per task.
+- Delegated skill use requires the native `skill` grant and source-attributed
+  execution evidence. Static grants do not prove role-wide invocation or
+  automatic scoped-instruction injection.
+- Prompt-mode approval requests cannot currently be verified. The runner
+  reports `blocked_approval`; implementation before approval is `gate_skipped`
+  and fails scoring. No pause or approval is simulated from unverified text.
+- The agent is unsandboxed and can read outside its workspace. Set
+  `--max-ai-credits` for the task; a cap is not filesystem isolation.
 
 ## Interpreting acceptance evidence
 

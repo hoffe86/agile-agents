@@ -51,12 +51,17 @@ jobs:
 
       - name: Install the gate's YAML parser
         shell: pwsh
-        run: Install-Module powershell-yaml -RequiredVersion 0.4.12 -Scope CurrentUser -Force
+        run: |
+          #requires -Version 7.2
+          Install-Module powershell-yaml -RequiredVersion 0.4.12 -Scope CurrentUser -Force
+          Import-Module powershell-yaml -RequiredVersion 0.4.12 -ErrorAction Stop
 
       - name: Check the Bash gate's YAML parser
         if: runner.os == 'Linux'
         shell: bash
-        run: yq --version | grep -E 'mikefarah/yq/.*version v4\.'
+        run: |
+          command -v bash curl
+          yq --version | grep -E 'mikefarah/yq/.*version v4\.'
 
       - name: Create a clean evaluation environment
         shell: pwsh
@@ -108,7 +113,7 @@ jobs:
         run: python -m pytest -q eval/pipeline/custom-eval/tests eval/deepeval/tests
 
       - name: Offline runtime and instruction regressions
-        run: python -m unittest discover -s scripts/tests -p test_runtime_contracts.py -v
+        run: python -m unittest discover -s scripts/tests -p 'test_*.py' -v
 
   skill-quality:
     runs-on: ubuntu-latest

@@ -4,12 +4,10 @@
 > Generated from `solution-profile.yaml` on {{GENERATED_ON}}.
 > Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
 
-This file follows the cross-vendor [AGENTS.md](https://agents.md) convention so that
-agentic CLIs (Claude Code, Copilot CLI, Cursor, Aider, …) can pick up a portable
-description of how this repository expects autonomous agents to behave. The
-authoritative, richer machine-readable contract remains
-[`solution-profile.yaml`](solution-profile.yaml) plus the per-agent
-[`*.agent.md`](.github/agents/) files.
+Portable context using the [AGENTS.md](https://agents.md) convention.
+The authoritative contracts are `.github/solution-profile.yaml` (or the explicit
+profile selected for generation), repository instructions and the configured
+`*.agent.md` files.
 
 ## Project context
 
@@ -23,15 +21,10 @@ authoritative, richer machine-readable contract remains
 
 ## How to interact
 
-This repository runs a **supervisor + specialist** topology. The
-`dev-lead` agent drives the **RPI pattern** (Research → Plan → Implement
-→ Review): it researches against the prepared concept + ADRs, decomposes
-the story into tasks that `backlog-manager` creates as child work items in
-the tracker (approved by a human), then delegates to the specialist agents
-in sequence (architect → coding → infrastructure → review
-fan-out). Each worker emits a **sentinel hand-off block** on
-completion — those block names are canonical and parsed by
-`dev-lead`:
+`dev-lead` supervises Research → Plan → Implement → Review against prepared
+decisions. Plans need human approval; tracker tasks are conditional on the
+profile. Authors work sequentially and own their tests; reviewers are independent.
+Workers return these canonical hand-off blocks:
 
 - `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
 - `ANALYSIS COMPLETE` (data-scientist — an answer plus its evidence)
@@ -41,12 +34,12 @@ completion — those block names are canonical and parsed by
 - `TASKS PLANNED` (backlog-manager)
 - `BOOTSTRAP COMPLETE` (bootstrapper)
 
-Agents branch, commit and push on their own — on a feature branch, never the default one.
+Feature-branch creation, commits and pushes need no harness gate, but explicit
+user restrictions and stricter personal consent still apply.
 **Opening a pull request needs the user's explicit approval**, and **completing, merging or
 closing a PR is human-only, always**, as are force-pushing, rewriting shared history and
 production deploys. Deployments to non-production run through the project's own pipeline and are gated
-on `infrastructure.deploy_verify`. Reviewers are **read-only**. See `.github/AGENTS-MD-MAPPING.md` for the
-full convention map.
+on `infrastructure.deploy_verify`. Reviewers are **read-only**.
 
 ## Agents
 
@@ -54,10 +47,8 @@ full convention map.
 
 ## Skills
 
-The following skills are available in `.github/skills/` (or
-`skills/` at the repo root in the agile-agents source). Each skill
-is a self-contained `<name>/SKILL.md` with YAML frontmatter and a
-natural-language workflow.
+Skills discovered from the configured directories; availability alone does not
+prove applicability or invocation. Respect native scope and tool grants.
 
 {{SKILLS_LIST}}
 
@@ -68,23 +59,15 @@ Mandatory-load skills (loaded by every agent regardless of context):
 ## Cost & evaluation
 
 - **Evaluation harness**: {{EVAL_POINTER}}
-- **Cost envelope**: see `solution-profile.yaml` → `cost_envelope` and
-  the `cost-budget` skill for per-phase / per-run USD ceilings and
-  model-tiering policy.
+- **Cost envelope**: `cost_envelope` and `cost-budget` gate measured AIU/tokens.
+  USD is unmetered without a rate; model tiers are advisory, not runtime enforcement.
 - **Run event log**: structured JSON events at
-  `.copilot-runs/<run-id>/events.jsonl` — schema in
-  `skills/run-event-log/SKILL.md`.
-
----
-
-_Generated from `solution-profile.yaml` — do not edit by hand;
-regenerate with `scripts/generate-agents-md.ps1`._
+  `.copilot-runs/<run-id>/events.jsonl` — `run-event-log` defines the schema;
+  only `dev-lead` emits events.
 
 ## Tokens
 
-> This section is **stripped from the generated `AGENTS.md`**. It
-> documents every placeholder token the generator script must
-> substitute when rendering this template.
+Generator placeholders; this section is excluded from output.
 
 | Token | Source field(s) | Notes |
 |-------|----------------|-------|
@@ -100,4 +83,4 @@ regenerate with `scripts/generate-agents-md.ps1`._
 | `{{ACTIVE_AGENTS_TABLE}}` | walk `.github/agents/*.agent.md`, filter by `ai_copilot.active_agents` | One `### name` block per agent with description, tools, sub-agents. Sorted alphabetically. |
 | `{{SKILLS_LIST}}` | walk `*/SKILL.md`, take frontmatter `name` + first sentence of `description` | Bulleted list, sorted alphabetically. |
 | `{{MANDATORY_SKILLS_LIST}}` | `ai_copilot.mandatory_skills` | Bulleted list; `_(none configured)_` if empty. |
-| `{{EVAL_POINTER}}` | presence of `eval/` directory | If present: `see ./eval/` else: `not configured (see plan H2)`. |
+| `{{EVAL_POINTER}}` | presence of `eval/` directory | If present: `see ./eval/`; otherwise `not configured`. |

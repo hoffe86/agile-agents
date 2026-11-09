@@ -70,9 +70,9 @@ function Compare-Version([string] $old, [string] $new) {
 
 # ---------------------------------------------------------------- consistency
 
-$pluginDirs = Get-ChildItem (Join-Path $RepoRoot 'plugins') -Directory |
+$pluginDirs = @(Get-ChildItem (Join-Path $RepoRoot 'plugins') -Directory |
     Where-Object { Test-Path (Get-ManifestPath $_.Name) } |
-    Select-Object -ExpandProperty Name
+    Select-Object -ExpandProperty Name)
 
 $listed = @($marketplace.plugins | Select-Object -ExpandProperty source)
 

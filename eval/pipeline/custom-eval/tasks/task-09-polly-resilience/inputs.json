@@ -4,6 +4,8 @@
   "inputs": [
     {"source": "baseline/Pricing.slnx", "destination": "Pricing.slnx", "required": true},
     {"source": "baseline/src", "destination": "src", "required": true},
-    {"source": "baseline/tests", "destination": "tests", "required": true}
+    {"source": "baseline/tests", "destination": "tests", "required": true},
+    {"source": "baseline/.github/skills/csharp-implementation/SKILL.md", "destination": ".github/skills/csharp-implementation/SKILL.md", "required": true},
+    {"source": "baseline/.github/skills/csharp-testing/SKILL.md", "destination": ".github/skills/csharp-testing/SKILL.md", "required": true}
   ]
 }

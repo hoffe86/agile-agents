@@ -7,7 +7,9 @@ metadata:
 
 # IaC Best Practices (cross-cutting)
 
-This skill is **technology-agnostic**. It encodes the rules that the language-specific skills (`bicep-implementation`, `terraform-azure-implementation`, `helm-kustomize-implementation`, `cicd-pipeline-implementation`) all defer to.
+This skill is **technology-agnostic**. Concrete IaC, container and pipeline guidance
+comes from applicable native instructions, local skills and installed external
+plugins selected by descriptions/capabilities via `read-repo-context`.
 
 ## 1. Naming
 
@@ -15,21 +17,19 @@ This skill is **technology-agnostic**. It encodes the rules that the language-sp
 and the target provider's published naming guidance (including per-service constraints).
 Do not impose another provider's abbreviations, environment labels or region codes.
 
-**Azure applicability gate:** load **`azure-platform-grounding`** only when **installed**
-and `infrastructure.cloud: azure`. For a multi-cloud/hybrid declaration, require explicit
-repo evidence of an Azure resource subset and document that scope; hybrid alone is not
-Azure evidence. Apply Azure guidance only to that subset. Missing or conflicting cloud
-declarations need clarification, not an inferred Azure default.
+Select provider guidance only with both actual availability and applicability.
+Multi-cloud/hybrid targets require evidence of the affected resource subset;
+document that scope and apply guidance only there. Tool syntax or a state backend
+does not identify the resource provider. Clarify missing/conflicting declarations.
+Without matching guidance, use repo/provider conventions and authoritative docs;
+report that fallback in the hand-off. No provider naming default is supplied here.
 
-**Azure-only default:** Microsoft Cloud Adoption Framework (CAF) abbreviations and the
-`<resource-type-abbrev>-<workload>-<env>-<region-abbrev>[-<instance>]` pattern apply only
-within that gate and absent a repo/profile convention. If the skill is unavailable, use
-the declared provider's documentation and report the fallback in the hand-off.
-Non-Azure targets use repo/provider conventions, not CAF.
+## 2. Tagging — enforce the solution's declared policy
 
-## 2. Tagging — required tags on every resource
+Required keys and supported resource types come from the solution. Check coverage
+of these purposes, but do not invent mandatory key names or contact values:
 
-| Tag | Example | Purpose |
+| Illustrative key | Example | Purpose |
 |---|---|---|
 | `environment` | `prod` | Routing/cost split |
 | `workload` | `payments-api` | Cost center per app |
@@ -53,20 +53,20 @@ Implement tag inheritance from the platform's parent scope where supported; othe
 ## 4. Secret handling
 
 - **No secrets in source.** Not in `.bicepparam`, not in `terraform.tfvars`, not in `values.yaml`, not in environment YAML files.
-- **Reference, don't embed.** Use the declared platform's secrets store and supported reference/injection mechanism. Azure-only examples: Key Vault references for App Settings or `azurerm_key_vault_secret`; other platforms use their own equivalents.
+- **Reference, don't embed.** Use the declared platform's secrets store and supported reference/injection mechanism; verify secrets do not leak through state, logs or outputs.
 - **Rotate by reference change** — your IaC should never need a re-deploy to rotate a secret.
 - **Pipeline secrets** scoped to environments with required reviewers; never store as repo-level secrets if they grant prod access.
 
 ## 5. State & idempotency
 
 - **Idempotent by construction.** Running the same template twice must produce the same result. No hidden timestamps, no random names without a stable seed, no `local-exec` that mutates external state.
-- **Remote state** mandatory for any non-trivial Terraform deployment. Preserve the repo's selected backend and use its supported locking/access controls; do not infer the backend from the resource provider. Azure-only example: an explicitly selected azurerm backend uses blob-lease locking.
+- **Shared state** requires protected storage, locking and access controls appropriate to the declared tool. Preserve the selected backend; do not infer it from the resource provider.
 - **State is canonical.** Don't edit state files manually. Use the IaC tool's supported state/import operations for the declared provider.
 - **Some tools keep no state file** — the platform's own resource manager is the state (Bicep/ARM). There is still a preview command (`what-if`) that is the equivalent of `plan`, and you must run it before every deploy.
 
 ## 6. Environment promotion
 
-- **Same code, different parameters.** `dev`, `test`, `stg`, `prod` deploy from the same Bicep/Terraform; differences live in parameter files / tfvars / overlay values.
+- **Same code, different parameters.** Environments deploy the same versioned definition; differences live in the solution's parameter or overlay mechanism.
 - **Promote by branch or by tag**, not by editing files between environments. A successful `dev` deploy of commit `abc123` is the artifact that gets promoted to `test`, then `stg`, then `prod`.
 - **Manual approval gate before prod**, always. Even fully-automated pipelines should pause for a human ack.
 
@@ -86,21 +86,26 @@ Before declaring an architecture "done," walk it through the five pillars every 
 4. **Operational excellence** — IaC for everything, CI/CD with rollback, structured logging into a queryable store, alerts on the SLIs that back the SLO, runbooks for the top failure modes.
 5. **Performance efficiency** — load-tested before production, caching where the access pattern justifies it, async patterns end-to-end.
 
-For pillar deep-dives, service-specific guidance, and assessment tooling, load the target platform's well-architected skill when installed (`azure-well-architected` on Azure) — it also supplies the security-benchmark control ids reviewers cite. `solution-profile.yaml: infrastructure.cloud` says which platform's framework is the relevant one; do not assess against a framework the project does not target.
+For pillar depth, service guidance and assessment tooling, select available
+capabilities applicable to `infrastructure.cloud` and the affected resource scope.
+Without a match use repo/provider docs and disclose the fallback. Never assess
+against a platform the solution does not target.
 
 ## 9. Pre-deploy gates (run all of these)
 
 | Gate | Tool |
 |---|---|
-| Syntax + linter | The IaC tool's own — `bicep build/lint`, `terraform fmt/validate`, `helm lint`, `kustomize build` |
-| Plan / what-if | The IaC tool's preview command — `terraform plan`, `az deployment ... what-if` |
-| Security | `tfsec`, `checkov`, `kube-linter`, or the scanner the repo already runs |
+| Syntax + linter | Solution-declared validation commands |
+| Plan / what-if | Solution-declared non-mutating preview |
+| Security | The scanner and policy the solution already uses |
 | Compliance | The platform's posture/compliance scanner, when the project has one |
 | Cost | The platform's pricing tooling, when installed |
 | Quotas / region | The platform's quota tooling — a design that exceeds a regional quota fails at deploy |
 | Access control | Review role assignments for least privilege before applying |
 
-Gates whose tooling is not installed are skipped explicitly, not silently — say which ones in the hand-off.
+Unavailable required gates are unverified configuration gaps, not passes. Report
+missing tooling and prerequisites; optional or explicitly disabled gates are
+visible skips. Do not invent a toolchain or install one without approval.
 
 ## 10. Post-deploy verification
 

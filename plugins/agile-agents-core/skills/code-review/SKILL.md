@@ -17,7 +17,7 @@ metadata:
 
 # Code Review Skill
 
-Perform deep, multi-dimensional code reviews that produce actionable, classified reports. The review runs 4 parallel analysis streams, synthesizes findings into a single ranked report, and classifies every item by who should fix it.
+Audit through four parallel analysis streams; rank findings and assign ownership.
 
 ## Scope boundary — read this first
 
@@ -51,9 +51,12 @@ Before launching reviews, orient yourself:
 1. Read any project-level copilot instructions (`.github/copilot-instructions.md`, `CLAUDE.md`, etc.)
 2. Identify the tech stack, framework, and language conventions
 3. Map the project structure — source layout, test layout, config files, CI/CD
-4. Identify the key architectural patterns (DI framework, layering, API style)
+4. Identify the key architectural patterns (DI framework, layering, API style).
+   Technical depth requires actually available guidance applicable to the
+   solution's stack/version and paths; otherwise use repo conventions and
+   authoritative docs and report the fallback. No framework default findings.
 
-This context is critical — pass it to every review agent so they understand what "correct" looks like for this specific project.
+Pass this context to each reviewer.
 
 ### Phase 2: Launch 4 Parallel Review Agents
 
@@ -70,7 +73,7 @@ Focus areas:
 - Layer boundary violations (check .csproj / package.json / go.mod references)
 - God classes and service locator anti-patterns
 - DI registration issues (duplicates, lifetime mismatches, sync-over-async)
-- Configuration patterns (options pattern, hardcoded values)
+- Configuration patterns (solution conventions, validation, hardcoded values)
 - Async/await correctness (sync-over-async, fire-and-forget, missing cancellation)
 - Error handling consistency (global vs per-controller, exception swallowing)
 - Circular dependencies

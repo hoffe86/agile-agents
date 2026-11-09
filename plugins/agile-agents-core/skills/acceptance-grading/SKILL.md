@@ -4,8 +4,8 @@ description: >-
   How to grade produced work against acceptance criteria — the judgement contract for
   an evaluation harness. Covers verifying rather than inferring, the sandbox exception
   that lets a grader execute verification commands without ever repairing what it
-  grades, treating skills as the owner of house conventions (and reporting criterion vs
-  skill drift as an eval defect rather than an agent failure), refusing to invent
+  grades, finding canonical convention owners (and reporting restatement drift as
+  an eval defect rather than an agent failure), refusing to invent
   requirements stricter than the criterion states, and the PASS / FAIL / UNVERIFIED +
   VERDICT output contract. USE FOR grading an agent's output against acceptance
   criteria, scoring an eval task, or any "did this work meet the stated bar" judgement.
@@ -34,7 +34,7 @@ it would do, and not by what a competent implementation *would* contain.
 |---|---|
 | behaviour — builds, tests pass, lints clean, renders, validates | **running it** and reading the output |
 | a file's presence, name, or content | reading the filesystem |
-| a convention — template shape, required sections, naming, commit format | the **skill that owns it** (§3) |
+| a convention — template shape, required sections, naming, commit format | its **canonical owner** (§3) |
 | quality of reasoning — is the trade-off explained, is the model coherent | your own judgement over the artifacts |
 
 If you were handed an inlined listing of files, treat it as an **index, not the
@@ -57,29 +57,32 @@ dependency installation, and snapshot regeneration.
 If a build fails for an environmental reason (no toolchain, no network), that is
 `UNVERIFIED` (§5). It is not licence to fix the environment and try again.
 
-## 3. Conventions are owned by skills, not by checklists
+## 3. Read the canonical convention owner
 
 Where a criterion refers to a house convention — an ADR template, arc42 structure,
-conventional commits, a review rubric — **load the skill that defines it and grade against
-that.** A checklist that restates a convention has forked it, and forks drift.
+commit format, a review rubric — read its actual owner: solution instructions,
+profile, agent rubric, skill or linked reference. A skill name is not required.
+Use `architect` for design structure, `development-practices` §10 for Git,
+the specialist reviewer for its lens, and `dev-lead-templates`' completion
+reference for publication artifacts. Read only the relevant section; do not
+invoke an author's workflow while grading.
 
-**When the criterion's wording and the skill disagree, the skill wins**, and you say so in
-your reason. That disagreement is a defect in the *eval*, not in the work: report it so it
-gets fixed, rather than charging it to the agent. This is not hypothetical — an acceptance
-criterion once enumerated "the six MADR sections" as a list that upstream MADR does not
-use, and failed work that had correctly followed the repo's own ADR skill.
+**When a convention restatement disagrees with its canonical owner, the owner
+wins on form**; report the drift as an eval defect. This does not waive the
+criterion's substantive acceptance or technical expectations. An unavailable
+owner means UNVERIFIED, not permission to invent a convention.
 
 So, concretely, when a criterion names a convention and also asserts *how* that convention
 looks — a required section, a field's placement, an exact wording:
 
 - grade the **substance** the criterion asks for (was the fact recorded at all?);
-- grade the **form** against the skill that owns it, never against the criterion's
+- grade the **form** against the canonical owner, never against the criterion's
   restatement;
-- if the work matches the skill but not the restatement, that is a **PASS**, with the
+- if the work matches the owner but not the restatement, that is a **PASS**, with the
   drift named in your reason so the criterion gets repaired.
 
 This does not license grading leniently (§4). It is narrower: the criterion decides *what
-must be true*, the skill decides *what that looks like*. A criterion cannot redefine a
+must be true*, the owner decides *what that looks like*. A criterion cannot redefine a
 convention it does not own.
 
 ## 4. Grade the criterion as written
@@ -91,7 +94,7 @@ criterion names one. Substituting a static proxy for a behavioural fact is how a
 solution that took a different route gets marked wrong.
 
 This governs *scope*: never add requirements the criterion did not ask for. It does not
-make the criterion's wording authoritative over a convention a skill owns — that is §3.
+make the criterion's wording authoritative over another owner's convention — that is §3.
 
 Equally, give no credit for intent: TODOs, comments promising work, and empty stubs are
 not implementations.

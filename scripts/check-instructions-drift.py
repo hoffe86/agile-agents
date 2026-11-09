@@ -165,6 +165,8 @@ def compare(actual: dict, claimed: dict) -> list[str]:
             problems.append("%s: no skill count in the tree diagram" % name)
         elif got != n:
             problems.append("%s: doc says %s skills, actual is %s" % (name, got, n))
+    for name in sorted(set(claimed.get("per_plugin", {})) - set(actual["per_plugin"])):
+        problems.append("%s: documented plugin is not distributed" % name)
     return problems
 
 
@@ -225,6 +227,8 @@ def self_test() -> int:
          {**base, "per_plugin": {"agile-agents-core": 41, "agile-agents-dotnet": 5}}, 1),
         ("missing companion entry",
          {**base, "per_plugin": {"agile-agents-core": 41}}, 1),
+        ("retired plugin still claimed",
+         {**base, "per_plugin": {**base["per_plugin"], "agile-agents-retired": 1}}, 1),
         ("claim removed entirely", {k: v for k, v in base.items() if k != "workflows"}, 1),
     ]
 
