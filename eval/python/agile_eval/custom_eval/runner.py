@@ -49,7 +49,10 @@ PHASE1_CHANGES_FILE = "phase1-changes.json"
 # Run statuses whose workspace holds a finished change the acceptance checks can test.
 VERIFIABLE = ("complete", "gate_skipped")
 EVIDENCE_EXCLUDES = (":(exclude,glob)**/bin/**", ":(exclude,glob)**/obj/**",
-                     ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.venv/**")
+                     ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.venv/**",
+                     ":(exclude,glob)**/__pycache__/*.pyc",
+                     ":(exclude,glob)**/.pytest_cache/**",
+                     ":(exclude,glob)**/.mypy_cache/**", ":(exclude,glob)**/.ruff_cache/**")
 PHASE1_EXCLUDES = (*EVIDENCE_EXCLUDES, ":(exclude,glob).copilot-runs/**",
                    ":(exclude,top).github/solution-profile.yaml")
 # Defence in depth only -- see capture_diff.

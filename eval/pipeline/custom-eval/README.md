@@ -184,14 +184,16 @@ task, although dev-lead excludes single-stage work. A separate implementation-ta
 changed source and test files through shell commands without requesting approval; it was
 reported as `blocked_approval` because the earlier detector missed those writes. Replaying
 its captured diff against a clean task baseline now detects both changes and fails the gate;
-this is not a new end-to-end run. The Azure judge and full cross-job approval flow are not
-yet verified end to end.
+this is not a new end-to-end run. A later Python refactoring task also edited source and
+delegated coding before approval, and was reported as `gate_skipped`. The Azure judge and
+full cross-job approval flow are not yet verified end to end.
 
 The gate checks implementing-agent delegation attempts and top-level write tools, and records
 persistent workspace changes against the staged baseline. That snapshot covers committed,
 staged, unstaged and non-ignored untracked changes, including shell writes. It excludes
-generated `bin`, `obj`, `node_modules` and `.venv` directories, `.copilot-runs/` telemetry,
-and `.github/solution-profile.yaml` setup. A nonempty snapshot fails the gate; a missing or
+generated `bin`, `obj`, `node_modules`, `.venv`, `.pytest_cache`, `.mypy_cache` and
+`.ruff_cache` directories, Python bytecode in `__pycache__`, `.copilot-runs/` telemetry, and
+`.github/solution-profile.yaml` setup. A nonempty snapshot fails the gate; a missing or
 malformed snapshot leaves it unverified and prevents approval and resume. Runs recorded
 before this snapshot existed cannot receive gate credit without it. It cannot detect changes
 that were reverted, ignored, or made outside the workspace; the unsandboxed agent can also
