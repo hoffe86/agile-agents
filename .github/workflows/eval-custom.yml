@@ -16,17 +16,6 @@ on:
         description: 'Copilot AI-credit cap per phase (30-2000)'
         type: string
         default: '300'
-  workflow_call:
-    inputs:
-      task:
-        type: string
-        default: task-01
-      judge:
-        type: string
-        default: none
-      max_ai_credits:
-        type: string
-        default: '300'
 
 # Four jobs, three trust zones:
 #   plan       runs dev-lead UNSANDBOXED with every tool allowed (#22); records a skipped gate.

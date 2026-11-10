@@ -4,38 +4,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      task:
-        description: 'Task folder name or prefix'
-        type: string
-        default: task-01
-      judge:
-        description: 'Acceptance judge'
-        type: choice
-        options: [none, azure-openai]
-        default: none
-      max_ai_credits:
-        description: 'Copilot AI-credit cap per phase'
-        type: string
-        default: '300'
 
 # L0 eval: deterministic, zero-credit, no secrets. Asserts the run-event-log stream
 # conforms to the RPI pipeline shape (see docs/adr/0008). Safe to gate on — unlike the
 # credit-heavy outcome eval (Run eval workflow), this calls no model.
 
 jobs:
-  eval-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    permissions:
-      contents: read
-      copilot-requests: write
-      id-token: write
-    uses: ./.github/workflows/eval-custom.yml
-    with:
-      task: ${{ inputs.task }}
-      judge: ${{ inputs.judge }}
-      max_ai_credits: ${{ inputs.max_ai_credits }}
-
   trajectory:
     runs-on: ubuntu-latest
     steps:
