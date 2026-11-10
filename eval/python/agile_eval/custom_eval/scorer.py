@@ -32,6 +32,9 @@ from agile_eval.custom_eval.expectations import ExpectationsError, load
 from agile_eval.custom_eval.judges import JUDGES, JudgeError, judge
 from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric, skill_metrics
 from agile_eval.custom_eval.runner import STATE_FILE, Paths, default_tasks_root, resolve_task
+from agile_eval.custom_eval.trajectory import (
+    IMPLEMENTATION_AGENTS, approval_response_recorded, check_plan_gate,
+)
 
 EXIT = {"resolved": 0, "failed": 1, "partial": 2, "unverified": 3, "setup_error": 4}
 
@@ -94,8 +97,14 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
     if state["status"] in ("dry_run", "staged", "setup_error"):
         row["errors"].append(f"run status {state['status']} cannot be scored")
         return row
+    phase1_text = paths.log(1).read_text(encoding="utf-8") if paths.log(1).exists() else ""
+    phase2_text = paths.log(2).read_text(encoding="utf-8") if paths.log(2).exists() else ""
+    phase1 = parse_log_text(phase1_text)
+    phase2 = parse_log_text(phase2_text)
+    combined = parse_log_text(phase1_text + "\n" + phase2_text)
     # In CI the approve job records the decision beside a state.json still awaiting it.
     decision = None
+    request = None
     if (run / plan_approval.APPROVAL_FILE).exists():
         try:
             criteria = plan_approval.load_rubric(tasks_root.parent / plan_approval.RUBRIC_FILE,
@@ -116,16 +125,34 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
                      or (state["status"] == "complete" and not decision["approved"])):
         row["errors"].append("recorded plan decision conflicts with the run state")
         return row
+    if decision is not None:
+        gate = check_plan_gate(phase1, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS))
+        request = gate.request
+        if (verify_schema(phase1, require_skills_offered=False) or gate.honoured is not True
+                or request is None or request.session_id != state.get("session_id")):
+            row["errors"].append("plan decision has no verified matching request")
+            return row
+        try:
+            requirement = (resolve_task(tasks_root, state["task"]) / "prompt.md").read_text(
+                encoding="utf-8")
+        except OSError:
+            row["errors"].append("cannot read the plan approval requirement")
+            return row
+        binding = plan_approval.request_binding(request, requirement, criteria)
+        if plan_approval.read(run, criteria, binding=binding) is None:
+            row["errors"].append("plan decision does not match the pending request")
+            return row
+        if (state["status"] == "complete" and decision["approved"]
+                and (phase2.external_requests
+                     or not approval_response_recorded(request, phase2, combined))):
+            row["errors"].append("the approved request did not complete without a further question")
+            return row
     run_status = state["status"]
     if decision is not None and not decision["approved"]:
         run_status = "plan_rejected"
     if decision is not None:
         row["plan_approval"] = approval_metric(decision)
 
-    phase1_text = paths.log(1).read_text(encoding="utf-8") if paths.log(1).exists() else ""
-    phase2_text = paths.log(2).read_text(encoding="utf-8") if paths.log(2).exists() else ""
-    phase1 = parse_log_text(phase1_text)
-    combined = parse_log_text(phase1_text + "\n" + phase2_text)
     problems = verify_schema(combined, require_skills_offered=False)
     if problems:
         row["errors"] += problems

@@ -105,6 +105,81 @@ def test_conflicting_tool_completions_are_a_schema_error():
     assert any("conflicting completion" in error for error in trace.schema_errors)
 
 
+def test_started_subagent_must_match_the_requested_agent():
+    events = [
+        {"type": "tool.execution_start", "data": {
+            "toolCallId": "call", "toolName": "task", "arguments": {"agent_type": "coding"}}},
+        {"type": "subagent.started", "data": {
+            "toolCallId": "call", "agentName": "agile-agents-core:infrastructure"}},
+    ]
+
+    trace = parse_log_text("\n".join(json.dumps(event) for event in events))
+
+    assert any("started agent does not match" in error for error in trace.schema_errors)
+
+
+def test_started_subagent_matches_a_qualified_name():
+    events = [
+        {"type": "tool.execution_start", "data": {
+            "toolCallId": "call", "toolName": "task", "arguments": {"agent_type": "coding"}}},
+        {"type": "subagent.started", "data": {
+            "toolCallId": "call", "agentName": "agile-agents-core:coding"}},
+    ]
+
+    trace = parse_log_text("\n".join(json.dumps(event) for event in events))
+
+    assert trace.tools[0].started_agent == "agile-agents-core:coding"
+    assert not trace.schema_errors
+
+
+def test_conflicting_subagent_starts_are_rejected():
+    events = [
+        {"type": "tool.execution_start", "data": {
+            "toolCallId": "call", "toolName": "task", "arguments": {"agent_type": "coding"}}},
+        {"type": "subagent.started", "data": {"toolCallId": "call", "agentName": "coding"}},
+        {"type": "subagent.started", "data": {"toolCallId": "call", "agentName": "architect"}},
+    ]
+
+    trace = parse_log_text("\n".join(json.dumps(event) for event in events))
+
+    assert any("conflicting started agents" in error for error in trace.schema_errors)
+
+
+def test_duplicate_tool_call_ids_are_rejected():
+    events = [
+        {"type": "tool.execution_start", "data": {
+            "toolCallId": "shared", "toolName": "task", "arguments": {"agent_type": "coding"}}},
+        {"type": "tool.execution_start", "data": {
+            "toolCallId": "shared", "toolName": "task", "arguments": {"agent_type": "review-lead"}}},
+        {"type": "tool.execution_complete", "data": {"toolCallId": "shared", "success": True}},
+    ]
+
+    trace = parse_log_text("\n".join(json.dumps(event) for event in events))
+
+    assert any("duplicate tool call ID" in error for error in trace.schema_errors)
+
+
+@pytest.mark.parametrize("call_id", ["", " ", [], 42])
+def test_invalid_tool_call_ids_are_rejected_without_crashing(call_id):
+    event = {"type": "tool.execution_start", "data": {
+        "toolCallId": call_id, "toolName": "task", "arguments": {"agent_type": "coding"}}}
+
+    trace = parse_log_text(json.dumps(event))
+
+    assert any("invalid tool call ID" in error for error in trace.schema_errors)
+
+
+@pytest.mark.parametrize("parent", ["", " ", [], {}])
+def test_invalid_parent_call_ids_are_rejected_without_crashing(parent):
+    event = {"type": "tool.execution_start", "data": {
+        "toolCallId": "child", "parentToolCallId": parent,
+        "toolName": "skill", "arguments": {"skill": "x"}}}
+
+    trace = parse_log_text(json.dumps(event))
+
+    assert any("invalid parent tool call ID" in error for error in trace.schema_errors)
+
+
 def test_non_json_lines_are_tolerated(trace):
     """Real logs interleave harness banners with CLI JSON."""
     assert trace.events_unparsable >= 1, "fixture should contain a non-JSON line"

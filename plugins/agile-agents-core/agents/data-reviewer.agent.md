@@ -23,7 +23,7 @@ description: >-
   re-fits a model.
 metadata:
   model_tier: heavy  # the defects here are invisible in the output — a leaked split produces a confident number, not an error
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, browser]
+tools: [vscode, execute, read, search, web, todo, skill, context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the data review scope: analysis, model, evaluation set, or metric change to audit"
 ---
 

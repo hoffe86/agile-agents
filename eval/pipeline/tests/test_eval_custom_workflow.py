@@ -51,13 +51,15 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         self.assertEqual(self.wf["permissions"], {"contents": "read"})
         for name in ("plan", "implement"):
             job = self.jobs[name]
-            self.assertNotIn("permissions", job, f"{name} must inherit read-only permissions")
+            self.assertEqual(job["permissions"],
+                             {"contents": "read", "copilot-requests": "write"})
             self.assertNotIn("azure/login", json.dumps(job))
             self.assertNotIn("EVAL_AZURE", json.dumps(job))
         score = self.jobs["score"]
         self.assertEqual(score["permissions"], {"contents": "read", "id-token": "write"})
         self.assertNotIn("run_custom_eval", json.dumps(score), "the agent never runs where OIDC is")
-        self.assertNotIn("EVAL_COPILOT_TOKEN", json.dumps(score))
+        self.assertNotIn("GITHUB_TOKEN", json.dumps(score))
+        self.assertNotIn("github.token", json.dumps(score))
         login = _steps(score)["azure/login@eec3c95657c1536435858eda1f3ff5437fee8474"]
         login_gate = " ".join(login["if"].split())
         self.assertIn("inputs.judge == 'azure-openai'", login_gate)
@@ -72,7 +74,8 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         self.assertEqual(approve["if"],
                          "${{ needs.plan.outputs.status == 'awaiting_approval' }}")
         body = json.dumps(approve)
-        self.assertNotIn("EVAL_COPILOT_TOKEN", body)
+        self.assertNotIn("GITHUB_TOKEN", body)
+        self.assertNotIn("github.token", body)
         self.assertNotIn("--unsandboxed", body, "the approver runs no agent")
         self.assertNotIn("setup-dotnet", body)
         decide = _steps(approve)["Simulated plan approval (LLM, eval-only)"]["run"]
@@ -82,11 +85,18 @@ class EvalCustomWorkflowTests(unittest.TestCase):
 
     def test_copilot_token_is_scoped_to_the_agent_steps(self):
         holders = [(job, step.get("name")) for job, body in self.jobs.items()
-                   for step in body["steps"] if "EVAL_COPILOT_TOKEN" in json.dumps(step)]
+                   for step in body["steps"] if "GITHUB_TOKEN" in step.get("env", {})]
         self.assertEqual(holders, [
             ("plan", "Phase 1 - run dev-lead up to the plan gate"),
             ("implement", "Phase 2 - resume the same session with the recorded approval"),
         ])
+        self.assertNotIn("GITHUB_TOKEN", self.wf.get("env", {}))
+        self.assertNotIn("EVAL_COPILOT_TOKEN", self.text)
+        self.assertNotIn("COPILOT_GITHUB_TOKEN", self.text)
+        for job, step in holders:
+            self.assertNotIn("GITHUB_TOKEN", self.jobs[job].get("env", {}))
+            self.assertEqual(_steps(self.jobs[job])[step]["env"]["GITHUB_TOKEN"],
+                             "${{ github.token }}")
 
     def test_plan_gate_requires_the_successful_simulated_decision(self):
         implement = self.jobs["implement"]

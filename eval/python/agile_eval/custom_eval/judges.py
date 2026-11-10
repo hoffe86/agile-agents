@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass
+from urllib.parse import urlsplit
 
 from agile_eval.custom_eval.expectations import Criterion
 
@@ -175,7 +176,25 @@ def azure_openai_model():
     api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21").strip()
     if not endpoint or not deployment:
         raise JudgeError("set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT")
+    try:
+        url = urlsplit(endpoint)
+        hostname = url.hostname
+        _ = url.port
+    except ValueError:
+        raise JudgeError("AZURE_OPENAI_ENDPOINT must be a valid HTTPS resource URL") from None
+    if (url.scheme != "https" or not hostname or url.username is not None
+            or url.password is not None or url.query or url.fragment):
+        raise JudgeError("AZURE_OPENAI_ENDPOINT must be a valid HTTPS resource URL")
+    if (hostname.endswith((".openai.azure.com", ".services.ai.azure.com"))
+            and url.path.strip("/")):
+        raise JudgeError(
+            "AZURE_OPENAI_ENDPOINT must be the Azure resource URL without an API or project path"
+        )
     from deepeval.models import AzureOpenAIModel
+
+    for name in ("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_AD_TOKEN"):
+        if name in os.environ:
+            raise JudgeError(f"unset {name}; the azure-openai judge uses the Azure CLI Entra token")
 
     return AzureOpenAIModel(
         model=os.environ.get("AZURE_OPENAI_MODEL", deployment),

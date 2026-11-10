@@ -17,7 +17,7 @@ from agile_eval.custom_eval.trajectory import (
     IMPLEMENTATION_AGENTS,
     GateCheck,
     check_plan_gate,
-    delegated_agents,
+    delegation_outcomes,
     short_agent,
     skills_by_short_agent,
 )
@@ -69,7 +69,7 @@ def _coverage(tool: str, key: str, actual: list[str], expected: list[str]) -> fl
 def skill_metrics(trace: Trace, exp: Expectations) -> list[MetricResult]:
     by_agent = skills_by_short_agent(trace, exp.root_agent)
     by_agent[ANY_AGENT] = list(dict.fromkeys(s for v in list(by_agent.values()) for s in v))
-    delegated = delegated_agents(trace, exp.root_agent)
+    delegated = delegation_outcomes(trace, exp.root_agent)
     results: list[MetricResult] = []
     for agent in dict.fromkeys([*exp.skills, *exp.forbidden_skills]):
         expected = list(exp.skills.get(agent, ()))
@@ -96,8 +96,15 @@ def skill_metrics(trace: Trace, exp: Expectations) -> list[MetricResult]:
         if forbidden:
             score, passed = 0.0, False
             reasons.append(f"forbidden skill invoked: {', '.join(forbidden)}")
-        if agent not in (exp.root_agent, ANY_AGENT) and agent not in delegated:
-            reasons.append("agent was never delegated to")
+        if agent not in (exp.root_agent, ANY_AGENT):
+            if agent not in delegated:
+                reasons.append("agent was never delegated to")
+            elif delegated[agent] is False:
+                reasons.append("delegation failed before the agent started")
+            elif delegated[agent] is None:
+                reasons.append("delegation outcome unavailable")
+                if (missing or unknown) and not failed and not forbidden:
+                    score, passed = None, None
         results.append(MetricResult(
             name=f"skills:{agent}", score=score, passed=passed,
             reason="; ".join(reasons) or "all expected skills loaded successfully",
@@ -107,14 +114,27 @@ def skill_metrics(trace: Trace, exp: Expectations) -> list[MetricResult]:
 
 
 def delegation_metric(trace: Trace, exp: Expectations) -> MetricResult:
-    actual = delegated_agents(trace, exp.root_agent)
+    outcomes = delegation_outcomes(trace, exp.root_agent)
+    actual = list(outcomes)
     if not exp.agents:
         return MetricResult("delegation", 1.0, True, "no delegation expected", [], actual)
-    score = _coverage(TASK_TOOL_NAME, "agent_type", actual, list(exp.agents))
-    missing = [a for a in exp.agents if a not in actual]
+    confirmed = [agent for agent, outcome in outcomes.items() if outcome is True]
+    score = _coverage(TASK_TOOL_NAME, "agent_type", confirmed, list(exp.agents))
+    missing = [a for a in exp.agents if a not in outcomes]
+    failed = [a for a in exp.agents if a in outcomes and outcomes[a] is False]
+    unknown = [a for a in exp.agents if a in outcomes and outcomes[a] is None]
+    passed: bool | None = score == 1.0
+    if unknown and not missing and not failed:
+        score, passed = None, None
+    reasons = []
+    if missing:
+        reasons.append(f"not delegated to: {', '.join(missing)}")
+    if failed:
+        reasons.append(f"delegation failed: {', '.join(failed)}")
+    if unknown:
+        reasons.append(f"delegation outcome unavailable: {', '.join(unknown)}")
     return MetricResult(
-        "delegation", score, score == 1.0,
-        f"not delegated to: {', '.join(missing)}" if missing else "all expected agents delegated",
+        "delegation", score, passed, "; ".join(reasons) or "all expected agents delegated",
         list(exp.agents), actual,
     )
 

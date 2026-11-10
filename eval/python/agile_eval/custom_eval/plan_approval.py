@@ -16,10 +16,12 @@ error), never a rejection the agent is blamed for.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from agile_eval.adapters.copilot_trace import ExternalToolRequest
 from agile_eval.custom_eval.expectations import Criterion, ExpectationsError, parse_acceptance
 from agile_eval.custom_eval.judges import (
     MAX_EVIDENCE_CHARS,
@@ -58,12 +60,35 @@ def load_rubric(rubric: Path, extra: tuple[str, ...] = ()) -> tuple[Criterion, .
     return shared + tuple(Criterion(len(shared) + i, text) for i, text in enumerate(extra, 1))
 
 
+def visible_plan(request: ExternalToolRequest) -> str:
+    """The root message and exact question/choices presented at the pending request."""
+    message = request.visible_message or "(no preceding plan message)"
+    question = json.dumps(request.arguments, ensure_ascii=False, indent=2, sort_keys=True)
+    return f"Plan message:\n{message}\n\nApproval request:\n{question}"
+
+
+def request_binding(request: ExternalToolRequest, requirement: str,
+                    criteria: tuple[Criterion, ...]) -> str:
+    """Bind the judgement to this session, request, visible plan, requirement and rubric."""
+    evidence = {
+        "session_id": request.session_id,
+        "request_id": request.request_id,
+        "tool_call_id": request.call_id,
+        "arguments": request.arguments,
+        "visible_message": request.visible_message,
+        "requirement": requirement,
+        "criteria": [{"id": c.id, "text": c.text} for c in criteria],
+    }
+    encoded = json.dumps(evidence, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def build_prompt(requirement: str, criteria: tuple[Criterion, ...], plan: str) -> str:
     listed = "\n".join(f"{c.id}. {c.text}" for c in criteria)
     return f"""You are the human approver at an autonomous delivery pipeline's plan-approval gate.
-The pipeline's lead agent has decomposed a requirement into a plan and stopped for your
-approval. Nothing has been built yet. Decide, criterion by criterion, whether this plan is
-one you would approve. Follow this contract exactly.
+The pipeline's lead agent has presented a plan and requested approval. Decide, criterion
+by criterion, whether this plan is one you would approve. Follow this contract exactly.
 
 Rules:
 - Judge only from the requirement and the plan below. Do not assume content the plan does
@@ -109,7 +134,13 @@ def decide(requirement: str, criteria: tuple[Criterion, ...],
         return PlanDecision(SIMULATED, False, judgement)
     plan = plan.strip()
     if len(plan) > MAX_EVIDENCE_CHARS:
-        plan = plan[:MAX_EVIDENCE_CHARS] + "\n[plan truncated]"
+        judgement = Judgement(
+            SIMULATED,
+            [CriterionResult(c.id, "UNVERIFIED", "plan exceeds the judge evidence limit")
+             for c in criteria],
+            None, "UNVERIFIED", [],
+        )
+        return PlanDecision(SIMULATED, False, judgement)
     model = azure_openai_model()
     try:
         output, _ = model.generate(build_prompt(requirement, criteria, plan))
@@ -126,19 +157,24 @@ def decide(requirement: str, criteria: tuple[Criterion, ...],
     return PlanDecision(SIMULATED, approved, judgement)
 
 
-def write(run: Path, decision: PlanDecision) -> None:
-    (run / APPROVAL_FILE).write_text(json.dumps(decision.to_dict(), indent=2) + "\n",
+def write(run: Path, decision: PlanDecision, *, binding: str | None = None) -> None:
+    data = decision.to_dict()
+    if binding is not None:
+        data["request_sha256"] = binding
+    (run / APPROVAL_FILE).write_text(json.dumps(data, indent=2) + "\n",
                                      encoding="utf-8", newline="\n")
 
 
-def read(run: Path, criteria: tuple[Criterion, ...] | None = None) -> dict | None:
+def read(run: Path, criteria: tuple[Criterion, ...] | None = None, *,
+         binding: str | None = None) -> dict | None:
     """Read a complete, internally consistent simulated decision, or None."""
     try:
         data = json.loads((run / APPROVAL_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if (not isinstance(data, dict) or data.get("approver") != SIMULATED
-            or not isinstance(data.get("approved"), bool)):
+            or not isinstance(data.get("approved"), bool)
+            or (binding is not None and data.get("request_sha256") != binding)):
         return None
     judgement = data.get("judgement")
     if (not isinstance(judgement, dict) or judgement.get("judge") != SIMULATED

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -146,6 +147,79 @@ def _trace_with_events(*events):
     return parse_log_text("\n".join(json.dumps(event) for event in events))
 
 
+def _plan_events():
+    arguments = {
+        "question": "Approve the plan to start the autonomous run?",
+        "choices": ["Approve and run autonomously", "Adjust plan", "Cancel"],
+    }
+    return [
+        {"type": "assistant.turn_start", "data": {}},
+        {"type": "assistant.message", "data": {"content": "The proposed plan."}},
+        {"type": "tool.execution_start", "id": "span", "data": {
+            "toolName": "ask_user", "toolCallId": "call", "arguments": arguments}},
+        {"type": "external_tool.requested", "parentId": "span", "data": {
+            "requestId": "request", "sessionId": "session", "toolCallId": "call",
+            "toolName": "ask_user", "arguments": dict(arguments)}},
+    ]
+
+
+def test_pending_top_level_plan_request_verifies_the_gate():
+    gate = check_plan_gate(_trace_with_events(*_plan_events()))
+    assert gate.honoured is True
+    assert gate.request.request_id == "request"
+    assert gate.request.visible_message == "The proposed plan."
+
+
+def test_transient_external_tool_completion_does_not_close_the_durable_request():
+    events = _plan_events()
+    events.append({"type": "external_tool.completed", "ephemeral": True,
+                   "data": {"requestId": "request"}})
+    assert check_plan_gate(_trace_with_events(*events)).honoured is True
+
+
+@pytest.mark.parametrize("change", [
+    "unrelated-question", "wrong-choices", "subagent", "mismatched-call",
+    "mismatched-span", "different-arguments", "completed", "multiple-requests",
+])
+def test_only_the_original_pending_top_level_plan_request_verifies_the_gate(change):
+    events = _plan_events()
+    request = events[-1]
+    if change == "unrelated-question":
+        request["data"]["arguments"]["question"] = "Which database?"
+        events[-2]["data"]["arguments"]["question"] = "Which database?"
+    elif change == "wrong-choices":
+        request["data"]["arguments"]["choices"] = ["Approve", "Reject"]
+        events[-2]["data"]["arguments"]["choices"] = ["Approve", "Reject"]
+    elif change == "subagent":
+        request["agentId"] = "child"
+    elif change == "mismatched-call":
+        request["data"]["toolCallId"] = "other"
+    elif change == "mismatched-span":
+        request["parentId"] = "other"
+    elif change == "different-arguments":
+        request["data"]["arguments"]["question"] = "Approve a different plan?"
+    elif change == "completed":
+        events.append({"type": "external_tool.completed", "data": {"requestId": "request"}})
+    elif change == "multiple-requests":
+        events.append({**request, "data": {**request["data"], "requestId": "other"}})
+    assert check_plan_gate(_trace_with_events(*events)).honoured is None
+
+
+def test_implementation_before_a_pending_plan_request_fails_the_gate():
+    events = _plan_events()
+    events.insert(1, {"type": "tool.execution_start", "data": {
+        "toolName": "task", "toolCallId": "delegate", "arguments": {"agent_type": "coding"}}})
+    assert check_plan_gate(_trace_with_events(*events)).honoured is False
+
+
+def test_subagent_message_cannot_replace_the_plan_shown_at_the_gate():
+    events = _plan_events()
+    events.insert(-2, {"type": "assistant.message", "agentId": "child",
+                       "data": {"content": "A different subagent message."}})
+    request = check_plan_gate(_trace_with_events(*events)).request
+    assert request.visible_message == "The proposed plan."
+
+
 def _skill_trace(skill, outcome, agent="coding"):
     events = [
         {"type": "tool.execution_start", "data": {
@@ -160,6 +234,115 @@ def _skill_trace(skill, outcome, agent="coding"):
         events.append({"type": "tool.execution_complete",
                        "data": {"toolCallId": "skill-1", "success": outcome}})
     return _trace_with_events(*events)
+
+
+def _delegation_events(call_id, completion, started=False, agent="agile-agents-core:coding"):
+    events = [
+        {"type": "tool.execution_start", "data": {
+            "toolName": "task", "toolCallId": call_id,
+            "arguments": {"agent_type": agent}}},
+    ]
+    if started:
+        events.append({"type": "subagent.started", "data": {
+            "toolCallId": call_id, "agentName": agent}})
+    if completion is not None:
+        events.append({"type": "tool.execution_complete", "data": {
+            "toolCallId": call_id, "success": completion}})
+    return events
+
+
+@pytest.mark.parametrize(("started", "completion", "passed", "score", "reason"), [
+    (False, False, False, 0.0, "delegation failed"),
+    (False, None, None, None, "delegation outcome unavailable"),
+    (False, True, True, 1.0, "all expected agents delegated"),
+    (True, False, True, 1.0, "all expected agents delegated"),
+    (True, None, True, 1.0, "all expected agents delegated"),
+])
+def test_delegation_metric_requires_evidence_the_agent_started(
+        started, completion, passed, score, reason):
+    from agile_eval.custom_eval.metrics import delegation_metric
+
+    exp = from_mapping(_base(), "t", CRITERIA)
+    trace = _trace_with_events(*_delegation_events("call", completion, started))
+
+    metric = delegation_metric(trace, exp)
+
+    assert metric.passed is passed
+    assert metric.score == score
+    assert reason in metric.reason
+    assert metric.actual == ["coding"]
+
+
+def test_successful_retry_confirms_a_previously_failed_delegation():
+    from agile_eval.custom_eval.metrics import delegation_metric
+
+    exp = from_mapping(_base(), "t", CRITERIA)
+    events = (_delegation_events("first", False)
+              + _delegation_events("retry", None, started=True))
+
+    assert delegation_metric(_trace_with_events(*events), exp).passed is True
+
+
+def test_unknown_retry_leaves_a_previously_failed_delegation_unverified():
+    from agile_eval.custom_eval.metrics import delegation_metric
+
+    exp = from_mapping(_base(), "t", CRITERIA)
+    events = _delegation_events("first", False) + _delegation_events("retry", None)
+
+    metric = delegation_metric(_trace_with_events(*events), exp)
+
+    assert metric.passed is None
+    assert metric.score is None
+
+
+@pytest.mark.parametrize(("first", "retry", "passed"), [
+    (None, False, None),
+    (True, False, True),
+])
+def test_retry_evidence_is_not_overwritten_by_a_later_failure(first, retry, passed):
+    from agile_eval.custom_eval.metrics import delegation_metric
+
+    exp = from_mapping(_base(), "t", CRITERIA)
+    events = _delegation_events("first", first) + _delegation_events("retry", retry)
+
+    assert delegation_metric(_trace_with_events(*events), exp).passed is passed
+
+
+def test_failed_delegation_remains_failed_when_another_is_unverified():
+    from agile_eval.custom_eval.metrics import delegation_metric
+
+    exp = from_mapping(_base(agents=["coding", "review-lead"]), "t", CRITERIA)
+    events = (_delegation_events("coding", False)
+              + _delegation_events("review", None, agent="agile-agents-core:review-lead"))
+
+    metric = delegation_metric(_trace_with_events(*events), exp)
+
+    assert metric.passed is False
+    assert "delegation failed: coding" in metric.reason
+    assert "delegation outcome unavailable: review-lead" in metric.reason
+
+
+def test_failed_delegation_still_violates_the_pre_approval_gate():
+    trace = _trace_with_events(*_delegation_events("call", False), *_plan_events())
+
+    assert check_plan_gate(trace).honoured is False
+
+
+@pytest.mark.parametrize(("completion", "passed", "score", "reason"), [
+    (False, False, 0.0, "delegation failed before the agent started"),
+    (None, None, None, "delegation outcome unavailable"),
+])
+def test_skill_metric_explains_unconfirmed_agent_delegation(completion, passed, score, reason):
+    from agile_eval.custom_eval.metrics import skill_metrics
+
+    exp = from_mapping(_base(), "t", CRITERIA)
+    trace = _trace_with_events(*_delegation_events("call", completion))
+
+    (metric,) = skill_metrics(trace, exp)
+
+    assert metric.passed is passed
+    assert metric.score == score
+    assert reason in metric.reason
 
 
 @pytest.mark.parametrize("tool", ["view", "ask_user"])
@@ -337,6 +520,103 @@ def test_azure_judge_requires_endpoint_configuration(monkeypatch):
         judges.azure_openai_model()
 
 
+@pytest.mark.parametrize("endpoint", [
+    "https://example.services.ai.azure.com/openai/v1/responses",
+    "https://example.services.ai.azure.com/api/projects/example",
+    "https://example.openai.azure.com/openai/v1",
+    "http://example.openai.azure.com",
+    "https://example.openai.azure.com?api-version=2024-10-21",
+    "https://user:password@example.openai.azure.com",
+    "https://example.openai.azure.com:bad",
+    "https://[invalid",
+])
+def test_azure_judge_rejects_invalid_or_operation_endpoints(monkeypatch, endpoint):
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", endpoint)
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "example")
+
+    with pytest.raises(judges.JudgeError, match="AZURE_OPENAI_ENDPOINT"):
+        judges.azure_openai_model()
+
+
+@pytest.mark.parametrize("endpoint", [
+    "https://example.openai.azure.com/",
+    "https://example.services.ai.azure.com",
+])
+def test_azure_judge_uses_resource_endpoint(monkeypatch, endpoint):
+    import deepeval.models
+
+    seen = {}
+
+    def provider():
+        return "token"
+
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", endpoint)
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "example")
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_AD_TOKEN", raising=False)
+    monkeypatch.setattr(judges, "_az_token_provider", lambda: provider)
+    monkeypatch.setattr(deepeval.models, "AzureOpenAIModel", lambda **kwargs: seen.update(kwargs))
+
+    judges.azure_openai_model()
+    assert seen["base_url"] == endpoint
+    assert seen["deployment_name"] == "example"
+    assert seen["azure_ad_token_provider"] is provider
+
+
+@pytest.mark.parametrize(("name", "value"), [
+    ("AZURE_OPENAI_API_KEY", "test-key"),
+    ("AZURE_OPENAI_API_KEY", ""),
+    ("AZURE_OPENAI_AD_TOKEN", "test-token"),
+    ("AZURE_OPENAI_AD_TOKEN", ""),
+])
+def test_azure_judge_rejects_ambient_credentials(monkeypatch, name, value):
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "example")
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_AD_TOKEN", raising=False)
+    monkeypatch.setenv(name, value)
+    monkeypatch.setattr(judges, "_az_token_provider", lambda: pytest.fail("token provider used"))
+
+    with pytest.raises(judges.JudgeError, match=f"unset {name}"):
+        judges.azure_openai_model()
+
+
+def test_azure_judge_uses_entra_and_deployment_chat_route(monkeypatch):
+    import httpx2
+    import openai
+    from deepeval.models.llms import azure_model
+
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx2.Response(200, json={
+            "id": "test", "object": "chat.completion", "created": 0, "model": "test",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "answer"},
+                         "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        })
+
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.services.ai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "test-deployment")
+    monkeypatch.setenv("AZURE_OPENAI_MODEL", "gpt-4.1")
+    monkeypatch.setenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_AD_TOKEN", raising=False)
+    monkeypatch.setattr(judges, "_az_token_provider", lambda: lambda: "test-entra-token")
+    with httpx2.Client(transport=httpx2.MockTransport(respond)) as http_client:
+        monkeypatch.setattr(azure_model, "AzureOpenAI",
+                            lambda **kwargs: openai.AzureOpenAI(**kwargs, http_client=http_client))
+        output, _ = judges.azure_openai_model().generate("test prompt")
+
+    assert output == "answer"
+    assert len(requests) == 1
+    assert requests[0].url.path == "/openai/deployments/test-deployment/chat/completions"
+    assert requests[0].url.params["api-version"] == "2024-10-21"
+    assert requests[0].headers["authorization"] == "Bearer test-entra-token"
+    assert "api-key" not in requests[0].headers
+
+
 def test_model_judge_sees_command_results_as_evidence(monkeypatch):
     seen = {}
 
@@ -380,6 +660,7 @@ def test_run_check_statuses(tmp_path, check, status, reason):
 
 def test_run_check_never_passes_credentials_to_agent_code(tmp_path, monkeypatch):
     monkeypatch.setenv("COPILOT_GITHUB_TOKEN", "tok-secret")
+    monkeypatch.setenv("GITHUB_TOKEN", "actions-token")
     monkeypatch.setenv("AZURE_CLIENT_SECRET", "az-secret")
     script = "import os; print(sorted(k for k in os.environ if 'SECRET' in k or 'TOKEN' in k))"
     result = _run(tmp_path, Check(1, (PY, "-c", script)))
@@ -469,13 +750,15 @@ def test_stage_copies_inputs_and_commits_a_baseline(tmp_path):
 @needs_git
 def test_dry_run_records_a_redacted_command_and_needs_no_token(tmp_path, monkeypatch):
     monkeypatch.delenv("COPILOT_GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     out = tmp_path / "run"
     assert runner.main(["task-05", "--out", str(out), "--dry-run", "--copilot", "copilot"]) == 0
     state = json.loads((out / "state.json").read_text(encoding="utf-8"))
     assert state["status"] == "dry_run"
     cmd = state["command"]
     assert "<prompt.md>" in cmd and cmd[cmd.index("--agent") + 1] == runner.ROOT_AGENT
-    assert "--no-ask-user" in cmd and cmd.count("--plugin-dir") >= 1
+    assert "--no-ask-user" not in cmd and cmd.count("--plugin-dir") >= 1
+    assert cmd[cmd.index("--phase") + 1] == "1"
 
 
 def test_live_run_requires_explicit_unsandboxed_acknowledgement(tmp_path):
@@ -483,10 +766,28 @@ def test_live_run_requires_explicit_unsandboxed_acknowledgement(tmp_path):
         runner.main(["task-05", "--out", str(tmp_path / "run")])
 
 
-def test_run_phase_refuses_without_a_token(tmp_path, monkeypatch):
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_run_phase_refuses_without_a_token(tmp_path, monkeypatch, value):
     monkeypatch.delenv("COPILOT_GITHUB_TOKEN", raising=False)
-    with pytest.raises(runner.SetupError, match="COPILOT_GITHUB_TOKEN"):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    if value is not None:
+        monkeypatch.setenv("COPILOT_GITHUB_TOKEN", value)
+        monkeypatch.setenv("GITHUB_TOKEN", value)
+    with pytest.raises(runner.SetupError, match="COPILOT_GITHUB_TOKEN or GITHUB_TOKEN"):
         runner.run_phase(["copilot"], runner.Paths(tmp_path), 1, 10)
+
+
+@pytest.mark.parametrize("token_name", ["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"])
+def test_run_phase_passes_the_configured_token_to_the_cli(tmp_path, monkeypatch, token_name):
+    monkeypatch.delenv("COPILOT_GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv(token_name, "test-token")
+    paths = runner.Paths(tmp_path)
+    paths.workspace.mkdir()
+    script = ("import os, sys; "
+              "print('configured' if os.environ.get(sys.argv[1]) == 'test-token' else 'missing')")
+    assert runner.run_phase([sys.executable, "-c", script, token_name], paths, 1, 10) == 0
+    assert paths.log(1).read_text(encoding="utf-8").strip() == "configured"
 
 
 @needs_git
@@ -615,6 +916,16 @@ def test_simulated_approver_approves_only_when_every_criterion_passes(monkeypatc
     assert "<requirement>\nREQ\n</requirement>" in seen["prompt"]
     assert "<plan>\nPLAN <b>\n</plan>" in seen["prompt"]
     assert "untrusted" in seen["prompt"]
+    assert "Nothing has been built yet" not in seen["prompt"]
+
+
+def test_oversized_plan_is_rejected_without_truncating_the_judged_evidence(monkeypatch):
+    monkeypatch.setattr(plan_approval, "azure_openai_model",
+                        lambda: pytest.fail("judge ran with incomplete evidence"))
+    decision = plan_approval.decide("requirement", CRITERIA,
+                                    "x" * (judges.MAX_EVIDENCE_CHARS + 1))
+    assert decision.approved is False
+    assert all(row.status == "UNVERIFIED" for row in decision.judgement.criteria)
 
 
 @pytest.mark.parametrize("plan", [None, "", " \n"])
@@ -689,19 +1000,38 @@ def test_read_rejects_duplicate_criterion_ids(tmp_path):
     assert plan_approval.read(tmp_path, CRITERIA) is None
 
 
-def _awaiting(tmp_path) -> runner.Paths:
+def _awaiting(tmp_path, *, verified=False) -> runner.Paths:
     paths = runner.Paths(tmp_path)
     runner.write_state(paths, {"task": "task-02-python-di-refactor",
-                               "status": "awaiting_approval", "session_id": "s",
+                               "status": "awaiting_approval", "session_id": "session",
                                "plan_message": "the plan", "phases": {}})
+    if verified:
+        paths.log(1).write_text("\n".join(json.dumps(event) for event in _plan_events()),
+                                encoding="utf-8")
     return paths
 
 
-@pytest.fixture
-def verified_gate(monkeypatch):
-    # The prompt-mode transport cannot supply this yet; exercise the decision path
-    # separately from the tests that prove the real gate refuses missing evidence.
-    monkeypatch.setattr(runner, "_require_verified_gate", lambda *args: None)
+def _bound_plan_decision(paths, *statuses):
+    exp = load(TASKS / "task-02-python-di-refactor")
+    criteria = plan_approval.load_rubric(RUBRIC, exp.plan_approval)
+    request = runner._require_verified_gate(paths, exp, "session")
+    requirement = (TASKS / "task-02-python-di-refactor" / "prompt.md").read_text(
+        encoding="utf-8")
+    binding = plan_approval.request_binding(request, requirement, criteria)
+    plan_approval.write(paths.run, _plan_decision(*statuses), binding=binding)
+
+
+def _phase2_log(*, request_id="request", call_id="call", answer="Approve and run autonomously",
+                success=True, external=True, completion=True, extra=()):
+    events = []
+    if external:
+        events.append({"type": "external_tool.completed", "data": {"requestId": request_id}})
+    if completion:
+        events.append({"type": "tool.execution_complete", "data": {
+            "toolCallId": call_id, "success": success, "result": {"content": answer}}})
+    events.extend(extra)
+    return "\n".join(json.dumps(event) for event in events) + "\n" + FIXTURE.read_text(
+        encoding="utf-8")
 
 
 def test_phase_approve_refuses_a_stale_awaiting_state_without_gate_evidence(
@@ -738,17 +1068,22 @@ def test_phase2_refuses_a_valid_decision_without_gate_evidence(tmp_path, monkeyp
 
 @pytest.mark.parametrize("status", ["PASS", "FAIL"])
 def test_phase_approve_records_the_decision_and_runs_no_agent(
-        tmp_path, monkeypatch, status, verified_gate):
+        tmp_path, monkeypatch, status):
     n = len(plan_approval.load_rubric(RUBRIC))
-    _approver(monkeypatch, _answer(*([status] * n)))
+    seen = {}
+    _approver(monkeypatch, _answer(*([status] * n)), seen)
     monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
-    paths = _awaiting(tmp_path)
+    paths = _awaiting(tmp_path, verified=True)
     assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 0
     state = runner.read_state(paths)
     approved = status == "PASS"
     assert state["status"] == ("awaiting_approval" if approved else "plan_rejected")
     assert state["plan_approval"]["approved"] is approved
     assert plan_approval.read(tmp_path)["approved"] is approved
+    assert "The proposed plan." in seen["prompt"]
+    assert "Approve the plan to start the autonomous run?" in seen["prompt"]
+    assert "Approve and run autonomously" in seen["prompt"]
+    assert len(plan_approval.read(tmp_path)["request_sha256"]) == 64
 
 
 @pytest.mark.parametrize("old_option", [("--approver", "human"), ("--approve",)])
@@ -759,9 +1094,9 @@ def test_human_approval_options_are_not_available(tmp_path, old_option, capsys):
     assert "unrecognized arguments" in capsys.readouterr().err
 
 
-def test_phase_approve_judge_failure_is_a_setup_error(tmp_path, monkeypatch, verified_gate):
+def test_phase_approve_judge_failure_is_a_setup_error(tmp_path, monkeypatch):
     _approver(monkeypatch, "garbage")
-    paths = _awaiting(tmp_path)
+    paths = _awaiting(tmp_path, verified=True)
     assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 4
     assert runner.read_state(paths)["status"] == "awaiting_approval"
     assert plan_approval.read(tmp_path) is None
@@ -769,9 +1104,9 @@ def test_phase_approve_judge_failure_is_a_setup_error(tmp_path, monkeypatch, ver
 
 def test_phase2_stops_on_a_recorded_rejection(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
-    paths = _awaiting(tmp_path)
+    paths = _awaiting(tmp_path, verified=True)
     count = len(plan_approval.load_rubric(RUBRIC))
-    plan_approval.write(tmp_path, _plan_decision("FAIL", *(["PASS"] * (count - 1))))
+    _bound_plan_decision(paths, "FAIL", *(["PASS"] * (count - 1)))
     assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 0
     assert runner.read_state(paths)["status"] == "plan_rejected"
 
@@ -785,17 +1120,16 @@ def test_phase2_refuses_an_approval_missing_a_rubric_criterion(tmp_path, monkeyp
     assert runner.read_state(paths)["status"] == "awaiting_approval"
 
 
-def test_phase2_uses_an_approved_record_without_calling_the_judge(
-        tmp_path, monkeypatch, verified_gate):
-    paths = _awaiting(tmp_path)
+def test_phase2_uses_an_approved_record_without_calling_the_judge(tmp_path, monkeypatch):
+    paths = _awaiting(tmp_path, verified=True)
     count = len(plan_approval.load_rubric(RUBRIC))
-    plan_approval.write(tmp_path, _plan_decision(*(["PASS"] * count)))
+    _bound_plan_decision(paths, *(["PASS"] * count))
     monkeypatch.setattr(plan_approval, "decide", lambda *a, **k: pytest.fail("judge ran"))
     calls = []
 
     def run_phase(cmd, paths, phase, timeout):
         calls.append((phase, cmd))
-        shutil.copyfile(FIXTURE, paths.log(phase))
+        paths.log(phase).write_text(_phase2_log(), encoding="utf-8")
         return 0
 
     monkeypatch.setattr(runner, "run_phase", run_phase)
@@ -806,7 +1140,85 @@ def test_phase2_uses_an_approved_record_without_calling_the_judge(
     state = runner.read_state(paths)
     assert state["status"] == "complete" and state["approved_by"] == plan_approval.SIMULATED
     assert len(calls) == 1 and calls[0][0] == 2
-    assert runner.APPROVAL_MESSAGE in calls[0][1]
+    assert calls[0][1][calls[0][1].index("--request-id") + 1] == "request"
+    assert calls[0][1][calls[0][1].index("--tool-call-id") + 1] == "call"
+
+
+@pytest.mark.parametrize("change", ["message", "question", "request", "call", "session"])
+def test_phase2_refuses_an_approval_bound_to_different_evidence(
+        tmp_path, monkeypatch, capsys, change):
+    paths = _awaiting(tmp_path, verified=True)
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    events = _plan_events()
+    if change == "message":
+        events[1]["data"]["content"] = "A revised plan."
+    elif change == "question":
+        events[2]["data"]["arguments"]["question"] = "Approve the revised plan?"
+        events[3]["data"]["arguments"]["question"] = "Approve the revised plan?"
+    elif change == "request":
+        events[3]["data"]["requestId"] = "another-request"
+    elif change == "call":
+        events[2]["data"]["toolCallId"] = "another-call"
+        events[3]["data"]["toolCallId"] = "another-call"
+    elif change == "session":
+        events[3]["data"]["sessionId"] = "another-session"
+        state = runner.read_state(paths)
+        state["session_id"] = "another-session"
+        runner.write_state(paths, state)
+    paths.log(1).write_text("\n".join(json.dumps(event) for event in events), encoding="utf-8")
+    monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
+
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 4
+    assert "does not match the pending request" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("completion", [
+    {"request_id": "another-request"},
+    {"call_id": "another-call"},
+    {"answer": "Cancel"},
+    {"success": False},
+    {"external": False},
+    {"completion": False},
+])
+def test_phase2_requires_the_original_approval_call_to_complete(
+        tmp_path, monkeypatch, completion):
+    paths = _awaiting(tmp_path, verified=True)
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+
+    def run_phase(cmd, paths, phase, timeout):
+        paths.log(phase).write_text(_phase2_log(**completion), encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    monkeypatch.setattr(runner, "_capture", lambda *a: None)
+    monkeypatch.setattr(runner, "_verify", lambda *a: None)
+
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 4
+    state = runner.read_state(paths)
+    assert state["status"] == "setup_error"
+    assert "did not complete with the approved choice" in state["phases"]["2"]["schema_errors"][0]
+
+
+def test_phase2_blocks_a_later_unapproved_question(tmp_path, monkeypatch):
+    paths = _awaiting(tmp_path, verified=True)
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    followup = {"type": "external_tool.requested", "data": {
+        "requestId": "followup", "sessionId": "session", "toolCallId": "another-call",
+        "toolName": "ask_user", "arguments": {"question": "Approve a design change?"}}}
+
+    def run_phase(cmd, paths, phase, timeout):
+        paths.log(phase).write_text(_phase2_log(extra=(followup,)), encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    monkeypatch.setattr(runner, "_capture", lambda *a: None)
+    monkeypatch.setattr(runner, "_verify", lambda *a: None)
+
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 0
+    assert runner.read_state(paths)["status"] == "blocked_approval"
 
 
 @pytest.mark.parametrize(("status", "expected_status", "approved_by", "expected_calls"), [
@@ -815,19 +1227,18 @@ def test_phase2_uses_an_approved_record_without_calling_the_judge(
     ("UNVERIFIED", "plan_rejected", None, []),
 ])
 def test_all_phases_automatically_use_the_simulated_approver(
-        tmp_path, monkeypatch, status, expected_status, approved_by, expected_calls,
-        verified_gate):
+        tmp_path, monkeypatch, status, expected_status, approved_by, expected_calls):
     count = len(plan_approval.load_rubric(RUBRIC))
     _approver(monkeypatch, _answer(*([status] * count)))
 
     def phase1(args, task_dir, paths):
-        return runner.read_state(_awaiting(paths.run))
+        return runner.read_state(_awaiting(paths.run, verified=True))
 
     calls = []
 
     def run_phase(cmd, paths, phase, timeout):
         calls.append(phase)
-        shutil.copyfile(FIXTURE, paths.log(phase))
+        paths.log(phase).write_text(_phase2_log(), encoding="utf-8")
         return 0
 
     monkeypatch.setattr(runner, "phase1", phase1)
@@ -916,7 +1327,8 @@ def test_score_recorded_run_end_to_end(tmp_path, monkeypatch):
     assert row["status"] == "setup_error" and "invalid plan-approval.json" in row["errors"]
 
     count = len(plan_approval.load_rubric(RUBRIC))
-    plan_approval.write(run, _plan_decision("FAIL", *(["PASS"] * (count - 1))))
+    _awaiting(run, verified=True)
+    _bound_plan_decision(paths, "FAIL", *(["PASS"] * (count - 1)))
     real_judge = scorer.judge
 
     def no_acceptance_model(name, *args, **kwargs):
@@ -976,19 +1388,17 @@ def test_scorer_rejects_a_completed_run_with_a_rejected_plan(tmp_path):
 
 def test_scorer_accepts_a_completed_run_with_a_valid_simulated_approval(tmp_path):
     pytest.importorskip("deepeval")
-    paths = runner.Paths(tmp_path)
-    runner.write_state(paths, {
-        "task": "task-02-python-di-refactor", "status": "complete",
-        "approved_by": plan_approval.SIMULATED,
-    })
+    paths = _awaiting(tmp_path, verified=True)
+    runner.write_state(paths, {**runner.read_state(paths), "status": "complete",
+                               "approved_by": plan_approval.SIMULATED})
     count = len(plan_approval.load_rubric(RUBRIC))
-    plan_approval.write(tmp_path, _plan_decision(*(["PASS"] * count)))
-    shutil.copyfile(FIXTURE, paths.log(1))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    paths.log(2).write_text(_phase2_log(), encoding="utf-8")
     paths.diff.write_text("synthetic diff\n", encoding="utf-8")
     row = scorer.score_run(tmp_path, "none", TASKS)
     assert row["status"] == "failed"
     assert row["plan_approval"]["passed"] is True
-    assert row["plan_gate"]["passed"] is False
+    assert row["plan_gate"]["passed"] is True
 
 
 def test_approval_metric_lists_the_failing_criteria():
@@ -1019,11 +1429,12 @@ def test_scorer_without_a_captured_diff_is_a_setup_error(tmp_path):
     pytest.importorskip("deepeval")
     paths = runner.Paths(tmp_path / "run")
     baseline = runner.stage(TASKS / "task-02-python-di-refactor", paths)
-    shutil.copyfile(FIXTURE, paths.log(1))
-    runner.write_state(paths, {"task": "task-02-python-di-refactor", "status": "complete",
-                               "baseline": baseline, "phases": {}})
+    _awaiting(paths.run, verified=True)
+    runner.write_state(paths, {**runner.read_state(paths), "status": "complete",
+                               "baseline": baseline})
     count = len(plan_approval.load_rubric(RUBRIC))
-    plan_approval.write(paths.run, _plan_decision(*(["PASS"] * count)))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    paths.log(2).write_text(_phase2_log(), encoding="utf-8")
     row = scorer.score_run(paths.run, "none", TASKS)
     assert row["status"] == "setup_error"
     assert "produced.diff" in row["errors"][0]
