@@ -42,6 +42,21 @@ class JudgeError(RuntimeError):
     """The judge environment failed; reported as setup error, never as agent failure."""
 
 
+def model_call_error(message: str, error: Exception) -> JudgeError:
+    """Report safe diagnostics without echoing SDK messages or response bodies."""
+    status = getattr(error, "status_code", None)
+    if type(status) is int and 100 <= status <= 599:
+        detail = f"HTTP {status}"
+    elif type(error).__name__ in {
+        "APIConnectionError", "APIError", "APIResponseValidationError", "APITimeoutError",
+        "AttributeError", "KeyError", "RuntimeError", "TimeoutError", "TypeError", "ValueError",
+    }:
+        detail = type(error).__name__
+    else:
+        detail = "unexpected error"
+    return JudgeError(f"{message} ({detail})")
+
+
 @dataclass
 class CriterionResult:
     id: int
@@ -239,9 +254,8 @@ def judge(name: str, task_prompt: str, criteria: tuple[Criterion, ...],
                                                 command_evidence, final_response))
     except JudgeError:
         raise
-    except Exception:
-        # Never echo SDK exception text: it can carry endpoint or token detail.
-        raise JudgeError("azure-openai judge call failed") from None
+    except Exception as error:
+        raise model_call_error("azure-openai judge call failed", error) from None
     result = parse_contract(str(output), criteria, name)
     # Known-unverifiable criteria cannot be credited by a model's claim.
     for r in result.criteria:

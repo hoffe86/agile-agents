@@ -31,6 +31,7 @@ from agile_eval.custom_eval.judges import (
     Judgement,
     JudgeError,
     azure_openai_model,
+    model_call_error,
     parse_contract,
     verdict_for,
 )
@@ -146,9 +147,8 @@ def decide(requirement: str, criteria: tuple[Criterion, ...],
         output, _ = model.generate(build_prompt(requirement, criteria, plan))
     except JudgeError:
         raise
-    except Exception:
-        # Never echo SDK exception text: it can carry endpoint or token detail.
-        raise JudgeError("simulated plan approver call failed") from None
+    except Exception as error:
+        raise model_call_error("simulated plan approver call failed", error) from None
     judgement = parse_contract(str(output), criteria, SIMULATED)
     if judgement.contract_errors:
         raise JudgeError("simulated plan approver broke the output contract: "

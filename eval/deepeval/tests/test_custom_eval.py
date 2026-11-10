@@ -528,6 +528,40 @@ def test_model_judge_hides_sdk_error_text(monkeypatch):
     assert "secret" not in str(info.value)
 
 
+@pytest.mark.parametrize("kind", ["acceptance", "plan"])
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 429, 503])
+def test_model_judges_report_safe_http_status(monkeypatch, kind, status):
+    import httpx2
+    import openai
+
+    class Exploding:
+        def generate(self, prompt):
+            request = httpx2.Request("POST", "https://secret.example")
+            response = httpx2.Response(status, request=request)
+            raise openai.APIStatusError(
+                "token=abc", response=response, body={"token": "abc"}
+            )
+
+    module = judges if kind == "acceptance" else plan_approval
+    monkeypatch.setattr(module, "azure_openai_model", Exploding)
+    with pytest.raises(judges.JudgeError) as info:
+        if kind == "acceptance":
+            judges.judge("azure-openai", "t", CRITERIA, {}, "d")
+        else:
+            plan_approval.decide("t", CRITERIA, "plan")
+    assert f"HTTP {status}" in str(info.value)
+    assert "secret" not in str(info.value)
+    assert "token" not in str(info.value)
+
+
+def test_model_call_error_does_not_echo_untrusted_status_or_type():
+    class PrivateError(Exception):
+        status_code = "403 token=abc"
+
+    error = judges.model_call_error("judge failed", PrivateError("secret"))
+    assert str(error) == "judge failed (unexpected error)"
+
+
 def test_azure_judge_requires_endpoint_configuration(monkeypatch):
     monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)

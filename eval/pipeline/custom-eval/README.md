@@ -96,6 +96,10 @@ for example `https://<resource>.openai.azure.com/`,
 operation URL.
 The deployment must support Azure's deployment-based Chat Completions API. The default API
 version is `2024-10-21`; local runs can override it with `AZURE_OPENAI_API_VERSION`.
+Judge failures report the HTTP status when available without logging the SDK response or
+credentials. A successful Azure login does not prove inference access: check the identity
+and its inference role for 401/403, the resource and deployment for 404, and model/API
+compatibility for 400.
 
 In CI, run **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`) by hand.
 GitHub registers it for manual dispatch only after the workflow file is on the default branch;
