@@ -170,9 +170,13 @@ the pinned CLI version. Synthetic probes on Windows and Linux verified suspensio
 resume, the matching tool response, and delegated skill attribution. Real `dev-lead` probes
 have not yet completed this path: one did not request approval and another delegated
 implementation before approval. The runner reported `blocked_approval` and `gate_skipped`,
-respectively, rather than treating either as a passed gate. A separate Actions smoke test
-authenticated the pinned CLI with `GITHUB_TOKEN`, but did not exercise the SDK transport.
-The Azure judge and cross-job artifact flow are not yet verified end to end.
+respectively, rather than treating either as a passed gate. A branch Actions run also
+authenticated the pinned CLI with `GITHUB_TOKEN`, ran the SDK plan phase, and transferred
+the plan artifact to scoring. It did not produce a verified approval request, so the
+approval and implementation jobs were skipped. That probe used the PR-description-only
+task, although dev-lead excludes single-stage work; it does not establish how an
+implementation task would behave. The Azure judge and full cross-job approval flow are
+not yet verified end to end.
 
 The violation detector recognizes implementing-agent delegations and top-level write tools;
 it does not detect writes performed through shell commands.
