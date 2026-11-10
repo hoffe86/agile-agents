@@ -106,6 +106,14 @@ jobs:
             --only-binary=:all: --requirement eval/deepeval/requirements.lock.txt
           npm install --global "@github/copilot@${COPILOT_CLI_VERSION}"
 
+      - name: Install task 02 Python tools
+        run: &install-task02-tools |
+          if [[ "$TASK" == task-02 || "$TASK" == task-02-* ]]; then
+            python -m pip --isolated install --require-hashes --only-binary=:all: \
+              --requirement eval/pipeline/custom-eval/requirements-task02.lock.txt
+            python -m pip check
+          fi
+
       - name: Phase 1 - run dev-lead up to the plan gate
         id: phase1
         env:
@@ -292,6 +300,9 @@ jobs:
           "$RUNNER_TEMP/eval-venv/bin/python" -m pip --isolated install --require-hashes \
             --only-binary=:all: --requirement eval/deepeval/requirements.lock.txt
           npm install --global "@github/copilot@${COPILOT_CLI_VERSION}"
+
+      - name: Install task 02 Python tools
+        run: *install-task02-tools
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:

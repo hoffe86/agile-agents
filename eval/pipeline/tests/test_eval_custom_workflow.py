@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 import yaml
 
 
@@ -237,6 +239,56 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         self.assertNotIn("setup-dotnet", json.dumps(self.jobs["score"]),
                          "the score job never runs agent code")
         self.assertNotIn("actionlint", json.dumps(self.jobs["score"]))
+
+    def test_python_task_tools_are_pinned_and_only_in_agent_jobs(self):
+        body = None
+        for name, phase in (
+            ("plan", "Phase 1 - run dev-lead up to the plan gate"),
+            ("implement", "Phase 2 - resume the same session with the recorded approval"),
+        ):
+            steps = self.jobs[name]["steps"]
+            names = [step.get("name") for step in steps]
+            tool_step = _steps(self.jobs[name])["Install task 02 Python tools"]
+            self.assertLess(names.index("Install the pinned evaluation lock and Copilot CLI"),
+                            names.index("Install task 02 Python tools"))
+            self.assertLess(names.index("Install task 02 Python tools"), names.index(phase))
+            self.assertNotIn("GITHUB_TOKEN", tool_step.get("env", {}))
+            run = tool_step["run"]
+            self.assertIn('[[ "$TASK" == task-02 || "$TASK" == task-02-* ]]', run)
+            self.assertIn("--require-hashes --only-binary=:all:", run)
+            self.assertIn("eval/pipeline/custom-eval/requirements-task02.lock.txt", run)
+            self.assertIn("python -m pip check", run)
+            if body is not None:
+                self.assertEqual(body, run)
+            body = run
+        for name in ("approve", "score"):
+            self.assertNotIn("requirements-task02.lock.txt", json.dumps(self.jobs[name]))
+
+        lock = (ROOT / "eval/pipeline/custom-eval/requirements-task02.lock.txt").read_text(
+            encoding="utf-8")
+        self.assertIn("-r ../../deepeval/requirements.lock.txt", lock)
+        for name in ("fastapi", "librt", "mypy", "mypy-extensions", "pathspec",
+                     "ruff", "starlette"):
+            self.assertRegex(lock, rf"(?m)^{name}==\S+ --hash=sha256:[0-9a-f]{{64}}")
+        self.assertNotRegex(lock, r"(?m)^[^#\s-].* --(?!hash=)")
+
+    def test_python_tool_versions_satisfy_the_task_baseline(self):
+        versions = {}
+        for path in (ROOT / "eval/deepeval/requirements.lock.txt",
+                     ROOT / "eval/pipeline/custom-eval/requirements-task02.lock.txt"):
+            for name, version in re.findall(
+                    r"(?m)^([a-zA-Z0-9_.-]+)==([^\s;]+)", path.read_text("utf-8")):
+                versions[canonicalize_name(name)] = version
+        baseline = ROOT / "eval/pipeline/custom-eval/tasks/task-02-python-di-refactor/baseline"
+        for path in (baseline / "requirements.txt", baseline / "requirements-dev.txt"):
+            for line in path.read_text("utf-8").splitlines():
+                if not line or line.startswith(("#", "-r ")):
+                    continue
+                requirement = Requirement(line)
+                name = canonicalize_name(requirement.name)
+                with self.subTest(requirement=line):
+                    self.assertIn(name, versions)
+                    self.assertIn(versions[name], requirement.specifier)
 
 
 if __name__ == "__main__":

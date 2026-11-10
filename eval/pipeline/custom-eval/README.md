@@ -108,9 +108,11 @@ select the branch to evaluate when starting the run.
 | `implement` | same as `plan` | runs only when `approve` succeeds with an `approved` decision, then resumes and runs the checks |
 | `score` | OIDC and `contents: read`; no `copilot-requests` permission | DeepEval + judge over the recorded files; runs no agent |
 
-The agent jobs install .NET 10 for the C# tasks and a pinned, checksum-verified `actionlint`
-for task 06; `kubectl`, `az` and Docker come with the runner image. Locally, a tool missing
-from `PATH` leaves its criterion `UNVERIFIED`.
+The agent jobs install .NET 10 for the C# tasks, pinned Python tools for task 02, and a
+pinned, checksum-verified `actionlint` for task 06; `kubectl`, `az` and Docker come with
+the runner image. Task 02 layers its hash-locked dependencies on the evaluation environment
+only in the agent jobs; the approver and scorer retain the evaluation lock alone. Locally,
+a missing tool leaves its criterion `UNVERIFIED`.
 
 The pinned `actionlint` 1.7.12 predates the `copilot-requests` permission. When linting
 this workflow with it, exclude only that false positive:
@@ -266,6 +268,10 @@ in which case the judge grades the remaining clause (with `--judge none` it stay
 `UNVERIFIED`). Command output is also shown to the judge as untrusted evidence. Declared
 checks with no matching `checks.json` leave their criteria `UNVERIFIED`; rerun
 `--phase verify`. Checks run only for runs that reached `complete` or `gate_skipped`.
+`{python}` resolves to the interpreter running the verifier, not necessarily the agent's
+Python. Its environment must contain the tools the checks require. For task 02, install
+`requirements-task02.lock.txt` with `--require-hashes --only-binary=:all:` into a separate
+evaluation environment, then run `--phase verify` with that environment's Python.
 The judge receives the completed final response separately from the diff. It can grade the
 response itself when it is the requested deliverable, but cannot use its claims as proof of
 file changes or test results. A plan waiting for approval is never treated as a final answer.
