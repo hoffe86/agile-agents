@@ -171,8 +171,10 @@ the preceding plan message, and the exact approval question — what a human see
 The runner uses the pinned Copilot CLI's bundled SDK to suspend at the top-level `ask_user`
 request and resume that same request after approval. This internal SDK interface is tied to
 the pinned CLI version. Synthetic probes on Windows and Linux verified suspension, cold
-resume, the matching tool response, and delegated skill attribution. Real `dev-lead` probes
-have not yet completed this path: one did not request approval and another delegated
+resume, the matching tool response, and delegated skill attribution. A synthetic probe also
+used a real LLM through a mocked Azure HTTP transport: it rejected a missing plan and
+approved and resumed a complete plan. This did not call Azure. Real `dev-lead` probes have
+not yet completed this path: one did not request approval and another delegated
 implementation before approval. The runner reported `blocked_approval` and `gate_skipped`,
 respectively, rather than treating either as a passed gate. A branch Actions run also
 authenticated the pinned CLI with `GITHUB_TOKEN`, ran the SDK plan phase, and transferred
