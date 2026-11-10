@@ -6,6 +6,7 @@ the metrics need the same facts, so both read them from one place.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from agile_eval.adapters.copilot_trace import ExternalToolRequest, Trace
@@ -36,11 +37,12 @@ class GateCheck:
 
 
 def check_plan_gate(
-    phase1: Trace, implementation_agents: frozenset[str] = IMPLEMENTATION_AGENTS
+    phase1: Trace, implementation_agents: frozenset[str] = IMPLEMENTATION_AGENTS,
+    *, phase1_changes: tuple[str, ...] | None = None,
 ) -> GateCheck:
     """Verify a pending top-level Stage 4 request and check for prior implementation.
 
-    Writes made via a shell command are not detectable from the trace.
+    The workspace snapshot detects persistent shell writes, not reverted or ignored files.
     """
     violations: list[str] = []
     for _, delegated in phase1.delegations:
@@ -50,6 +52,10 @@ def check_plan_gate(
     for tool in phase1.tools_for(None):
         if tool.name in WRITE_TOOLS:
             violations.append(f"top-level agent used {tool.name} before plan approval")
+    if phase1_changes:
+        preview = ", ".join(json.dumps(path) for path in phase1_changes[:10])
+        suffix = ", ..." if len(phase1_changes) > 10 else ""
+        violations.append(f"workspace changed before plan approval: {preview}{suffix}")
     violations = list(dict.fromkeys(violations))
     if violations:
         return GateCheck(False, tuple(violations), "; ".join(violations))
@@ -68,6 +74,8 @@ def check_plan_gate(
             or "plan" not in question.casefold()
             or not isinstance(choices, list) or tuple(choices) != PLAN_APPROVAL_CHOICES):
         return GateCheck(None, (), "plan approval request could not be verified")
+    if phase1_changes is None:
+        return GateCheck(None, (), "pre-approval workspace change evidence is unavailable")
     return GateCheck(True, (), "top-level Stage 4 approval request is pending", request)
 
 

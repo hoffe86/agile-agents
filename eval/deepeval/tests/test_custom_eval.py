@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -164,7 +166,7 @@ def _plan_events():
 
 
 def test_pending_top_level_plan_request_verifies_the_gate():
-    gate = check_plan_gate(_trace_with_events(*_plan_events()))
+    gate = check_plan_gate(_trace_with_events(*_plan_events()), phase1_changes=())
     assert gate.honoured is True
     assert gate.request.request_id == "request"
     assert gate.request.visible_message == "The proposed plan."
@@ -174,7 +176,7 @@ def test_transient_external_tool_completion_does_not_close_the_durable_request()
     events = _plan_events()
     events.append({"type": "external_tool.completed", "ephemeral": True,
                    "data": {"requestId": "request"}})
-    assert check_plan_gate(_trace_with_events(*events)).honoured is True
+    assert check_plan_gate(_trace_with_events(*events), phase1_changes=()).honoured is True
 
 
 @pytest.mark.parametrize("change", [
@@ -202,7 +204,7 @@ def test_only_the_original_pending_top_level_plan_request_verifies_the_gate(chan
         events.append({"type": "external_tool.completed", "data": {"requestId": "request"}})
     elif change == "multiple-requests":
         events.append({**request, "data": {**request["data"], "requestId": "other"}})
-    assert check_plan_gate(_trace_with_events(*events)).honoured is None
+    assert check_plan_gate(_trace_with_events(*events), phase1_changes=()).honoured is None
 
 
 def test_implementation_before_a_pending_plan_request_fails_the_gate():
@@ -216,8 +218,21 @@ def test_subagent_message_cannot_replace_the_plan_shown_at_the_gate():
     events = _plan_events()
     events.insert(-2, {"type": "assistant.message", "agentId": "child",
                        "data": {"content": "A different subagent message."}})
-    request = check_plan_gate(_trace_with_events(*events)).request
+    request = check_plan_gate(_trace_with_events(*events), phase1_changes=()).request
     assert request.visible_message == "The proposed plan."
+
+
+def test_plan_request_without_workspace_evidence_is_unverified():
+    gate = check_plan_gate(_trace_with_events(*_plan_events()))
+    assert gate.honoured is None
+    assert "workspace" in gate.reason
+
+
+def test_workspace_changes_before_a_plan_request_fail_the_gate():
+    gate = check_plan_gate(_trace_with_events(*_plan_events()),
+                           phase1_changes=("src/service.py", "tests/test_service.py"))
+    assert gate.honoured is False
+    assert "src/service.py" in gate.reason
 
 
 def _skill_trace(skill, outcome, agent="coding"):
@@ -630,6 +645,46 @@ def test_model_judge_sees_command_results_as_evidence(monkeypatch):
     assert "<command-results>\nBUILD-OUTPUT\n</command-results>" in seen["prompt"]
 
 
+def test_model_judge_sees_the_final_response_as_separate_untrusted_evidence(monkeypatch):
+    seen = {}
+
+    class FakeModel:
+        def generate(self, prompt):
+            seen["prompt"] = prompt
+            return "1. PASS - ok\n2. PASS - ok\nVERDICT: RESOLVED", 0.0
+
+    monkeypatch.setattr(judges, "azure_openai_model", FakeModel)
+    judges.judge("azure-openai", "t", CRITERIA, {}, "DIFF",
+                 final_response="## What\nThe answer.")
+    assert "<final-response>\n## What\nThe answer.\n</final-response>" in seen["prompt"]
+    assert "not proof of workspace changes" in seen["prompt"]
+    assert "<evidence>\nDIFF\n</evidence>" in seen["prompt"]
+
+
+def test_oversized_final_response_is_unverified_without_a_model_call(monkeypatch):
+    monkeypatch.setattr(judges, "azure_openai_model",
+                        lambda: pytest.fail("oversized response reached the model"))
+    result = judges.judge("azure-openai", "t", CRITERIA, {}, "diff",
+                          final_response="x" * (judges.MAX_EVIDENCE_CHARS + 1))
+    assert result.verdict == "UNVERIFIED"
+    assert all(r.status == "UNVERIFIED" and "limit" in r.reason for r in result.criteria)
+
+
+def test_final_response_at_the_evidence_limit_reaches_the_model_intact(monkeypatch):
+    final = "x" * judges.MAX_EVIDENCE_CHARS
+    seen = {}
+
+    class FakeModel:
+        def generate(self, prompt):
+            seen["prompt"] = prompt
+            return "1. PASS - ok\n2. PASS - ok\nVERDICT: RESOLVED", 0.0
+
+    monkeypatch.setattr(judges, "azure_openai_model", FakeModel)
+    result = judges.judge("azure-openai", "t", CRITERIA, {}, "diff", final_response=final)
+    assert result.verdict == "RESOLVED"
+    assert f"<final-response>\n{final}\n</final-response>" in seen["prompt"]
+
+
 # --- command checks ---------------------------------------------------------------------
 
 PY = "{python}"
@@ -813,6 +868,81 @@ def test_phase1_blocks_when_a_plan_approval_request_cannot_be_verified(tmp_path,
     assert state["gate"]["honoured"] is None
     assert "could not be verified" in state["gate"]["reason"]
     assert not (paths.run / plan_approval.APPROVAL_FILE).exists()
+
+
+@needs_git
+def test_phase1_detects_a_shell_written_change_before_a_plan_request(tmp_path, monkeypatch):
+    pytest.importorskip("deepeval")
+    paths = runner.Paths(tmp_path / "run")
+    monkeypatch.setattr(runner.uuid, "uuid4", lambda: "session")
+
+    def run_phase(cmd, paths, phase, timeout):
+        subprocess.run(
+            [sys.executable, "-c",
+             "from pathlib import Path; Path('bypass.py').write_text('implemented = True\\n')"],
+            cwd=paths.workspace, check=True,
+        )
+        events = _plan_events()
+        events.insert(1, {"type": "tool.execution_start", "data": {
+            "toolName": "shell", "toolCallId": "shell", "arguments": {}}})
+        paths.log(phase).write_text("\n".join(json.dumps(e) for e in events), encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    args = runner.argparse.Namespace(copilot="copilot", max_ai_credits=30, timeout=30,
+                                     dry_run=False)
+    state = runner.phase1(args, TASKS / "task-05-pr-description", paths)
+    assert state["status"] == "gate_skipped"
+    assert state["gate"]["honoured"] is False
+    assert "bypass.py" in state["gate"]["reason"]
+    assert json.loads(paths.phase1_changes.read_text(encoding="utf-8"))["paths"] == ["bypass.py"]
+    row = scorer.score_run(paths.run, "none", TASKS)
+    assert row["status"] == "failed"
+    assert row["plan_gate"]["passed"] is False
+
+
+@needs_git
+def test_phase1_allows_telemetry_and_profile_setup_before_the_plan(tmp_path, monkeypatch):
+    paths = runner.Paths(tmp_path / "run")
+    monkeypatch.setattr(runner.uuid, "uuid4", lambda: "session")
+
+    def run_phase(cmd, paths, phase, timeout):
+        event_dir = paths.workspace / ".copilot-runs" / "run"
+        event_dir.mkdir(parents=True)
+        (event_dir / "events.jsonl").write_text("{}\n", encoding="utf-8")
+        profile = paths.workspace / ".github" / "solution-profile.yaml"
+        profile.write_text(profile.read_text(encoding="utf-8") + "\n# setup\n", encoding="utf-8")
+        paths.log(phase).write_text("\n".join(json.dumps(e) for e in _plan_events()),
+                                    encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    args = runner.argparse.Namespace(copilot="copilot", max_ai_credits=30, timeout=30,
+                                     dry_run=False)
+    state = runner.phase1(args, TASKS / "task-05-pr-description", paths)
+    assert state["status"] == "awaiting_approval"
+    assert json.loads(paths.phase1_changes.read_text(encoding="utf-8"))["paths"] == []
+
+
+@needs_git
+def test_ungated_phase1_does_not_finish_with_a_pending_user_request(tmp_path, monkeypatch):
+    paths = runner.Paths(tmp_path / "run")
+    task_dir = TASKS / "task-05-pr-description"
+    exp = replace(load(task_dir), plan_gate="not_applicable")
+    monkeypatch.setattr(runner, "load", lambda _: exp)
+    monkeypatch.setattr(runner.uuid, "uuid4", lambda: "session")
+
+    def run_phase(cmd, paths, phase, timeout):
+        paths.log(phase).write_text("\n".join(json.dumps(e) for e in _plan_events()),
+                                    encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    args = runner.argparse.Namespace(copilot="copilot", max_ai_credits=30, timeout=30,
+                                     dry_run=False)
+    state = runner.phase1(args, task_dir, paths)
+    assert state["status"] == "blocked_approval"
+    assert "a user-input request was not approved" in state["errors"]
 
 
 def test_phase2_without_a_decision_fails_closed(tmp_path, monkeypatch, capsys):
@@ -1008,6 +1138,7 @@ def _awaiting(tmp_path, *, verified=False) -> runner.Paths:
     if verified:
         paths.log(1).write_text("\n".join(json.dumps(event) for event in _plan_events()),
                                 encoding="utf-8")
+        paths.phase1_changes.write_text(json.dumps({"schema": 1, "paths": []}), encoding="utf-8")
     return paths
 
 
@@ -1042,6 +1173,34 @@ def test_phase_approve_refuses_a_stale_awaiting_state_without_gate_evidence(
     assert "needs a readable phase1.jsonl" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("snapshot", [
+    None, "not json", '{"schema": 1, "paths": "not a list"}',
+    '{"schema": true, "paths": []}', '{"schema": 1, "paths": [""]}',
+    '{"schema": 1, "paths": ["same", "same"]}',
+    '{"schema": 1, "schema": 1, "paths": []}',
+    '{"schema": 1, "paths": [], "extra": true}',
+])
+def test_phase_approve_refuses_missing_or_invalid_workspace_evidence(
+        tmp_path, monkeypatch, capsys, snapshot):
+    paths = _awaiting(tmp_path, verified=True)
+    if snapshot is None:
+        paths.phase1_changes.unlink()
+    else:
+        paths.phase1_changes.write_text(snapshot, encoding="utf-8")
+    monkeypatch.setattr(plan_approval, "decide", lambda *a, **k: pytest.fail("judge ran"))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 4
+    assert "workspace" in capsys.readouterr().out
+
+
+def test_phase_approve_refuses_persistent_preapproval_changes(tmp_path, monkeypatch, capsys):
+    paths = _awaiting(tmp_path, verified=True)
+    paths.phase1_changes.write_text(
+        json.dumps({"schema": 1, "paths": ["src/service.py"]}), encoding="utf-8")
+    monkeypatch.setattr(plan_approval, "decide", lambda *a, **k: pytest.fail("judge ran"))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "approve"]) == 4
+    assert "src/service.py" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("with_implementation", [False, True])
 def test_phase_approve_refuses_unverified_or_violated_gate(
         tmp_path, monkeypatch, capsys, with_implementation):
@@ -1064,6 +1223,17 @@ def test_phase2_refuses_a_valid_decision_without_gate_evidence(tmp_path, monkeyp
     monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
     assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 4
     assert "needs a readable phase1.jsonl" in capsys.readouterr().out
+
+
+def test_phase2_refuses_an_approval_if_workspace_evidence_was_removed(
+        tmp_path, monkeypatch, capsys):
+    paths = _awaiting(tmp_path, verified=True)
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    paths.phase1_changes.unlink()
+    monkeypatch.setattr(runner, "run_phase", lambda *a, **k: pytest.fail("agent ran"))
+    assert runner.main(["task-02", "--out", str(tmp_path), "--phase", "2", "--unsandboxed"]) == 4
+    assert "workspace" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("status", ["PASS", "FAIL"])
@@ -1401,6 +1571,115 @@ def test_scorer_accepts_a_completed_run_with_a_valid_simulated_approval(tmp_path
     assert row["plan_gate"]["passed"] is True
 
 
+def test_scorer_passes_only_the_completed_phase_two_response_to_the_judge(tmp_path, monkeypatch):
+    pytest.importorskip("deepeval")
+    paths = _awaiting(tmp_path, verified=True)
+    runner.write_state(paths, {**runner.read_state(paths), "status": "complete",
+                               "approved_by": plan_approval.SIMULATED})
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    final = {"type": "assistant.message", "data": {"content": "The finished answer."}}
+    paths.log(2).write_text(_phase2_log() + "\n" + json.dumps(final), encoding="utf-8")
+    paths.diff.write_text("", encoding="utf-8")
+    seen = {}
+    real_judge = scorer.judge
+
+    def capture(name, *args, **kwargs):
+        seen["response"] = kwargs.get("final_response")
+        return real_judge("none", *args, **kwargs)
+
+    monkeypatch.setattr(scorer, "judge", capture)
+    scorer.score_run(tmp_path, "none", TASKS)
+    assert seen["response"] == "The finished answer."
+
+
+@pytest.mark.parametrize(("status", "required", "pending", "expected"), [
+    ("complete", False, False, "The finished answer."),
+    ("gate_skipped", True, False, "The finished answer."),
+    ("gate_skipped", True, True, None),
+])
+def test_scorer_only_uses_phase_one_as_a_final_response_when_it_finished(
+        tmp_path, monkeypatch, status, required, pending, expected):
+    pytest.importorskip("deepeval")
+    paths = runner.Paths(tmp_path)
+    task = "task-05-pr-description"
+    runner.write_state(paths, {"task": task, "status": status, "session_id": "session"})
+    events = _plan_events() if pending else [
+        {"type": "assistant.turn_start", "data": {}},
+        {"type": "assistant.message", "data": {"content": "The finished answer."}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": "view", "toolCallId": "view", "arguments": {}}},
+    ]
+    paths.log(1).write_text("\n".join(json.dumps(event) for event in events), encoding="utf-8")
+    paths.phase1_changes.write_text(
+        json.dumps({"schema": 1, "paths": ["output.txt"] if required else []}), encoding="utf-8")
+    paths.diff.write_text("", encoding="utf-8")
+    if not required:
+        exp = replace(load(TASKS / task), plan_gate="not_applicable")
+        monkeypatch.setattr(scorer, "load", lambda _: exp)
+    seen = {}
+    real_judge = scorer.judge
+
+    def capture(name, *args, **kwargs):
+        seen["response"] = kwargs.get("final_response")
+        return real_judge("none", *args, **kwargs)
+
+    monkeypatch.setattr(scorer, "judge", capture)
+    scorer.score_run(tmp_path, "none", TASKS)
+    assert seen["response"] == expected
+
+
+def test_scorer_does_not_treat_a_plan_as_a_final_response(tmp_path, monkeypatch):
+    pytest.importorskip("deepeval")
+    paths = _awaiting(tmp_path, verified=True)
+    paths.diff.write_text("", encoding="utf-8")
+    seen = {}
+    real_judge = scorer.judge
+
+    def capture(name, *args, **kwargs):
+        seen["response"] = kwargs.get("final_response")
+        return real_judge("none", *args, **kwargs)
+
+    monkeypatch.setattr(scorer, "judge", capture)
+    scorer.score_run(tmp_path, "none", TASKS)
+    assert seen["response"] is None
+
+
+def test_scorer_rejects_an_ungated_run_claimed_complete_with_a_pending_request(
+        tmp_path, monkeypatch):
+    paths = runner.Paths(tmp_path)
+    task = "task-05-pr-description"
+    runner.write_state(paths, {"task": task, "status": "complete"})
+    paths.log(1).write_text("\n".join(json.dumps(e) for e in _plan_events()), encoding="utf-8")
+    exp = replace(load(TASKS / task), plan_gate="not_applicable")
+    monkeypatch.setattr(scorer, "load", lambda _: exp)
+    monkeypatch.setattr(scorer, "judge", lambda *a, **k: pytest.fail("judge ran"))
+    row = scorer.score_run(tmp_path, "none", TASKS)
+    assert row["status"] == "setup_error"
+    assert "unapproved user-input request" in row["errors"][0]
+
+
+def test_scorer_does_not_credit_a_legacy_run_without_workspace_evidence(tmp_path):
+    pytest.importorskip("deepeval")
+    paths = _awaiting(tmp_path, verified=True)
+    paths.phase1_changes.unlink()
+    paths.diff.write_text("", encoding="utf-8")
+    row = scorer.score_run(tmp_path, "none", TASKS)
+    assert row["status"] == "unverified"
+    assert row["plan_gate"]["passed"] is None
+    assert "workspace" in row["plan_gate"]["reason"]
+
+
+def test_scorer_refuses_a_decision_without_workspace_evidence(tmp_path):
+    paths = _awaiting(tmp_path, verified=True)
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    paths.phase1_changes.unlink()
+    row = scorer.score_run(tmp_path, "none", TASKS)
+    assert row["status"] == "setup_error"
+    assert "no verified matching request" in row["errors"][0]
+
+
 def test_approval_metric_lists_the_failing_criteria():
     decision = plan_approval.PlanDecision(
         plan_approval.SIMULATED, False, _judgement("PASS", "FAIL", reason="no risks")).to_dict()
@@ -1422,6 +1701,73 @@ def test_capture_diff_includes_untracked_files(tmp_path):
     (paths.workspace / "PR.md").write_text("hello\n", encoding="utf-8")
     runner.capture_diff(paths, baseline)
     assert "+hello" in scorer.produced_diff(paths)
+
+
+@pytest.mark.parametrize("kind", ["unstaged", "staged", "committed", "staged-restored",
+                                  "deleted", "untracked"])
+@needs_git
+def test_phase1_snapshot_captures_persistent_changes(tmp_path, kind):
+    paths = runner.Paths(tmp_path / "run")
+    baseline = runner.stage(TASKS / "task-05-pr-description", paths)
+    filename = "new \u00fc file.txt" if kind == "untracked" else "diff.patch"
+    file = paths.workspace / filename
+    original = file.read_bytes() if file.exists() else b""
+    if kind == "deleted":
+        file.unlink()
+    else:
+        file.write_bytes(original + b"\nchange\n")
+    if kind in ("staged", "committed", "staged-restored"):
+        runner._git(paths.workspace, "add", filename)
+    if kind == "committed":
+        runner._git(paths.workspace, "commit", "-q", "-m", "implement before approval")
+    if kind == "staged-restored":
+        file.write_bytes(original)
+
+    runner.capture_diff(paths, baseline)
+    assert runner.capture_phase1_changes(paths, baseline) == (filename,)
+    assert runner.read_phase1_changes(paths) == (filename,)
+
+
+@needs_git
+def test_phase1_snapshot_excludes_generated_output(tmp_path):
+    paths = runner.Paths(tmp_path / "run")
+    baseline = runner.stage(TASKS / "task-05-pr-description", paths)
+    for folder in ("bin", Path("src") / "obj", "node_modules", ".venv"):
+        output = paths.workspace / folder / "generated"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("generated", encoding="utf-8")
+    runner.capture_diff(paths, baseline)
+    assert runner.capture_phase1_changes(paths, baseline) == ()
+
+
+def test_capture_diff_fails_when_untracked_files_cannot_be_recorded(tmp_path, monkeypatch):
+    paths = runner.Paths(tmp_path)
+    monkeypatch.setattr(runner.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 1))
+    with pytest.raises(runner.SetupError, match="untracked files"):
+        runner.capture_diff(paths, "baseline")
+
+
+@needs_git
+def test_phase1_snapshot_failure_stops_the_run_before_approval(tmp_path, monkeypatch):
+    paths = runner.Paths(tmp_path / "run")
+    monkeypatch.setattr(runner.uuid, "uuid4", lambda: "session")
+
+    def run_phase(cmd, paths, phase, timeout):
+        paths.log(phase).write_text("\n".join(json.dumps(e) for e in _plan_events()),
+                                    encoding="utf-8")
+        return 0
+
+    def failed_capture(paths, baseline):
+        raise runner.SetupError("cannot capture pre-approval workspace changes")
+
+    monkeypatch.setattr(runner, "run_phase", run_phase)
+    monkeypatch.setattr(runner, "capture_phase1_changes", failed_capture)
+    args = runner.argparse.Namespace(copilot="copilot", max_ai_credits=30, timeout=30,
+                                     dry_run=False)
+    state = runner.phase1(args, TASKS / "task-05-pr-description", paths)
+    assert state["status"] == "setup_error"
+    assert "cannot capture pre-approval workspace changes" in state["errors"]
 
 
 @needs_git

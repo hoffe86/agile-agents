@@ -6,8 +6,8 @@
 Each run directory is one produced by run_custom_eval.py. The trajectory -- did dev-lead
 stop at the plan gate, delegate to the expected agents, and did each agent invoke the
 skills it is expected to -- is scored deterministically. Acceptance evidence is what the
-runner recorded in the agent's trust zone: the diff against the staged baseline, and
-`checks.json`, the exit codes of the task's declared build / test / render commands.
+runner recorded in the agent's trust zone: the diff against the staged baseline, the
+agent's final response, and `checks.json`, the task's declared build / test / render results.
 Failing commands fail their criterion outright; the judge grades what no command covers.
 The scorer runs no git and no workspace code, so it is safe in a job that holds judge
 credentials.
@@ -31,7 +31,9 @@ from agile_eval.custom_eval.checks import CHECKS_FILE, apply_checks, evidence, l
 from agile_eval.custom_eval.expectations import ExpectationsError, load
 from agile_eval.custom_eval.judges import JUDGES, JudgeError, judge
 from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric, skill_metrics
-from agile_eval.custom_eval.runner import STATE_FILE, Paths, default_tasks_root, resolve_task
+from agile_eval.custom_eval.runner import (
+    STATE_FILE, Paths, default_tasks_root, read_phase1_changes, resolve_task,
+)
 from agile_eval.custom_eval.trajectory import (
     IMPLEMENTATION_AGENTS, approval_response_recorded, check_plan_gate,
 )
@@ -102,6 +104,11 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
     phase1 = parse_log_text(phase1_text)
     phase2 = parse_log_text(phase2_text)
     combined = parse_log_text(phase1_text + "\n" + phase2_text)
+    phase1_changes = read_phase1_changes(paths)
+    if (state["status"] == "complete" and exp.plan_gate != "required"
+            and phase1.external_requests):
+        row["errors"].append("run completed with an unapproved user-input request")
+        return row
     # In CI the approve job records the decision beside a state.json still awaiting it.
     decision = None
     request = None
@@ -126,7 +133,10 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
         row["errors"].append("recorded plan decision conflicts with the run state")
         return row
     if decision is not None:
-        gate = check_plan_gate(phase1, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS))
+        gate = check_plan_gate(
+            phase1, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS),
+            phase1_changes=phase1_changes,
+        )
         request = gate.request
         if (verify_schema(phase1, require_skills_offered=False) or gate.honoured is not True
                 or request is None or request.session_id != state.get("session_id")):
@@ -159,12 +169,17 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
         return row
 
     try:
-        gate, _ = plan_gate_metric(phase1, exp)
+        gate, _ = plan_gate_metric(phase1, exp, phase1_changes=phase1_changes)
         trajectory = [delegation_metric(combined, exp), *skill_metrics(combined, exp)]
     except Exception:
         row["errors"].append("DeepEval trajectory measurement failed; check the pinned environment")
         return row
     results = load_results(run, exp)
+    final_response = None
+    if run_status == "complete":
+        final_response = (phase2 if exp.plan_gate == "required" else phase1).final_message
+    elif run_status == "gate_skipped" and not phase1.external_requests:
+        final_response = phase1.final_message
     try:
         judgement = judge(
             "none" if run_status in ("plan_rejected", "blocked_approval", "awaiting_approval")
@@ -172,7 +187,7 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
             (resolve_task(tasks_root, state["task"]) / "prompt.md").read_text(
                 encoding="utf-8"),
             exp.criteria, exp.unverifiable,
-            produced_diff(paths), command_evidence=evidence(results),
+            produced_diff(paths), command_evidence=evidence(results), final_response=final_response,
         )
     except JudgeError as exc:
         row["errors"].append(str(exc))

@@ -139,11 +139,13 @@ def delegation_metric(trace: Trace, exp: Expectations) -> MetricResult:
     )
 
 
-def plan_gate_metric(phase1: Trace, exp: Expectations) -> tuple[MetricResult, GateCheck | None]:
+def plan_gate_metric(
+    phase1: Trace, exp: Expectations, *, phase1_changes: tuple[str, ...] | None = None,
+) -> tuple[MetricResult, GateCheck | None]:
     if exp.plan_gate != "required":
         return MetricResult("plan_gate", None, None, "not applicable to this task", [], []), None
     impl = frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS)
-    gate = check_plan_gate(phase1, impl)
+    gate = check_plan_gate(phase1, impl, phase1_changes=phase1_changes)
     return MetricResult(
         "plan_gate", None if gate.honoured is None else float(gate.honoured), gate.honoured,
         gate.reason, ["verified plan approval request before implementation"],

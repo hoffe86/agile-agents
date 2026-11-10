@@ -20,14 +20,16 @@ A run has two halves, kept in separate trust zones:
 
 - **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, attempts
   to drive `dev-lead` through the Copilot CLI to its plan gate, and has an LLM judge the plan
-  before resuming the *same* pending request. It captures `produced.diff` against the staged
-  baseline and runs the task's acceptance **checks** (see below) in that workspace, recording
-  `checks.json`. Missing or unverified approval evidence blocks the resume.
+  before resuming the *same* pending request. It records `phase1-changes.json` before any
+  acceptance checks, captures `produced.diff` against the staged baseline, and runs the task's
+  acceptance **checks** (see below) in that workspace, recording `checks.json`. Missing or
+  unverified approval evidence blocks the resume.
 - **Scorer** (`../score_custom_eval.py`) reads only the recorded JSONL logs, `state.json`,
-  `plan-approval.json`, `produced.diff` and `checks.json`. Trajectory is scored with **DeepEval**
-  (`ToolCorrectnessMetric`); command results decide build/test/render criteria; the rest goes
-  to a pluggable judge. It runs no git and no workspace code, so it can hold judge
-  credentials safely.
+  `phase1-changes.json`, `plan-approval.json`, `produced.diff` and `checks.json`. Trajectory
+  is scored with **DeepEval** (`ToolCorrectnessMetric`); command results decide
+  build/test/render criteria; the rest goes to a pluggable judge. The final agent response is
+  read from the log as separate evidence. The scorer runs no git and no workspace code, so it
+  can hold judge credentials safely.
 
 The live agent is **not OS-sandboxed** — it runs with every tool allowed on the host, which
 is why the runner refuses to start without `--unsandboxed`. The checks run in that same trust
@@ -174,12 +176,23 @@ respectively, rather than treating either as a passed gate. A branch Actions run
 authenticated the pinned CLI with `GITHUB_TOKEN`, ran the SDK plan phase, and transferred
 the plan artifact to scoring. It did not produce a verified approval request, so the
 approval and implementation jobs were skipped. That probe used the PR-description-only
-task, although dev-lead excludes single-stage work; it does not establish how an
-implementation task would behave. The Azure judge and full cross-job approval flow are
-not yet verified end to end.
+task, although dev-lead excludes single-stage work. A separate implementation-task run
+changed source and test files through shell commands without requesting approval; it was
+reported as `blocked_approval` because the earlier detector missed those writes. Replaying
+its captured diff against a clean task baseline now detects both changes and fails the gate;
+this is not a new end-to-end run. The Azure judge and full cross-job approval flow are not
+yet verified end to end.
 
-The violation detector recognizes implementing-agent delegations and top-level write tools;
-it does not detect writes performed through shell commands.
+The gate checks implementing-agent delegation attempts and top-level write tools, and records
+persistent workspace changes against the staged baseline. That snapshot covers committed,
+staged, unstaged and non-ignored untracked changes, including shell writes. It excludes
+generated `bin`, `obj`, `node_modules` and `.venv` directories, `.copilot-runs/` telemetry,
+and `.github/solution-profile.yaml` setup. A nonempty snapshot fails the gate; a missing or
+malformed snapshot leaves it unverified and prevents approval and resume. Runs recorded
+before this snapshot existed cannot receive gate credit without it. It cannot detect changes
+that were reverted, ignored, or made outside the workspace; the unsandboxed agent can also
+tamper with local evidence. A top-level write tool is still a violation regardless of path.
+This detection is not a security boundary.
 
 The decision is written to `plan-approval.json`, labelled `llm-simulated`, and scored as its
 own metric, `Plan approval (llm-simulated)`. A rejection **ends the run** as **failed**
@@ -247,6 +260,11 @@ in which case the judge grades the remaining clause (with `--judge none` it stay
 `UNVERIFIED`). Command output is also shown to the judge as untrusted evidence. Declared
 checks with no matching `checks.json` leave their criteria `UNVERIFIED`; rerun
 `--phase verify`. Checks run only for runs that reached `complete` or `gate_skipped`.
+The judge receives the completed final response separately from the diff. It can grade the
+response itself when it is the requested deliverable, but cannot use its claims as proof of
+file changes or test results. A plan waiting for approval is never treated as a final answer.
+Responses over 120,000 characters leave model-judged criteria `UNVERIFIED` without a model
+call; command-check overrides still apply.
 
 | Task | Checked | Left to the judge |
 |---|---|---|

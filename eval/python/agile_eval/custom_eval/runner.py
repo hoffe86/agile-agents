@@ -45,10 +45,13 @@ DEFAULT_MAX_AI_CREDITS = 300
 MIN_AI_CREDITS = 30
 STATE_FILE = "state.json"
 DIFF_FILE = "produced.diff"
+PHASE1_CHANGES_FILE = "phase1-changes.json"
 # Run statuses whose workspace holds a finished change the acceptance checks can test.
 VERIFIABLE = ("complete", "gate_skipped")
 EVIDENCE_EXCLUDES = (":(exclude,glob)**/bin/**", ":(exclude,glob)**/obj/**",
                      ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.venv/**")
+PHASE1_EXCLUDES = (*EVIDENCE_EXCLUDES, ":(exclude,glob).copilot-runs/**",
+                   ":(exclude,top).github/solution-profile.yaml")
 # Defence in depth only -- see capture_diff.
 _SAFE_GIT = ("-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null")
 
@@ -79,6 +82,10 @@ class Paths:
     @property
     def diff(self) -> Path:
         return self.run / DIFF_FILE
+
+    @property
+    def phase1_changes(self) -> Path:
+        return self.run / PHASE1_CHANGES_FILE
 
 
 def repo_root() -> Path:
@@ -155,8 +162,10 @@ def capture_diff(paths: Paths, baseline: str) -> None:
     scorer reads the captured file and never runs git in the workspace.
     """
     ws = paths.workspace
-    subprocess.run(["git", *_SAFE_GIT, "add", "-A", "-N"], cwd=ws, capture_output=True,
-                   check=False)
+    added = subprocess.run(["git", *_SAFE_GIT, "add", "-A", "-N"], cwd=ws,
+                           capture_output=True, check=False)
+    if added.returncode != 0:
+        raise SetupError("cannot include untracked files in the workspace evidence")
     proc = subprocess.run(
         ["git", *_SAFE_GIT, "diff", "--no-color", "--no-ext-diff", "--no-textconv", baseline,
          "--", ".", *EVIDENCE_EXCLUDES],
@@ -164,7 +173,59 @@ def capture_diff(paths: Paths, baseline: str) -> None:
     )
     if proc.returncode != 0:
         raise SetupError("cannot diff the produced workspace against its baseline")
-    paths.diff.write_text(proc.stdout, encoding="utf-8", newline="\n")
+    try:
+        paths.diff.write_text(proc.stdout, encoding="utf-8", newline="\n")
+    except OSError:
+        raise SetupError("cannot record the produced workspace diff") from None
+
+
+def capture_phase1_changes(paths: Paths, baseline: str) -> tuple[str, ...]:
+    """Record persistent pre-approval changes apart from telemetry and profile setup."""
+    changed: set[str] = set()
+    # A staged change can be hidden by restoring the working copy to the baseline.
+    for options in ((), ("--cached",)):
+        proc = subprocess.run(
+            ["git", *_SAFE_GIT, "diff", *options, "--name-only", "-z", "--no-ext-diff",
+             "--no-textconv", baseline, "--", ".", *PHASE1_EXCLUDES],
+            cwd=paths.workspace, capture_output=True, check=False,
+        )
+        if proc.returncode != 0 or (proc.stdout and not proc.stdout.endswith(b"\0")):
+            raise SetupError("cannot capture pre-approval workspace changes")
+        changed.update(proc.stdout.decode("utf-8", errors="surrogateescape").split("\0")[:-1])
+    changes = tuple(sorted(changed))
+    try:
+        paths.phase1_changes.write_text(
+            json.dumps({"schema": 1, "paths": changes}, indent=2) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+    except OSError:
+        raise SetupError("cannot record pre-approval workspace changes") from None
+    return changes
+
+
+def _snapshot_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate workspace snapshot field")
+        result[key] = value
+    return result
+
+
+def read_phase1_changes(paths: Paths) -> tuple[str, ...] | None:
+    """Read the recorded snapshot, or leave the gate unverified when it is invalid."""
+    try:
+        data = json.loads(paths.phase1_changes.read_text(encoding="utf-8"),
+                          object_pairs_hook=_snapshot_object)
+    except (OSError, ValueError, RecursionError):
+        return None
+    if (not isinstance(data, dict) or set(data) != {"schema", "paths"}
+            or type(data.get("schema")) is not int
+            or data["schema"] != 1 or not isinstance(data.get("paths"), list)
+            or any(not isinstance(path, str) or not path or "\0" in path for path in data["paths"])
+            or len(set(data["paths"])) != len(data["paths"])):
+        return None
+    return tuple(data["paths"])
 
 
 def copilot_command(copilot: str, prompt: str, session_id: str, max_credits: int,
@@ -232,26 +293,40 @@ def phase1(args: argparse.Namespace, task_dir: Path, paths: Paths) -> dict:
     state["phases"]["1"] = {"exit_code": code, "schema_errors": problems}
     if code != 0 or problems:
         state["status"] = "setup_error"
-    elif exp.plan_gate != "required":
-        state["status"] = "complete"
-    else:
-        gate = check_plan_gate(trace, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS))
-        state["gate"] = {"honoured": gate.honoured, "violations": list(gate.violations),
-                         "reason": gate.reason}
-        if gate.honoured is False:
-            state["status"] = "gate_skipped"
-        elif gate.request is not None and gate.request.session_id == session_id:
-            state["status"] = "awaiting_approval"
-            state["plan_message"] = plan_approval.visible_plan(gate.request)
+    _capture(paths, state)
+    if state["status"] != "setup_error":
+        try:
+            changes = capture_phase1_changes(paths, baseline)
+        except SetupError as exc:
+            state["status"] = "setup_error"
+            state.setdefault("errors", []).append(str(exc))
         else:
-            state["status"] = "blocked_approval"
-            if gate.request is not None:
-                state["gate"] = {"honoured": None, "violations": [],
-                                 "reason": "approval request belongs to a different session"}
+            if exp.plan_gate != "required":
+                if trace.external_requests:
+                    state["status"] = "blocked_approval"
+                    state.setdefault("errors", []).append("a user-input request was not approved")
+                else:
+                    state["status"] = "complete"
+            else:
+                gate = check_plan_gate(
+                    trace, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS),
+                    phase1_changes=changes,
+                )
+                state["gate"] = {"honoured": gate.honoured, "violations": list(gate.violations),
+                                 "reason": gate.reason}
+                if gate.honoured is False:
+                    state["status"] = "gate_skipped"
+                elif gate.request is not None and gate.request.session_id == session_id:
+                    state["status"] = "awaiting_approval"
+                    state["plan_message"] = plan_approval.visible_plan(gate.request)
+                else:
+                    state["status"] = "blocked_approval"
+                    if gate.request is not None:
+                        state["gate"] = {"honoured": None, "violations": [],
+                                         "reason": "approval request belongs to a different session"}
     state.setdefault("plan_message", trace.final_message)
     # The agent could reach the run directory: never let it pre-seed an approval.
     (paths.run / plan_approval.APPROVAL_FILE).unlink(missing_ok=True)
-    _capture(paths, state)
     _verify(exp, paths, state)
     write_state(paths, state)
     return state
@@ -299,7 +374,10 @@ def _require_verified_gate(paths: Paths, exp: Expectations,
         raise SetupError("plan approval needs a readable phase1.jsonl") from None
     if verify_schema(trace, require_skills_offered=False):
         raise SetupError("phase 1 trace cannot verify the plan approval gate")
-    gate = check_plan_gate(trace, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS))
+    gate = check_plan_gate(
+        trace, frozenset(exp.implementation_agents or IMPLEMENTATION_AGENTS),
+        phase1_changes=read_phase1_changes(paths),
+    )
     if gate.honoured is not True or gate.request is None:
         raise SetupError(f"plan approval gate not verified: {gate.reason}")
     if not isinstance(session_id, str) or not session_id.strip():
