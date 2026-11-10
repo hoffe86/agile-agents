@@ -63,6 +63,49 @@ jobs:
           client-id: ${{ vars.EVAL_AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.EVAL_AZURE_TENANT_ID }}
           allow-no-subscriptions: true
+      - name: Diagnose inference authorization
+        run: |
+          python - <<'PY'
+          import base64
+          import json
+          import subprocess
+          from uuid import UUID
+
+          from agile_eval.custom_eval.judges import azure_openai_model
+
+          result = subprocess.run(
+              ["az", "account", "get-access-token", "--resource",
+               "https://cognitiveservices.azure.com", "--output", "json"],
+              capture_output=True, text=True, check=True,
+          )
+          token = json.loads(result.stdout)["accessToken"]
+          payload = token.split(".")[1]
+          claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+          print("principal_object_id=" + str(UUID(claims["oid"])))
+          print("expected_audience=" + str(
+              claims.get("aud") == "https://cognitiveservices.azure.com"
+          ))
+          try:
+              azure_openai_model().generate("Reply with OK.")
+              print("inference=success")
+          except Exception as error:
+              status = getattr(error, "status_code", None)
+              print("http_status=" + (
+                  str(status) if type(status) is int and 100 <= status <= 599 else "unavailable"
+              ))
+              body = getattr(error, "body", None)
+              info = body.get("error", body) if isinstance(body, dict) else {}
+              code = info.get("code") if isinstance(info, dict) else None
+              known = {"PermissionDenied", "Unauthorized", "UnauthorizedAccess",
+                       "AccessDenied", "InvalidAuthenticationToken", "InvalidToken"}
+              print("azure_code=" + (code if isinstance(code, str) and code in known
+                                     else "unrecognized"))
+              message = info.get("message", "") if isinstance(info, dict) else ""
+              message = message.lower() if isinstance(message, str) else ""
+              print("mentions_permission=" + str("permission" in message))
+              print("mentions_access=" + str("access" in message))
+              print("mentions_audience=" + str("audience" in message))
+          PY
       - name: Judge synthetic plans
         run: |
           python - <<'PY'
