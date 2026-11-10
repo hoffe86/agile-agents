@@ -35,7 +35,7 @@ jobs:
         run: python eval/pipeline/trajectory/check-trajectory.py eval/pipeline/trajectory/fixtures/full-run.events.jsonl
 
   azure-judge-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/hoffe86-congenial-system' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/azure-probe-disabled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -114,3 +114,47 @@ jobs:
           print(f"Synthetic plan judge decision: {'approved' if decision.approved else 'rejected'}")
           if not decision.approved:
               raise SystemExit("::error::The synthetic plan was not approved")
+
+  copilot-token-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/hoffe86-congenial-system' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      copilot-requests: write
+    env:
+      COPILOT_AUTO_UPDATE: 'false'
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install the pinned Copilot CLI
+        run: npm install --global '@github/copilot@1.0.105'
+
+      - name: Exercise the built-in GitHub token
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_HOME: ${{ runner.temp }}/copilot-smoke-home
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/copilot-smoke"
+          cd "$RUNNER_TEMP/copilot-smoke"
+          set +e
+          timeout 120s copilot --silent --no-custom-instructions --no-ask-user \
+            --disable-builtin-mcps --max-ai-credits 30 \
+            --prompt 'Reply with the single word READY.' \
+            > "$RUNNER_TEMP/copilot-smoke-output" 2> "$RUNNER_TEMP/copilot-smoke-error"
+          result=$?
+          set -e
+          if [ "$result" -ne 0 ]; then
+            if grep -qiE '401|403|unauthorized|authentication|permission|entitlement' "$RUNNER_TEMP/copilot-smoke-error"; then
+              echo '::error::Copilot CLI reported an authentication, permission or entitlement error.'
+            else
+              echo "::error::Copilot CLI did not complete (exit $result)."
+            fi
+            exit "$result"
+          fi
+          python -c "from pathlib import Path; import sys; answer = Path(sys.argv[1]).read_text().strip().strip('.* '); sys.exit(0 if answer.upper() == 'READY' else 1)" "$RUNNER_TEMP/copilot-smoke-output" \
+            || { echo '::error::Copilot did not return the expected synthetic response.'; exit 1; }
+          echo 'The pinned Copilot CLI authenticated with the built-in GitHub token.'
