@@ -90,8 +90,10 @@ the acceptance judge is selected separately. Azure OpenAI authenticates with Ent
 `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`. Unset `AZURE_OPENAI_API_KEY` and
 `AZURE_OPENAI_AD_TOKEN`, even if empty: the underlying client otherwise picks them up in
 addition to or instead of the Azure CLI token. Set the endpoint to the Azure resource URL,
-for example `https://<resource>.openai.azure.com/` or
-`https://<resource>.services.ai.azure.com/`, not a project URL or a Responses API operation URL.
+for example `https://<resource>.openai.azure.com/`,
+`https://<resource>.services.ai.azure.com/`, or
+`https://<resource>.cognitiveservices.azure.com/`, not a project URL or a Responses API
+operation URL.
 The deployment must support Azure's deployment-based Chat Completions API. The default API
 version is `2024-10-21`; local runs can override it with `AZURE_OPENAI_API_VERSION`.
 

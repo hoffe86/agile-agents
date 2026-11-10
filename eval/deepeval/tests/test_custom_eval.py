@@ -539,6 +539,7 @@ def test_azure_judge_requires_endpoint_configuration(monkeypatch):
     "https://example.services.ai.azure.com/openai/v1/responses",
     "https://example.services.ai.azure.com/api/projects/example",
     "https://example.openai.azure.com/openai/v1",
+    "https://example.cognitiveservices.azure.com/openai/v1/responses",
     "http://example.openai.azure.com",
     "https://example.openai.azure.com?api-version=2024-10-21",
     "https://user:password@example.openai.azure.com",
@@ -556,6 +557,7 @@ def test_azure_judge_rejects_invalid_or_operation_endpoints(monkeypatch, endpoin
 @pytest.mark.parametrize("endpoint", [
     "https://example.openai.azure.com/",
     "https://example.services.ai.azure.com",
+    "https://example.cognitiveservices.azure.com/",
 ])
 def test_azure_judge_uses_resource_endpoint(monkeypatch, endpoint):
     import deepeval.models

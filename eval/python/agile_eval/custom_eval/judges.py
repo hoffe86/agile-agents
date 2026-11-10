@@ -192,7 +192,8 @@ def azure_openai_model():
     if (url.scheme != "https" or not hostname or url.username is not None
             or url.password is not None or url.query or url.fragment):
         raise JudgeError("AZURE_OPENAI_ENDPOINT must be a valid HTTPS resource URL")
-    if (hostname.endswith((".openai.azure.com", ".services.ai.azure.com"))
+    if (hostname.endswith((".openai.azure.com", ".services.ai.azure.com",
+                           ".cognitiveservices.azure.com"))
             and url.path.strip("/")):
         raise JudgeError(
             "AZURE_OPENAI_ENDPOINT must be the Azure resource URL without an API or project path"
