@@ -2,7 +2,8 @@
 # AGENTS.md — {{PROJECT_NAME}}
 
 > Generated from `solution-profile.yaml` on {{GENERATED_ON}}.
-> Do not edit by hand — regenerate with `scripts/generate-agents-md.ps1` (or `.sh`).
+> Do not edit by hand — use the `solution-profile-interview` skill's bundled generator
+> (this harness repository also provides `scripts/generate-agents-md.ps1` / `.sh` wrappers).
 
 Portable context using the [AGENTS.md](https://agents.md) convention.
 The authoritative contracts are `.github/solution-profile.yaml` (or the explicit

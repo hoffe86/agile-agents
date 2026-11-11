@@ -98,6 +98,12 @@ Never reflow untouched lines.
 
 Show the user a diff-style summary of what changed, not the whole file.
 
+After each approved profile write, regenerate `AGENTS.md` with the bundled
+[PowerShell](scripts/generate-agents-md.ps1) or [Bash](scripts/generate-agents-md.sh)
+script; read [generation](references/generation.md) for invocation and safeguards.
+Include this derived file in the approval; do not overwrite hand-maintained
+instructions. Report a generator failure as incomplete bootstrap, not success.
+
 ### 5. Verify required fields
 
 These six must be non-empty before the suite can run:

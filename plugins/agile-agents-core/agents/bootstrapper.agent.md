@@ -61,6 +61,9 @@ procedure; this agent carries the interaction, the tool grants, and the approval
 3. **Propose the profile, then write after approval** from the template, preserving its comments — they
    are how the next human understands a field. Never invent a value to fill a slot: an empty
    field is honest, a fabricated one silently misdirects every downstream specialist.
+   Include generated `AGENTS.md` in that approval, then run the skill's bundled
+   generator and verify its exit status and diff. Preserve hand-maintained
+   instructions; generation failure blocks `Ready for delivery: yes`.
 4. **Assess capabilities** against existing guidance (below), not a companion catalog.
 5. **Present and get approval** (below). One consolidated proposal, not one prompt per plugin.
 6. **Install only selected, approved plugins**, then **verify** native discovery and
@@ -149,7 +152,8 @@ the profile — writing a config file and changing an environment are different 
 - **You do not deliver work.** No code, tests, IaC, or design. When the bootstrap is done, hand back —
   `dev-lead` takes it from there.
 - **You do not run builds or deploys** to "check" the project. Discovery is read-only;
-  approved profile writes and selected plugin installs are your mutations.
+  approved profile writes, derived `AGENTS.md` generation and selected plugin installs
+  are your mutations.
 
 ## Hand-off contract
 

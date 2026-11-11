@@ -1963,10 +1963,8 @@ class AgentMetadataTests(unittest.TestCase):
                 script = root / "scripts" / Path(runner[-1]).name
                 script.parent.mkdir()
                 shutil.copyfile(runner[-1], script)
-                references = script.parent / "references"
-                references.mkdir()
-                shutil.copyfile(ROOT / "scripts/references/agents-md-template.md",
-                                references / "agents-md-template.md")
+                skill = Path("plugins/agile-agents-core/skills/solution-profile-interview")
+                shutil.copytree(ROOT / skill, root / skill)
                 (root / ".github/agents").mkdir(parents=True)
                 (root / ".github/skills").mkdir()
                 profile = root / "solution-profile.yaml"
@@ -1982,7 +1980,7 @@ class AgentMetadataTests(unittest.TestCase):
                 self.assertNotEqual(rejected.returncode, 0)
                 self.assertFalse(output.exists())
                 canonical = root / ".github/solution-profile.yaml"
-                canonical.write_text("identity:\n  project_name: canonical-profile\n", encoding="utf-8")
+                canonical.write_text("identity:\n  project_name: canonical-profile\nrpi:\n  {}\n", encoding="utf-8")
                 result = subprocess.run(command, cwd=root, capture_output=True,
                                         text=True, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -1998,6 +1996,87 @@ class AgentMetadataTests(unittest.TestCase):
                         self.assertEqual(explicit.returncode, 0, explicit.stdout + explicit.stderr)
                         self.assertIn("explicit-only", output.read_text(encoding="utf-8"))
                         self.assertNotIn("canonical-profile", output.read_text(encoding="utf-8"))
+
+    def test_bundled_generators_target_consumer_and_protect_owned_instructions(self):
+        skill = CORE / "skills/solution-profile-interview"
+        for runner in self.generator_runners():
+            with self.subTest(runner=runner[0]), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                consumer = root / "consumer with spaces"
+                (consumer / ".github").mkdir(parents=True)
+                installed = root / "installed/core"
+                bundled = installed / "skills/solution-profile-interview"
+                shutil.copytree(skill, bundled)
+                (installed / "agents").mkdir()
+                (installed / "agents/example.agent.md").write_text(
+                    "---\nname: example\ndescription: Bundled agent.\ntools: [read]\n---\n",
+                    encoding="utf-8")
+                (consumer / ".github/solution-profile.yaml").write_text(
+                    "identity:\n  project_name: Consumer\n", encoding="utf-8")
+                ps = runner[0] == "pwsh"
+                command = runner[:-1] + [(bundled / "scripts" / Path(runner[-1]).name).as_posix()]
+                output = consumer / "AGENTS.md"
+                # No Git metadata or repo-side scripts are needed in the consumer.
+                result = subprocess.run(command, cwd=consumer, capture_output=True,
+                                        text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("# AGENTS.md — Consumer", output.read_text(encoding="utf-8"))
+                self.assertIn("### `example`", output.read_text(encoding="utf-8"))
+                self.assertFalse((installed / "AGENTS.md").exists())
+                # Explicit root must also win when invoked from the installation directory.
+                explicit = command + ["-RepoRoot" if ps else "--repo-root", consumer.as_posix()]
+                result = subprocess.run(explicit, cwd=installed, capture_output=True,
+                                        text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                output.write_text("# Hand-maintained instructions\n", encoding="utf-8")
+                refused = subprocess.run(explicit, cwd=installed, capture_output=True,
+                                         text=True, timeout=60)
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertIn("Refusing to overwrite", refused.stdout + refused.stderr)
+                self.assertEqual(output.read_text(encoding="utf-8"), "# Hand-maintained instructions\n")
+                preview = subprocess.run(explicit + ["-DryRun" if ps else "--dry-run"],
+                                         cwd=installed, capture_output=True, text=True, timeout=60)
+                self.assertEqual(preview.returncode, 0, preview.stderr)
+                self.assertIn("# AGENTS.md — Consumer", preview.stdout)
+                self.assertEqual(output.read_text(encoding="utf-8"), "# Hand-maintained instructions\n")
+                output.unlink()
+                shared = consumer / "shared.md"
+                content = "<!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->\n# Preserve linked content\n"
+                shared.write_text(content, encoding="utf-8")
+                os.link(shared, output)
+                refused = subprocess.run(explicit, cwd=installed, capture_output=True,
+                                         text=True, timeout=60)
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertEqual(shared.read_text(encoding="utf-8"), content)
+
+    def test_generators_render_json_snapshots_without_losing_quoted_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".github").mkdir()
+            profile = root / "profile.json"
+            profile.write_text(json.dumps({
+                "identity": {"project_name": "A # B $(touch NEVER_EXECUTE)"},
+                "documentation": {"location": "docs/"},
+                "tech_stack": {"primary_languages": [
+                    {"name": "python", "version": "3.12"}, {"name": "csharp", "version": "10"}]},
+                "ai_copilot": {"active_agents": ["coding"], "mandatory_skills": ["testing-practices"]},
+            }), encoding="utf-8")
+            outputs = []
+            for runner in self.generator_runners():
+                ps = runner[0] == "pwsh"
+                flags = (["-RepoRoot", str(root), "-ProfilePath", str(profile), "-DryRun"] if ps else
+                         ["--repo-root", root.as_posix(), "--profile", profile.as_posix(), "--dry-run"])
+                result = subprocess.run(runner + flags, cwd=root, capture_output=True,
+                                        text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("# AGENTS.md — A # B $(touch NEVER_EXECUTE)", result.stdout)
+                self.assertIn("python@3.12, csharp@10", result.stdout)
+                self.assertIn("### `coding`", result.stdout)
+                self.assertNotIn("### `architect`", result.stdout)
+                self.assertIn("- `testing-practices`", result.stdout)
+                self.assertFalse((root / "NEVER_EXECUTE").exists())
+                outputs.append(self.normalize_generated_date(result.stdout.strip()))
+            self.assertTrue(all(text == outputs[0] for text in outputs))
 
     def test_generators_ignore_annotations_without_swallowing_descriptions(self):
         runners = self.generator_runners()
