@@ -5,8 +5,8 @@ DeepEval **4.1.8**. It measures recorded skill invocation, not workspace
 acceptance or current-harness benchmark quality. For responsibilities, retained
 benchmark data and the Waza/L0 boundaries, see the [evaluation overview](../README.md).
 The adoption decision is [ADR 0015](../../docs/adr/0015-deepeval-for-pipeline-evaluation.md).
-Live execution is unavailable and deferred to
-[#22](https://github.com/hoffe86/agile-agents/issues/22).
+Live dev-lead runs, scored with this same lock, live in
+[`custom-eval`](../pipeline/custom-eval/README.md); they are not OS-sandboxed (#22).
 
 ## Install and verify
 

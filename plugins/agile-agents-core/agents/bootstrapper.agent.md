@@ -17,7 +17,7 @@ description: >-
   vendored skills (that is the repo-local `capability-scout`). Never installs anything —
   plugin or otherwise — without explicit approval, and never invents a profile value
   to get past a question.
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, browser, playwright/*]
+tools: [vscode, execute, read, search, web, todo, skill, context7/*, microsoft-docs/*, edit, browser, playwright/*]
 metadata:
   model_tier: mid  # interview + mechanical derivation; the judgement is the user's, not yours
 argument-hint: "Bootstrap the harness for this repo (or name the profile field to repair)"

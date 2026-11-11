@@ -14,6 +14,8 @@ See [provenance and its trust boundary](README.md#retained-run-provenance).
 |-------------------------------------|------------|------------|--------------------|----------|---------|--------|------------------------------------|
 | `<first run pending>`               | YYYY-MM-DD | `0000000`  | `swe-bench-subset` |   0 / 25 |  0 / 25 | 0 / 25 | Will be filled by first eval run   |
 | `20260819-180010-custom-eval`       | 2026-08-19 | `703e384`  | `custom-eval`      |   3 / 10 |  3 / 10 | 4 / 10 | Judge A/B (`-Scorer both`), isolated, agent=`claude-opus-4.8` judge=`gpt-5.6-sol`. Shell-judge figures shown; see *Judge cutover* below. |
+| [Actions 42984715940](https://github.com/hoffe86/agile-agents/actions/runs/42984715940) | 2026-11-11 | `f4836d4` | `custom-eval` | 0 / 1 | 0 / 1 | 1 / 1 | Task 02 diagnostic: Azure judge and checks passed; gate and trajectory failed. No trusted run-provenance binding; legacy/unattributed, not a suite baseline. |
+| [Actions 42985948020](https://github.com/hoffe86/agile-agents/actions/runs/42985948020) | 2026-11-11 | `eb5e193` | `custom-eval` | 0 / 1 | 0 / 1 | 1 / 1 | Task 10 diagnostic: gate and trajectory failed; one acceptance criterion unverified. No trusted run-provenance binding; legacy/unattributed, not a suite baseline. |
 
 ## Judge cutover — the 2026-08-19 A/B
 

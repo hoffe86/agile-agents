@@ -1,0 +1,12 @@
+# Trajectory expectations for task-04-adr-library-tradeoff; criteria stay verbatim in acceptance.md.
+# Skills are the contract's core loads only -- see eval/pipeline/custom-eval/README.md.
+schema: 1
+root_agent: dev-lead
+plan_gate: required
+agents: [review-lead]
+skills:
+  dev-lead: [read-repo-context, dev-lead-templates]
+  any: [architecture-decision-records]
+  review-lead: [read-repo-context, reviewer-read-only-rules]
+forbidden_skills:
+  review-lead: [code-review-checklist, code-review]

@@ -9,16 +9,33 @@ profile, and versioned input declaration:
 
 | File | Purpose |
 |---|---|
-| `prompt.md` | The user-story prompt fed verbatim to `dev-lead` |
+| `prompt.md` | The requirement fed verbatim to `dev-lead` |
 | `acceptance.md` | 3-5 explicit, verifiable pass criteria |
 | `solution-profile.yaml` | Synthetic profile conforming to the shipped solution-profile contract |
 | `inputs.json` | Versioned list of required baseline inputs and their workspace destinations |
+| `expectations.yaml` | Trajectory contract: plan gate, which agents dev-lead delegates to, which skills each one must invoke |
 | `baseline/` | Minimal synthetic or task-directed source inputs; never includes the requested answer |
 
-These are retained **benchmark data**, not a runnable suite. No workspace stager,
-agent runner or acceptance scorer is supplied. Source-consistency tests inspect
-the fixtures without executing their declared commands. Live execution and its
-sandbox boundary are deferred to
+A run has two halves, kept in separate trust zones:
+
+- **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, attempts
+  to drive `dev-lead` through the Copilot CLI to its plan gate, and has an LLM judge the plan
+  before resuming the *same* pending request. It records `phase1-changes.json` before any
+  acceptance checks, captures `produced.diff` against the staged baseline, and runs the task's
+  acceptance **checks** (see below) in that workspace, recording `checks.json`. Missing or
+  unverified approval evidence blocks the resume.
+- **Scorer** (`../score_custom_eval.py`) reads only the recorded JSONL logs, `state.json`,
+  `phase1-changes.json`, `plan-approval.json`, `produced.diff` and `checks.json`. Trajectory
+  is scored with **DeepEval** (`ToolCorrectnessMetric`); command results decide
+  build/test/render criteria; the rest goes to a pluggable judge. The final agent response is
+  read from the log as separate evidence. The scorer runs no git and no workspace code, so it
+  can hold judge credentials safely.
+
+The live agent is **not OS-sandboxed** — it runs with every tool allowed on the host, which
+is why the runner refuses to start without `--unsandboxed`. The checks run in that same trust
+zone, after the diff is captured (so build output never becomes evidence), with an
+allowlisted environment that carries no tokens or cloud credentials. That adds nothing the
+agent could not already do; it is not isolation. A sandboxed worker is
 [#22](https://github.com/hoffe86/agile-agents/issues/22).
 
 Profiles populate the six required Stage-0 fields from the shipped template, set
@@ -47,6 +64,251 @@ The 10 tasks together touch every author agent (coding × 2 stacks — implement
 tests that cover it, infrastructure, architect) and every reviewer agent (code-reviewer,
 architecture-reviewer, security-reviewer, test-reviewer, infra-review).
 
+## Running
+
+```powershell
+# Local: the plan approver needs Azure configuration and an authenticated az session.
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --unsandboxed
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\dry --dry-run   # stage only
+# Alternatively, run the three phases separately with a fresh output directory.
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\split --phase 1 --unsandboxed
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\split --phase approve
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\split --phase 2 --unsandboxed
+# Re-run only the acceptance checks of a finished run, e.g. after installing a missing tool.
+python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --phase verify --unsandboxed
+# Score one or more runs. --judge none leaves criteria without a passing check UNVERIFIED.
+python eval/pipeline/score_custom_eval.py $env:TEMP\ce\task-05 --judge azure-openai --output summary.json
+```
+
+Needs the Copilot CLI on `PATH` (pinned `1.0.105` in CI), a nonempty
+`COPILOT_GITHUB_TOKEN` or `GITHUB_TOKEN`, and the hash-locked environment from
+[`../../deepeval/README.md`](../../deepeval/README.md). Local runs can keep using
+`COPILOT_GITHUB_TOKEN`; GitHub Actions supplies `GITHUB_TOKEN` automatically.
+`--max-ai-credits` caps each phase (minimum 30). The plan approver always uses Azure OpenAI;
+the acceptance judge is selected separately. Azure OpenAI authenticates with Entra only —
+`az login` locally, federated `azure/login` in CI; no API key is accepted — and reads
+`AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`. Unset `AZURE_OPENAI_API_KEY` and
+`AZURE_OPENAI_AD_TOKEN`, even if empty: the underlying client otherwise picks them up in
+addition to or instead of the Azure CLI token. Set the endpoint to the Azure resource URL,
+for example `https://<resource>.openai.azure.com/`,
+`https://<resource>.services.ai.azure.com/`, or
+`https://<resource>.cognitiveservices.azure.com/`, not a project URL or a Responses API
+operation URL.
+The deployment must support Azure's deployment-based Chat Completions API. The default API
+version is `2024-10-21`; local runs can override it with `AZURE_OPENAI_API_VERSION`.
+The judge requests `temperature=0`. If the service specifically rejects that value for
+`temperature`, it logs a warning and retries once using the deployment's default; results
+may then vary between runs. Other errors do not trigger this fallback.
+Judge failures report the HTTP status when available without logging the SDK response or
+credentials. A successful Azure login does not prove inference access: check the identity
+and its inference role for 401/403, the resource and deployment for 404, and model/API
+compatibility for 400.
+
+In CI, run **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`) by hand.
+GitHub registers it for manual dispatch only after the workflow file is on the default branch;
+select the branch to evaluate when starting the run.
+
+| Job | Holds | Does |
+|---|---|---|
+| `plan` | `GITHUB_TOKEN` with `contents: read` and `copilot-requests: write` | phase 1; writes the plan to the step summary (runs the checks only if dev-lead skipped the gate) |
+| `approve` | OIDC and `contents: read`; no `copilot-requests` permission | the simulated approver judges the plan and outputs `approved` or `rejected`; runs no agent |
+| `implement` | same as `plan` | runs only when `approve` succeeds with an `approved` decision, then resumes and runs the checks |
+| `score` | OIDC and `contents: read`; no `copilot-requests` permission | DeepEval + judge over the recorded files; runs no agent |
+
+The agent jobs install .NET 10 for the C# tasks, pinned Python tools for task 02, and a
+pinned, checksum-verified `actionlint` for task 06; `kubectl`, `az` and Docker come with
+the runner image. Task 02 layers its hash-locked dependencies on the evaluation environment
+only in the agent jobs; the approver and scorer retain the evaluation lock alone. Locally,
+a missing tool leaves its criterion `UNVERIFIED`.
+
+The pinned `actionlint` 1.7.12 predates the `copilot-requests` permission. When linting
+this workflow with it, exclude only that false positive:
+
+```powershell
+actionlint -ignore 'unknown permission scope "copilot-requests"\.' .github\workflows\eval-custom.yml
+```
+
+GitHub provides a short-lived `GITHUB_TOKEN`; no Copilot PAT or `EVAL_COPILOT_TOKEN` secret
+is needed. The unsandboxed agent can read this token while it runs. Usage in a personally
+owned repository is billed to the owner's Copilot seat; an organization-owned repository
+must enable the Copilot CLI organization-billing policy. See
+[Copilot CLI in GitHub Actions](https://docs.github.com/en/copilot/concepts/agent-capabilities/agent-powered-workflows-and-operations/copilot-cli-in-github-actions).
+
+Configure these repository variables under **Settings > Secrets and variables > Actions >
+Variables**:
+
+| Variable | Value |
+|---|---|
+| `EVAL_AZURE_CLIENT_ID` | Client ID of the Entra application or user-assigned managed identity |
+| `EVAL_AZURE_TENANT_ID` | Tenant ID of that identity |
+| `EVAL_AZURE_OPENAI_ENDPOINT` | Azure OpenAI resource URL, as described above |
+| `EVAL_AZURE_OPENAI_DEPLOYMENT` | Name of the deployed Chat Completions model |
+
+Give the identity a GitHub OIDC federated credential for the branch selected when dispatching
+the workflow. For these jobs, which do not use a GitHub environment, the issuer is
+`https://token.actions.githubusercontent.com` and the audience is `api://AzureADTokenExchange`.
+The subject must match the token's **exact** `sub` claim. Depending on the repository's OIDC
+settings, the default branch subject uses either
+`repo:<owner>/<repo>:ref:refs/heads/<branch>` or the immutable format
+`repo:<owner>@<owner-id>/<repo>@<repo-id>:ref:refs/heads/<branch>`. Customized subject
+claims can have a different format. The `azure/login` step reports the presented subject;
+`AADSTS700213` means no configured credential matched the token's trust values. Compare
+the issuer, subject, and audience, and configure a matching credential for each branch
+that is allowed to run the evaluation.
+
+Assign the identity `Cognitive Services OpenAI User` on the Azure OpenAI resource, or another
+role that grants the required inference access. See the
+[GitHub OIDC subject reference](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims),
+[OIDC setup](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect),
+and [Azure OpenAI roles](https://learn.microsoft.com/azure/foundry-classic/openai/how-to/role-based-access-control#summary).
+No approval environment, human reviewer, or stored client secret is needed.
+
+## Simulated plan approval (eval-only)
+
+dev-lead's Stage 4 plan approval is a quality gate, so an unattended run can have it judged
+rather than rubber-stamped. The Azure OpenAI judge grades the plan
+against [`plan-approval.md`](plan-approval.md) — seven shared criteria (Definition of Done and
+scope, decomposition, coverage of the stated acceptance criteria, derived criteria shown
+separately, assumptions and risks, no scope expansion, approval asked before execution) plus
+any task-specific ones under `plan_approval:` in `expectations.yaml` (needs
+`plan_gate: required`). Each criterion is `PASS`, `FAIL` or `UNVERIFIED`; the plan is
+**approved only if every criterion passes**. The approver sees the requirement (`prompt.md`),
+the preceding plan message, and the exact approval question — what a human sees — never
+`acceptance.md`. The question itself may contain the plan. Missing evidence must be judged
+`UNVERIFIED`; an oversized plan is rejected without making a model call.
+
+The runner uses the pinned Copilot CLI's bundled SDK to suspend at the top-level `ask_user`
+request and resume that same request after approval. This internal SDK interface is tied to
+the pinned CLI version. Synthetic probes on Windows and Linux verified suspension, cold
+resume, the matching tool response, and delegated skill attribution. A
+[cross-job Actions probe](https://github.com/hoffe86/agile-agents/actions/runs/42985402021)
+used a synthetic agent and the real Azure judge: the plan was approved, the same request
+resumed in another job, and DeepEval credited the delegated worker and its skill. This
+verifies the transport, not real `dev-lead` compliance.
+
+Real `dev-lead` probes have not yet completed this path. In a
+[Python task run](https://github.com/hoffe86/agile-agents/actions/runs/42984715940),
+Azure graded all acceptance criteria and both command checks passed, but the result was
+`failed`: the agent changed files before approval and invoked none of the expected agents
+or skills. A [multi-file infrastructure task](https://github.com/hoffe86/agile-agents/actions/runs/42985948020)
+also failed the gate and recorded no expected agents or skills; one acceptance criterion
+remained unverified because its fixture does not contain an Ingress resource. Earlier probes
+also skipped the gate or could not verify an approval request.
+An earlier detector missed shell-written changes; replaying the captured diff against a
+clean task baseline now detects them, but that replay is not a new live run.
+Both recent real runs received the CLI's generic instruction not to delegate work
+finishable in five or fewer tool calls alongside dev-lead's instruction to delegate
+implementation. Whether that conflict caused the skipped gates has not been established.
+
+The gate checks implementing-agent delegation attempts and top-level write tools, and records
+persistent workspace changes against the staged baseline. That snapshot covers committed,
+staged, unstaged and non-ignored untracked changes, including shell writes. It excludes
+generated `bin`, `obj`, `node_modules`, `.venv`, `.pytest_cache`, `.mypy_cache` and
+`.ruff_cache` directories, Python bytecode in `__pycache__`, `.copilot-runs/` telemetry, and
+`.github/solution-profile.yaml` setup. A nonempty snapshot fails the gate; a missing or
+malformed snapshot leaves it unverified and prevents approval and resume. Runs recorded
+before this snapshot existed cannot receive gate credit without it. It cannot detect changes
+that were reverted, ignored, or made outside the workspace; the unsandboxed agent can also
+tamper with local evidence. A top-level write tool is still a violation regardless of path.
+This detection is not a security boundary.
+
+The decision is written to `plan-approval.json`, labelled `llm-simulated`, and scored as its
+own metric, `Plan approval (llm-simulated)`. A rejection **ends the run** as **failed**
+(`plan_rejected`): there is no re-plan round. It is evidence about the plan, never a human
+approval — the harness's own human gate outside evaluation is unchanged.
+
+Trust: the approve step holds the judge credentials but runs no agent. Phase 1 deletes any
+pre-existing `plan-approval.json`, and in CI `implement` is gated on the `approve` job's
+successful output and a complete decision record — not on anything the agent can write —
+while `score` takes the record from the `approve` job's artifact. Local runs are not
+sandboxed: the agent can access credentials available to the invoking user.
+
+## Trajectory expectations
+
+`expectations.yaml` says what a correct *process* looks like, independent of the output:
+
+```yaml
+schema: 1
+root_agent: dev-lead
+plan_gate: required            # approval must be requested before implementation
+agents: [coding, review-lead, code-reviewer]   # every one must be delegated to
+skills:                        # per agent: each must be invoked by that agent
+  coding: [read-repo-context, development-practices, python-implementation]
+  any: [architecture-decision-records]          # invoked by anyone in the run
+forbidden_skills:
+  review-lead: [code-review-checklist]          # the orchestrator performs no lens
+```
+
+Each agent's skill list scores as its own DeepEval metric (`skills:<agent>`), so a miss is
+attributed to the agent that should have loaded the skill. Tool-call starts are reported as
+attempts; a load receives credit only when its matching completion reports success. A
+missing completion is `UNVERIFIED`, not a pass or an agent failure. Delegation receives credit
+when the named agent starts or the task call succeeds; a failed attempt is not a successful
+delegation, and an incomplete attempt is `UNVERIFIED`. An attempted implementing-agent
+delegation before approval still violates the plan gate. Lists hold the **core contract
+loads** an agent's own definition makes mandatory — not every skill a good run might touch —
+so a pass means the contract was honoured, not that the run was optimal. `any` exists for
+deliverable skills whose author varies (an ADR may be drafted by dev-lead or a reviewer).
+Task-10 lists criterion 2 under `unverifiable` with its reason (see fixture boundaries).
+
+## Acceptance checks
+
+A criterion about behaviour — it builds, its tests pass, it renders, it validates — is
+decided by running a command, not by a model reading source. `expectations.yaml` declares
+those commands:
+
+```yaml
+checks:
+  - criterion: 1
+    run: [dotnet, build, Orders.slnx, -warnaserror]   # argv, never a shell string
+  - criterion: 3
+    run: ["{python}", -m, pytest, -q, -p, no:cacheprovider]
+    requires: [["{python}", -m, pytest, --version]]  # probe; failing => UNVERIFIED
+    on_pass: judge          # passing proves only part of the criterion
+    timeout: 600            # seconds, 1-3600; cwd: is workspace-relative
+  - criterion: 1
+    run: [az, bicep, build, --file, main.bicep, --stdout]
+    fail_if_output_matches: '\(\d+,\d+\) : (Warning|Error) '   # exit 0 but linter warned
+```
+
+Per criterion: any check **failed** or **timed out** → `FAIL`, whatever the judge says; else
+any **unavailable** (tool not on `PATH`, probe failed) → `UNVERIFIED` — a missing toolchain is
+never charged to the agent; else all passed → `PASS`, unless a check says `on_pass: judge`,
+in which case the judge grades the remaining clause (with `--judge none` it stays
+`UNVERIFIED`). Command output is also shown to the judge as untrusted evidence. Declared
+checks with no matching `checks.json` leave their criteria `UNVERIFIED`; rerun
+`--phase verify`. Checks run only for runs that reached `complete` or `gate_skipped`.
+`{python}` resolves to the interpreter running the verifier, not necessarily the agent's
+Python. Its environment must contain the tools the checks require. For task 02, install
+`requirements-task02.lock.txt` with `--require-hashes --only-binary=:all:` into a separate
+evaluation environment, then run `--phase verify` with that environment's Python.
+The judge receives the completed final response separately from the diff. It can grade the
+response itself when it is the requested deliverable, but cannot use its claims as proof of
+file changes or test results. A plan waiting for approval is never treated as a final answer.
+Responses over 120,000 characters leave model-judged criteria `UNVERIFIED` without a model
+call; command-check overrides still apply.
+
+| Task | Checked | Left to the judge |
+|---|---|---|
+| 01 | c1 build `-warnaserror`; c3 `dotnet test` (+judge) | c2, c4 |
+| 02 | c3 pytest (+judge: monkeypatch-free); c4 `mypy --strict` (needs mypy + fastapi) | c1, c2, c5 |
+| 03 | c1 `az bicep build` of module and consumer, no warnings | c2–c5 |
+| 06 | c1 `actionlint` | c2–c5 |
+| 07 | c1 unit tests, c2 integration tests (needs Docker), both +judge | c3 per-file coverage |
+| 09 | c1 build `-warnaserror` and `dotnet test` | c2–c5 |
+| 10 | c1 `kubectl kustomize` for dev, staging, prod | c3+ (c2 is unverifiable) |
+| 04, 05, 08 | — documentation deliverables | all |
+
+### What the first live runs showed
+
+Spikes on CLI 1.0.105 (task-02, task-05), reproduced in the
+`copilot-subagent-session.jsonl` fixture, exposed missing tool grants and a skipped plan gate.
+The agents now grant `skill`, and `dev-lead` grants `ask_user`. A synthetic SDK probe confirmed
+that a delegated worker can invoke a skill and that the trace attributes the call to that
+worker. The real-agent gate outcomes above remain failures or unverified evidence; the grants
+do not make those runs pass. The unsandboxed coding sub-agent also read outside its workspace,
+and a 60-credit cap was hit mid-run — size `--max-ai-credits` per task.
+
 ## Interpreting acceptance evidence
 
 See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptual rubric:
@@ -56,13 +318,18 @@ See [`../scoring-rubric.md`](../scoring-rubric.md#custom-tasks) for the conceptu
 - **failed** — no acceptance criterion passes, or the build is broken
 - **unverified** — a criterion cannot be checked; no resolved credit, with reasons
 - **setup_error** — fixture or judge environment/contract error, not an agent failure
-- **blocked_approval** / **skipped** — mandatory human gate / dry run, not outcomes
+- **awaiting_approval** — the simulated decision is pending; **unverified**
+- **blocked_approval** — the approval request could not be verified; **unverified**
+- **dry_run** — staged only; not a scored outcome
 
-Every selected task belongs in the denominator of any future outcome report.
+The scorer combines them: a skipped plan gate or any failing trajectory metric makes the run
+**failed** whatever the judge says, as does a plan the simulated approver rejected; a pending
+decision is **unverified**. Otherwise the acceptance verdict decides, after command checks
+have overridden the judge on the criteria they cover. Exit codes: 0 resolved, 1 failed,
+2 partial, 3 unverified, 4 setup error.
+
+Every selected task belongs in the denominator of any outcome report.
 Original inputs are comparison evidence, never answers or seeded credit.
-Narrative deliverables can be reviewed manually against the criteria. The active
-[DeepEval scorer](../../deepeval/README.md) measures recorded skill invocation;
-it does not establish these acceptance outcomes.
 
 ### Fixture boundaries
 
@@ -83,8 +350,8 @@ it does not establish these acceptance outcomes.
   Offline inventory/mutation tests protect those exact inputs.
   The solution contains only the production project, so test and coverage commands allow
   restore/build of newly authored test projects rather than using `--no-build`.
-  This command correction does not establish runtime readiness: no generated code,
-  Testcontainers database, restore, or test command is executed by these contract checks.
+  The offline contract tests execute nothing; only a live run's acceptance checks restore,
+  build and run the authored tests, and the integration suite needs Docker.
 - Task 10's chart has the six named resources and no `Ingress` resource. Environment-specific
   `ingress.host` values are copied into the application's `PUBLIC_BASE_URL` ConfigMap setting.
   The prompt's equivalence criterion mentioning ingress hosts therefore remains ambiguous for
@@ -103,7 +370,7 @@ A downstream fork can:
 3. Adjust each task's `solution-profile.yaml` to match their real profile (region, compliance
    framework, allowed runtimes).
 
-Task folders are data; adding one does not register or execute a benchmark.
+Adding a task folder registers it with the runner; nothing runs until someone dispatches it.
 
 ## Adding a new task — checklist
 
@@ -112,4 +379,5 @@ Task folders are data; adding one does not register or execute a benchmark.
 - [ ] `acceptance.md` has 3-5 criteria, each verifiable
 - [ ] `solution-profile.yaml` supplies required Stage-0 fields and actual per-check commands
 - [ ] `inputs.json` declares every required baseline input, or an empty list when none exists
+- [ ] `expectations.yaml` names the delegated agents and each one's core skill loads
 - [ ] Any measured result records its method and limitations in [`../../baselines.md`](../../baselines.md); fixture presence alone is not a result

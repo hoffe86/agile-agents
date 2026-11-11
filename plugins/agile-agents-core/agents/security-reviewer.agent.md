@@ -20,7 +20,7 @@ description: >-
   NEVER modifies code.
 metadata:
   model_tier: heavy  # threat-model reasoning across OWASP/CWE/LLM lenses requires deep analysis
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, browser]
+tools: [vscode, execute, read, search, web, todo, skill, context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the security review scope: diff to audit, repo path, or specific risk area"
 ---
 

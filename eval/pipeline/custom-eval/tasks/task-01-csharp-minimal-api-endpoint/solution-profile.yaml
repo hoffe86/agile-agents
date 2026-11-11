@@ -13,7 +13,7 @@ backlog:
 tech_stack:
   primary_languages:
     - name: csharp
-      version: net9.0
+      version: net10.0
   frameworks: [aspnetcore]
   test_discipline: test-after
   test_frameworks: [xunit]

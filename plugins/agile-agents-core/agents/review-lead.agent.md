@@ -19,7 +19,7 @@ description: >-
   NEVER modifies code.
 metadata:
   model_tier: heavy  # multi-lens synthesis and severity ranking across specialist findings requires deep reasoning
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, playwright/*, browser]
+tools: [vscode, execute, read, search, web, todo, skill, context7/*, microsoft-docs/*, agent, playwright/*, browser]
 agents: ["code-reviewer", "security-reviewer", "test-reviewer", "data-reviewer", "architecture-reviewer", "infrastructure-reviewer"]
 argument-hint: "Describe the review scope: PR / branch / diff to review, or 'uncommitted changes'"
 ---

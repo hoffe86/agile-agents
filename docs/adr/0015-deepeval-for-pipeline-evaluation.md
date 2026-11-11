@@ -210,6 +210,41 @@ statistical significance become requirements.
 **Keep the harness as-is.** Rejected: it neither answers trajectory questions nor addresses the
 twin duplication, and the defects found on 2026-08-19 show the status quo is not stable.
 
+## Amendment (2026-10) — the custom-eval tasks run on DeepEval
+
+The decision is unchanged; this records how it landed for the ten custom-eval tasks after the
+earlier shell harness was deleted (#24) and the tasks sat as data only.
+
+- **Trajectory is the primary score.** Each task's `expectations.yaml` declares the plan gate,
+  the agents dev-lead must delegate to, and the skills *each* agent must invoke. Every list is
+  one DeepEval `ToolCorrectnessMetric` (`skills:<agent>`, `delegation`), so a miss is attributed
+  to the agent that should have loaded the skill. Plain metric functions wrap the DeepEval
+  metric; no `BaseMetric` subclass was needed.
+- **Acceptance is a pluggable judge**, `none` or Azure OpenAI via DeepEval's `AzureOpenAIModel`
+  with an Entra token only. It reads a diff the *runner* captured and executes nothing, so the
+  scorer never runs git or code in an agent-written workspace and can hold judge credentials.
+- **Build, test and render criteria are decided by command checks**, not by the judge. Each
+  task's `expectations.yaml` may declare `checks:` (argv, cwd, timeout, tool probes). The
+  *runner* executes them right after capturing the diff, in the agent's own explicitly
+  unsandboxed trust zone with a scrubbed environment, and records `checks.json`; the scorer
+  only reads it. A failed or timed-out check is `FAIL` whatever the judge says; a missing tool
+  is `UNVERIFIED`, never `FAIL`; `on_pass: judge` leaves a criterion's remaining clause to the
+  judge. This is not isolation — the sandboxed worker is still #22 — but it adds no exposure
+  the `--unsandboxed` agent did not already have.
+- **The plan gate is simulated for evaluation only.** If phase 1 reaches the gate, an Azure
+  OpenAI judge grades the plan against a shared rubric (`plan-approval.md`) plus task-specific
+  `plan_approval:` criteria. The intended phase 2 resumes the same Copilot session only if
+  every criterion passes; rejection fails the run. The record is labelled `llm-simulated`,
+  never treated as human approval, and dev-lead's human gate outside evaluation is unchanged.
+  In CI the decision comes from a separate job that runs no agent. The current prompt-mode
+  transport cannot verify the approval request, so the live path is blocked rather than
+  treating an unverified pause as approval evidence. A run that delegates implementation
+  before approval fails.
+- **First live finding:** the harness's delegated agents were not offered the `skill` tool
+  on CLI 1.0.105, so per-agent skill expectations fail. A synthetic SDK probe subsequently
+  showed that an explicit `skill` grant makes it available to a delegated agent; the harness
+  agents do not currently list that grant. See `eval/pipeline/custom-eval/README.md`.
+
 ## References
 
 - [ADR 0014](0014-skill-evaluation-with-waza.md) — skills-layer decision this complements;

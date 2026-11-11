@@ -21,7 +21,7 @@ description: >-
   NEVER modifies code.
 metadata:
   model_tier: heavy  # boundary integrity, ADR alignment, and quality-attribute reasoning require deep multi-file analysis
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, browser]
+tools: [vscode, execute, read, search, web, todo, skill, context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the architecture review scope: diff to audit, contract change, or boundary concern"
 ---
 

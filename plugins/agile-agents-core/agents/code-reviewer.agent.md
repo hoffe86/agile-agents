@@ -21,7 +21,7 @@ description: >-
   NEVER modifies code.
 metadata:
   model_tier: heavy  # line-by-line correctness and design judgement over the full diff
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, playwright/*, browser]
+tools: [vscode, execute, read, search, web, todo, skill, context7/*, microsoft-docs/*, playwright/*, browser]
 argument-hint: "Describe the review scope: diff, branch, or files to review for general code quality"
 ---
 

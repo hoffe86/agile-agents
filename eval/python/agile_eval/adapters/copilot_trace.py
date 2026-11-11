@@ -29,6 +29,21 @@ SCHEMA_EVENTS: dict[str, str] = {
     "user.message": "the prompt given to the agent",
 }
 
+# Events read for multi-agent attribution. They are optional: a run in which the
+# top-level agent never delegates legitimately emits none of them.
+ATTRIBUTION_EVENTS: dict[str, str] = {
+    "subagent.started": "a delegated agent starts; maps its task toolCallId to agentName",
+    "assistant.message": "an assistant message; the last top-level one is the final report",
+    "result": "the run's terminal record; carries sessionId, exitCode and usage",
+}
+
+# `tool.*` events that carry streaming output rather than a new invocation.
+STREAMING_TOOL_EVENTS = frozenset({"tool.execution_partial_result", "tool.shell_output"})
+
+# Delegating to another agent is a tool call named `task` whose `arguments.agent_type`
+# names the agent. Tool calls made *by* that agent carry `parentToolCallId` = that call.
+TASK_TOOL_NAME = "task"
+
 # Skills are not a distinct event type -- invoking one is a tool call named `skill`
 # whose `arguments.skill` names it. This is what makes skill bypass measurable.
 SKILL_TOOL_NAME = "skill"
@@ -44,6 +59,20 @@ class ToolInvocation:
     span_id: str | None = None
     parent_id: str | None = None
     timestamp: str | None = None
+    parent_call_id: str | None = None
+    agent_id: str | None = None
+    agent: str | None = None  # None = the top-level agent (the one given `--agent`)
+    started_agent: str | None = None  # The subagent confirmed by subagent.started.
+    success: bool | None = None  # None = no verifiable completion in the log
+    result: Any = None
+
+    @property
+    def delegated_agent(self) -> str | None:
+        """The agent this call delegated to, when it is a delegation."""
+        if self.name != TASK_TOOL_NAME:
+            return None
+        value = self.arguments.get("agent_type")
+        return value if isinstance(value, str) and value.strip() else None
 
     @property
     def skill_name(self) -> str | None:
@@ -52,6 +81,20 @@ class ToolInvocation:
             return None
         value = self.arguments.get("skill")
         return value if isinstance(value, str) else None
+
+
+@dataclass(frozen=True)
+class ExternalToolRequest:
+    """A host-provided tool request and the root message visible when it was made."""
+
+    request_id: str
+    session_id: str
+    call_id: str
+    name: str
+    arguments: dict[str, Any]
+    parent_id: str | None
+    agent_id: str | None
+    visible_message: str | None
 
 
 @dataclass
@@ -65,6 +108,27 @@ class Trace:
     events_parsed: int
     events_unparsable: int
     schema_errors: list[str] = field(default_factory=list)
+    final_message: str | None = None
+    result: dict[str, Any] | None = None
+    external_requests: list[ExternalToolRequest] = field(default_factory=list)
+    completed_external_requests: set[str] = field(default_factory=set)
+
+    @property
+    def delegations(self) -> list[tuple[str | None, str]]:
+        """(delegating agent, delegated agent) pairs, in call order."""
+        return [(t.agent, t.delegated_agent) for t in self.tools if t.delegated_agent]
+
+    def skills_by_agent(self) -> dict[str | None, list[str]]:
+        """Skills each agent invoked, in order, de-duplicated. Key None = top level."""
+        result: dict[str | None, dict[str, None]] = {}
+        for t in self.tools:
+            name = t.skill_name
+            if name is not None:
+                result.setdefault(t.agent, {}).setdefault(name, None)
+        return {agent: list(names) for agent, names in result.items()}
+
+    def tools_for(self, agent: str | None) -> list[ToolInvocation]:
+        return [t for t in self.tools if t.agent == agent]
 
     @property
     def tool_names(self) -> list[str]:
@@ -131,6 +195,14 @@ def parse_log_text(text: str) -> Trace:
     parsed_count = 0
     unparsable = 0
     errors: list[str] = []
+    subagents: dict[str, str] = {}
+    tool_call_ids: set[str] = set()
+    completions: dict[str, bool] = {}
+    tool_results: dict[str, Any] = {}
+    external_requests: list[ExternalToolRequest] = []
+    completed_external_requests: set[str] = set()
+    final_message: str | None = None
+    result: dict[str, Any] | None = None
 
     for event, error in _iter_events(text.splitlines()):
         if error:
@@ -140,6 +212,9 @@ def parse_log_text(text: str) -> Trace:
             continue
         parsed_count += 1
         etype = event.get("type")
+        if etype == "result":
+            result = {k: event[k] for k in ("sessionId", "exitCode", "usage") if k in event}
+            continue
         data = event.get("data")
         if not isinstance(etype, str) or not etype.strip() or not isinstance(data, dict):
             errors.append(f"event {parsed_count}: type must be a nonempty string and data an object")
@@ -148,6 +223,9 @@ def parse_log_text(text: str) -> Trace:
         if etype == "tool.execution_start":
             args = data.get("arguments")
             name = data.get("toolName")
+            if isinstance(args, str) and name not in (SKILL_TOOL_NAME, TASK_TOOL_NAME):
+                # Freeform custom tools (e.g. `apply_patch`) carry raw text, not an object.
+                args = {"input": args}
             if not isinstance(name, str) or not name.strip() or not isinstance(args, dict):
                 errors.append(f"event {parsed_count}: toolName must be a nonempty string and arguments an object")
                 continue
@@ -156,16 +234,79 @@ def parse_log_text(text: str) -> Trace:
             ):
                 errors.append(f"event {parsed_count}: skill invocation requires a nonempty skill identity")
                 continue
+            call_id = data.get("toolCallId")
+            if call_id is not None and (not isinstance(call_id, str) or not call_id.strip()):
+                errors.append(f"event {parsed_count}: invalid tool call ID")
+                continue
+            parent_call_id = data.get("parentToolCallId")
+            if parent_call_id is not None and (
+                not isinstance(parent_call_id, str) or not parent_call_id.strip()
+            ):
+                errors.append(f"event {parsed_count}: invalid parent tool call ID")
+                continue
+            if call_id is not None:
+                if call_id in tool_call_ids:
+                    errors.append(f"tool call {call_id}: duplicate tool call ID")
+                tool_call_ids.add(call_id)
             tools.append(
                 ToolInvocation(
                     name=name,
                     arguments=args,
-                    call_id=data.get("toolCallId"),
+                    call_id=call_id,
                     span_id=event.get("id"),
                     parent_id=event.get("parentId"),
                     timestamp=event.get("timestamp"),
+                    parent_call_id=parent_call_id,
+                    agent_id=event.get("agentId"),
                 )
             )
+        elif etype == "tool.execution_complete":
+            call_id, success = data.get("toolCallId"), data.get("success")
+            if isinstance(call_id, str) and isinstance(success, bool):
+                if call_id in completions and completions[call_id] != success:
+                    errors.append(f"tool call {call_id}: conflicting completion outcomes")
+                else:
+                    completions[call_id] = success
+                    if "result" in data:
+                        tool_results[call_id] = data["result"]
+        elif etype == "subagent.started":
+            call_id, agent = data.get("toolCallId"), data.get("agentName")
+            if not isinstance(call_id, str) or not isinstance(agent, str) or not agent.strip():
+                errors.append(f"event {parsed_count}: subagent.started requires toolCallId and agentName")
+                continue
+            if call_id in subagents and subagents[call_id] != agent:
+                errors.append(f"tool call {call_id}: conflicting started agents")
+            else:
+                subagents[call_id] = agent
+        elif etype == "external_tool.requested":
+            request_id, session_id = data.get("requestId"), data.get("sessionId")
+            call_id, name, args = data.get("toolCallId"), data.get("toolName"), data.get("arguments")
+            agent_id = event.get("agentId")
+            if (not all(isinstance(value, str) and value.strip()
+                        for value in (request_id, session_id, call_id, name))
+                    or not isinstance(args, dict)
+                    or (agent_id is not None and not isinstance(agent_id, str))):
+                errors.append(f"event {parsed_count}: invalid external tool request")
+                continue
+            if any(request.request_id == request_id for request in external_requests):
+                errors.append(f"event {parsed_count}: duplicate external tool request")
+                continue
+            external_requests.append(ExternalToolRequest(
+                request_id=request_id, session_id=session_id, call_id=call_id,
+                name=name, arguments=args, parent_id=event.get("parentId"),
+                agent_id=agent_id, visible_message=final_message,
+            ))
+        elif etype == "external_tool.completed" and event.get("ephemeral") is not True:
+            request_id = data.get("requestId")
+            if isinstance(request_id, str) and request_id.strip():
+                completed_external_requests.add(request_id)
+            else:
+                errors.append(f"event {parsed_count}: external tool completion needs requestId")
+        elif (etype == "assistant.message" and not data.get("parentToolCallId")
+              and not event.get("agentId")):
+            content = data.get("content")
+            if isinstance(content, str) and content.strip():
+                final_message = content
         elif etype == "assistant.turn_start":
             turns += 1
         elif etype == "session.skills_loaded":
@@ -177,12 +318,29 @@ def parse_log_text(text: str) -> Trace:
                 errors.append(f"event {parsed_count}: skills must be a list of named objects")
                 continue
             skills_offered.extend(skill["name"] for skill in skills)
-        elif etype.startswith("tool.") and etype not in SCHEMA_EVENTS:
+        elif etype.startswith("tool.") and etype not in SCHEMA_EVENTS and etype not in STREAMING_TOOL_EVENTS:
             errors.append(f"event {parsed_count}: unrecognized tool event; check adapter schema")
         elif etype == "user.message" and prompt is None:
             content = data.get("content") or data.get("message")
             if isinstance(content, str):
                 prompt = content
+
+    for tool in tools:
+        tool.success = completions.get(tool.call_id)
+        tool.result = tool_results.get(tool.call_id)
+        if tool.delegated_agent and tool.call_id in subagents:
+            tool.started_agent = subagents[tool.call_id]
+            if tool.started_agent.rsplit(":", 1)[-1] != tool.delegated_agent.rsplit(":", 1)[-1]:
+                errors.append(f"tool call {tool.call_id}: started agent does not match the requested agent")
+        if tool.parent_call_id is None:
+            if tool.agent_id:
+                errors.append(f"tool call {tool.call_id}: agentId has no parentToolCallId")
+            continue
+        agent = subagents.get(tool.parent_call_id)
+        if agent is None:
+            # Never guess: an unattributable call would silently credit the wrong agent.
+            errors.append(f"tool call {tool.call_id}: parentToolCallId has no subagent.started")
+        tool.agent = agent
 
     return Trace(
         prompt=prompt,
@@ -192,15 +350,22 @@ def parse_log_text(text: str) -> Trace:
         events_parsed=parsed_count,
         events_unparsable=unparsable,
         schema_errors=errors,
+        final_message=final_message,
+        result=result,
+        external_requests=external_requests,
+        completed_external_requests=completed_external_requests,
     )
 
 
-def verify_schema(trace: Trace) -> list[str]:
+def verify_schema(trace: Trace, *, require_skills_offered: bool = True) -> list[str]:
     """Report signs that the CLI log format has moved out from under this adapter.
 
     An adapter coupled to an undocumented format fails silently by default: a renamed
     event yields an empty trace, and an empty trace looks exactly like an agent that did
     nothing. These checks turn that into a visible complaint.
+
+    Live CLI 1.0.105 runs emit no `session.skills_loaded`; scorers that only compare
+    invoked skills against expectations pass `require_skills_offered=False`.
     """
     problems = list(trace.schema_errors)
     if trace.events_parsed == 0:
@@ -212,7 +377,7 @@ def verify_schema(trace: Trace) -> list[str]:
         )
     if trace.turns == 0:
         problems.append("no assistant.turn_start events - turn boundaries unavailable")
-    if not trace.skills_offered:
+    if require_skills_offered and not trace.skills_offered:
         problems.append("no session.skills_loaded event - cannot tell which skills were available")
     return problems
 
