@@ -24,9 +24,9 @@ on:
 #   implement  same agent, resumed only after the simulated approver approved.
 #   score      DeepEval trajectory + judge; reads recorded files only, never runs agent output,
 #              and can mint an OIDC token for the Azure OpenAI acceptance judge.
-# The agent jobs hold the Copilot token and a read-only GITHUB_TOKEN, nothing else. Whichever
-# of them finishes the change also runs the task's acceptance checks (build / test / render)
-# in the agent's workspace with a scrubbed environment; a tool missing here is UNVERIFIED.
+# The agent jobs use the short-lived GITHUB_TOKEN with read-only repository access and
+# copilot-requests: write. Whichever finishes the change also runs the task's acceptance
+# checks in the agent's workspace with a scrubbed environment; a missing tool is UNVERIFIED.
 permissions:
   contents: read
 
@@ -48,6 +48,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    permissions:
+      contents: read
+      copilot-requests: write
     outputs:
       status: ${{ steps.phase1.outputs.status }}
     env:
@@ -103,10 +106,18 @@ jobs:
             --only-binary=:all: --requirement eval/deepeval/requirements.lock.txt
           npm install --global "@github/copilot@${COPILOT_CLI_VERSION}"
 
+      - name: Install task 02 Python tools
+        run: &install-task02-tools |
+          if [[ "$TASK" == task-02 || "$TASK" == task-02-* ]]; then
+            python -m pip --isolated install --require-hashes --only-binary=:all: \
+              --requirement eval/pipeline/custom-eval/requirements-task02.lock.txt
+            python -m pip check
+          fi
+
       - name: Phase 1 - run dev-lead up to the plan gate
         id: phase1
         env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.EVAL_COPILOT_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python eval/pipeline/run_custom_eval.py "$TASK" --out "$RUN_DIR" --phase 1 \
             --unsandboxed --max-ai-credits "$MAX_AI_CREDITS"
@@ -249,6 +260,9 @@ jobs:
       && needs.approve.result == 'success' && needs.approve.outputs.decision == 'approved' }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    permissions:
+      contents: read
+      copilot-requests: write
     env:
       TASK: ${{ inputs.task }}
       MAX_AI_CREDITS: ${{ inputs.max_ai_credits }}
@@ -287,6 +301,9 @@ jobs:
             --only-binary=:all: --requirement eval/deepeval/requirements.lock.txt
           npm install --global "@github/copilot@${COPILOT_CLI_VERSION}"
 
+      - name: Install task 02 Python tools
+        run: *install-task02-tools
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: custom-eval-plan
@@ -299,7 +316,7 @@ jobs:
 
       - name: Phase 2 - resume the same session with the recorded approval
         env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.EVAL_COPILOT_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python eval/pipeline/run_custom_eval.py "$TASK" --out "$RUN_DIR" --phase 2 \
             --unsandboxed --max-ai-credits "$MAX_AI_CREDITS"

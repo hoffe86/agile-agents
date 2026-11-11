@@ -30,7 +30,7 @@ description: >-
   architect), pure review (use review-lead), Infrastructure-as-Code
   only (use infrastructure). Never silently expands scope — if the
   requirement is ambiguous, asks once up-front and stops.
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*, browser, skill]
+tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, agent, 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*, browser, skill, ask_user]
 agents: ["architect", "backlog-manager", "coding", "data-scientist", "infrastructure", "review-lead", "bootstrapper"]
 metadata:
   model_tier: heavy  # planning/decomposition, acceptance coverage, risk sequencing, and gate judgement require deep reasoning

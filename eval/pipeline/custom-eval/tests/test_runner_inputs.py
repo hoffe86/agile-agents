@@ -163,8 +163,11 @@ def test_missing_required_input_never_uses_ambient_copy(tmp_path, monkeypatch):
         stage(source, manifest, tmp_path)
 
 
-def test_runtime_isolates_native_roots_and_disables_history_sync(tmp_path, monkeypatch):
+def test_runtime_isolates_native_roots_and_checks_actual_cli_privacy(tmp_path, monkeypatch):
     monkeypatch.setenv("COPILOT_GITHUB_TOKEN", "synthetic-not-a-credential")
+    monkeypatch.setenv("COPILOT_CLI_VERSION", "1.0.105")
+    monkeypatch.setenv("GH_TOKEN", "unrelated-github-token")
+    monkeypatch.setenv("AZURE_CLIENT_SECRET", "unrelated-judge-credential")
     for name in ("HOME", "COPILOT_HOME", "COPILOT_CUSTOM_INSTRUCTIONS_DIRS", "COPILOT_MODEL"):
         monkeypatch.setenv(name, "ambient")
     paths = runner.Paths(tmp_path / "run")
@@ -178,12 +181,14 @@ def test_runtime_isolates_native_roots_and_disables_history_sync(tmp_path, monke
     monkeypatch.setattr(runner.subprocess, "run", run)
     cmd = runner.copilot_command("copilot", "synthetic", "session", 30, [CORE])
     assert runner.run_phase(cmd, paths, 1, 240) == 0
+    assert calls[0][0] == ["copilot", "--no-auto-update", "--help"]
     live, kwargs = calls[1]
-    assert "--sync-session=off" in live
+    assert live == cmd
+    assert live[1].endswith("copilot_approval_transport.mjs")
     assert "--no-remote" not in live
     assert live.count("--plugin-dir") == 1
-    assert "--secret-env-vars" in live
-    assert kwargs["timeout"] == 240
+    assert live[live.index("--copilot") + 1] == "copilot"
+    assert kwargs["timeout"] == 250  # Transport owns the deadline; allow its shutdown.
     env = kwargs["env"]
     assert env["HOME"] == env["USERPROFILE"] == str(paths.home)
     assert env["COPILOT_HOME"] == str(paths.copilot_home)
@@ -193,6 +198,9 @@ def test_runtime_isolates_native_roots_and_disables_history_sync(tmp_path, monke
     assert paths.home.is_relative_to(paths.copilot_home)
     assert "COPILOT_CUSTOM_INSTRUCTIONS_DIRS" not in env
     assert "COPILOT_MODEL" not in env
+    assert "GH_TOKEN" not in env
+    assert "AZURE_CLIENT_SECRET" not in env
+    assert env["COPILOT_CLI_VERSION"] == "1.0.105"
     assert paths.log(1).is_file()
 
 

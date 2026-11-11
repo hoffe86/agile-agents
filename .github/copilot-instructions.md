@@ -111,7 +111,7 @@ Git safety/conventions: `development-practices` §10. Publication evidence:
 such, not as missing MCP tools.
 
 Agent `tools:` is the grant; skill `allowed-tools` grants nothing. Preserve the
-15 roles' exact grants, including native `skill`, and shared MCP access:
+15 roles' exact grants, including native `skill`, `dev-lead`'s `ask_user`, and shared MCP access:
 `context7`, `microsoft-docs`, `playwright`. Recipe removal does not remove tools.
 Match registered server names exactly, including slash-containing names; aliases
 are allowed. Preflight both absent and ungranted causes, with fixes.
@@ -163,3 +163,7 @@ Use the repo's declared checks:
 The full unit command requires the hash-locked `eval/deepeval` environment and
 PowerShell; preserve CI's unittest/pytest split. Report environment blockers and
 actual commands/results, never predicted green. No unrelated fixes.
+
+The custom-eval runner records command results and request-bound simulated
+approval evidence; its scorer reads evidence without executing workspace code.
+Simulation is eval-only, never a substitute for the harness's human approval.

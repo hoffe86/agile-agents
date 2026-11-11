@@ -74,7 +74,9 @@ def test_firstparty_imports_follow_approved_ownership_without_delayed_cycles():
             "adapters.copilot_trace", "custom_eval.expectations",
             "custom_eval.trajectory", "metrics.local_model",
         },
-        "custom_eval.plan_approval": {"custom_eval.expectations", "custom_eval.judges"},
+        "custom_eval.plan_approval": {
+            "adapters.copilot_trace", "custom_eval.expectations", "custom_eval.judges",
+        },
         "custom_eval.runner": {
             "_console", "adapters.copilot_trace", "custom_eval.checks",
             "custom_eval.expectations", "custom_eval.judges", "custom_eval.plan_approval",
@@ -84,6 +86,7 @@ def test_firstparty_imports_follow_approved_ownership_without_delayed_cycles():
             "_console", "adapters.copilot_trace", "custom_eval.checks",
             "custom_eval.expectations", "custom_eval.plan_approval",
             "custom_eval.judges", "custom_eval.metrics", "custom_eval.runner",
+            "custom_eval.trajectory",
         },
         "report_skill_usage": {"_console", "adapters.copilot_trace", "metrics.local_model"},
     }

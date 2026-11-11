@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 import yaml
 
 
@@ -51,13 +53,15 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         self.assertEqual(self.wf["permissions"], {"contents": "read"})
         for name in ("plan", "implement"):
             job = self.jobs[name]
-            self.assertNotIn("permissions", job, f"{name} must inherit read-only permissions")
+            self.assertEqual(job["permissions"],
+                             {"contents": "read", "copilot-requests": "write"})
             self.assertNotIn("azure/login", json.dumps(job))
             self.assertNotIn("EVAL_AZURE", json.dumps(job))
         score = self.jobs["score"]
         self.assertEqual(score["permissions"], {"contents": "read", "id-token": "write"})
         self.assertNotIn("run_custom_eval", json.dumps(score), "the agent never runs where OIDC is")
-        self.assertNotIn("EVAL_COPILOT_TOKEN", json.dumps(score))
+        self.assertNotIn("GITHUB_TOKEN", json.dumps(score))
+        self.assertNotIn("github.token", json.dumps(score))
         login = _steps(score)["azure/login@eec3c95657c1536435858eda1f3ff5437fee8474"]
         login_gate = " ".join(login["if"].split())
         self.assertIn("inputs.judge == 'azure-openai'", login_gate)
@@ -72,7 +76,8 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         self.assertEqual(approve["if"],
                          "${{ needs.plan.outputs.status == 'awaiting_approval' }}")
         body = json.dumps(approve)
-        self.assertNotIn("EVAL_COPILOT_TOKEN", body)
+        self.assertNotIn("GITHUB_TOKEN", body)
+        self.assertNotIn("github.token", body)
         self.assertNotIn("--unsandboxed", body, "the approver runs no agent")
         self.assertNotIn("setup-dotnet", body)
         decide = _steps(approve)["Simulated plan approval (LLM, eval-only)"]["run"]
@@ -82,11 +87,18 @@ class EvalCustomWorkflowTests(unittest.TestCase):
 
     def test_copilot_token_is_scoped_to_the_agent_steps(self):
         holders = [(job, step.get("name")) for job, body in self.jobs.items()
-                   for step in body["steps"] if "EVAL_COPILOT_TOKEN" in json.dumps(step)]
+                   for step in body["steps"] if "GITHUB_TOKEN" in step.get("env", {})]
         self.assertEqual(holders, [
             ("plan", "Phase 1 - run dev-lead up to the plan gate"),
             ("implement", "Phase 2 - resume the same session with the recorded approval"),
         ])
+        self.assertNotIn("GITHUB_TOKEN", self.wf.get("env", {}))
+        self.assertNotIn("EVAL_COPILOT_TOKEN", self.text)
+        self.assertNotIn("COPILOT_GITHUB_TOKEN", self.text)
+        for job, step in holders:
+            self.assertNotIn("GITHUB_TOKEN", self.jobs[job].get("env", {}))
+            self.assertEqual(_steps(self.jobs[job])[step]["env"]["GITHUB_TOKEN"],
+                             "${{ github.token }}")
 
     def test_plan_gate_requires_the_successful_simulated_decision(self):
         implement = self.jobs["implement"]
@@ -227,6 +239,56 @@ class EvalCustomWorkflowTests(unittest.TestCase):
         self.assertNotIn("setup-dotnet", json.dumps(self.jobs["score"]),
                          "the score job never runs agent code")
         self.assertNotIn("actionlint", json.dumps(self.jobs["score"]))
+
+    def test_python_task_tools_are_pinned_and_only_in_agent_jobs(self):
+        body = None
+        for name, phase in (
+            ("plan", "Phase 1 - run dev-lead up to the plan gate"),
+            ("implement", "Phase 2 - resume the same session with the recorded approval"),
+        ):
+            steps = self.jobs[name]["steps"]
+            names = [step.get("name") for step in steps]
+            tool_step = _steps(self.jobs[name])["Install task 02 Python tools"]
+            self.assertLess(names.index("Install the pinned evaluation lock and Copilot CLI"),
+                            names.index("Install task 02 Python tools"))
+            self.assertLess(names.index("Install task 02 Python tools"), names.index(phase))
+            self.assertNotIn("GITHUB_TOKEN", tool_step.get("env", {}))
+            run = tool_step["run"]
+            self.assertIn('[[ "$TASK" == task-02 || "$TASK" == task-02-* ]]', run)
+            self.assertIn("--require-hashes --only-binary=:all:", run)
+            self.assertIn("eval/pipeline/custom-eval/requirements-task02.lock.txt", run)
+            self.assertIn("python -m pip check", run)
+            if body is not None:
+                self.assertEqual(body, run)
+            body = run
+        for name in ("approve", "score"):
+            self.assertNotIn("requirements-task02.lock.txt", json.dumps(self.jobs[name]))
+
+        lock = (ROOT / "eval/pipeline/custom-eval/requirements-task02.lock.txt").read_text(
+            encoding="utf-8")
+        self.assertIn("-r ../../deepeval/requirements.lock.txt", lock)
+        for name in ("fastapi", "librt", "mypy", "mypy-extensions", "pathspec",
+                     "ruff", "starlette"):
+            self.assertRegex(lock, rf"(?m)^{name}==\S+ --hash=sha256:[0-9a-f]{{64}}")
+        self.assertNotRegex(lock, r"(?m)^[^#\s-].* --(?!hash=)")
+
+    def test_python_tool_versions_satisfy_the_task_baseline(self):
+        versions = {}
+        for path in (ROOT / "eval/deepeval/requirements.lock.txt",
+                     ROOT / "eval/pipeline/custom-eval/requirements-task02.lock.txt"):
+            for name, version in re.findall(
+                    r"(?m)^([a-zA-Z0-9_.-]+)==([^\s;]+)", path.read_text("utf-8")):
+                versions[canonicalize_name(name)] = version
+        baseline = ROOT / "eval/pipeline/custom-eval/tasks/task-02-python-di-refactor/baseline"
+        for path in (baseline / "requirements.txt", baseline / "requirements-dev.txt"):
+            for line in path.read_text("utf-8").splitlines():
+                if not line or line.startswith(("#", "-r ")):
+                    continue
+                requirement = Requirement(line)
+                name = canonicalize_name(requirement.name)
+                with self.subTest(requirement=line):
+                    self.assertIn(name, versions)
+                    self.assertIn(versions[name], requirement.specifier)
 
 
 if __name__ == "__main__":

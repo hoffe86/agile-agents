@@ -1843,7 +1843,8 @@ class AgentMetadataTests(unittest.TestCase):
             with self.subTest(agent=name):
                 header = (CORE / "agents" / f"{name}.agent.md").read_text().split("---", 2)[1]
                 data = self.checker.yaml.safe_load(header)
-                self.assertEqual(data["tools"], tools + ["skill"])
+                native = ["skill", "ask_user"] if name == "dev-lead" else ["skill"]
+                self.assertEqual(data["tools"], tools + native)
                 self.assertNotIn("tools", data["metadata"])
                 self.assertNotIn("allowed-tools", data)
 
