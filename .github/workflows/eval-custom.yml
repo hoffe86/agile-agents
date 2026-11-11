@@ -85,6 +85,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Prepare synthetic probe rubric
+        if: ${{ inputs.task == 'task-11-probe' }}
+        run: cp eval/pipeline/custom-eval/plan-approval.md eval/pipeline/synthetic-probe/plan-approval.md
+
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
@@ -130,7 +134,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python eval/pipeline/run_custom_eval.py "$TASK" --out "$RUN_DIR" --phase 1 \
+          runner=eval/pipeline/run_custom_eval.py
+          if [[ "$TASK" == task-11-probe ]]; then runner=eval/pipeline/synthetic-probe/run.py; fi
+          python "$runner" "$TASK" --out "$RUN_DIR" --phase 1 \
             --unsandboxed --max-ai-credits "$MAX_AI_CREDITS"
           # state.json is writable by the unsandboxed agent: allowlist before it drives a job.
           status=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$RUN_DIR/state.json" || true)
@@ -205,6 +211,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Prepare synthetic probe rubric
+        if: ${{ inputs.task == 'task-11-probe' }}
+        run: cp eval/pipeline/custom-eval/plan-approval.md eval/pipeline/synthetic-probe/plan-approval.md
+
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
@@ -231,7 +241,9 @@ jobs:
       - name: Simulated plan approval (LLM, eval-only)
         id: decide
         run: |
-          python eval/pipeline/run_custom_eval.py "$TASK" --out "$RUN_DIR" --phase approve
+          runner=eval/pipeline/run_custom_eval.py
+          if [[ "$TASK" == task-11-probe ]]; then runner=eval/pipeline/synthetic-probe/run.py; fi
+          python "$runner" "$TASK" --out "$RUN_DIR" --phase approve
           decision=$(python -c 'import json,sys; print("approved" if json.load(open(sys.argv[1]))["approved"] is True else "rejected")' "$RUN_DIR/plan-approval.json")
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
 
@@ -289,6 +301,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Prepare synthetic probe rubric
+        if: ${{ inputs.task == 'task-11-probe' }}
+        run: cp eval/pipeline/custom-eval/plan-approval.md eval/pipeline/synthetic-probe/plan-approval.md
+
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
@@ -329,7 +345,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python eval/pipeline/run_custom_eval.py "$TASK" --out "$RUN_DIR" --phase 2 \
+          runner=eval/pipeline/run_custom_eval.py
+          if [[ "$TASK" == task-11-probe ]]; then runner=eval/pipeline/synthetic-probe/run.py; fi
+          python "$runner" "$TASK" --out "$RUN_DIR" --phase 2 \
             --unsandboxed --max-ai-credits "$MAX_AI_CREDITS"
 
       - name: Drop the Copilot session before publishing the run
@@ -354,6 +372,7 @@ jobs:
       contents: read
       id-token: write # Entra federated login for the azure-openai judge only
     env:
+      TASK: ${{ inputs.task }}
       JUDGE: ${{ inputs.judge }}
       AZURE_OPENAI_ENDPOINT: ${{ vars.EVAL_AZURE_OPENAI_ENDPOINT }}
       AZURE_OPENAI_DEPLOYMENT: ${{ vars.EVAL_AZURE_OPENAI_DEPLOYMENT }}
@@ -368,6 +387,10 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+
+      - name: Prepare synthetic probe rubric
+        if: ${{ inputs.task == 'task-11-probe' }}
+        run: cp eval/pipeline/custom-eval/plan-approval.md eval/pipeline/synthetic-probe/plan-approval.md
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -407,8 +430,10 @@ jobs:
 
       - name: Score trajectory (DeepEval) and acceptance (judge)
         run: |
+          args=()
+          if [[ "$TASK" == task-11-probe ]]; then args=(--tasks-root eval/pipeline/synthetic-probe/tasks); fi
           python eval/pipeline/score_custom_eval.py "$RUN_DIR" --judge "$JUDGE" \
-            --output "$RUNNER_TEMP/custom-eval-summary.json"
+            --output "$RUNNER_TEMP/custom-eval-summary.json" "${args[@]}"
 
       - name: Write summary
         if: always()

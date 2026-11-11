@@ -1,0 +1,6 @@
+schema: 1
+root_agent: probe-full
+plan_gate: required
+agents: [probe-worker]
+skills:
+  probe-worker: [probe-skill]
