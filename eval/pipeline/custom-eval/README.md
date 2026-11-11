@@ -180,22 +180,25 @@ the preceding plan message, and the exact approval question — what a human see
 The runner uses the pinned Copilot CLI's bundled SDK to suspend at the top-level `ask_user`
 request and resume that same request after approval. This internal SDK interface is tied to
 the pinned CLI version. Synthetic probes on Windows and Linux verified suspension, cold
-resume, the matching tool response, and delegated skill attribution. A synthetic probe also
-used a real LLM through a mocked Azure HTTP transport: it rejected a missing plan and
-approved and resumed a complete plan. This did not call Azure. Real `dev-lead` probes have
-not yet completed this path: one did not request approval and another delegated
-implementation before approval. The runner reported `blocked_approval` and `gate_skipped`,
-respectively, rather than treating either as a passed gate. A branch Actions run also
-authenticated the pinned CLI with `GITHUB_TOKEN`, ran the SDK plan phase, and transferred
-the plan artifact to scoring. It did not produce a verified approval request, so the
-approval and implementation jobs were skipped. That probe used the PR-description-only
-task, although dev-lead excludes single-stage work. A separate implementation-task run
-changed source and test files through shell commands without requesting approval; it was
-reported as `blocked_approval` because the earlier detector missed those writes. Replaying
-its captured diff against a clean task baseline now detects both changes and fails the gate;
-this is not a new end-to-end run. A later Python refactoring task also edited source and
-delegated coding before approval, and was reported as `gate_skipped`. The Azure judge and
-full cross-job approval flow are not yet verified end to end.
+resume, the matching tool response, and delegated skill attribution. A
+[cross-job Actions probe](https://github.com/hoffe86/agile-agents/actions/runs/42985402021)
+used a synthetic agent and the real Azure judge: the plan was approved, the same request
+resumed in another job, and DeepEval credited the delegated worker and its skill. This
+verifies the transport, not real `dev-lead` compliance.
+
+Real `dev-lead` probes have not yet completed this path. In a
+[Python task run](https://github.com/hoffe86/agile-agents/actions/runs/42984715940),
+Azure graded all acceptance criteria and both command checks passed, but the result was
+`failed`: the agent changed files before approval and invoked none of the expected agents
+or skills. A [multi-file infrastructure task](https://github.com/hoffe86/agile-agents/actions/runs/42985948020)
+also failed the gate and recorded no expected agents or skills; one acceptance criterion
+remained unverified because its fixture does not contain an Ingress resource. Earlier probes
+also skipped the gate or could not verify an approval request.
+An earlier detector missed shell-written changes; replaying the captured diff against a
+clean task baseline now detects them, but that replay is not a new live run.
+Both recent real runs received the CLI's generic instruction not to delegate work
+finishable in five or fewer tool calls alongside dev-lead's instruction to delegate
+implementation. Whether that conflict caused the skipped gates has not been established.
 
 The gate checks implementing-agent delegation attempts and top-level write tools, and records
 persistent workspace changes against the staged baseline. That snapshot covers committed,
