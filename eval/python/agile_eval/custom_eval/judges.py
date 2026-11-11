@@ -19,6 +19,7 @@ Judges:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -226,6 +227,22 @@ def azure_openai_model():
     )
 
 
+def generate(model, prompt: str):
+    from openai import BadRequestError
+
+    try:
+        return model.generate(prompt)
+    except BadRequestError as error:
+        if (error.code != "unsupported_value" or error.param != "temperature"
+                or getattr(model, "temperature", None) != 0):
+            raise
+        logging.getLogger(__name__).warning(
+            "Azure deployment rejected temperature=0; retrying with the default temperature"
+        )
+        model.temperature = None
+        return model.generate(prompt)
+
+
 def judge(name: str, task_prompt: str, criteria: tuple[Criterion, ...],
           unverifiable: dict[int, str], evidence: str,
           command_evidence: str = "", final_response: str | None = None) -> Judgement:
@@ -250,8 +267,8 @@ def judge(name: str, task_prompt: str, criteria: tuple[Criterion, ...],
         evidence = evidence[:MAX_EVIDENCE_CHARS] + "\n[evidence truncated]"
     model = azure_openai_model()
     try:
-        output, _ = model.generate(build_prompt(task_prompt, criteria, unverifiable, evidence,
-                                                command_evidence, final_response))
+        output, _ = generate(model, build_prompt(task_prompt, criteria, unverifiable, evidence,
+                                                 command_evidence, final_response))
     except JudgeError:
         raise
     except Exception as error:

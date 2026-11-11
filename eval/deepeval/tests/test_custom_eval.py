@@ -668,6 +668,105 @@ def test_azure_judge_uses_entra_and_deployment_chat_route(monkeypatch):
     assert "api-key" not in requests[0].headers
 
 
+@pytest.mark.parametrize("kind", ["acceptance", "plan"])
+def test_azure_judges_retry_with_default_temperature_when_zero_is_rejected(monkeypatch, caplog, kind):
+    import httpx2
+    import openai
+    from deepeval.models.llms import azure_model
+
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx2.Response(400, json={"error": {
+                "code": "unsupported_value", "param": "temperature", "message": "private",
+            }})
+        return httpx2.Response(200, json={
+            "id": "test", "object": "chat.completion", "created": 0, "model": "test",
+            "choices": [{"index": 0, "message": {
+                "role": "assistant", "content": "1. PASS - covered\nVERDICT: RESOLVED",
+            }, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        })
+
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.services.ai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "test-deployment")
+    monkeypatch.setenv("AZURE_OPENAI_MODEL", "gpt-4.1")
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_AD_TOKEN", raising=False)
+    monkeypatch.setattr(judges, "_az_token_provider", lambda: lambda: "test-entra-token")
+    criteria = (Criterion(1, "covered"),)
+    with httpx2.Client(transport=httpx2.MockTransport(respond)) as http_client:
+        monkeypatch.setattr(azure_model, "AzureOpenAI",
+                            lambda **kwargs: openai.AzureOpenAI(**kwargs, http_client=http_client))
+        if kind == "plan":
+            result = plan_approval.decide("requirement", criteria, "plan")
+            assert result.approved
+        else:
+            result = judges.judge("azure-openai", "requirement", criteria, {}, "diff")
+            assert result.verdict == "RESOLVED"
+
+    assert len(requests) == 2
+    assert requests[0]["temperature"] == 0
+    assert "temperature" not in requests[1]
+    assert requests[0]["messages"] == requests[1]["messages"]
+    assert "default temperature" in caplog.text
+    assert "private" not in caplog.text
+
+
+@pytest.mark.parametrize(("code", "param"), [
+    ("unsupported_value", "model"),
+    ("unsupported_parameter", "temperature"),
+    ("invalid_request_error", "temperature"),
+])
+def test_azure_judge_does_not_retry_other_bad_requests(monkeypatch, code, param):
+    import httpx2
+    import openai
+
+    class Exploding:
+        temperature = 0
+        calls = 0
+
+        def generate(self, prompt):
+            self.calls += 1
+            request = httpx2.Request("POST", "https://example.invalid")
+            response = httpx2.Response(400, request=request)
+            raise openai.BadRequestError(
+                "private", response=response, body={"code": code, "param": param},
+            )
+
+    model = Exploding()
+    monkeypatch.setattr(judges, "azure_openai_model", lambda: model)
+    with pytest.raises(judges.JudgeError, match="HTTP 400"):
+        judges.judge("azure-openai", "t", CRITERIA, {}, "diff")
+    assert model.calls == 1
+
+
+def test_azure_judge_reports_failure_if_default_temperature_also_fails(monkeypatch):
+    import httpx2
+    import openai
+
+    class Exploding:
+        temperature = 0
+        calls = 0
+
+        def generate(self, prompt):
+            self.calls += 1
+            request = httpx2.Request("POST", "https://example.invalid")
+            response = httpx2.Response(400, request=request)
+            raise openai.BadRequestError(
+                "private", response=response,
+                body={"code": "unsupported_value", "param": "temperature"},
+            )
+
+    model = Exploding()
+    monkeypatch.setattr(judges, "azure_openai_model", lambda: model)
+    with pytest.raises(judges.JudgeError, match="HTTP 400"):
+        judges.judge("azure-openai", "t", CRITERIA, {}, "diff")
+    assert model.calls == 2
+
+
 def test_model_judge_sees_command_results_as_evidence(monkeypatch):
     seen = {}
 

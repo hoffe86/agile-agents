@@ -31,6 +31,7 @@ from agile_eval.custom_eval.judges import (
     Judgement,
     JudgeError,
     azure_openai_model,
+    generate,
     model_call_error,
     parse_contract,
     verdict_for,
@@ -144,7 +145,7 @@ def decide(requirement: str, criteria: tuple[Criterion, ...],
         return PlanDecision(SIMULATED, False, judgement)
     model = azure_openai_model()
     try:
-        output, _ = model.generate(build_prompt(requirement, criteria, plan))
+        output, _ = generate(model, build_prompt(requirement, criteria, plan))
     except JudgeError:
         raise
     except Exception as error:
