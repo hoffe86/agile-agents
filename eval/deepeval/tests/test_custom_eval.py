@@ -1313,11 +1313,13 @@ def test_read_rejects_duplicate_criterion_ids(tmp_path):
     assert plan_approval.read(tmp_path, CRITERIA) is None
 
 
-def _awaiting(tmp_path, *, verified=False) -> runner.Paths:
+def _awaiting(tmp_path, *, verified=False, stage_workspace=False) -> runner.Paths:
     paths = runner.Paths(tmp_path)
-    runner.write_state(paths, {"task": "task-02-python-di-refactor",
-                               "status": "awaiting_approval", "session_id": "session",
-                               "plan_message": "the plan", "phases": {}})
+    state = {"task": "task-02-python-di-refactor", "status": "awaiting_approval",
+             "session_id": "session", "plan_message": "the plan", "phases": {}}
+    if stage_workspace:
+        state["baseline"] = runner.stage(TASKS / state["task"], paths)
+    runner.write_state(paths, state)
     if verified:
         paths.log(1).write_text("\n".join(json.dumps(event) for event in _plan_events()),
                                 encoding="utf-8")
@@ -1771,27 +1773,30 @@ def test_scorer_accepts_a_completed_run_with_a_valid_simulated_approval(tmp_path
     assert row["plan_gate"]["passed"] is True
 
 
-def test_scorer_verifies_approval_before_direct_authorship(tmp_path, monkeypatch):
+@needs_git
+def test_scorer_verifies_approval_before_direct_authorship(tmp_path):
     pytest.importorskip("deepeval")
-    paths = _awaiting(tmp_path, verified=True)
+    paths = _awaiting(tmp_path, verified=True, stage_workspace=True)
     runner.write_state(paths, {**runner.read_state(paths), "status": "complete",
                                "approved_by": plan_approval.SIMULATED})
     count = len(plan_approval.load_rubric(RUBRIC))
     _bound_plan_decision(paths, *(["PASS"] * count))
     paths.log(2).write_text(_direct_phase2_log(), encoding="utf-8")
-    paths.diff.write_text("synthetic direct-authorship diff\n", encoding="utf-8")
-
-    # This fixture expects delegated coding; isolate the approval contract here.
-    monkeypatch.setattr(
-        scorer, "load",
-        lambda task: replace(load(task), agents=(), skills={}),
-    )
+    (paths.workspace / "direct-authored.txt").write_text("approved task change\n",
+                                                          encoding="utf-8")
+    runner.capture_diff(paths, runner.read_state(paths)["baseline"])
+    exp = load(TASKS / "task-02-python-di-refactor")
+    checks_report = checks.run_checks(exp, paths.workspace, paths.run)
     row = scorer.score_run(tmp_path, "none", TASKS)
 
     assert row["errors"] == []
     assert row["plan_gate"]["passed"] is True
     assert row["plan_approval"]["passed"] is True
-    assert row["trajectory"][0]["passed"] is True
+    assert checks.load_results(paths.run, exp) == checks_report["results"]
+    assert row["checks"] == [
+        {key: value for key, value in item.items() if key != "output_tail"}
+        for item in checks_report["results"]
+    ]
     assert any(tool.name == "apply_patch" for tool in parse_log(paths.log(2)).tools)
 
 
