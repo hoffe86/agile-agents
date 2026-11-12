@@ -133,6 +133,57 @@ Concretely:
   the name at the cost of a much wider blast radius, and the description carries
   the scope.
 
+## Amendment (2026-11-12) — Allow dev-lead to author application and infrastructure tasks
+
+### Context
+
+ADR 0009 made `coding` the application author and kept authoring separate from
+`dev-lead`’s orchestration role. That separation preserves clear ownership, but
+it also prevents the senior engineering lead from applying its expertise
+directly when that is the best fit for a task. The harness can retain the
+specialist roles while allowing the lead to choose, task by task, whether to
+implement or delegate.
+
+### Decision
+
+`coding` remains the dedicated application author and `infrastructure` the
+dedicated IaC author. For an approved task, `dev-lead` may implement application
+code or IaC and its tests directly, or delegate to the corresponding
+specialist. It delegates data-science analysis to `data-scientist`.
+
+When implementing directly, `dev-lead` is the task’s author: it works on one
+task at a time, follows the same scope and test-accounting rules, and records
+the applicable implementation or infrastructure evidence without presenting
+it as a specialist hand-off. Review findings for its work are routed back to
+`dev-lead`; `review-lead` and its independent reviewers retain review
+ownership.
+
+### What remains unchanged
+
+Plan approval still precedes implementation. Direct authorship does not waive
+the deterministic test bar, independent review, or any human-only operation or
+approval. `dev-lead` remains the sole run-event writer; direct implementation
+does not authorize parallel writers or reviewer edits.
+
+### Consequences
+
+- The lead can keep task context and contribute implementation work rather than
+  delegating every change.
+- Author selection becomes a per-task judgement, so the lead must record who
+  implemented each task and route review fixes accordingly.
+- The lead’s orchestration and implementation responsibilities can compete for
+  attention. Sequential task execution and independent review remain essential
+  checks.
+
+### Alternatives considered
+
+- **Keep dev-lead orchestration-only.** This preserves the existing role
+  separation, but prevents the lead from implementing tasks where direct
+  contribution is appropriate.
+- **Replace the specialist authors with dev-lead.** This removes useful
+  domain-specific implementation paths; retaining `coding`, `infrastructure`,
+  and `data-scientist` allows delegation when specialist ownership fits better.
+
 ## References
 
 - `plugins/agile-agents-core/agents/coding.agent.md` (merged agent; hand-off contract)
