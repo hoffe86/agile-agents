@@ -77,7 +77,7 @@ with no required package/name. Absence is normal. Stricter personal consent is
 valid; preferences cannot waive harness approvals/safety/reviewer boundaries or
 supersede solution technical constraints. Report conflicts, not universal precedence.
 
-The shared `agentic-universe` lists core 0.17.0 and the optional,
+The shared `agentic-universe` lists core 0.18.0 and the optional,
 independently maintained
 [`agentic-persona`](https://github.com/hoffe86/agentic-persona) plugin. Persona is
 fetched directly from its own repository, not bundled into core or required by

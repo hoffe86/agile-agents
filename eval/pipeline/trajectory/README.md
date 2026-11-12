@@ -5,6 +5,14 @@ artifact quality. It validates the JSONL stream against the authoritative
 [`run-event-log` schema](../../../plugins/agile-agents-core/skills/run-event-log/references/event-schema.json)
 and verifies ordered RPI gates without model calls (ADR 0008).
 
+**Boundary:** this L0 event-log trajectory does not represent or prove Stage 4
+plan approval. A well-formed direct-author trajectory is not evidence that a
+human approved the plan. The separate custom-eval gate verifies the pending,
+request-bound approval evidence and rejects missing or rejected decisions for
+completed runs; its `llm-simulated` decision is evaluation-only and never
+replaces the harness's real human approval. See
+`eval/deepeval/tests/test_custom_eval.py` for direct-authorship gate coverage.
+
 ## What it checks
 
 - Schema-defined required fields, types, outcomes, timestamps, event types,

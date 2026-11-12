@@ -1348,6 +1348,23 @@ def _phase2_log(*, request_id="request", call_id="call", answer="Approve and run
         encoding="utf-8")
 
 
+def _direct_phase2_log():
+    events = [
+        {"type": "assistant.turn_start", "data": {}},
+        {"type": "external_tool.completed", "data": {"requestId": "request"}},
+        {"type": "tool.execution_complete", "data": {
+            "toolCallId": "call", "success": True,
+            "result": {"content": "Approve and run autonomously"}}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": "apply_patch", "toolCallId": "direct-write",
+            "arguments": "*** Begin Patch\n*** End Patch"}},
+        {"type": "tool.execution_complete", "data": {
+            "toolCallId": "direct-write", "success": True}},
+        {"type": "assistant.message", "data": {"content": "Direct task completed."}},
+    ]
+    return "\n".join(json.dumps(event) for event in events)
+
+
 def test_phase_approve_refuses_a_stale_awaiting_state_without_gate_evidence(
         tmp_path, monkeypatch, capsys):
     _awaiting(tmp_path)
@@ -1752,6 +1769,53 @@ def test_scorer_accepts_a_completed_run_with_a_valid_simulated_approval(tmp_path
     assert row["status"] == "failed"
     assert row["plan_approval"]["passed"] is True
     assert row["plan_gate"]["passed"] is True
+
+
+def test_scorer_verifies_approval_before_direct_authorship(tmp_path, monkeypatch):
+    pytest.importorskip("deepeval")
+    paths = _awaiting(tmp_path, verified=True)
+    runner.write_state(paths, {**runner.read_state(paths), "status": "complete",
+                               "approved_by": plan_approval.SIMULATED})
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    paths.log(2).write_text(_direct_phase2_log(), encoding="utf-8")
+    paths.diff.write_text("synthetic direct-authorship diff\n", encoding="utf-8")
+
+    # This fixture expects delegated coding; isolate the approval contract here.
+    monkeypatch.setattr(
+        scorer, "load",
+        lambda task: replace(load(task), agents=(), skills={}),
+    )
+    row = scorer.score_run(tmp_path, "none", TASKS)
+
+    assert row["errors"] == []
+    assert row["plan_gate"]["passed"] is True
+    assert row["plan_approval"]["passed"] is True
+    assert row["trajectory"][0]["passed"] is True
+    assert any(tool.name == "apply_patch" for tool in parse_log(paths.log(2)).tools)
+
+
+@pytest.mark.parametrize("decision", ["missing", "rejected"])
+def test_scorer_fails_direct_authorship_without_approved_plan(
+        tmp_path, decision):
+    pytest.importorskip("deepeval")
+    paths = _awaiting(tmp_path, verified=True)
+    if decision == "missing":
+        runner.write_state(paths, {**runner.read_state(paths), "status": "complete",
+                                   "approved_by": plan_approval.SIMULATED})
+        paths.log(2).write_text(_direct_phase2_log(), encoding="utf-8")
+        row = scorer.score_run(tmp_path, "none", TASKS)
+        assert row["status"] == "setup_error"
+        assert "missing plan-approval.json" in row["errors"]
+    else:
+        runner.write_state(paths, {**runner.read_state(paths), "status": "plan_rejected"})
+        count = len(plan_approval.load_rubric(RUBRIC))
+        _bound_plan_decision(paths, "FAIL", *(["PASS"] * (count - 1)))
+        paths.diff.write_text("no direct implementation\n", encoding="utf-8")
+        row = scorer.score_run(tmp_path, "none", TASKS)
+        assert row["status"] == "failed"
+        assert row["plan_gate"]["passed"] is True
+        assert row["plan_approval"]["passed"] is False
 
 
 def test_scorer_passes_only_the_completed_phase_two_response_to_the_judge(tmp_path, monkeypatch):

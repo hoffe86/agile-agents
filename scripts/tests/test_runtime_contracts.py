@@ -1298,6 +1298,27 @@ class InstructionTests(unittest.TestCase):
         self.assertIn("`dev-lead` when it directly authored the approved task",
                       " ".join(self.files["test-bar"].split()))
 
+    def test_direct_author_may_run_required_checks_without_deployment_authority(self):
+        lead = " ".join(self.files["dev-lead"].split())
+        self.assertIn(
+            "For directly authored approved application/IaC tasks, run the repository-required "
+            "build, lint, test, and other deterministic verification checks for the task.",
+            lead,
+        )
+        self.assertIn(
+            "This is not a limited tool grant and does not authorize deployments or other "
+            "human-only operations",
+            lead,
+        )
+
+    def test_data_science_deliverables_are_positively_routed_to_data_scientist(self):
+        lead = " ".join(self.files["dev-lead"].split())
+        self.assertIn(
+            "`data-scientist` when the deliverable is an **answer, a model, or evidence** "
+            "rather than shippable behaviour",
+            lead,
+        )
+
     def test_known_contradictions_are_detected(self):
         mutations = [
             ("handoff-contracts", "- Existing tests modified:", "- Removed test field:"),
