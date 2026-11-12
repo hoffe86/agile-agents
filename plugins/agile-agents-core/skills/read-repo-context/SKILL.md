@@ -63,10 +63,15 @@ Load only relevant guidance; reviewers read reference material, never execute
 an author workflow. Existing CI, scripts and profile commands are evidence for
 verification; do not invent commands or a competing registry/resolver.
 
-An unavailable capability may be **absent or ungranted**: check native discovery/
-installation and this agent's `tools:` grant separately. Native `skill` must be
-granted for invocation; a skill's `allowed-tools` grants nothing. Do not infer
-absence from a failed load or recommend installation solely from a filename.
+Check availability and grants separately: a tool may be absent from runtime
+availability (for example, its server is not registered), or available but
+omitted by a narrow agent `tools:` grant. `tools: ["*"]` covers the agent-level
+grant check for tools the runtime makes available; it does not register servers,
+authorize use, or bypass host permissions or workspace/global restrictions. If
+use is denied despite an agent grant, report the permission boundary rather than
+a missing tool. Native `skill` invocation needs a `skill` grant (explicit or
+wildcard); a skill's `allowed-tools` grants nothing. Do not infer absence from a
+failed load or recommend installation solely from a filename.
 Without matching optional guidance, use repo conventions and authoritative
 documentation, and report the fallback. Approval still gates adoption/install.
 
@@ -139,10 +144,13 @@ deprecations, config keys and schemas before writing.
 3. **Documentation tooling** — `context7` / `microsoft-docs` / the vendor's own MCP server.
 4. **`web`** — whatever the above don't cover.
 
-If tooling is unavailable, name both possible causes and fixes: server absent
-from `mcp-config.json` (register it), or missing agent `tools:` grant (add it).
-Continue only within the task's gates; label the unverified fact and impact in
-the hand-off. Cite sources and applicable versions for consequential choices.
+If tooling is unavailable, distinguish runtime absence/unregistered servers,
+omitted agent grants (an exact grant is needed only for a narrow `tools:` list;
+`"*"` covers that grant check), and host/workspace/global restrictions that may
+deny use despite a grant. Recommend only evidence-supported fixes; otherwise
+report the uncertainty and impact. Continue only within the task's gates; label
+the unverified fact and impact in the hand-off. Cite sources and applicable
+versions for consequential choices.
 Reviewers also verify factual claims; read-only forbids writes, not lookup.
 Skip redundant research for settled repo facts and stable language basics.
 

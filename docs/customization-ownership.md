@@ -14,6 +14,20 @@ Respect directory/`applyTo` scope and native delivery. Availability does not
 prove invocation or automatic injection. Do not invent universal precedence.
 Personal preferences cannot waive solution constraints, approvals or safety.
 
+## Tool availability and role boundaries
+
+The core agent definitions use `tools: ["*"]` so agents can use tools made
+available by the consuming runtime, workspace or global configuration. This
+keeps tool availability with the environment that configures it rather than
+maintaining a core allowlist of server names. The wildcard does not register an
+absent server, grant authorization to an external service, or bypass local or
+host restrictions.
+
+Open grants do not change role contracts. Reviewers remain effect-based
+read-only, and `capability-scout` remains proposal-only; neither is technically
+prevented from seeing write-capable tools by its grant. Approval, independent
+review and human-only operation boundaries remain in force.
+
 An optional example is **[agentic-persona](https://github.com/hoffe86/agentic-persona)**.
 That repository owns its packaging, activation and verification; it is not a
 core dependency. Its native instructions require separate opt-in. No particular

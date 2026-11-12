@@ -49,7 +49,10 @@ metadata:
    as `--since` on every call, including completion and resume. `--event-log`
    attributes usage; it does **not** filter out earlier session usage.
 
-   **Phase identity:** supervisor-only windows use their stage name. Worker
+   **Phase identity:** supervisor-only windows use their stage name. Direct
+   dev-lead implementation uses `phase=implement`, attributed to `agent=dev-lead`;
+   its usage lands in `by_phase.implement` / `by_agent.dev-lead`, with
+   `max_aiu_per_phase_overrides[implement]` applying to that window. Worker
    windows use the dispatched role (`architect`, `coding`, `infrastructure`,
    `data-scientist`, `review-lead`, etc.), so agent-name override keys resolve
    exactly. Only dev-lead emits; close a supervisor window before opening a

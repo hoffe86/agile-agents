@@ -23,7 +23,7 @@ description: >-
   integration tests that cover it). Hands off to infrastructure-reviewer and review.
 metadata:
   model_tier: mid  # mechanical IaC authoring against declared conventions and existing repo patterns
-tools: [vscode, execute, read, search, web, todo, 'azure-mcp/*', 'azure-mcp-server/*', 'azure/*', context7/*, microsoft-docs/*, edit, agent, playwright/*, browser, skill]
+tools: ["*"]
 argument-hint: "Describe the IaC work: Bicep / Terraform / Helm / Kustomize / pipeline change"
 ---
 
@@ -93,7 +93,9 @@ and cloud/provider. For hybrid targets require evidence of the matching resource
 subset and document that scope; apply guidance only to that subset. Tool syntax
 or a state backend alone does not establish a resource provider. Import support
 is not implementation coverage. Missing/conflicting declarations need clarification.
-If unavailable, distinguish absent or ungranted before recommending setup.
+If unavailable, use `read-repo-context` §3 to distinguish runtime absence from
+an omitted agent grant; a wildcard grant does not establish server registration
+or override host/workspace/global permissions.
 
 Without matching optional depth, use repo/provider conventions and the provider's
 documentation/module registry and report the hand-off fallback.

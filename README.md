@@ -39,8 +39,8 @@ you start. It:
 3. **Discovers existing scoped instructions, local skills, installed plugins and CI/check
    commands** before proposing gaps. Matches capabilities and applicability, not a catalog.
    Installs only selected plugins after explicit approval.
-4. **Reports what is unavailable and the fallback**, distinguishing absent from ungranted,
-   on-disk from available, and available from actually exercised.
+4. **Reports what is unavailable and the fallback**, distinguishing absent from
+   ungranted, on-disk from available, and available from actually exercised.
 
 Everything downstream depends on that profile: which skills load, which gates fire, which tracker
 gets written to, what the cost envelope allows. `dev-lead` blocks at Stage 0 until its six
@@ -108,10 +108,11 @@ covered needs. Its proposal records provenance/trust/license, overlap/conflicts,
 harness/solution/user destination, expected benefit and before/after verification.
 It never adopts, installs or edits instructions; a human approves those changes.
 
-All core skill-consuming roles grant native `skill`, without broadening their
-other permissions. Static grant regressions do not establish role-wide live
-loading or automatic selective instruction injection. Full RPI evaluation is
-currently blocked at approval transport.
+All 15 agent definitions use the wildcard tool grant; native `skill` invocation
+and selective instruction loading still depend on runtime behavior. Static
+checks do not establish role-wide live loading or automatic selective
+instruction injection. Full RPI evaluation is currently blocked at approval
+transport.
 
 The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skills/`.
 
@@ -121,7 +122,7 @@ The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skill
 
 | Role | Agent | Purpose |
 |------|-------|---------|
-| Supervisor | `dev-lead` | Orchestrates the RPI pipeline (Research → Plan → Implement → Review) across architect, backlog-manager, coding, infrastructure and review with gates |
+| Supervisor | `dev-lead` | Orchestrates the RPI pipeline (Research → Plan → Implement → Review); after approval may author application/IaC tasks and tests directly or delegate them. Data-science analysis remains delegated to `data-scientist`. |
 | Author | `architect` | Read-only/advisory: serves the Research phase — verifies the change fits the prepared concept (in the framework declared by `documentation.framework`) + any accepted decision records, cites them, reports decision gaps; never authors ADRs |
 | Author | `coding` | Implements features/fixes **and covers them with tests** using the solution's language/framework — one engineer's job, one hand-off |
 | Author | `infrastructure` | Bicep, Terraform, Helm/Kustomize, CI/CD pipelines — and their IaC tests |
@@ -146,57 +147,48 @@ The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skill
 The generated [skill inventory](AGENTS.md) lists the current distribution.
 Solution-local guidance can use arbitrary names; no companion is required.
 
-**Tracker MCP servers are named by you, not by this harness.** Tool grants are
-agent-scoped — a skill cannot grant them — so `backlog-manager` ships grants for the
-common server names (`github`, `ado`, `azure-devops`, …). If yours is registered under a
-different name, add `'<your-server>/*'` to the `tools:` list in
-`plugins/agile-agents-core/agents/backlog-manager.agent.md`. A server that isn't granted
-is unreachable even while it's running; `backlog-manager` preflights for this and tells
-you which of the two causes it hit.
+### Tool access
 
-### MCP servers
+All 15 agent definitions use `tools: ["*"]`. This exposes tools made available
+through the runtime, workspace, or global configuration; it does not register an
+absent MCP server, grant authorization to an external service, or bypass local
+or host restrictions. Tool availability and service authorization remain owned by
+the configured runtime and service.
 
-Shared MCP access is independent of technical recipes. Core retains its three
-servers and all agent grants; actual access requires registration and a grant.
+The core plugin declares these MCP servers:
 
 | Server | Shipped by | Why |
 |---|---|---|
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
-| `playwright` | `agile-agents-core` | Interactive browser diagnosis and rendered documentation, granted to all 15 agents. Runs `--headless --isolated`; profile isolation is not a network/security sandbox. Reviewers remain read-only. |
-| `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-reviewer`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
-| `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
+| `playwright` | `agile-agents-core` | Interactive browser diagnosis and rendered documentation. Runs `--headless --isolated`; profile isolation is not a network/security sandbox. |
 
-### Tool access
+Other MCP servers, such as a tracker or Azure server, must be made available by
+the consuming environment. Their availability does not change role ownership:
+tracker operations belong to `backlog-manager`, and Azure resource work belongs
+to the roles assigned that task.
 
-Every agent gets the read/navigate set (`vscode, execute, read, search, web, todo`) plus the
-MCP servers above. On top of that:
-
-| Extra | Agents |
-|---|---|
-| `edit` | `architect`, `coding`, `data-scientist`, `infrastructure`, `backlog-manager`, `bootstrapper` |
-| `agent` (delegation) | `architect`, `coding`, `infrastructure`, `backlog-manager` + `dev-lead`, `review-lead` |
-| `browser` + `playwright/*` | all 15 — `coding` for E2E and browser-driven diagnosis, `backlog-manager` for the tracker web UI, everyone else to verify facts against rendered documentation |
-
-**Reviewers never get `edit`.** That's the defence-in-depth half of
-`reviewer-read-only-rules` — the contract is enforced in the prompt *and* by tool grant.
-`capability-scout` doesn't get it either: it proposes adoptions, and a human makes them.
-
-Reviewers **do** get the browser, because verifying a claimed API contract beats assuming it,
-and a grant can't be split into "navigate but don't click". That half of the boundary is
-therefore prompt-enforced: `reviewer-read-only-rules` treats navigating and reading as reads,
-and refuses form submits, destructive clicks, console authentication, and
-`browser_run_code_unsafe` / `browser_evaluate` outright — the contract is about **effects, not
-file types**, so a click that deletes a cloud resource is a write however it was issued.
+Reviewers and `capability-scout` remain effect-based read-only / proposal-only
+roles despite the open tool grants; the grants do not technically deny editing
+or other write-capable tools. Reviewers must not edit files, mutate external
+state, submit forms, authenticate through the console, or run unsafe browser
+code. `capability-scout` proposes changes but does not adopt, install, or edit
+them. `reviewer-read-only-rules` is authoritative: a tool's effect, not its
+interface, determines whether an action is a write.
 
 ## How it works — the RPI pipeline
 
 `dev-lead` is the supervisor. It drives a single, already-prepared user story through four
-phases — **R**esearch → **P**lan → **I**mplement → **R**eview — delegating each phase to
-specialist agents, gating their output, and reporting one Definition-of-Done verdict. The
-concept (arc42, C4, or whatever `documentation.framework` declares) and any accepted decision
-records are authored **up-front by humans**; the pipeline conforms to them and never writes
-them — a missing decision is escalated, not invented. Projects without ADRs are supported.
+phases — **R**esearch → **P**lan → **I**mplement → **R**eview — delegating as appropriate,
+gating the work, and reporting one Definition-of-Done verdict. After plan approval, it may
+choose to author an approved application/IaC task and its tests directly or
+delegate to the corresponding specialist. Data-science analysis remains
+delegated to `data-scientist`, as allowed by the [approved ADR 0009 amendment](docs/adr/0009-merge-coding-and-testing-agents.md).
+The concept (arc42, C4, or whatever
+`documentation.framework` declares) and any accepted decision records are
+authored **up-front by humans**; the pipeline conforms to them and never writes
+them — a missing decision is escalated, not invented. Projects without ADRs are
+supported.
 
 Intake → Research → Plan → tracker tasks → **human approval** → implementation
 and tests → deterministic gates → independent review → Done.
@@ -212,7 +204,7 @@ non-Block review rounds. A ❌ Block halts rather than entering that loop.
 | **Plan** | Decompose the story into meaningful, independently-implementable **tasks**, each with its own acceptance criteria + a short approach note. When a `plan.md` supplied the decomposition, it is **adopted and reconciled** — every step carried, merged, or dropped with a reason — never silently re-derived. | `dev-lead` | — |
 | **Create tasks** | `backlog-manager` creates one child work item per task, **linked to the parent story** (provisional, tagged `pending-approval`), records the overall approach as a comment on the parent, and returns the task list. The tracker is the source of truth; local handover files are an ephemeral, gitignored cache. Gated by `backlog.create_tasks`. | `backlog-manager` | `TASKS PLANNED` |
 | **⛔ Plan approval** | The **only mandatory approval gate** — it fires **after** the tasks exist so the human reviews concrete, linked work items. ("Only" counts approvals: intake may still ask about an ambiguity, or to confirm criteria derived from a `plan.md`.) Approve → tags removed, autonomous run begins; Adjust → tasks revised; Cancel → provisional tasks cleaned up. | human | — |
-| **Implement** | `coding` delivers each task inside the approved plan — production code **and the tests that cover it** — and `infrastructure` does the same for IaC. A conditional design-approval gate fires first if Research introduced a new dependency / boundary / ADR gap. | `coding`, `infrastructure` | `IMPLEMENTATION COMPLETE`, `INFRASTRUCTURE COMPLETE` |
+| **Implement** | For each approved application/IaC task, `dev-lead` chooses direct authorship (including tests) or delegates to `coding` / `infrastructure`. Data-science analysis stays delegated to `data-scientist`. Approval still precedes work; the deterministic test bar and independent review remain mandatory. | `dev-lead`, `coding`, `infrastructure`, `data-scientist` | None for direct `dev-lead` authorship; specialist hand-off blocks for delegated work |
 | **Test-Bar Gate** | Deterministic lint → typecheck → unit-test → smoke gate over the combined diff, before reviewers spend tokens; loops back to the author on fail (max 3 retries). | `dev-lead` (skill: `test-bar-gate`) | — |
 | **Review** | Multi-lens review (quality / security / architecture / infra / test / data) merged into one verdict, validated against the research findings and the planned acceptance criteria. | `review-lead` (+ `code-reviewer`, `security-reviewer`, `architecture-reviewer`, `infrastructure-reviewer`, `test-reviewer`, `data-reviewer`) | `REVIEW COMPLETE` |
 | **Done** | `dev-lead` reconciles evidence, relays trade-offs and uses the completion reference for approved PR/release artifacts. | `dev-lead` | — |

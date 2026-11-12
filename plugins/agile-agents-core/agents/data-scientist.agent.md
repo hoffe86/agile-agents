@@ -23,7 +23,7 @@ description: >-
   legitimate outcome rather than a failure.
 metadata:
   model_tier: heavy  # methodology judgement — a wrong metric or a leaked split is invisible in the output and expensive later
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, playwright/*, browser, skill]
+tools: ["*"]
 argument-hint: "Describe the data work: question to answer, dataset to profile, model to build/evaluate, or AI feature to measure"
 ---
 

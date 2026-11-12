@@ -20,7 +20,7 @@ description: >-
   present). Hands off to review once the change builds and its tests are green.
 metadata:
   model_tier: mid  # mechanical code + test generation against established patterns and skills
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, playwright/*, browser, skill]
+tools: ["*"]
 argument-hint: "Describe the work: feature to add, bug to fix, refactor scope, or test coverage to close"
 ---
 

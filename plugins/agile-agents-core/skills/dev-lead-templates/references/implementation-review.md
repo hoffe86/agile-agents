@@ -30,6 +30,16 @@ and Intake DoD. When architect ran, prepend:
 
 > **Design constraints (locked by Stage 1):** <binding decision refs — ADR ids if the project uses ADRs>, chosen pattern <X>, allowed dependencies <list>. If you cannot deliver inside these constraints without a new dependency, boundary, contract, or cloud resource, **stop and report it** in your hand-off block — do not silently exceed scope.
 
+After the human's plan approval is verified, choose direct dev-lead authorship
+or specialist delegation separately for each approved application/IaC task.
+Direct work is a supervisor-owned edit, never a parallel worker; record the
+applicable evidence fields from the canonical implementation/infrastructure
+contract in the todo description, including every behavior-to-test mapping and
+`Existing tests modified` justification. Do not fabricate a worker sentinel,
+identity, or hand-off event. Data-science analysis/model/evaluation tasks remain
+delegated to `data-scientist`; if that role is unavailable, stop for a human
+scope decision.
+
 For application work following analysis, include the analysis producer's
 `Interface for coding` so the serving application follows the model's contract.
 
@@ -62,9 +72,10 @@ author unchanged; do not substitute a prose guess for the failing check.
 ### Review payload
 
 Provide `review-lead` the diff (`git diff <base>...HEAD`), original requirement,
-per-task hand-offs, current Stage 7 content identity and gate results. Include
-which checks ran, whether the host started or why it was `not_applicable` /
-`undetermined`, and all `Existing tests modified` justifications.
+per-task worker hand-offs or direct-authorship evidence records, current Stage 7
+content identity and gate results. Include which checks ran, whether the host
+started or why it was `not_applicable` / `undetermined`, and all `Existing tests
+modified` justifications.
 
 `test-reviewer` cannot independently judge an assertion change on evidence it
 never sees; an `undetermined` smoke result is a visible gap, not implied startup
@@ -80,7 +91,7 @@ Track Critical and Major ids; Minor and Nits are report follow-ups.
 CREATE TABLE IF NOT EXISTS findings (
   id TEXT PRIMARY KEY,          -- C1, M2, … from the review report
   severity TEXT,                -- critical | major
-  owner TEXT,                   -- coding | data-scientist | infrastructure | architect
+  owner TEXT,                   -- dev-lead (direct author) | coding | data-scientist | infrastructure | architect
   summary TEXT,
   status TEXT DEFAULT 'open',   -- open | fixed | disputed | accepted-risk
   note TEXT                     -- dispute reason, or the human's acceptance

@@ -134,14 +134,15 @@ Do not dispatch reviewers on a failed or unverified required gate.
 
 | Failure belongs to | Author |
 |---|---|
-| Application lint/type/test/coverage/mutation or host startup | `coding` |
-| IaC, pipelines or owned local infrastructure prerequisites | `infrastructure` |
+| Application lint/type/test/coverage/mutation or host startup | `coding`, or `dev-lead` when it directly authored the approved task |
+| IaC validation/tests or owned local infrastructure prerequisites | `infrastructure`, or `dev-lead` when it directly authored the approved task |
+| Deploy-verify failure | `infrastructure` |
 | Missing command/access or unresolved startup | Stop for solution configuration |
 
-Application tests remain `coding`'s responsibility. A retry changing an
-assertion must state what it previously claimed and why that claim was invalid;
-never weaken tests to hide a production defect. Preserve that justification
-for `test-reviewer`.
+Tests remain the selected implementation author's responsibility. A retry
+changing an assertion must state what it previously claimed and why that claim
+was invalid; never weaken tests to hide a production defect. Preserve that
+justification for `test-reviewer`.
 
 ## Command provenance
 

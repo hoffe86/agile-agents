@@ -40,7 +40,7 @@ def disabled_cost():
     return {"status": "disabled", "reason": "disabled for synthetic test"}
 
 
-def measured_cost(unmetered=False):
+def measured_cost(unmetered=False, phase="coding"):
     usd = None if unmetered else 0.01
     metric_set = {
         "calls": 0,
@@ -60,7 +60,7 @@ def measured_cost(unmetered=False):
         "usage": {
             "session_id": "synthetic-session",
             "totals": dict(metric_set),
-            "by_phase": {"coding": dict(metric_set)},
+            "by_phase": {phase: dict(metric_set)},
             "by_agent": {"dev-lead": dict(metric_set)},
             "usd": usd,
             "usd_basis": "not-metered" if unmetered else "rate:0 USD per AIU",
@@ -100,6 +100,33 @@ def successful_run():
         }),
     ]
     return events
+
+
+def successful_direct_run():
+    return [
+        event("run_start", "intake", 0, payload={
+            "requirement_summary": "Synthetic direct-author trajectory test",
+            "profile_loaded": True,
+        }),
+        event("phase_start", "research", 1),
+        event("phase_complete", "research", 2, outcome="success"),
+        event("phase_start", "implement", 3),
+        event("phase_complete", "implement", 4, outcome="success"),
+        event("gate_check", "test-bar", 5, outcome="success", payload={
+            "gate": "test_bar",
+        }),
+        event("phase_start", "review-lead", 6),
+        event("phase_complete", "review-lead", 7, outcome="success"),
+        event("handoff_received", "review-lead", 8, payload={
+            "from_agent": "review-lead", "sentinel": "REVIEW COMPLETE",
+        }),
+        event("gate_check", "review-lead", 9, outcome="success", payload={
+            "gate": "review",
+        }),
+        event("run_complete", "wrap-up", 10, outcome="success", payload={
+            "cost_summary": measured_cost(phase="implement"),
+        }),
+    ]
 
 
 def set_ordered_timestamps(events):
@@ -150,6 +177,33 @@ class TrajectoryContractTests(unittest.TestCase):
 
     def test_supervisor_only_successful_trajectory_passes(self):
         self.assertEqual(failures(successful_run()), set())
+
+    def test_direct_implementation_uses_supervisor_window_without_worker_handoff(self):
+        events = successful_direct_run()
+        self.assertEqual(failures(events), set())
+        self.assertTrue(all(item["agent"] == "dev-lead" for item in events))
+        implementation = [
+            item for item in events
+            if item["event_type"] in ("phase_start", "phase_complete")
+            and item["phase"] == "implement"
+        ]
+        self.assertEqual(
+            [item["event_type"] for item in implementation],
+            ["phase_start", "phase_complete"],
+        )
+        self.assertEqual(events[-1]["payload"]["cost_summary"]["usage"]["by_phase"].keys(),
+                         {"implement"})
+        handoffs = [item["payload"]["from_agent"] for item in events
+                    if item["event_type"] == "handoff_received"]
+        self.assertEqual(handoffs, ["review-lead"])
+
+    def test_direct_implementation_cannot_fabricate_worker_identity(self):
+        events = successful_direct_run()
+        events.insert(5, event("handoff_received", "implement", 5, payload={
+            "from_agent": "dev-lead", "sentinel": "IMPLEMENTATION COMPLETE",
+        }))
+        set_ordered_timestamps(events)
+        self.assertIn("schema-valid", failures(events))
 
     def test_schema_rejects_workers_unknown_events_and_self_reported_cost(self):
         cases = []
@@ -366,6 +420,27 @@ class TrajectoryContractTests(unittest.TestCase):
                 "from_agent": "review-lead", "sentinel": "REVIEW COMPLETE",
             }),
             event("gate_check", "review-lead", 18, outcome="success", payload={
+                "gate": "review",
+            }),
+        ]
+        set_ordered_timestamps(events)
+        self.assertEqual(failures(events), set())
+
+    def test_direct_author_corrective_round_reverifies_before_independent_review(self):
+        events = successful_direct_run()
+        events[9]["outcome"] = "fail"
+        events[-1:-1] = [
+            event("phase_start", "implement", 10),
+            event("phase_complete", "implement", 11, outcome="success"),
+            event("gate_check", "test-bar", 12, outcome="success", payload={
+                "gate": "test_bar",
+            }),
+            event("phase_start", "review-lead", 13),
+            event("phase_complete", "review-lead", 14, outcome="success"),
+            event("handoff_received", "review-lead", 15, payload={
+                "from_agent": "review-lead", "sentinel": "REVIEW COMPLETE",
+            }),
+            event("gate_check", "review-lead", 16, outcome="success", payload={
                 "gate": "review",
             }),
         ]

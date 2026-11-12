@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Shared marketplace for the Agentic Agile Harness and optional, independently maintained personal tooling.",
-    "version": "0.17.0",
+    "version": "0.18.0",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -14,7 +14,7 @@
       "name": "agile-agents-core",
       "source": "agile-agents-core",
       "description": "RPI orchestration, 15 specialist agents and general evidence contracts. Solutions own technical guidance; personal tooling is optional.",
-      "version": "0.17.0",
+      "version": "0.18.0",
       "category": "development",
       "keywords": [
         "agents",

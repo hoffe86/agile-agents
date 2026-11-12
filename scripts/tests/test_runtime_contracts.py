@@ -370,6 +370,7 @@ SCHEMA_CLAUSES = {
     "review-lead": (
         "keep the full specialist reports and the role's merging rubric",
         "✅ Approve | 🔁 Request changes | ❌ Block", "with skip reasons",
+        "dev-lead: <directly-authored findings>",
     ),
     "backlog-manager": (
         "on the Plan workflow only", "provisional, tag `pending-approval`",
@@ -775,9 +776,17 @@ STAGE_CONTROLS = {
         "architect stage's one corrective retry", "one Adjust round per run",
         "persisted across resume", "second Adjust is not allowed",
         "user stopped at design gate"),
-    6: ("Stage 4 approved and Stage 5 passed", "`coding`", "`infrastructure`",
+    6: ("The human's exact approval response for Stage 4 is verified",
+        "Stage 5 passed or is explicitly inapplicable", "`coding`", "`infrastructure`",
         "`data-scientist`", "scope question for the human",
         "no separate testing agent", "must never weaken a test",
+        "Choose the author per approved task",
+        "delegate to `coding` / `infrastructure`",
+        "only here and after approval", "one implementation writer active at a time",
+        "Data-science work is never direct dev-lead work",
+        "`data-scientist` is unavailable/not active for the run",
+        "same applicable task evidence", "do not emit a worker sentinel",
+        "`phase=implement`", "`agent=dev-lead`",
         "all dependencies are `done`", "dependency cycle",
         "Deliver tasks sequentially", "do not dispatch implementation tasks in parallel",
         "safe only for **read-only** agents", "Existing tests modified",
@@ -795,7 +804,8 @@ STAGE_CONTROLS = {
         "before and after verification", "result is stale",
         "Only when 7a passed **and**", "`infrastructure.deploy_verify` is `dev`",
         "Never production", "per deterministic gate", "does **not reset**",
-        "not itself a corrective retry", "3rd fail", "4th fail",
+        "not itself a corrective retry", "`dev-lead` for its directly authored",
+        "deploy-verify failure", "3rd fail", "4th fail",
         "Halt the run", "Do not call reviewers", "quota, policy denial",
         "halts immediately with no retry"),
     8: ("**Delegate to:** `review-lead`", "quality and security unconditionally",
@@ -807,6 +817,7 @@ STAGE_CONTROLS = {
         "Re-route anything marked `not mine`", "A `disputed` finding stays open",
         "Re-verify before re-review", "failed rerun prevents reviewer dispatch",
         "No-edit disputes retain valid evidence",
+        "Findings owned by `dev-lead` are direct-authorship findings",
         "at most three corrective rounds", "does not reset this separate counter",
         "If a round closes nothing", "stop condition #7",
         "Only you write the session ledger", "a fixer's claim cannot close a finding",
@@ -847,13 +858,17 @@ RECIPE_CONTENT = {
     6: ("SELECT t.* FROM todos t", "t.status = 'pending'",
         "td.depends_on = dep.id", "dep.status != 'done'",
         "Design constraints (locked by Stage 1)", "allowed dependencies",
-        "Interface for coding", "that task's"),
+        "Interface for coding", "that task's",
+        "After the human's plan approval is verified",
+        "choose direct dev-lead authorship", "specialist delegation"),
     7: ("scripts/run-gate.sh", "quality_gates.test_bar.<check>.command",
         "testing.smoke.command", "content hashes of relevant untracked files",
         "before **and** after verification", "structured failure report"),
     8: ("git diff <base>...HEAD", "Existing tests modified",
         "CREATE TABLE IF NOT EXISTS findings", "id TEXT PRIMARY KEY",
-        "severity TEXT", "owner TEXT", "summary TEXT", "status TEXT DEFAULT 'open'",
+        "severity TEXT", "owner TEXT",
+        "dev-lead (direct author) | coding | data-scientist | infrastructure | architect",
+        "summary TEXT", "status TEXT DEFAULT 'open'",
         "note TEXT", "SELECT id, owner FROM findings WHERE status = 'open'"),
     9: ("SELECT ac_id, text, covered_by, evidence, status FROM requirement_acs",
         "WHERE status = 'uncovered'", "every** criterion", "previously covered rows",
@@ -975,7 +990,8 @@ def stage_contract_errors(files, core=CORE):
             errors.append("missing auxiliary skill route " + heading)
     try:
         report = " ".join(named_contract_section(files.get("done-report", ""), "Report").split())
-        for phrase in ("Implementation + tests | coding", "Infrastructure + IaC tests | infrastructure",
+        for phrase in ("Implementation + tests | dev-lead (direct) / coding (delegated)",
+                       "Infrastructure + IaC tests | dev-lead (direct) / infrastructure (delegated)",
                        "Analysis + evidence | data-scientist", "Review | review-lead",
                        "Evidence is a test name or a review finding", "collect-usage.py"):
             if phrase not in report:
@@ -1230,9 +1246,57 @@ class InstructionTests(unittest.TestCase):
         self.files = load_handoff_files()
         self.files.update(load_stage_files())
         self.files["cost-budget"] = (CORE / "skills/cost-budget/SKILL.md").read_text(encoding="utf-8")
+        self.files["event-map"] = (
+            CORE / "skills/run-event-log/references/dev-lead-event-map.md"
+        ).read_text(encoding="utf-8")
+        self.files["test-bar"] = (
+            CORE / "skills/test-bar-gate/SKILL.md"
+        ).read_text(encoding="utf-8")
 
     def test_contracts_match(self):
         self.assertEqual(contract_errors(self.files), [])
+
+    def test_direct_authoring_is_post_approval_auditable_and_reviewed_independently(self):
+        lead = " ".join(self.files["dev-lead"].split())
+        for marker in (
+            "The human's exact approval response for Stage 4 is verified",
+            "Choose the author per approved task, only here and after approval",
+            "The selected author owns implementation and its tests",
+            "same applicable task evidence",
+            "Existing tests modified",
+            "Data-science work is never direct dev-lead work",
+            "stop and ask the human for a scope or capability decision",
+            "phase=implement",
+            "do not emit `handoff_received`",
+        ):
+            with self.subTest(source="dev-lead", marker=marker):
+                self.assertIn(marker, lead)
+
+        review = " ".join(self.files["review-lead"].split())
+        self.assertIn("dev-lead` for its directly authored application/IaC work", review)
+        self.assertIn("reviewer-read-only-rules", review)
+        self.assertIn("Strictly read-only", review)
+        self.assertIn("You do not perform a review lens yourself", review)
+        self.assertIn("Dispatch all applicable specialists in parallel", review)
+        self.assertIn("Always invoke `code-reviewer` and `security-reviewer`", review)
+        self.assertIn("dev-lead: <directly-authored findings>", self.files["handoff-contracts"])
+        handoffs = " ".join(self.files["handoff-contracts"].split())
+        self.assertIn("This is not a worker hand-off", handoffs)
+        self.assertIn("do not emit either sentinel", handoffs)
+        self.assertIn("to `dev-lead` when directly fixing its own authored application/IaC work",
+                      handoffs)
+        self.assertIn("dev-lead (direct) / coding (delegated)", self.files["done-report"])
+        self.assertIn("dev-lead (direct) / infrastructure (delegated)",
+                      self.files["done-report"])
+
+        event_map = " ".join(self.files["event-map"].split())
+        self.assertIn("phase=implement", event_map)
+        self.assertIn("agent=dev-lead", event_map)
+        self.assertIn("no `handoff_received`", event_map)
+        self.assertIn("phase=implement", self.files["cost-budget"])
+        self.assertIn("by_agent.dev-lead", self.files["cost-budget"])
+        self.assertIn("`dev-lead` when it directly authored the approved task",
+                      " ".join(self.files["test-bar"].split()))
 
     def test_known_contradictions_are_detected(self):
         mutations = [
@@ -1808,46 +1872,10 @@ class AgentMetadataTests(unittest.TestCase):
             with self.subTest(agent=path.name):
                 self.assertNotIn("model_tier", data)
                 self.assertNotIn("model", data)  # Migration must not configure a runtime model.
-                self.assertIn("tools", data)
                 self.assertIn("argument-hint", data)
                 self.assertEqual(data["name"], path.name.removesuffix(".agent.md"))
                 actual[data["name"]] = data["metadata"]["model_tier"]
         self.assertEqual(actual, expected)
-
-    def test_all_fifteen_native_skill_grants_preserve_exact_permissions(self):
-        common = ["vscode", "execute", "read", "search", "web", "todo"]
-        docs = ["context7/*", "microsoft-docs/*"]
-        azure = ["azure-mcp/*", "azure-mcp-server/*", "azure/*"]
-        browser = ["playwright/*", "browser"]
-        expected = {
-            "architect": common + azure + docs + ["edit", "agent"] + browser,
-            "infrastructure": common + azure + docs + ["edit", "agent"] + browser,
-            "coding": common + docs + ["edit", "agent"] + browser,
-            "data-scientist": common + docs + ["edit", "agent"] + browser,
-            "backlog-manager": common + docs + ["edit", "agent", "browser", "github/*",
-                "ado/*", "azure-devops/*", "azure-devops-mcp/*", "playwright/*"],
-            "bootstrapper": common + docs + ["edit", "browser", "playwright/*"],
-            "capability-scout": ["vscode", "read", "search", "web", "todo", "execute",
-                                "browser", "playwright/*", "github/*"] + docs,
-            "dev-lead": common + docs + ["agent", "ado/*", "azure-devops/*",
-                                        "azure-devops-mcp/*"] + browser,
-            "review-lead": common + docs + ["agent"] + browser,
-            "infrastructure-reviewer": common + azure + docs + browser,
-        }
-        for name in ("code-reviewer", "architecture-reviewer", "security-reviewer",
-                     "test-reviewer", "data-reviewer"):
-            expected[name] = common + docs + browser
-        self.assertEqual({p.stem.removesuffix(".agent") for p in (CORE / "agents").glob("*.agent.md")},
-                         set(expected))
-        for name, tools in expected.items():
-            with self.subTest(agent=name):
-                header = (CORE / "agents" / f"{name}.agent.md").read_text(
-                    encoding="utf-8").split("---", 2)[1]
-                data = self.checker.yaml.safe_load(header)
-                native = ["skill", "ask_user"] if name == "dev-lead" else ["skill"]
-                self.assertEqual(data["tools"], tools + native)
-                self.assertNotIn("tools", data["metadata"])
-                self.assertNotIn("allowed-tools", data)
 
     def test_scan_rejects_dev_lead_reassignment_to_light(self):
         with tempfile.TemporaryDirectory() as tmp:

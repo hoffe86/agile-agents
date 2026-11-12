@@ -13,12 +13,16 @@ name; delegated work uses the worker role as `phase` (matching cost override
 keys). Close the supervisor window before dispatch, open/close the worker
 window around its work, then reopen supervisor work as needed. Repeated labels
 aggregate within the same run, including corrective rounds. Only dev-lead emits.
+Direct dev-lead implementation uses its own `phase=implement` window and keeps
+`agent=dev-lead`; it is not a worker window and emits no `handoff_received`
+event. Its measured usage is attributed to the `implement` phase.
 
 | When | `event_type` | Required extras |
 |---|---|---|
 | Stage 0 start | `run_start` | `phase=intake`, `payload.requirement_summary`, `payload.profile_loaded` |
 | Opening a work window | `phase_start` | `phase=<stage-name or worker-role>` |
 | Closing that window | `phase_complete` | same `phase`, `outcome=success\|fail\|partial` |
+| Directly authored approved application/IaC task | `phase_start` / `phase_complete` | `agent=dev-lead`, `phase=implement`; no worker dispatch or hand-off |
 | Dispatching a worker | `tool_call` | `tool_name=agent`, `args_summary="<agent-name>: <task one-liner>"` |
 | Worker hand-off received | `handoff_received` | `payload.from_agent=<worker>`, `payload.sentinel=<block name>` |
 | Worker malformed / failed | `error` | `error_kind=malformed_handoff\|build_fail\|...` |

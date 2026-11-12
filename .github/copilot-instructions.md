@@ -74,8 +74,14 @@ trade-offs, risks and downstream consequences at the earliest actionable gate.
 - Research verifies prepared concepts/decisions and source evidence.
 - Plan decomposes into tasks; `backlog-manager` creates provisional linked
   children when enabled. Human approval follows task creation.
-- Dispatch one writer task at a time in the shared tree. Authors own their tests:
-  coding owns application tests; infrastructure owns IaC tests.
+- After approval, `dev-lead` may author an approved application/IaC task and its
+  tests directly or delegate it to `coding` / `infrastructure`, one task at a
+  time. Data-science analysis remains delegated to `data-scientist`; authors
+  own their tests. This task-level author choice follows the approved
+  [ADR 0009 amendment](../docs/adr/0009-merge-coding-and-testing-agents.md).
+- Direct authorship does not waive the deterministic test bar, independent
+  review, human-only operations, or role boundaries. `dev-lead` never reviews
+  its own work.
 - Never weaken/delete/skip tests to manufacture green. Justify every existing
   test change in `Existing tests modified`; test-reviewer adjudicates it.
 - The deterministic test bar precedes independent review. `review-lead` performs
@@ -107,20 +113,24 @@ explicit per-run approval, separate from plan approval. Merge/complete/close,
 force-push, shared-history rewrite, shared-branch deletion and production
 deployment are human-only. Non-production deployment uses the project's pipeline
 and `infrastructure.deploy_verify: dev`, excluding the final or prod-named stage.
-Reviewers remain read-only regardless of tool availability.
+Reviewers and `capability-scout` remain effect-based read-only / proposal-only
+regardless of tool availability; these are role contracts, not technical
+tool-denials.
 
 PR publication follows `identity.repo_url`, not `backlog.platform`.
 Git safety/conventions: `development-practices` §10. Publication evidence:
 `dev-lead-templates/references/completion.md`. Report permission boundaries as
 such, not as missing MCP tools.
 
-Agent `tools:` is the grant; skill `allowed-tools` grants nothing. Preserve the
-15 roles' exact grants, including native `skill`, `dev-lead`'s `ask_user`, and shared MCP access:
-`context7`, `microsoft-docs`, `playwright`. Recipe removal does not remove tools.
-Match registered server names exactly, including slash-containing names; aliases
-are allowed. Preflight both absent and ungranted causes, with fixes.
-Reviewers may navigate/read but not submit forms, mutate state or execute unsafe
-browser code; `reviewer-read-only-rules` is authoritative.
+All 15 agent definitions use `tools: ["*"]` to expose tools made available
+through runtime, workspace, or global configuration. This does not register an
+absent server, grant authorization to an external service, or bypass local/host
+restrictions. Skill `allowed-tools` grants nothing. Tool grants do not
+technically deny reviewers or `capability-scout` write-capable tools: reviewers
+must remain read-only by effect, and `capability-scout` proposal-only, as
+specified by their role contracts. Reviewers may read/navigate but not edit
+files, submit forms, mutate state, authenticate through a console, or execute
+unsafe browser code; `reviewer-read-only-rules` is authoritative.
 
 ## Usage and models
 

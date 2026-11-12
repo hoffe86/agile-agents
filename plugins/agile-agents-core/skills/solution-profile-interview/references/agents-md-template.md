@@ -24,7 +24,10 @@ profile selected for generation), repository instructions and the configured
 
 `dev-lead` supervises Research → Plan → Implement → Review against prepared
 decisions. Plans need human approval; tracker tasks are conditional on the
-profile. Authors work sequentially and own their tests; reviewers are independent.
+profile. After approval, `dev-lead` may author an approved application/IaC task
+and its tests directly or delegate it to the relevant specialist; data-science
+analysis remains delegated to `data-scientist`. Tasks are
+implemented sequentially and authors own their tests; reviewers are independent.
 Workers return these canonical hand-off blocks:
 
 - `IMPLEMENTATION COMPLETE` (coding — production code **and** the tests covering it)
@@ -35,12 +38,16 @@ Workers return these canonical hand-off blocks:
 - `TASKS PLANNED` (backlog-manager)
 - `BOOTSTRAP COMPLETE` (bootstrapper)
 
+Reviewers are read-only by effect despite open tool grants; `capability-scout`
+is proposal-only. These role contracts do not technically deny write-capable
+tools.
+
 Feature-branch creation, commits and pushes need no harness gate, but explicit
 user restrictions and stricter personal consent still apply.
 **Opening a pull request needs the user's explicit approval**, and **completing, merging or
 closing a PR is human-only, always**, as are force-pushing, rewriting shared history and
 production deploys. Deployments to non-production run through the project's own pipeline and are gated
-on `infrastructure.deploy_verify`. Reviewers are **read-only**.
+on `infrastructure.deploy_verify`. Reviewers are **read-only by effect**.
 
 ## Agents
 
@@ -49,7 +56,9 @@ on `infrastructure.deploy_verify`. Reviewers are **read-only**.
 ## Skills
 
 Skills discovered from the configured directories; availability alone does not
-prove applicability or invocation. Respect native scope and tool grants.
+prove applicability or invocation. Agent `tools: ["*"]` exposes tools available
+through runtime/workspace/global configuration; it does not register absent
+servers, grant service authorization, or bypass local/host restrictions.
 
 {{SKILLS_LIST}}
 

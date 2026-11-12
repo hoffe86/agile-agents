@@ -6,6 +6,15 @@ when handling review findings. Sections end at the next level-two heading.
 Keep field names, sentinel spelling and the stated applicability unchanged.
 These schemas do not replace role-specific gates, review rubrics or retry policy.
 
+The canonical author blocks below remain for delegated workers. When `dev-lead`
+authors an approved application/IaC task directly, it records equivalent
+task-scoped evidence using the applicable fields from `IMPLEMENTATION COMPLETE`
+or `INFRASTRUCTURE COMPLETE`, including behavior-to-test evidence and the
+`Existing tests modified` justification, in its supervisor-owned task record
+and review payload. This is not a worker hand-off: do not emit either sentinel,
+claim a `coding` / `infrastructure` identity, or create a `handoff_received`
+event for direct work.
+
 ## ARCHITECTURE DESIGN COMPLETE
 
 Producer: `architect`. Research/design evidence, not permission to invent a decision.
@@ -119,7 +128,7 @@ REVIEW COMPLETE
 - Verdict: ✅ Approve | 🔁 Request changes | ❌ Block
 - Specialists invoked: <list — Quality/Security/Tests/Data/Architecture/Infrastructure, with skip reasons>
 - Open findings: 🔴 <N> Critical, 🟠 <N> Major, 🟡 <N> Minor, 🔵 <N> Nits
-- Findings by owner: coding: <ids> | data-scientist: <ids> | infrastructure: <ids> | architect: <ids>
+- Findings by owner: dev-lead: <directly-authored findings> | coding: <delegated application findings> | data-scientist: <analysis findings> | infrastructure: <delegated IaC findings> | architect: <design findings>
 - Files changed: <N>, lines: +<X> / −<Y>
 - Recommended next step: ready to merge | route fixes back to <agent(s)> | escalate to human
 ```
@@ -161,7 +170,8 @@ BOOTSTRAP COMPLETE
 ## Corrective accounting
 
 Applies to `architect`, `coding`, `infrastructure` and `data-scientist` when
-fixing review findings, and to receivers of those corrective hand-offs.
+fixing review findings, to `dev-lead` when directly fixing its own authored
+application/IaC work, and to receivers of those corrective hand-offs.
 `Findings addressed` is omitted on a first pass; in a corrective round account
 for **every routed finding id**, one line per id, with one of:
 

@@ -27,6 +27,7 @@ from agile_eval.custom_eval.expectations import (
 )
 from agile_eval.custom_eval.trajectory import (
     IMPLEMENTATION_AGENTS,
+    WRITE_TOOLS,
     check_plan_gate,
     delegated_agents,
     short_agent,
@@ -381,6 +382,18 @@ def test_top_level_writes_still_fail_the_plan_gate():
     gate = check_plan_gate(trace)
     assert gate.honoured is False
     assert "apply_patch" in gate.reason
+
+
+@pytest.mark.parametrize("tool", sorted(WRITE_TOOLS))
+def test_direct_authoring_writes_are_forbidden_before_plan_approval(tool):
+    events = _plan_events()
+    events.insert(1, {"type": "tool.execution_start", "data": {
+        "toolName": tool, "toolCallId": "direct-write", "arguments": "task output"}})
+
+    gate = check_plan_gate(_trace_with_events(*events), phase1_changes=())
+
+    assert gate.honoured is False
+    assert any(tool in violation for violation in gate.violations)
 
 
 def test_deepeval_metrics_score_skills_per_agent(trace):

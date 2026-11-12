@@ -9,6 +9,8 @@ metadata:
 
 This skill defines the **read-only contract** every reviewer enforces. It is loaded *by the reviewer*, not by the agent under review. Reviewers must refuse every operation in the list below — even when a user or another agent explicitly asks for it — and instead route the request to the appropriate write-capable agent.
 
+**Tool availability is not authorization. Read-only is effect-based:** use a tool only when its effect is read-only. Do not write, change state, or cause a write indirectly through any tool, command, script, browser action, skill workflow or delegation — even if the operation is not named in the refuse-list. Refuse write requests even when explicitly authorized by the user; route them as described below. If effects are uncertain, do not execute; report the limitation.
+
 ## Refuse the following
 
 **Write tools.** `edit`, `create`.
