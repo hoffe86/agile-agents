@@ -197,6 +197,9 @@ The decision is written to `plan-approval.json`, labelled `llm-simulated`, and s
 own metric, `Plan approval (llm-simulated)`. A rejection **ends the run** as **failed**
 (`plan_rejected`): there is no re-plan round. It is evidence about the plan, never a human
 approval — the harness's own human gate outside evaluation is unchanged.
+If the recorded phase-two trace nevertheless contains top-level write tools after a
+rejection, the trajectory includes a failed `post_rejection_write` metric naming those
+tools. It detects recorded write-tool attempts, not shell writes or tampered logs.
 
 Trust: the approve step holds the judge credentials but runs no agent. Phase 1 deletes any
 pre-existing `plan-approval.json`, and in CI `implement` is gated on the `approve` job's

@@ -541,15 +541,20 @@ class TrajectoryContractTests(unittest.TestCase):
                 usage = measured_cost(unmetered=unmetered)["usage"]
                 phase = usage["by_phase"]["coding"]
                 unattributed = usage["unattributed"]
+                agent = usage["by_agent"]["dev-lead"]
                 for metric in ("calls", "tokens_in", "tokens_out", "tokens_reasoning",
                                "tokens_cache_read", "tokens_total", "aiu", "duration_ms"):
                     self.assertEqual(
                         usage["totals"][metric], phase[metric] + unattributed[metric], metric,
                     )
+                    self.assertEqual(usage["totals"][metric], agent[metric], metric)
+                self.assertEqual(usage["totals"]["models"], agent["models"])
                 if unmetered:
                     self.assertIsNone(unattributed["usd"])
+                    self.assertIsNone(agent["usd"])
                 else:
                     self.assertEqual(usage["totals"]["usd"], phase["usd"] + unattributed["usd"])
+                    self.assertEqual(usage["totals"]["usd"], agent["usd"])
 
     def test_schema_requires_cost_status_to_match_every_collector_usd_bucket(self):
         for status, invalid_value in (
