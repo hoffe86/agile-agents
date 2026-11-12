@@ -160,8 +160,19 @@ if [[ "$(yq -r '.quality_gates.test_bar.fail_fast | tag' "$PROFILE_PATH")" != '!
 fi
 [[ "$FAIL_FAST" == "false" ]] || FAIL_FAST="true"
 
-# BSD date lacks %N. Seconds are sufficient for reporting; deadlines stay bounded.
+# Whole seconds suffice for check reporting, but not for smoke deadlines.
 now_ms() { printf '%s000' "$(date +%s)"; }
+
+smoke_now_ms() {
+  local timestamp="${EPOCHREALTIME:-}"
+  if [[ "$timestamp" =~ ^[0-9]+\.[0-9]{6}$ ]]; then
+    printf '%s\n' "$(( ${timestamp/./} / 1000 ))"
+  else
+    timestamp="$(date +%s%N)" || return 1
+    [[ "$timestamp" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$(( timestamp / 1000000 ))"
+  fi
+}
 
 # A multiline shell program is not an argv item. Put it in a solution script.
 valid_command() {
@@ -283,28 +294,46 @@ run_smoke() {
     return 1
   fi
 
+  local start_ms
+  if ! start_ms="$(smoke_now_ms)"; then
+    configuration_gap smoke "Subsecond smoke timing requires Bash 5+ or date with %N support."
+    return 2
+  fi
   SMOKE_LOG="$(mktemp)"
-  local start_ms; start_ms="$(now_ms)"
   set -m
   "${argv[@]}" >"$SMOKE_LOG" 2>&1 &
   SMOKE_PID=$!
   set +m
 
-  local up=0 reason="" exit_code=1 deadline=$(( $(date +%s) + timeout ))
-  while [[ $(date +%s) -lt $deadline ]]; do
+  local up=0 reason="" exit_code=1 deadline=$(( start_ms + timeout * 1000 ))
+  local current_ms=$start_ms remaining request_timeout poll_delay code
+  while [[ $current_ms -lt $deadline ]]; do
     if ! kill -0 "$SMOKE_PID" 2>/dev/null; then break; fi
-    local code remaining=$(( deadline - $(date +%s) ))
+    remaining=$(( deadline - current_ms ))
+    printf -v request_timeout '%d.%03d' "$(( remaining / 1000 ))" "$(( remaining % 1000 ))"
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time "$request_timeout" "$url" 2>/dev/null || true)"
+    current_ms="$(smoke_now_ms)" || {
+      configuration_gap smoke "Unable to read the subsecond smoke clock."
+      return 2
+    }
+    if [[ $current_ms -lt $deadline && "$code" =~ ^[1-4][0-9][0-9]$ ]] &&
+       kill -0 "$SMOKE_PID" 2>/dev/null; then up=1; break; fi
+    remaining=$(( deadline - current_ms ))
     [[ $remaining -gt 0 ]] || break
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time "$remaining" "$url" 2>/dev/null || true)"
-    if [[ "$code" =~ ^[1-4][0-9][0-9]$ ]] && kill -0 "$SMOKE_PID" 2>/dev/null; then up=1; break; fi
-    sleep 0.2
+    [[ $remaining -le 200 ]] || remaining=200
+    printf -v poll_delay '0.%03d' "$remaining"
+    sleep "$poll_delay"
+    current_ms="$(smoke_now_ms)" || {
+      configuration_gap smoke "Unable to read the subsecond smoke clock."
+      return 2
+    }
   done
   if [[ $up -eq 0 ]] && ! kill -0 "$SMOKE_PID" 2>/dev/null; then
     wait "$SMOKE_PID"
     exit_code=$?
     reason="process exited with $exit_code"
   fi
-  local dur=$(( $(now_ms) - start_ms ))
+  local dur=$(( current_ms - start_ms ))
   local tail_text; tail_text="$(tail -n 20 "$SMOKE_LOG" 2>/dev/null || true)"
   cleanup_smoke
 

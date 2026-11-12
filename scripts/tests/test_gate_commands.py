@@ -860,6 +860,49 @@ class PowerShellGateTests(GateCases, unittest.TestCase):
 class BashGateTests(GateCases, unittest.TestCase):
     shell = "bash"
 
+    def test_smoke_timeout_does_not_round_down_at_second_boundary(self):
+        self.smoke(timeout=1)
+        self.profile["testing"]["smoke"]["command"] = self.command("wait", str(self.pid_file))
+        startup = self.cwd / "clock.sh"
+        # Cross a whole-second boundary immediately after deadline construction.
+        # Subsecond date calls still use the real clock, including on Bash 3.
+        startup.write_text("""
+unset EPOCHREALTIME
+date() {
+  if [[ "$1" == "+%s" ]]; then
+    local count=0
+    [[ ! -f clock-count ]] || read -r count < clock-count
+    printf '%s\\n' "$(( count + 1 ))" > clock-count
+    if [[ $count -lt 2 ]]; then printf '1000\\n'; else printf '1001\\n'; fi
+  else
+    command date "$@"
+  fi
+}
+""", encoding="utf-8")
+        cmd, env = self.prepare(None, "")
+        env["BASH_ENV"] = str(startup)
+        started = time.monotonic()
+        with patch.object(self, "prepare", return_value=(cmd, env)):
+            self.assertEqual(self.invoke(status=None), 1, self.output)
+        self.assertGreaterEqual(time.monotonic() - started, 1)
+        self.assertIn("no response", self.event("smoke")["reason"])
+        self.assertIn("waiting diagnostic", self.event("smoke")["stderr_tail"])
+        self.assert_stopped(self.pid_file)
+
+    def test_unavailable_subsecond_clock_fails_before_smoke_launch(self):
+        self.smoke()
+        startup = self.cwd / "clock.sh"
+        startup.write_text(
+            "unset EPOCHREALTIME\ndate() { printf '1000N\\n'; }\n", encoding="utf-8")
+        cmd, env = self.prepare(None, "")
+        env["BASH_ENV"] = str(startup)
+        with patch.object(self, "prepare", return_value=(cmd, env)):
+            self.assertEqual(self.invoke(status=None), 2, self.output)
+        self.assertEqual(self.event("smoke")["reason"], "configuration_gap")
+        self.assertIn("Subsecond smoke timing", self.event("smoke")["detail"])
+        self.assertFalse(self.pid_file.exists())
+        self.assert_no_success_summary()
+
 
 if __name__ == "__main__":
     unittest.main()

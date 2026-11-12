@@ -35,6 +35,13 @@ then report `undetermined` if still unresolved. Report the fallback as missing
 guidance/access, not proof of an unstartable app or a required plugin. Never
 hardcode stack entry-point rules here or invent a command.
 
+## Smoke timing prerequisites
+
+Bash smoke deadlines use subsecond timestamps, not rounded Unix seconds. This
+requires Bash 5+ (`EPOCHREALTIME`) or a `date` implementation supporting `%N`.
+If neither is available, the runner reports a configuration gap before launch.
+Requests and polling waits share the same deadline; a late response cannot pass.
+
 ## Nothing to start — a first-class answer
 
 Confirm the project/component being verified has no runnable entry point.
