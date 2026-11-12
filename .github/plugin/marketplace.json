@@ -1,11 +1,11 @@
 {
-  "name": "agile-agents-marketplace",
+  "name": "agentic-universe",
   "owner": {
     "name": "hoffe86",
     "url": "https://github.com/hoffe86"
   },
   "metadata": {
-    "description": "Marketplace for Agile Agents — the Agentic Agile Harness.",
+    "description": "Shared marketplace for the Agentic Agile Harness and optional, independently maintained personal tooling.",
     "version": "0.17.0",
     "pluginRoot": "./plugins"
   },
@@ -23,6 +23,21 @@
         "architecture",
         "testing",
         "infrastructure",
+        "copilot-cli"
+      ]
+    },
+    {
+      "name": "agentic-persona",
+      "source": {
+        "source": "github",
+        "repo": "hoffe86/agentic-persona"
+      },
+      "description": "Optional personal working style, architecture, microservice testing, planning-tool and coding-style preferences. Native user instructions are a separate opt-in.",
+      "version": "0.1.0",
+      "category": "development",
+      "keywords": [
+        "personal-preferences",
+        "working-style",
         "copilot-cli"
       ]
     }

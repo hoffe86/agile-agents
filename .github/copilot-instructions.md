@@ -6,7 +6,10 @@ This repository builds the Agentic Agile Harness: RPI orchestration, specialist
 roles, gates and evidence contracts. Its agents write software in consuming
 solutions. Treat prompt edits here as runtime behavior changes, not mere docs.
 
-The marketplace ships **only `agile-agents-core`**. Solutions own technical,
+This repository implements **only `agile-agents-core`**. The shared
+`agentic-universe` also lists the independently maintained, optional
+`agentic-persona` through an external GitHub source, never as a core dependency
+or vendored copy. Solutions own technical,
 framework, cloud and tracker guidance and verification commands. Users select
 optional personal tooling; no personal package is required. Do not build another
 technical catalog or copy retired recipes into local skills/references/fixtures.
@@ -37,7 +40,8 @@ evaluation; humans approve adoption and installation.
 - Scope split today is 22 `all` / 0 scoped.
 
 Keep agents and skill folders flat: manifests discover only the declared paths,
-relative to the plugin root. `.github/plugin/marketplace.json` lists core;
+relative to the plugin root. `.github/plugin/marketplace.json` lists local core
+and external persona under one marketplace identity;
 `plugins/agile-agents-core/.github/plugin/plugin.json` owns its manifest.
 No agents or distributed skills at repository root.
 
@@ -144,8 +148,10 @@ the exact tier inventory. Agent and skill names must not collide.
 Keep entry points short and load references on demand. `.waza.yaml` token limits
 are ratchets: never raise caps to pass. Measure before/after; do not claim model
 equivalence from token counts. Version changed plugins once per PR in manifest,
-marketplace entry and marketplace metadata; core is **0.17.0** for this change.
-Check against the PR merge base; retirement is not another version bump.
+marketplace entry and marketplace metadata; core remains **0.17.0** when its
+files are unchanged. Metadata tracks core, not catalog-only changes. External
+plugin releases belong to their source repository; verify its live manifest
+when updating its listing. Check against the PR merge base.
 
 `AGENTS.md` is generated, never hand-edited. Run `scripts/generate-agents-md.ps1`
 and `.sh`; verify parity with/without isolated yq and C/UTF-8 locales. Remove only

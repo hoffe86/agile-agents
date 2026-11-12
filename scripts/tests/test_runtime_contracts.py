@@ -2745,6 +2745,83 @@ class TriggerEvalTests(unittest.TestCase):
         self.assertEqual(path.read_text(encoding="utf-8"), "changed")
 
 
+@unittest.skipUnless(shutil.which("pwsh"), "PowerShell required")
+class MarketplaceSourceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.manifest = self.root / "plugins/agile-agents-core/.github/plugin/plugin.json"
+        self.manifest.parent.mkdir(parents=True)
+        self.manifest.write_text(json.dumps({"version": "1.2.3"}), encoding="utf-8")
+        self.marketplace = self.root / ".github/plugin/marketplace.json"
+        self.marketplace.parent.mkdir(parents=True)
+        self.catalog = {
+            "metadata": {"version": "1.2.3", "pluginRoot": "./plugins"},
+            "plugins": [
+                {"name": "agile-agents-core", "source": "agile-agents-core",
+                 "version": "1.2.3"},
+                {"name": "external-plugin",
+                 "source": {"source": "github", "repo": "example/external-plugin"},
+                 "version": "0.1.0"},
+            ],
+        }
+
+    def check_catalog(self):
+        self.marketplace.write_text(json.dumps(self.catalog), encoding="utf-8")
+        return subprocess.run(
+            ["pwsh", "-NoProfile", "-File", str(ROOT / "scripts/check-plugin-versions.ps1"),
+             "-RepoRoot", str(self.root)],
+            capture_output=True, text=True, timeout=30)
+
+    def test_external_github_source_needs_no_local_manifest(self):
+        result = self.check_catalog()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("1 plugins consistent", result.stdout)
+        self.assertIn("External GitHub sources: 1 shape-checked", result.stdout)
+        self.assertIn("remote manifests and versions not verified", result.stdout)
+
+    def test_malformed_external_sources_fail_explicitly(self):
+        for source in (None, 42, [], {}, {"repo": "example/plugin"},
+                       {"source": "github"}, {"source": "github", "repo": []},
+                       {"source": "github", "repo": "example"},
+                       {"source": "github", "repo": "https://github.com/example/plugin"},
+                       {"source": "github", "repo": "example/plugin/extra"},
+                       {"source": "github", "repo": "example/.."},
+                       {"source": "unknown", "repo": "example/plugin"}):
+            with self.subTest(source=source):
+                self.catalog["plugins"][1]["source"] = source
+                result = self.check_catalog()
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("external-plugin' has an invalid source", result.stdout)
+
+    def test_external_listing_does_not_hide_local_version_mismatch(self):
+        self.catalog["plugins"][0]["version"] = "9.9.9"
+        result = self.check_catalog()
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("version mismatch for 'agile-agents-core'", result.stdout)
+
+    def test_external_listing_does_not_hide_missing_local_manifest(self):
+        self.manifest.unlink()
+        result = self.check_catalog()
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("plugins/agile-agents-core/.github/plugin/plugin.json does not exist",
+                      result.stdout)
+
+    def test_external_listing_cannot_replace_local_plugin_entry(self):
+        self.catalog["plugins"].pop(0)
+        self.catalog["plugins"][0]["name"] = "agile-agents-core"
+        result = self.check_catalog()
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("has a manifest but no plugins[] entry", result.stdout)
+
+    def test_metadata_version_still_tracks_local_core(self):
+        self.catalog["metadata"]["version"] = "0.1.0"
+        result = self.check_catalog()
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("metadata.version tracks core", result.stdout)
+
+
 class RepoCheckRunnerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -12,8 +12,10 @@
 
     Two independent checks:
 
-      consistency  Every plugin.json version equals its marketplace plugins[] entry, and
-                   metadata.version tracks agile-agents-core. Pure file read, no git, so it
+      consistency  Every local plugin.json version equals its marketplace plugins[] entry,
+                   and metadata.version tracks agile-agents-core. External GitHub sources
+                   receive a source-shape check only; their manifests and releases belong
+                   to their source repositories. Pure file read, no network or git, so it
                    also runs locally and on push.
 
       bump         Every plugin with changed files under plugins/<name>/ has a version
@@ -74,7 +76,10 @@ $pluginDirs = @(Get-ChildItem (Join-Path $RepoRoot 'plugins') -Directory |
     Where-Object { Test-Path (Get-ManifestPath $_.Name) } |
     Select-Object -ExpandProperty Name)
 
-$listed = @($marketplace.plugins | Select-Object -ExpandProperty source)
+$listed = @($marketplace.plugins |
+    Where-Object { $_.PSObject.Properties['source'] -and $_.source -is [string] } |
+    Select-Object -ExpandProperty source)
+$externalCount = 0
 
 foreach ($name in $pluginDirs) {
     if ($name -notin $listed) {
@@ -83,7 +88,21 @@ foreach ($name in $pluginDirs) {
 }
 
 foreach ($entry in $marketplace.plugins) {
-    $name = $entry.source
+    $source = if ($entry.PSObject.Properties['source']) { $entry.source } else { $null }
+    if ($source -isnot [string]) {
+        if ($source -isnot [pscustomobject] -or
+            -not $source.PSObject.Properties['source'] -or $source.source -cne 'github' -or
+            -not $source.PSObject.Properties['repo'] -or $source.repo -isnot [string] -or
+            $source.repo -cnotmatch '\A[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+\z' -or
+            ($source.repo -split '/')[1] -in @('.', '..')) {
+            $failures.Add("marketplace.json entry '$($entry.name)' has an invalid source: expected a local plugin directory string or a GitHub object with source='github' and repo='owner/repo'.")
+        }
+        else {
+            $externalCount++
+        }
+        continue
+    }
+    $name = $source
     $manifestVersion = Get-ManifestVersion $name
     if ($null -eq $manifestVersion) {
         $failures.Add("marketplace.json lists '$name', but plugins/$name/.github/plugin/plugin.json does not exist.")
@@ -167,3 +186,6 @@ if ($failures.Count) {
 
 $scope = if ($BaseRef) { "consistent, and bumped where changed vs $BaseRef" } else { 'consistent (bump check skipped: no -BaseRef)' }
 Write-Host "Plugin version check passed: $($pluginDirs.Count) plugins $scope." -ForegroundColor Green
+if ($externalCount) {
+    Write-Host "External GitHub sources: $externalCount shape-checked; remote manifests and versions not verified (offline check)."
+}
