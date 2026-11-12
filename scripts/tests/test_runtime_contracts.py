@@ -1841,7 +1841,8 @@ class AgentMetadataTests(unittest.TestCase):
                          set(expected))
         for name, tools in expected.items():
             with self.subTest(agent=name):
-                header = (CORE / "agents" / f"{name}.agent.md").read_text().split("---", 2)[1]
+                header = (CORE / "agents" / f"{name}.agent.md").read_text(
+                    encoding="utf-8").split("---", 2)[1]
                 data = self.checker.yaml.safe_load(header)
                 native = ["skill", "ask_user"] if name == "dev-lead" else ["skill"]
                 self.assertEqual(data["tools"], tools + native)
@@ -1976,13 +1977,13 @@ class AgentMetadataTests(unittest.TestCase):
                 command = runner[:-1] + [script.as_posix(),
                     "-Output" if ps else "--output", output.as_posix()]
                 rejected = subprocess.run(command, cwd=root, capture_output=True,
-                                          text=True, timeout=30)
+                                          encoding="utf-8", timeout=30)
                 self.assertNotEqual(rejected.returncode, 0)
                 self.assertFalse(output.exists())
                 canonical = root / ".github/solution-profile.yaml"
                 canonical.write_text("identity:\n  project_name: canonical-profile\nrpi:\n  {}\n", encoding="utf-8")
                 result = subprocess.run(command, cwd=root, capture_output=True,
-                                        text=True, timeout=30)
+                                        encoding="utf-8", timeout=30)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("canonical-profile", output.read_text(encoding="utf-8"))
                 self.assertNotIn("explicit-only", output.read_text(encoding="utf-8"))
@@ -1992,7 +1993,7 @@ class AgentMetadataTests(unittest.TestCase):
                             canonical.unlink()
                         explicit = subprocess.run(
                             command + ["-ProfilePath" if ps else "--profile", profile.as_posix()],
-                            cwd=root, capture_output=True, text=True, timeout=30)
+                            cwd=root, capture_output=True, encoding="utf-8", timeout=30)
                         self.assertEqual(explicit.returncode, 0, explicit.stdout + explicit.stderr)
                         self.assertIn("explicit-only", output.read_text(encoding="utf-8"))
                         self.assertNotIn("canonical-profile", output.read_text(encoding="utf-8"))
@@ -2018,7 +2019,7 @@ class AgentMetadataTests(unittest.TestCase):
                 output = consumer / "AGENTS.md"
                 # No Git metadata or repo-side scripts are needed in the consumer.
                 result = subprocess.run(command, cwd=consumer, capture_output=True,
-                                        text=True, timeout=60)
+                                        encoding="utf-8", timeout=60)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("# AGENTS.md — Consumer", output.read_text(encoding="utf-8"))
                 self.assertIn("### `example`", output.read_text(encoding="utf-8"))
@@ -2026,16 +2027,16 @@ class AgentMetadataTests(unittest.TestCase):
                 # Explicit root must also win when invoked from the installation directory.
                 explicit = command + ["-RepoRoot" if ps else "--repo-root", consumer.as_posix()]
                 result = subprocess.run(explicit, cwd=installed, capture_output=True,
-                                        text=True, timeout=60)
+                                        encoding="utf-8", timeout=60)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 output.write_text("# Hand-maintained instructions\n", encoding="utf-8")
                 refused = subprocess.run(explicit, cwd=installed, capture_output=True,
-                                         text=True, timeout=60)
+                                         encoding="utf-8", timeout=60)
                 self.assertNotEqual(refused.returncode, 0)
                 self.assertIn("Refusing to overwrite", refused.stdout + refused.stderr)
                 self.assertEqual(output.read_text(encoding="utf-8"), "# Hand-maintained instructions\n")
                 preview = subprocess.run(explicit + ["-DryRun" if ps else "--dry-run"],
-                                         cwd=installed, capture_output=True, text=True, timeout=60)
+                                         cwd=installed, capture_output=True, encoding="utf-8", timeout=60)
                 self.assertEqual(preview.returncode, 0, preview.stderr)
                 self.assertIn("# AGENTS.md — Consumer", preview.stdout)
                 self.assertEqual(output.read_text(encoding="utf-8"), "# Hand-maintained instructions\n")
@@ -2045,7 +2046,7 @@ class AgentMetadataTests(unittest.TestCase):
                 shared.write_text(content, encoding="utf-8")
                 os.link(shared, output)
                 refused = subprocess.run(explicit, cwd=installed, capture_output=True,
-                                         text=True, timeout=60)
+                                         encoding="utf-8", timeout=60)
                 self.assertNotEqual(refused.returncode, 0)
                 self.assertEqual(shared.read_text(encoding="utf-8"), content)
 
@@ -2067,7 +2068,7 @@ class AgentMetadataTests(unittest.TestCase):
                 flags = (["-RepoRoot", str(root), "-ProfilePath", str(profile), "-DryRun"] if ps else
                          ["--repo-root", root.as_posix(), "--profile", profile.as_posix(), "--dry-run"])
                 result = subprocess.run(runner + flags, cwd=root, capture_output=True,
-                                        text=True, timeout=60)
+                                        encoding="utf-8", timeout=60)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("# AGENTS.md — A # B $(touch NEVER_EXECUTE)", result.stdout)
                 self.assertIn("python@3.12, csharp@10", result.stdout)

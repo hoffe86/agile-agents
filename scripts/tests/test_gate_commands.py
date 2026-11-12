@@ -87,20 +87,27 @@ class ProcessObserverTests(unittest.TestCase):
                 [sys.executable, str(FIXTURE), "wait", str(pid_path)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
+            fixture_pid = None
             try:
                 deadline = time.monotonic() + 5
                 while not pid_path.exists() and time.monotonic() < deadline:
                     time.sleep(0.01)
                 self.assertTrue(pid_path.exists())
-                self.assertTrue(process_alive(process.pid))
+                # Windows venv launchers can have a different PID from the fixture.
+                fixture_pid = int(pid_path.read_text(encoding="utf-8"))
+                self.assertTrue(process_alive(fixture_pid))
                 self.assertIsNone(process.poll())
-                with self.assertRaisesRegex(AssertionError, f"leaked process {process.pid}"):
+                with self.assertRaisesRegex(AssertionError, f"leaked process {fixture_pid}"):
                     assert_process_stopped(self, pid_path, timeout=0.1)
-                self.assertTrue(process_alive(process.pid))
+                self.assertTrue(process_alive(fixture_pid))
                 self.assertIsNone(process.poll())
             finally:
-                process.kill()
-                process.wait(timeout=5)
+                try:
+                    if fixture_pid is not None and process_alive(fixture_pid):
+                        os.kill(fixture_pid, signal.SIGTERM)
+                finally:
+                    process.kill()
+                    process.wait(timeout=5)
             assert_process_stopped(self, pid_path)
 
 
