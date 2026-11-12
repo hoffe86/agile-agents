@@ -2,6 +2,8 @@
 
 No Copilot CLI, no network, no model: the trajectory metrics run DeepEval's
 ToolCorrectnessMetric against a stub model, the judge is exercised with a fake.
+These are deterministic engineering-contract tests of the harness evaluator.
+They produce no LLM-judge quality scores and are not project AI evaluation.
 """
 
 from __future__ import annotations
@@ -1816,8 +1818,10 @@ def test_scorer_fails_direct_authorship_without_approved_plan(
         runner.write_state(paths, {**runner.read_state(paths), "status": "plan_rejected"})
         count = len(plan_approval.load_rubric(RUBRIC))
         _bound_plan_decision(paths, "FAIL", *(["PASS"] * (count - 1)))
-        paths.diff.write_text("no direct implementation\n", encoding="utf-8")
+        paths.log(2).write_text(_direct_phase2_log(), encoding="utf-8")
+        paths.diff.write_text("direct implementation after rejection\n", encoding="utf-8")
         row = scorer.score_run(tmp_path, "none", TASKS)
+        assert any(tool.name == "apply_patch" for tool in parse_log(paths.log(2)).tools)
         assert row["status"] == "failed"
         assert row["plan_gate"]["passed"] is True
         assert row["plan_approval"]["passed"] is False

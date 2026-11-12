@@ -43,13 +43,13 @@ def disabled_cost():
 def measured_cost(unmetered=False, phase="coding"):
     usd = None if unmetered else 0.01
     metric_set = {
-        "calls": 0,
+        "calls": 1,
         "tokens_in": 120,
         "tokens_out": 0,
         "tokens_reasoning": 0,
         "tokens_cache_read": 0,
         "tokens_total": 120,
-        "aiu": 0.0,
+        "aiu": 0.5,
         "duration_ms": 0,
         "models": [],
         "usd": usd,
@@ -63,8 +63,15 @@ def measured_cost(unmetered=False, phase="coding"):
             "by_phase": {phase: dict(metric_set)},
             "by_agent": {"dev-lead": dict(metric_set)},
             "usd": usd,
-            "usd_basis": "not-metered" if unmetered else "rate:0 USD per AIU",
-            "unattributed": dict(metric_set),
+            "usd_basis": "not-metered" if unmetered else "rate:0.02 USD per AIU",
+            "unattributed": {
+                **metric_set,
+                "calls": 0,
+                "tokens_in": 0,
+                "tokens_total": 0,
+                "aiu": 0.0,
+                "usd": None if unmetered else 0.0,
+            },
             "warnings": [],
             "breaches": [],
         },
@@ -528,6 +535,22 @@ class TrajectoryContractTests(unittest.TestCase):
         events[-1]["payload"]["cost_summary"] = measured_cost(unmetered=True)
         self.assertEqual(failures(events), set())
 
+    def test_cost_fixture_attributes_usage_without_double_counting(self):
+        for unmetered in (False, True):
+            with self.subTest(unmetered=unmetered):
+                usage = measured_cost(unmetered=unmetered)["usage"]
+                phase = usage["by_phase"]["coding"]
+                unattributed = usage["unattributed"]
+                for metric in ("calls", "tokens_in", "tokens_out", "tokens_reasoning",
+                               "tokens_cache_read", "tokens_total", "aiu", "duration_ms"):
+                    self.assertEqual(
+                        usage["totals"][metric], phase[metric] + unattributed[metric], metric,
+                    )
+                if unmetered:
+                    self.assertIsNone(unattributed["usd"])
+                else:
+                    self.assertEqual(usage["totals"]["usd"], phase["usd"] + unattributed["usd"])
+
     def test_schema_requires_cost_status_to_match_every_collector_usd_bucket(self):
         for status, invalid_value in (
             ("measured", None),
@@ -553,7 +576,7 @@ class TrajectoryContractTests(unittest.TestCase):
     def test_schema_binds_collector_usd_basis_to_cost_status(self):
         for status, invalid_basis in (
             ("measured", "not-metered"),
-            ("unmetered", "rate:0 USD per AIU"),
+            ("unmetered", "rate:0.02 USD per AIU"),
         ):
             with self.subTest(status=status):
                 events = successful_run()
