@@ -14,8 +14,12 @@ needs. [Install →](#install)
 
 ```shell
 copilot plugin marketplace add hoffe86/agile-agents
-copilot plugin install agile-agents-core@agile-agents-marketplace
+copilot plugin install agile-agents-core@agentic-universe
 ```
+
+> **Rename notice:** `agile-agents-marketplace` is now `agentic-universe`.
+> Existing registrations and plugin installations are not migrated automatically;
+> they need to be moved to the new name after the renamed catalog is published.
 
 ### Then run the bootstrapper — this is the first step
 
@@ -74,8 +78,26 @@ with no required package/name. Absence is normal. Stricter personal consent is
 valid; preferences cannot waive harness approvals/safety/reviewer boundaries or
 supersede solution technical constraints. Report conflicts, not universal precedence.
 
-The marketplace lists only core 0.17.0, with no technical companions.
-Marketplace listings do not uninstall existing copies. See
+The shared `agentic-universe` lists core 0.17.0 and the optional,
+independently maintained
+[`agentic-persona`](https://github.com/hoffe86/agentic-persona) plugin. Persona is
+fetched directly from its own repository, not bundled into core or required by
+the harness. No technical companion catalog is shipped.
+
+After registering the marketplace above, install persona only if you want its
+personal guidance. For an existing `agentic-universe` registration, refresh the
+catalog first:
+
+```shell
+copilot plugin marketplace update agentic-universe
+copilot plugin install agentic-persona@agentic-universe
+```
+
+Both plugins use this single marketplace; do not register a second catalog with
+the same name. Persona's native user instructions require separate opt-in; see
+its [setup documentation](https://github.com/hoffe86/agentic-persona#readme).
+
+Removing a catalog listing does not uninstall existing copies. See
 [customization ownership and rollback](docs/customization-ownership.md)
 and the [documentation hub](docs/README.md).
 
