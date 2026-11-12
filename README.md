@@ -17,9 +17,8 @@ copilot plugin marketplace add hoffe86/agile-agents
 copilot plugin install agile-agents-core@agentic-universe
 ```
 
-> **Rename notice:** `agile-agents-marketplace` is now `agentic-universe`.
-> Existing registrations and plugin installations are not migrated automatically;
-> they need to be moved to the new name after the renamed catalog is published.
+> **Compatibility:** Existing `agile-agents-marketplace` registrations and plugin
+> installations are not automatically migrated to `agentic-universe`.
 
 ### Then run the bootstrapper — this is the first step
 
