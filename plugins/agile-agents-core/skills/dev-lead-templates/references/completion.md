@@ -8,9 +8,7 @@ it does not grant permission or change a retry budget.
 
 ### Requirement-coverage record
 
-Each earlier gate compared a link to its predecessor — task ACs, repo commands,
-or diff. Coverage reconciliation closes the loop to the original requirement.
-Start with:
+Reconcile delivered evidence against the original requirement:
 
 ```sql
 SELECT ac_id, text, covered_by, evidence, status FROM requirement_acs WHERE status = 'uncovered';
@@ -42,20 +40,31 @@ branch from `backlog.branch_naming` (work-item id + slug), subject from
 `backlog.commit_convention` + `required_commit_trailers`, and PR command.
 Name an empty required profile field instead of inventing a convention.
 
-Derive the PR command from **`identity.repo_url`, not the tracker**. Boards and
-code may have different hosts:
+Resolve PR publication from **`identity.repo_url`, not the tracker**. Boards and
+code may have different hosts. Use actually available, applicable solution
+code-host guidance; otherwise return the prepared body for manual publication
+and report the capability gap. Never guess a CLI or install an extension.
 
-- `dev.azure.com` / `*.visualstudio.com`: `az repos pr create`, needing the
-  `azure-devops` CLI extension plus `--organization` / `--project` /
-  `--repository` unless `az devops configure --defaults` is set.
-- `github.com`: `gh pr create`.
+Include `backlog.pr_link_pattern`. Git safety and convention rules live in
+`development-practices` §10; consuming these rules does not grant write authority.
 
-Include `backlog.pr_link_pattern` (`AB#<n>`, `Closes #<n>`, etc.). Use
-`pr-description` for the PR body, consuming hand-offs + diff and honouring
-`.github/pull_request_template.md`; prepare the body file for the owning agent's
-command. For a release identified by the human or profile cadence, use
-`release-notes` for the CHANGELOG entry and release body over the relevant ref
-range. Both skills compose with `conventional-commit` for subject parsing.
+**PR body:** read hand-offs, actual diff, CONTRIBUTING and the existing PR
+template. Follow that template; otherwise use Summary, Why, Changes (by intent),
+Risk and rollback, Test evidence, Breaking changes, Linked items, Reviewer
+checklist. Record actual commands/results including failures/skips, measured
+coverage or **not measured**, migration/consumer impact, and rollback limitations.
+Do not invent intent, links or successful checks. Opening a PR requires explicit
+approval for this run; preparing a body is not publication.
+
+**Release notes:** only for a human request or profile cadence. Confirm the
+explicit base/head ref range; do not guess tags or the default branch. Read its
+log/diff and existing CHANGELOG/version/attribution conventions. Group user-facing
+changes by intent; parse Conventional Commits only if selected by the profile.
+Surface security fixes/advisories even when the subject omits them, and breaking
+changes with concrete migration/upgrade steps. Include reversions and evidence
+links; omit empty groups and unmeasured improvement claims. Return a ready-to-
+prepend CHANGELOG section and optional release body; publishing requires caller
+authority and an applicable capability, otherwise manual publication.
 
 For a human-only operation, report the deliberate boundary (or pending approval)
 and the exact command the human needs, not a fictitious missing tool/MCP server.

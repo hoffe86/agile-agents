@@ -4,9 +4,8 @@ Used by the **smoke** slot of `test-bar-gate` when `solution-profile.yaml: testi
 is empty. The goal is a *derived* start command and health URL, not a guessed one: everything
 below reads something the project already declares.
 
-This file is **technology-neutral by design**. The ecosystem-specific rules live in the companion
-plugin for that ecosystem, so a project installs only what it uses — see *Route to the ecosystem
-skill* below.
+This file is **technology-neutral by design**. Concrete startup guidance belongs
+to the solution's native instructions, local skills or selected external plugins.
 
 ## Resolution order
 
@@ -17,37 +16,42 @@ Stop at the first that answers:
    `Procfile` `web:` line, a `Dockerfile` `CMD` / `ENTRYPOINT`, a compose service `command:`, or a
    documented run command in the README or the CI workflow. This is the team stating how they
    actually run it, and it outranks any convention.
-3. **The ecosystem skill** for the declared stack (below), which knows that ecosystem's entry
-   points and defaults.
+3. **Applicable available solution capability** (below), which interprets actual
+   entry-point evidence, not a language default.
 4. **Research** — per `read-repo-context` §9, when the above leave it ambiguous.
-5. **Stop and report.** Emit `outcome=skipped, reason=undetermined` naming what you inspected, and
+5. **Stop and report.** Emit `outcome=fail, reason=undetermined` naming what you inspected, and
    recommend setting `testing.smoke.command`. Never invent a plausible command — a wrong one burns
    the full timeout and reports a startup failure that is really a configuration failure.
 
 ## Route to the ecosystem skill
 
-Route on **skill availability, not technology name** — the companion plugins are optional:
+Use `read-repo-context` discovery to match available descriptions/capabilities to
+startup for the actual stack/version and path. Arbitrary names are valid; no
+companion catalog. Preserve native instruction scopes. On-disk is not runtime
+availability; diagnose absent or ungranted before recommending setup.
 
-| Declared stack | Skill | Ships in |
-|---|---|---|
-| .NET / C# | `dotnet-startup-discovery` | `agile-agents-dotnet` |
-| Python | `python-startup-discovery` | `agile-agents-python` |
+Without matching optional depth, use step 2's evidence and repo conventions,
+then report `undetermined` if still unresolved. Report the fallback as missing
+guidance/access, not proof of an unstartable app or a required plugin. Never
+hardcode stack entry-point rules here or invent a command.
 
-**If the matching skill is not installed** — or the stack is one no companion covers — work from
-step 2's neutral evidence and the repo's own conventions, then report `undetermined` if that still
-does not answer. Say in the gate result that no ecosystem skill was available, so the gap reads as
-a missing plugin rather than an unstartable application. Never hardcode a stack's entry-point rules
-back into this file: that is what the companion plugins are for.
+## Smoke timing prerequisites
+
+Bash smoke deadlines use subsecond timestamps, not rounded Unix seconds. This
+requires Bash 5+ (`EPOCHREALTIME`) or a `date` implementation supporting `%N`.
+If neither is available, the runner reports a configuration gap before launch.
+Requests and polling waits share the same deadline; a late response cannot pass.
 
 ## Nothing to start — a first-class answer
 
-Some changes have nothing to start, and detecting that beats timing out against it. The neutral
-case: **the diff touched only docs, IaC, or pipeline definitions.** Ecosystem-specific cases (a
-class library, a package with no entry point) are decided by the skill for that stack.
+Confirm the project/component being verified has no runnable entry point.
+A docs-only diff alone does not prove that; use the supervisor's applicability
+rules, not a smoke exemption that contradicts a configured startup command.
 
-Emit `outcome=skipped, reason=not_applicable, detail=<what you looked for>`. This is a pass, but a
-*stated* one: "there is nothing to start here" and "I could not work out how to start it" are
-different claims and must not report identically.
+Supply `--smoke-status not_applicable --smoke-detail "<what you looked for>"`
+(PowerShell: `-SmokeStatus` / `-SmokeDetail`). This is a visible skip, not a
+startup pass. Unknown setup uses `undetermined` with evidence and exits 2.
+Do not use non-applicability for a runnable app with missing prerequisites.
 
 ## Reporting what you derived
 
@@ -57,4 +61,5 @@ start/poll/stop logic has exactly one implementation.
 
 A derived command that worked is worth writing into `testing.smoke.command` so the next run is
 deterministic instead of re-deriving; recommend that in the gate result rather than editing the
-profile yourself.
+profile yourself. No HTTP surface requires a solution-owned readiness adapter;
+without one, startup is unverified. Never assume a framework port or health path.

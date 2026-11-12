@@ -4,6 +4,7 @@
   "inputs": [
     {"source": "baseline/Web.slnx", "destination": "Web.slnx", "required": true},
     {"source": "baseline/src", "destination": "src", "required": true},
-    {"source": "baseline/tests", "destination": "tests", "required": true}
+    {"source": "baseline/tests", "destination": "tests", "required": true},
+    {"source": "baseline/.github/skills/cicd-pipeline-implementation/SKILL.md", "destination": ".github/skills/cicd-pipeline-implementation/SKILL.md", "required": true}
   ]
 }

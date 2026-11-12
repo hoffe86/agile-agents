@@ -13,8 +13,8 @@ evaluation is `SKILL.md` itself. No Azure, no AI Foundry — the executor enum i
 | Tier | Directory | Grades | Cost | Gates? |
 |---|---|---|---|---|
 | **S0** | [`s0-routing/`](s0-routing/) | should this prompt reach this skill (offline heuristic) | free | reports only — threshold uncalibrated |
-| **S1** | [`s1-invocation/`](s1-invocation/) | did the agent actually invoke it | model | manual |
-| **S2** | [`s2-efficacy/`](s2-efficacy/) | is the outcome better *with* the skill than without | 2× model | blocked — see below |
+| **S1** | [`s1-invocation/`](s1-invocation/) | did the agent actually invoke it | model | historical technical suites; not runnable against current core |
+| **S2** | [`s2-efficacy/`](s2-efficacy/) | is the outcome better *with* the skill than without | 2× model | historical; blocked on isolation and consumer staging |
 
 Hygiene checks that also belong to S0 — frontmatter validity, the token ratchet, and the
 `copilot-instructions.md` drift check — live in `scripts/` and run in the
@@ -28,19 +28,22 @@ they are deterministic and offline.
 ./scripts/check-skill-tokens.ps1        # hygiene + coverage
 ./scripts/run-trigger-evals.ps1         # routing
 
-# S1 — real model, needs Copilot auth
-$env:GH_TOKEN = "<token with Copilot access>"     # or: copilot login
-waza run eval/skills/s1-invocation/bicep-collision/eval.yaml -o results.json
-
-# S2 — same, plus --baseline. Read s2-efficacy/README.md first; it does not
-# currently produce a valid result on a machine with the plugins installed.
+# Check generated current-target inventory without modifying it.
+python scripts/gen-trigger-evals.py --check
 ```
 
 The S0 corpus is generated from authored prompts in
 [`scripts/gen-trigger-evals.py`](../../scripts/gen-trigger-evals.py) — edit the prompts
 there and regenerate, rather than hand-editing the YAML.
 
-## What each tier has found
+Current S0 inventory: **5/22 skills, 15 cases**. This uncalibrated heuristic is
+informational, not evidence of model equivalence or end-to-end success.
+The nine suites for deleted skills are removed, not silently redirected.
+Technical suites require their own available targets. Custom-eval uses its own
+minimal explicit inputs, not a skill library. See
+[ownership](../../docs/customization-ownership.md).
+
+## Historical findings before retirement
 
 - **S0** — 14/61 skills covered, routing 30/35. Flagged 3 "false triggers" where one
   skill looked likely to answer for another.

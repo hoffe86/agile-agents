@@ -24,7 +24,7 @@ wrong in ways code is not: it compiles, it runs, it produces a number, and the n
 confidently incorrect. Nothing downstream will catch it, which is why the discipline below
 sits in the method rather than in a test.
 
-`engineering-standards` applies to the code you write and is not restated here.
+Apply `development-practices` to code; keep statistical evidence explicit.
 `development-practices` covers that code's craft. This skill covers the reasoning.
 
 ## 1. The question comes first

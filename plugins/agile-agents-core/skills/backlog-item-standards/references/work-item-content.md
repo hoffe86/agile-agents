@@ -78,9 +78,8 @@ For a **reproducible bug**, add these elements (they make the Issue actionable):
 
 ## BDD / Gherkin scenarios
 
-When a work item includes or warrants behavioural specifications, generate Gherkin
-scenarios and store them in the **dedicated BDD field**
-(`GravityScrum.GherkinBDDScenarios` on ADO), **not** in Acceptance Criteria.
+Store scenarios using the solution's declared tracker mapping; never assume a
+custom field name. Unknown destination: ask before writing; retain the draft.
 
 **When to include**
 
@@ -120,8 +119,8 @@ The **structural gate** — flag any of these that are missing in an
 - [ ] Acceptance criteria are testable
 - [ ] Dependencies are identified
 - [ ] Parent link is set
-- [ ] Area Path is assigned
-- [ ] Tags are set (e.g. Prototype version)
+- [ ] Required routing fields are assigned according to solution tracker guidance
+- [ ] Required labels/tags follow the solution's taxonomy (if declared)
 
 Definition of Ready answers *"can we start?"*; INVEST (see the agent's *Review
 Criteria*) answers *"is it well-formed?"*. Both are checked during Review — DoR

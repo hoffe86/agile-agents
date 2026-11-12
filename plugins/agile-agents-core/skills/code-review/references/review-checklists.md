@@ -16,8 +16,8 @@ Detailed checklists for each review dimension. The review agents should use thes
 ### Dependency Injection
 - [ ] Duplicate registrations (same service registered multiple ways)
 - [ ] Lifetime mismatches (singleton depending on scoped/transient)
-- [ ] Service locator anti-pattern (injecting `IServiceProvider` to resolve services manually)
-- [ ] Sync-over-async in DI factories (`.GetAwaiter().GetResult()` during composition)
+- [ ] Service locator hiding dependencies from composition
+- [ ] Sync-over-async during dependency composition
 - [ ] Missing registrations (services referenced but not registered)
 
 ### Layering & Boundaries
@@ -27,11 +27,11 @@ Detailed checklists for each review dimension. The review agents should use thes
 - [ ] Shared projects that should be split
 
 ### Async Patterns
-- [ ] `async void` methods (except event handlers)
-- [ ] `.Wait()`, `.Result`, `.GetAwaiter().GetResult()` (sync-over-async)
-- [ ] Fire-and-forget `Task.Run` without error handling
-- [ ] Missing `CancellationToken` propagation
-- [ ] Missing `ConfigureAwait(false)` in library code
+- [ ] Asynchronous operations with no observable completion/failure
+- [ ] Blocking an asynchronous execution context
+- [ ] Fire-and-forget work without ownership or error handling
+- [ ] Missing cancellation propagation
+- [ ] Async context handling follows the solution's runtime conventions
 
 ### Error Handling
 - [ ] Global exception handler present and returns safe responses
@@ -42,7 +42,7 @@ Detailed checklists for each review dimension. The review agents should use thes
 
 ### Configuration
 - [ ] Hardcoded values that should be configurable
-- [ ] Options pattern used consistently
+- [ ] Configuration follows the solution's established abstraction and validation
 - [ ] Environment-specific configuration separated properly
 - [ ] Magic strings/numbers in business logic
 
@@ -51,7 +51,7 @@ Detailed checklists for each review dimension. The review agents should use thes
 ## Security Checklist
 
 ### Authentication & Authorization
-- [ ] All API endpoints require authentication (check for missing `[Authorize]`, `RequireAuthorization()`)
+- [ ] API authentication/authorization enforced; anonymous exceptions explicit and justified
 - [ ] Authorization is explicit, not implicit (don't rely on middleware path matching alone)
 - [ ] Fallback/default policy is deny-by-default, not allow-all
 - [ ] JWT validation is strict (issuer validated, HTTPS metadata required in production)
@@ -61,7 +61,7 @@ Detailed checklists for each review dimension. The review agents should use thes
 ### Input Validation
 - [ ] Request DTOs have validation attributes or explicit validation
 - [ ] User input is sanitized before use in: SQL queries, file paths, URLs, shell commands, prompts
-- [ ] URL parameters are encoded (`Uri.EscapeDataString`)
+- [ ] URL parameters encoded through the solution's supported API
 - [ ] File uploads are validated (type, size, content)
 - [ ] JSON deserialization has depth/size limits
 
@@ -69,11 +69,11 @@ Detailed checklists for each review dimension. The review agents should use thes
 - [ ] No hardcoded secrets in source code (API keys, connection strings, tokens)
 - [ ] No secrets in Dockerfile build args or ENV that persist in layers
 - [ ] No secrets committed in pipeline YAML or config files
-- [ ] User secrets or Key Vault used for development secrets
+- [ ] Development secrets use the solution's declared protected mechanism
 - [ ] Secret rotation is possible without code changes
 
 ### CORS
-- [ ] No `AllowAnyOrigin()` in production
+- [ ] No unrestricted cross-origin access to protected production surfaces
 - [ ] Origin allowlist is environment-specific
 - [ ] Only one CORS policy applied (not stacked/overriding)
 
@@ -91,7 +91,7 @@ Detailed checklists for each review dimension. The review agents should use thes
 
 ### Dependencies
 - [ ] No known vulnerable package versions
-- [ ] Dependency scanning configured (Dependabot, Mend/WhiteSource, Snyk)
+- [ ] Solution-selected dependency scanning configured; missing required scans reported
 - [ ] Warning suppressions (`NU1605`, etc.) are justified
 - [ ] End-of-life framework versions are flagged
 
@@ -136,13 +136,13 @@ Detailed checklists for each review dimension. The review agents should use thes
 - [ ] Tightly coupled to framework types
 
 ### Resource Management
-- [ ] `IDisposable` resources properly disposed (using/await using)
-- [ ] Channels completed with `Writer.TryComplete()`
-- [ ] `HttpClient` used via `IHttpClientFactory`, not `new`
+- [ ] Owned resources disposed on success and all error paths
+- [ ] Channels/streams closed with completion and failure signaled
+- [ ] Clients and connections reused through the solution's supported lifecycle
 - [ ] Database connections returned to pool
 
 ### Documentation
-- [ ] Public API XML docs present and accurate
+- [ ] Public API documentation present and accurate in the solution's convention
 - [ ] README reflects current architecture
 - [ ] Instruction files match actual code structure
 - [ ] No unclosed or empty doc tags
@@ -167,7 +167,7 @@ Detailed checklists for each review dimension. The review agents should use thes
 - [ ] Mocks are focused (only mock what's needed)
 - [ ] No reflection-based testing of private methods
 - [ ] Mock verification is meaningful (not just "called once")
-- [ ] `IServiceProvider` mocking minimized
+- [ ] Dependency-container mocking minimized
 
 ### Isolation
 - [ ] No shared mutable state between tests

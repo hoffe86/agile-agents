@@ -7,11 +7,10 @@
 #
 #   lint -> typecheck -> unit_test -> integration_test -> coverage -> mutation -> smoke
 #
-# A check runs when it is enabled AND resolves to a command. lint / typecheck /
-# unit_test fall back to the per-stack palette in references/commands.yaml; the
-# rest run only when the profile gives them an explicit command. The smoke slot
-# comes from `testing.smoke` -- it starts the app, polls a URL, and always stops
-# the process again.
+# Enabled checks require solution-declared commands; no language defaults.
+# The smoke slot comes from `testing.smoke`: start, poll, always stop.
+# Missing setup exits 2, never success. For a genuinely non-runnable project use
+# --smoke-status not_applicable --smoke-detail "evidence inspected".
 #
 # Emits gate_check events to $COPILOT_EVENT_LOG (or stdout) and prints a
 # markdown failure report on the first failing check.
@@ -19,11 +18,11 @@
 # Exit codes:
 #   0 = all checks passed, or the gate was skipped
 #   1 = at least one check failed
-#   2 = fatal config error
+#   2 = configuration gap (including unresolved smoke)
 #
 # Usage:
-#   ./run-gate.sh [--profile path/to/solution-profile.yaml] [--skill-root path]
-# Defaults to .github/solution-profile.yaml, then the legacy root profile.
+#   ./run-gate.sh [--profile path/to/solution-profile.yaml]
+# Defaults to .github/solution-profile.yaml.
 # An explicit path never falls back. Missing or invalid profiles exit 2.
 #
 # Requires `yq` (mikefarah, v4+) for YAML parsing. Install with:
@@ -33,27 +32,31 @@
 set -uo pipefail
 
 PROFILE_PATH=""
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SMOKE_COMMAND=""
 SMOKE_URL=""
+SMOKE_STATUS=""
+SMOKE_DETAIL=""
+SMOKE_PID=""
+SMOKE_LOG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --profile|--smoke-command|--smoke-url|--smoke-status|--smoke-detail)
+      [[ $# -ge 2 ]] || { echo "Missing value for $1" >&2; exit 2; } ;;
+  esac
+  case "$1" in
     --profile)       PROFILE_PATH="$2"; shift 2 ;;
-    --skill-root)    SKILL_ROOT="$2";   shift 2 ;;
     --smoke-command) SMOKE_COMMAND="$2"; shift 2 ;;
     --smoke-url)     SMOKE_URL="$2";     shift 2 ;;
+    --smoke-status)  SMOKE_STATUS="$2";  shift 2 ;;
+    --smoke-detail)  SMOKE_DETAIL="$2";  shift 2 ;;
     -h|--help)    sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
-COMMANDS_YAML="${SKILL_ROOT}/references/commands.yaml"
-
 if [[ -z "$PROFILE_PATH" ]]; then
   PROFILE_PATH="./.github/solution-profile.yaml"
-  [[ -e "$PROFILE_PATH" ]] || PROFILE_PATH="./solution-profile.yaml"
 fi
 if [[ ! -f "$PROFILE_PATH" || ! -r "$PROFILE_PATH" ]]; then
   echo "ERROR: profile not found or unreadable: $PROFILE_PATH" >&2
@@ -63,11 +66,6 @@ if ! command -v yq >/dev/null 2>&1; then
   echo "ERROR: yq is required (https://github.com/mikefarah/yq)." >&2
   exit 2
 fi
-if [[ ! -f "$COMMANDS_YAML" ]]; then
-  echo "ERROR: command palette not found: $COMMANDS_YAML" >&2
-  exit 2
-fi
-
 if ! PROFILE_KIND="$(yq -r 'tag' "$PROFILE_PATH")" ||
    [[ "$PROFILE_KIND" != '!!map' ]]; then
   echo "ERROR: profile must be a YAML mapping: $PROFILE_PATH" >&2
@@ -78,9 +76,8 @@ if [[ "$(yq -r 'length' "$PROFILE_PATH")" == 0 ]]; then
   exit 2
 fi
 
-# Checks in execution order. Only these three may fall back to the palette.
+# Checks in execution order.
 CHECK_ORDER=(lint typecheck unit_test integration_test coverage mutation)
-PALETTE_BACKED=" lint typecheck unit_test "
 DEFAULT_ENABLED=" lint typecheck unit_test "
 
 emit_event() {
@@ -117,70 +114,11 @@ argv_lines() {
   esac
 }
 
-# --- gate master switch ---
-GATE_ENABLED="$(prof '.quality_gates.test_bar.enabled')"
-if [[ "$GATE_ENABLED" == "false" ]]; then
-  emit_event '{"event_type":"gate_check","check":"resolve","outcome":"skipped","reason":"disabled_by_profile"}'
-  echo "test-bar-gate: disabled by profile - gate skipped."
-  exit 0
-fi
-
-# --- stack resolution ---
-# Maps a lint/build tool hint onto a palette key when the language name is not one.
-alias_for_hint() {
-  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
-    *eslint*|*prettier*|*tsc*|*biome*) echo typescript ;;
-    *ruff*|*black*|*mypy*|*pyright*)   echo python ;;
-    *golangci*|*gofmt*)                echo go ;;
-    *dotnet*)                          echo csharp ;;
-    *) : ;;
-  esac
-}
-
-declare -a CANDIDATES=()
-while IFS= read -r s; do [[ -n "$s" ]] && CANDIDATES+=("$s"); done < <(
-  if [[ -f "$PROFILE_PATH" ]]; then
-    if [[ "$(yq -r '.quality_gates.test_bar.stacks | length' "$PROFILE_PATH" 2>/dev/null || echo 0)" -gt 0 ]]; then
-      yq -r '.quality_gates.test_bar.stacks[]' "$PROFILE_PATH" 2>/dev/null
-    else
-      # primary_languages entries may be plain strings or { name: ... } maps.
-      yq -r '(.tech_stack.primary_languages // [])[0] | (.name // .) // ""' "$PROFILE_PATH" 2>/dev/null
-    fi
-  fi | tr '[:upper:]' '[:lower:]'
-)
-
-declare -a STACKS=()
-for cand in "${CANDIDATES[@]:-}"; do
-  [[ -z "$cand" ]] && continue
-  resolved=""
-  if yq -e ".\"${cand}\"" "$COMMANDS_YAML" >/dev/null 2>&1; then
-    resolved="$cand"
-  else
-    while IFS= read -r hint; do
-      [[ -z "$hint" ]] && continue
-      a="$(alias_for_hint "$hint")"
-      if [[ -n "$a" ]] && yq -e ".\"${a}\"" "$COMMANDS_YAML" >/dev/null 2>&1; then resolved="$a"; break; fi
-    done < <(argv_lines "$PROFILE_PATH" '.tech_stack.lint_format_tools'; argv_lines "$PROFILE_PATH" '.tech_stack.build_tools')
-  fi
-  if [[ -n "$resolved" ]]; then
-    dup=""
-    for s in "${STACKS[@]:-}"; do [[ "$s" == "$resolved" ]] && dup=1; done
-    [[ -z "$dup" ]] && STACKS+=("$resolved")
-  fi
-done
-# A profile-supplied command needs no stack, so an unmatched stack is not fatal
-# on its own - we only skip when nothing at all resolved to a command.
-[[ ${#STACKS[@]} -eq 0 ]] && STACKS=("")
-
-FAIL_FAST="$(prof '.quality_gates.test_bar.fail_fast')"
-[[ "$FAIL_FAST" == "false" ]] || FAIL_FAST="true"
-
+# Backticks below are literal Markdown, never command substitutions.
+# shellcheck disable=SC2016
 failure_report() {
-  local name="$1" stack="$2" cmdline="$3" code="$4" tail="$5" reason="${6-}"
-  local shown="$stack"
-  [[ -z "$shown" ]] && shown="(none - commands came from the profile)"
+  local name="$1" cmdline="$2" code="$3" tail="$4" reason="${5-}"
   printf '\n**Test-bar gate failed: %s**\n\n' "$name"
-  printf -- '- **Stack detected:** %s\n' "$shown"
   printf -- '- **Command run:** `%s`\n' "$cmdline"
   printf -- '- **Exit code:** %s\n' "$code"
   [[ -n "$reason" ]] && printf -- '- **Reason:** %s\n' "$reason"
@@ -189,8 +127,67 @@ failure_report() {
   printf '### Suggested next action\n\nReturn to `coding` (or `infrastructure` when the diff is IaC-only) with this report. Up to three corrective retries are allowed; if the gate still fails, halt and ask the user.\n'
 }
 
+configuration_gap() {
+  local name="$1" detail="$2" reason="${3:-configuration_gap}"
+  emit_event "{\"event_type\":\"gate_check\",\"check\":$(json_str "$name"),\"outcome\":\"fail\",\"reason\":$(json_str "$reason"),\"exit_code\":2,\"detail\":$(json_str "$detail")}"
+  failure_report "$name" "" 2 "$detail" "$reason"
+  return 2
+}
+
+# --- gate master switch ---
+if [[ "$(yq -r '.quality_gates.test_bar | has("stacks")' "$PROFILE_PATH")" == "true" ]]; then
+  configuration_gap resolve "quality_gates.test_bar.stacks is unsupported; declare check commands."
+  exit 2
+fi
+GATE_ENABLED="$(prof '.quality_gates.test_bar.enabled')"
+if [[ "$(yq -r '.quality_gates.test_bar.enabled | tag' "$PROFILE_PATH")" != '!!null' &&
+      "$(yq -r '.quality_gates.test_bar.enabled | tag' "$PROFILE_PATH")" != '!!bool' ]]; then
+  configuration_gap resolve "quality_gates.test_bar.enabled must be boolean."
+  exit 2
+fi
+if [[ "$GATE_ENABLED" == "false" ]]; then
+  emit_event '{"event_type":"gate_check","check":"resolve","outcome":"skipped","reason":"disabled_by_profile"}'
+  echo "test-bar-gate: disabled by profile - gate skipped."
+  exit 0
+fi
+
+
+FAIL_FAST="$(prof '.quality_gates.test_bar.fail_fast')"
+if [[ "$(yq -r '.quality_gates.test_bar.fail_fast | tag' "$PROFILE_PATH")" != '!!null' &&
+      "$(yq -r '.quality_gates.test_bar.fail_fast | tag' "$PROFILE_PATH")" != '!!bool' ]]; then
+  configuration_gap resolve "quality_gates.test_bar.fail_fast must be boolean."
+  exit 2
+fi
+[[ "$FAIL_FAST" == "false" ]] || FAIL_FAST="true"
+
+# Whole seconds suffice for check reporting, but not for smoke deadlines.
+now_ms() { printf '%s000' "$(date +%s)"; }
+
+smoke_now_ms() {
+  local timestamp="${EPOCHREALTIME:-}"
+  if [[ "$timestamp" =~ ^[0-9]+\.[0-9]{6}$ ]]; then
+    printf '%s\n' "$(( ${timestamp/./} / 1000 ))"
+  else
+    timestamp="$(date +%s%N)" || return 1
+    [[ "$timestamp" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$(( timestamp / 1000000 ))"
+  fi
+}
+
+# A multiline shell program is not an argv item. Put it in a solution script.
+valid_command() {
+  local expr="$1" kind
+  kind="$(yq -r "$expr | tag" "$PROFILE_PATH")"
+  case "$kind" in
+    '!!null'|'!!str') return 0 ;;
+    '!!seq')
+      [[ "$(yq -r "[${expr}[] | select(tag != \"!!str\" or test(\"[\\r\\n]\"))] | length" "$PROFILE_PATH")" == 0 ]] ;;
+    *) return 1 ;;
+  esac
+}
+
 run_check() {
-  local name="$1" stack="$2"; shift 2
+  local name="$1"; shift
   local -a argv=("$@")
   local cmdline="${argv[*]}"
 
@@ -199,140 +196,212 @@ run_check() {
     # An uninstalled toolchain is the most common gate failure on a fresh
     # machine. Report it through the normal contract instead of dying.
     local msg="command not found: ${argv[0]}"
-    emit_event "{\"event_type\":\"gate_check\",\"check\":\"${name}\",\"outcome\":\"fail\",\"stack\":$(json_str "$stack"),\"command\":$(json_str "$cmdline"),\"exit_code\":127,\"stderr_tail\":$(json_str "$msg"),\"reason\":\"command_not_found\"}"
-    failure_report "$name" "$stack" "$cmdline" 127 "$msg" "command_not_found"
+    emit_event "{\"event_type\":\"gate_check\",\"check\":\"${name}\",\"outcome\":\"fail\",\"command\":$(json_str "$cmdline"),\"exit_code\":127,\"stderr_tail\":$(json_str "$msg"),\"reason\":\"command_not_found\"}"
+    failure_report "$name" "$cmdline" 127 "$msg" "command_not_found"
     return 1
   fi
 
   local stderr_file; stderr_file="$(mktemp)"
-  local start_ms; start_ms=$(($(date +%s%N)/1000000))
+  local start_ms; start_ms="$(now_ms)"
   "${argv[@]}" 2>"$stderr_file"
   local exit_code=$?
-  local dur=$(( $(($(date +%s%N)/1000000)) - start_ms ))
+  local dur=$(( $(now_ms) - start_ms ))
   cat "$stderr_file" >&2
 
   if [[ $exit_code -eq 0 ]]; then
-    emit_event "{\"event_type\":\"gate_check\",\"check\":\"${name}\",\"outcome\":\"success\",\"stack\":$(json_str "$stack"),\"command\":$(json_str "$cmdline"),\"duration_ms\":${dur}}"
+    emit_event "{\"event_type\":\"gate_check\",\"check\":\"${name}\",\"outcome\":\"success\",\"command\":$(json_str "$cmdline"),\"duration_ms\":${dur}}"
     rm -f "$stderr_file"
     return 0
   fi
 
   local tail_text; tail_text="$(tail -n 30 "$stderr_file" 2>/dev/null || true)"
   rm -f "$stderr_file"
-  emit_event "{\"event_type\":\"gate_check\",\"check\":\"${name}\",\"outcome\":\"fail\",\"stack\":$(json_str "$stack"),\"command\":$(json_str "$cmdline"),\"exit_code\":${exit_code},\"stderr_tail\":$(json_str "$tail_text")}"
-  failure_report "$name" "$stack" "$cmdline" "$exit_code" "$tail_text"
+  emit_event "{\"event_type\":\"gate_check\",\"check\":\"${name}\",\"outcome\":\"fail\",\"command\":$(json_str "$cmdline"),\"exit_code\":${exit_code},\"stderr_tail\":$(json_str "$tail_text")}"
+  failure_report "$name" "$cmdline" "$exit_code" "$tail_text"
   return 1
 }
 
-# Opt-in "does the app come up?" slot. Always stops the process it started.
+# Use a dedicated process group, including children when the entry point exits.
+cleanup_smoke() {
+  if [[ -n "$SMOKE_PID" ]]; then
+    kill -TERM -- "-$SMOKE_PID" 2>/dev/null || true
+    sleep 0.2
+    kill -KILL -- "-$SMOKE_PID" 2>/dev/null || true
+    wait "$SMOKE_PID" 2>/dev/null || true
+    SMOKE_PID=""
+  fi
+  [[ -z "$SMOKE_LOG" ]] || rm -f "$SMOKE_LOG"
+  SMOKE_LOG=""
+}
+trap cleanup_smoke EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Runnable projects must start; absence of configuration is not non-applicability.
 run_smoke() {
-  local stack="$1"
   local -a argv=()
   local url=""
   # CLI overrides win: they carry the entry point the agent discovered when the
   # profile does not declare one (see references/startup-discovery.md).
   if [[ -n "$SMOKE_COMMAND" ]]; then
     read -r -a argv <<< "$SMOKE_COMMAND"
-    url="$SMOKE_URL"
+    url="${SMOKE_URL:-$(prof '.testing.smoke.url')}"
   else
-    while IFS= read -r line; do [[ -n "$line" ]] && argv+=("$line"); done < <(argv_lines "$PROFILE_PATH" '.testing.smoke.command')
-    url="$(prof '.testing.smoke.url')"
-    [[ -z "$url" || "$url" == "null" ]] && url="$SMOKE_URL"
+    if ! valid_command '.testing.smoke.command'; then
+      configuration_gap smoke "testing.smoke.command must be a string or list of single-line strings."
+      return 2
+    fi
+    while IFS= read -r line; do argv+=("$line"); done < <(argv_lines "$PROFILE_PATH" '.testing.smoke.command')
+    url="${SMOKE_URL:-$(prof '.testing.smoke.url')}"
   fi
-  if [[ ${#argv[@]} -eq 0 || -z "$url" || "$url" == "null" ]]; then
-    # Not silently fine: a runnable project still has to be started. The script
-    # cannot inspect a repo to work out how, so it reports that the caller must
-    # resolve the entry point and re-invoke with --smoke-command / --smoke-url.
-    emit_event '{"event_type":"gate_check","check":"smoke","outcome":"skipped","reason":"needs_discovery"}'
-    echo "-> smoke : not configured — resolve the entry point (references/startup-discovery.md) and re-run with --smoke-command/--smoke-url, or record not_applicable/undetermined" >&2
+  if [[ -n "$SMOKE_STATUS" ]]; then
+    if [[ -z "${SMOKE_DETAIL//[[:space:]]/}" || ( "$SMOKE_STATUS" != "not_applicable" && "$SMOKE_STATUS" != "undetermined" ) ]]; then
+      configuration_gap smoke "Smoke status requires not_applicable/undetermined and nonblank evidence detail."
+      return 2
+    fi
+    if [[ "$SMOKE_STATUS" == "undetermined" ]]; then
+      configuration_gap smoke "$SMOKE_DETAIL" undetermined
+      return 2
+    fi
+    if [[ ${#argv[@]} -gt 0 || -n "$url" ]]; then
+      configuration_gap smoke "not_applicable conflicts with configured smoke command/URL."
+      return 2
+    fi
+    emit_event "{\"event_type\":\"gate_check\",\"check\":\"smoke\",\"outcome\":\"skipped\",\"reason\":\"not_applicable\",\"detail\":$(json_str "$SMOKE_DETAIL")}"
     return 0
   fi
-  local timeout; timeout="$(prof '.testing.smoke.timeout_s')"
-  [[ -z "$timeout" || "$timeout" == "null" ]] && timeout=60
+  if [[ ${#argv[@]} -eq 0 || -z "${argv[0]//[[:space:]]/}" || -z "${url//[[:space:]]/}" ]]; then
+    configuration_gap smoke "Resolve testing.smoke.command and url from solution evidence; or supply a not_applicable status with evidence." needs_discovery
+    return 2
+  fi
+  local timeout; timeout="$(yq -r '.testing.smoke.timeout_s' "$PROFILE_PATH")"
+  [[ "$(yq -r '.testing.smoke.timeout_s | tag' "$PROFILE_PATH")" == '!!null' ]] && timeout=60
+  if [[ ! "$timeout" =~ ^[1-9][0-9]*$ ]]; then
+    configuration_gap smoke "testing.smoke.timeout_s must be a positive integer."
+    return 2
+  fi
+  if [[ ! "$url" =~ ^https?:// || ! $(command -v curl) ]]; then
+    configuration_gap smoke "An HTTP(S) health URL and curl are required."
+    return 2
+  fi
 
   local cmdline="${argv[*]}"
   echo "-> smoke : $cmdline (polling $url, timeout ${timeout}s)"
   if ! command -v "${argv[0]}" >/dev/null 2>&1; then
     local msg="command not found: ${argv[0]}"
-    emit_event "{\"event_type\":\"gate_check\",\"check\":\"smoke\",\"outcome\":\"fail\",\"stack\":$(json_str "$stack"),\"command\":$(json_str "$cmdline"),\"exit_code\":127,\"stderr_tail\":$(json_str "$msg"),\"reason\":\"command_not_found\"}"
-    failure_report smoke "$stack" "$cmdline" 127 "$msg" "command_not_found"
+    emit_event "{\"event_type\":\"gate_check\",\"check\":\"smoke\",\"outcome\":\"fail\",\"command\":$(json_str "$cmdline"),\"exit_code\":127,\"stderr_tail\":$(json_str "$msg"),\"reason\":\"command_not_found\"}"
+    failure_report smoke "$cmdline" 127 "$msg" "command_not_found"
     return 1
   fi
 
-  local log_file; log_file="$(mktemp)"
-  local start_ms; start_ms=$(($(date +%s%N)/1000000))
-  "${argv[@]}" >"$log_file" 2>&1 &
-  local pid=$!
+  local start_ms
+  if ! start_ms="$(smoke_now_ms)"; then
+    configuration_gap smoke "Subsecond smoke timing requires Bash 5+ or date with %N support."
+    return 2
+  fi
+  SMOKE_LOG="$(mktemp)"
+  set -m
+  "${argv[@]}" >"$SMOKE_LOG" 2>&1 &
+  SMOKE_PID=$!
+  set +m
 
-  local up=0 reason="" deadline=$(( $(date +%s) + timeout ))
-  while [[ $(date +%s) -lt $deadline ]]; do
-    if ! kill -0 "$pid" 2>/dev/null; then reason="process exited early"; break; fi
-    local code
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url" 2>/dev/null || echo 000)"
-    if [[ "$code" =~ ^[0-9]+$ && "$code" -gt 0 && "$code" -lt 500 ]]; then up=1; break; fi
-    sleep 2
+  local up=0 reason="" exit_code=1 deadline=$(( start_ms + timeout * 1000 ))
+  local current_ms=$start_ms remaining request_timeout poll_delay code
+  while [[ $current_ms -lt $deadline ]]; do
+    if ! kill -0 "$SMOKE_PID" 2>/dev/null; then break; fi
+    remaining=$(( deadline - current_ms ))
+    printf -v request_timeout '%d.%03d' "$(( remaining / 1000 ))" "$(( remaining % 1000 ))"
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time "$request_timeout" "$url" 2>/dev/null || true)"
+    current_ms="$(smoke_now_ms)" || {
+      configuration_gap smoke "Unable to read the subsecond smoke clock."
+      return 2
+    }
+    if [[ $current_ms -lt $deadline && "$code" =~ ^[1-4][0-9][0-9]$ ]] &&
+       kill -0 "$SMOKE_PID" 2>/dev/null; then up=1; break; fi
+    remaining=$(( deadline - current_ms ))
+    [[ $remaining -gt 0 ]] || break
+    [[ $remaining -le 200 ]] || remaining=200
+    printf -v poll_delay '0.%03d' "$remaining"
+    sleep "$poll_delay"
+    current_ms="$(smoke_now_ms)" || {
+      configuration_gap smoke "Unable to read the subsecond smoke clock."
+      return 2
+    }
   done
-  local dur=$(( $(($(date +%s%N)/1000000)) - start_ms ))
-
-  # A leaked listener holds the port and breaks the next run.
-  if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null || true; sleep 0.3; kill -9 "$pid" 2>/dev/null || true; fi
-  wait "$pid" 2>/dev/null || true
+  if [[ $up -eq 0 ]] && ! kill -0 "$SMOKE_PID" 2>/dev/null; then
+    wait "$SMOKE_PID"
+    exit_code=$?
+    reason="process exited with $exit_code"
+  fi
+  local dur=$(( current_ms - start_ms ))
+  local tail_text; tail_text="$(tail -n 20 "$SMOKE_LOG" 2>/dev/null || true)"
+  cleanup_smoke
 
   if [[ $up -eq 1 ]]; then
-    emit_event "{\"event_type\":\"gate_check\",\"check\":\"smoke\",\"outcome\":\"success\",\"stack\":$(json_str "$stack"),\"command\":$(json_str "$cmdline"),\"duration_ms\":${dur}}"
-    rm -f "$log_file"
+    emit_event "{\"event_type\":\"gate_check\",\"check\":\"smoke\",\"outcome\":\"success\",\"command\":$(json_str "$cmdline"),\"duration_ms\":${dur}}"
     return 0
   fi
 
   [[ -z "$reason" ]] && reason="no response within ${timeout}s"
-  local tail_text; tail_text="$(tail -n 20 "$log_file" 2>/dev/null || true)"
-  rm -f "$log_file"
-  emit_event "{\"event_type\":\"gate_check\",\"check\":\"smoke\",\"outcome\":\"fail\",\"stack\":$(json_str "$stack"),\"command\":$(json_str "$cmdline"),\"exit_code\":1,\"stderr_tail\":$(json_str "$tail_text"),\"reason\":$(json_str "$reason")}"
-  failure_report smoke "$stack" "$cmdline" 1 "$tail_text" "$reason"
+  emit_event "{\"event_type\":\"gate_check\",\"check\":\"smoke\",\"outcome\":\"fail\",\"command\":$(json_str "$cmdline"),\"exit_code\":$exit_code,\"stderr_tail\":$(json_str "$tail_text"),\"reason\":$(json_str "$reason")}"
+  failure_report smoke "$cmdline" "$exit_code" "$tail_text" "$reason"
   return 1
 }
 
 ALL_OK=0
 RAN_ANYTHING=0
-for stack in "${STACKS[@]}"; do
-  for check in "${CHECK_ORDER[@]}"; do
+for check in "${CHECK_ORDER[@]}"; do
     enabled_raw="$(prof ".quality_gates.test_bar.${check}.enabled")"
-    if [[ -n "$enabled_raw" && "$enabled_raw" != "null" ]]; then
-      [[ "$enabled_raw" == "true" ]] || continue
-    else
-      [[ "$DEFAULT_ENABLED" == *" $check "* ]] || continue
+    enabled_kind="$(yq -r ".quality_gates.test_bar.${check}.enabled | tag" "$PROFILE_PATH")"
+    if [[ "$enabled_kind" != '!!null' && "$enabled_kind" != '!!bool' ]]; then
+      configuration_gap "$check" "quality_gates.test_bar.${check}.enabled must be boolean."
+      ALL_OK=2
+      [[ "$FAIL_FAST" == "true" ]] && break
+      continue
+    fi
+    if [[ "$enabled_raw" == "false" || ( -z "$enabled_raw" && "$DEFAULT_ENABLED" != *" $check "* ) ]]; then
+      reason="disabled_by_default"
+      [[ "$enabled_raw" == "false" ]] && reason="disabled_by_profile"
+      emit_event "{\"event_type\":\"gate_check\",\"check\":\"$check\",\"outcome\":\"skipped\",\"reason\":\"$reason\"}"
+      continue
     fi
 
     declare -a argv=()
-    while IFS= read -r line; do [[ -n "$line" ]] && argv+=("$line"); done \
-      < <(argv_lines "$PROFILE_PATH" ".quality_gates.test_bar.${check}.command")
-    if [[ ${#argv[@]} -eq 0 && -n "$stack" && "$PALETTE_BACKED" == *" $check "* ]]; then
-      while IFS= read -r line; do [[ -n "$line" ]] && argv+=("$line"); done \
-        < <(argv_lines "$COMMANDS_YAML" ".\"${stack}\".${check}")
+    if ! valid_command ".quality_gates.test_bar.${check}.command"; then
+      configuration_gap "$check" "quality_gates.test_bar.${check}.command must be a string or list of single-line strings."
+      ALL_OK=2
+      [[ "$FAIL_FAST" == "true" ]] && break
+      continue
     fi
-    [[ ${#argv[@]} -eq 0 ]] && continue
+    while IFS= read -r line; do argv+=("$line"); done \
+      < <(argv_lines "$PROFILE_PATH" ".quality_gates.test_bar.${check}.command")
+    if [[ ${#argv[@]} -eq 0 || -z "${argv[0]//[[:space:]]/}" ]]; then
+      configuration_gap "$check" "Enabled check requires quality_gates.test_bar.${check}.command from existing solution CI/scripts; no language defaults."
+      ALL_OK=2
+      [[ "$FAIL_FAST" == "true" ]] && break
+      continue
+    fi
 
     RAN_ANYTHING=1
-    if ! run_check "$check" "$stack" "${argv[@]}"; then
-      ALL_OK=1
-      [[ "$FAIL_FAST" == "true" ]] && break 2
+    if ! run_check "$check" "${argv[@]}"; then
+      [[ $ALL_OK -eq 2 ]] || ALL_OK=1
+      [[ "$FAIL_FAST" == "true" ]] && break
     fi
-  done
 done
 
-if [[ $RAN_ANYTHING -eq 0 ]]; then
-  emit_event '{"event_type":"gate_check","check":"resolve","outcome":"skipped","reason":"no_stack_match"}'
-  echo "test-bar-gate: no stack match and no explicit commands - gate skipped." >&2
-  exit 0
-fi
-
 if [[ $ALL_OK -eq 0 || "$FAIL_FAST" != "true" ]]; then
-  run_smoke "${STACKS[0]}" || ALL_OK=1
+  run_smoke
+  smoke_exit=$?
+  if [[ $smoke_exit -eq 2 ]]; then ALL_OK=2
+  elif [[ $smoke_exit -ne 0 && $ALL_OK -ne 2 ]]; then ALL_OK=1; fi
 fi
 
 if [[ $ALL_OK -eq 0 ]]; then
-  joined="$(printf '%s,' "${STACKS[@]}" | sed 's/,$//; s/^,//')"
-  emit_event "{\"event_type\":\"gate_check\",\"check\":\"summary\",\"outcome\":\"success\",\"stack\":$(json_str "$joined")}"
+  if [[ $RAN_ANYTHING -eq 0 && "$SMOKE_STATUS" == "not_applicable" ]]; then
+    emit_event '{"event_type":"gate_check","check":"summary","outcome":"skipped","reason":"no_checks_enabled"}'
+  else
+    emit_event '{"event_type":"gate_check","check":"summary","outcome":"success"}'
+  fi
   exit 0
 fi
-exit 1
+exit "$ALL_OK"

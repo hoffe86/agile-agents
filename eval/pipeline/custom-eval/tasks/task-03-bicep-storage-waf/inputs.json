@@ -1,5 +1,8 @@
 {
   "version": 1,
   "provenance": "no pre-existing application inputs are declared by this task",
-  "inputs": []
+  "inputs": [
+    {"source": "baseline/.github/skills/bicep-implementation/SKILL.md", "destination": ".github/skills/bicep-implementation/SKILL.md", "required": true},
+    {"source": "baseline/.github/instructions/storage.instructions.md", "destination": ".github/instructions/storage.instructions.md", "required": true}
+  ]
 }

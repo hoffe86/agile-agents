@@ -1,17 +1,20 @@
 ---
 name: architecture-decision-records
-description: Author Architecture Decision Records (ADRs) in whichever format the project declares — the `documentation.adr.format` key in solution-profile.yaml selects Nygard (Context / Decision / Consequences / Alternatives considered / References), MADR, a custom house shape, or none. Captures a single architecturally-significant decision with the forces behind it, what was chosen, what becomes true as a result (including the costs), which alternatives were rejected and why, and links to related decisions. USE FOR any request to "write an ADR", "document this decision", "capture the rationale for choosing X", or "we picked X over Y — record it". Triggered by "ADR", "decision record", "MADR", "architecture decision".
+description: >-
+  Write an ADR only on explicit human request in a write-capable context.
+  Follow the declared Nygard, MADR or custom format; capture one decision,
+  alternatives, rationale, costs and related records. Never autonomous authoring.
 metadata:
   applies_to: all
 ---
 
 # Architecture Decision Records (ADRs)
 
-You produce ADRs — short, structured markdown documents that capture **one** architecturally-significant decision with enough context that a future reader (including future-you) understands why it was made.
+Capture one architecturally significant decision with durable rationale.
 
 ## When an ADR is warranted
 
-**Invoke this skill only when the user explicitly asks** for an ADR / decision record / MADR. Do not produce ADRs unprompted — by default, the `architect` agent captures decisions inline in the design doc (arc42 §9 short table) and surfaces trade-offs via `trade-off-reporting`.
+**Invoke this skill only when the user explicitly asks** for an ADR / decision record / MADR. Otherwise, `architect` captures decisions inline and reports trade-offs using `engineering-judgement`.
 
 When invoked, write an ADR only when **all** of these are true:
 
@@ -45,11 +48,7 @@ For an `in-repo` project:
 
 **When the key is absent**, infer from the existing records — list the ADR folder and match the shape already in use. Only when the folder is empty or missing does `nygard` apply as the default, because it is the smaller commitment and the easier of the two to grow into.
 
-A template that contradicts the project's own records is the failure mode to avoid here: it forks the convention, and the fork drifts.
-
 ## Nygard template
-
-*Context → Decision → Consequences*, with two additions: an explicit `Alternatives considered` section, so a rejected option is recorded rather than implied, and `References`, so ADRs form a graph.
 
 ```markdown
 # ADR <NNNN> — <what was decided, stated as the answer>

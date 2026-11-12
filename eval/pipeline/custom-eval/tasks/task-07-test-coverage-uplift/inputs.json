@@ -8,6 +8,7 @@
     {"source": "baseline/src/Reconciliation/PaymentReconciler.cs", "destination": "src/Reconciliation/PaymentReconciler.cs", "required": true},
     {"source": "baseline/src/Reconciliation/PaymentRepository.cs", "destination": "src/Reconciliation/PaymentRepository.cs", "required": true},
     {"source": "baseline/src/Reconciliation/Reconciliation.csproj", "destination": "src/Reconciliation/Reconciliation.csproj", "required": true},
-    {"source": "baseline/src/Reconciliation/SystemClock.cs", "destination": "src/Reconciliation/SystemClock.cs", "required": true}
+    {"source": "baseline/src/Reconciliation/SystemClock.cs", "destination": "src/Reconciliation/SystemClock.cs", "required": true},
+    {"source": "baseline/.github/skills/csharp-testing/SKILL.md", "destination": ".github/skills/csharp-testing/SKILL.md", "required": true}
   ]
 }

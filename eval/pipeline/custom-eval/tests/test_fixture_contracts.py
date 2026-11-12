@@ -19,14 +19,14 @@ TASKS = CUSTOM_EVAL / "tasks"
 TASK_CONTRACTS = {
     "task-01-csharp-minimal-api-endpoint": (True, {"lint", "typecheck", "unit_test"}),
     "task-02-python-di-refactor": (True, {"lint", "typecheck", "unit_test"}),
-    "task-03-bicep-storage-waf": (False, {"lint", "typecheck"}),
+    "task-03-bicep-storage-waf": (True, {"lint", "typecheck"}),
     "task-04-adr-library-tradeoff": (True, set()),
     "task-05-pr-description": (True, set()),
     "task-06-gha-oidc-deploy": (True, {"lint", "typecheck", "unit_test"}),
     "task-07-test-coverage-uplift": (
         True, {"lint", "typecheck", "unit_test", "integration_test", "coverage"},
     ),
-    "task-08-threat-model-api": (False, set()),
+    "task-08-threat-model-api": (True, set()),
     "task-09-polly-resilience": (True, {"lint", "typecheck", "unit_test"}),
     "task-10-helm-to-kustomize": (True, {"lint", "typecheck", "integration_test"}),
 }
@@ -53,6 +53,7 @@ PRODUCTION = {
     "src/Reconciliation/Reconciliation.csproj",
     "src/Reconciliation/SystemClock.cs",
 }
+TASK07_INPUTS = PRODUCTION | {".github/skills/csharp-testing/SKILL.md"}
 INGRESS_CRITERION = (
     "2. **Manifest equivalence** — the rendered output of each overlay is functionally equivalent "
     "to `helm template ./deploy/helm/orders-api -f values-<env>.yaml` (same Kinds, names, "
@@ -219,7 +220,7 @@ def assert_production_inventory(root):
         path.relative_to(root).as_posix() for path in root.rglob("*")
         if path.is_file() and not {"bin", "obj"}.intersection(path.relative_to(root).parts)
     }
-    assert files == PRODUCTION
+    assert files == TASK07_INPUTS
     assert all("class PaymentReconcilerTests" not in read(root / name)
                and "class PaymentReconcilerIntegrationTests" not in read(root / name)
                for name in PRODUCTION if name.endswith(".cs"))
@@ -228,7 +229,7 @@ def assert_production_inventory(root):
 def test_task07_exact_production_inventory_includes_repository_and_no_answers():
     assert_production_inventory(TASK07 / "baseline")
     declaration = json.loads(read(TASK07 / "inputs.json"))
-    assert {item["destination"] for item in declaration["inputs"]} == PRODUCTION
+    assert {item["destination"] for item in declaration["inputs"]} == TASK07_INPUTS
     assert all(item["source"] == f"baseline/{item['destination']}"
                and item["required"] is True for item in declaration["inputs"])
     project = ET.fromstring(read(TASK07 / "baseline/src/Reconciliation/Reconciliation.csproj"))

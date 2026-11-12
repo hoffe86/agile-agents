@@ -947,7 +947,8 @@ def test_dry_run_records_a_redacted_command_and_needs_no_token(tmp_path, monkeyp
     assert state["status"] == "dry_run"
     cmd = state["command"]
     assert "<prompt.md>" in cmd and cmd[cmd.index("--agent") + 1] == runner.ROOT_AGENT
-    assert "--no-ask-user" not in cmd and cmd.count("--plugin-dir") >= 1
+    assert "--no-ask-user" not in cmd and cmd.count("--plugin-dir") == 1
+    assert cmd[cmd.index("--plugin-dir") + 1] == str(runner.repo_root() / "plugins/agile-agents-core")
     assert cmd[cmd.index("--phase") + 1] == "1"
 
 
@@ -974,6 +975,15 @@ def test_run_phase_passes_the_configured_token_to_the_cli(tmp_path, monkeypatch,
     monkeypatch.setenv(token_name, "test-token")
     paths = runner.Paths(tmp_path)
     paths.workspace.mkdir()
+    real_run = subprocess.run
+
+    def run(command, **kwargs):
+        if "--help" in command:
+            return subprocess.CompletedProcess(command, 0,
+                                               stdout="--sync-session --secret-env-vars")
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(runner.subprocess, "run", run)
     script = ("import os, sys; "
               "print('configured' if os.environ.get(sys.argv[1]) == 'test-token' else 'missing')")
     assert runner.run_phase([sys.executable, "-c", script, token_name], paths, 1, 10) == 0

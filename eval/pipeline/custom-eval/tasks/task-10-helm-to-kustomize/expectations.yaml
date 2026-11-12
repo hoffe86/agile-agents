@@ -1,5 +1,5 @@
 # Trajectory expectations for task-10-helm-to-kustomize; criteria stay verbatim in acceptance.md.
-# Skills are the contract's core loads only -- see eval/pipeline/custom-eval/README.md.
+# Core contracts plus explicitly staged consumer capabilities; see inputs.json.
 schema: 1
 root_agent: dev-lead
 plan_gate: required

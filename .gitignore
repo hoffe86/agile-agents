@@ -10,6 +10,8 @@ eval/pipeline/custom-eval/tasks/**/obj/
 
 # Local/ephemeral runtime artifacts
 .copilot-runs/
+.github/solution-profile.yaml.canvas-*
+AGENTS.md.canvas-*
 
 # macOS
 .DS_Store

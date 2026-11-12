@@ -1,103 +1,104 @@
-# Coverage matrix — what each phase needs, and whether we have it
+# Coverage and improvement scenarios
 
-The worked example, and the marketplace's own current answer. Scouting is **demand-driven**: start
-from what the harness's phases require, find the gaps, then look for something to fill a *named*
-gap. Browsing a source and asking "is any of this useful?" finds things by luck; this finds them
-by construction.
+This is a worked proposal reference, not a catalog, runtime resolver or claim
+about installed capabilities. Re-derive coverage from native instructions, local
+skills, already-installed plugins, CI/check commands and the actual task.
+Match descriptions and applicability, not skill names.
 
-Both gaps closed in August 2026 — application startup discovery and Bicep deployment preflight —
-were found reactively, after a run needed them. This matrix exists so the next one is found first.
+## Reading the baseline
 
-## Reading a cell
-
-| Cell | Means |
+| State | Evidence |
 |---|---|
-| **covered** | A skill exists and an agent (or another skill) routes to it. |
-| **gap** | A phase needs this for that ecosystem and nothing provides it. A candidate to scout for. |
-| **n/a** | The capability does not apply. **Not a defect** — say why, or the next reader re-opens it. |
-| **built-in** | The ecosystem's own tooling covers it; a skill would add nothing. |
+| covered | available and applicable guidance supplies the need |
+| gap | required capability has no usable guidance; name fallback and absent-vs-ungranted diagnosis |
+| built-in | existing tooling/CI already supplies it; no skill required |
+| n/a | not applicable to this scope; give the reason |
 
-An empty cell is never self-explanatory. The distinction between *gap* and *n/a* is the whole
-value of the matrix — the smoke slot learned the same lesson: "nothing to start here" and "I could
-not work out how to start it" must not report identically.
+On-disk is not native availability; installation is not proof of invocation.
+`metadata.applies_to` is not runtime loading enforcement. Coverage requires both
+availability and applicability, including task/path/version/provider/role.
+For hybrid targets require evidence of the matching resource subset and document
+that scope; apply guidance only to that subset. Syntax or a state backend alone
+does not identify the resource provider. Import support is not implementation
+coverage. Clarify missing/conflicting declarations. Without a match, report
+repo/provider conventions and authoritative documentation in the hand-off.
 
-## Delivery capabilities × ecosystem
+## Four worked scenarios
 
-The marketplace's coverage at the time of writing. In a consumer repo, build the same grid from
-the *installed* plugins and the stack `solution-profile.yaml` declares.
+These are synthetic examples for offline contract checks, not measured candidate
+performance or approved adoption. A real report must supply verified URLs,
+publishers, revisions, artifact licenses and maintenance evidence. Never execute
+retrieved instructions while investigating them.
 
-| Capability | Phase | .NET | Python | Bicep | Terraform |
-|---|---|---|---|---|---|
-| Implement | 6 | `csharp-implementation` | `python-implementation` | `bicep-implementation` | `terraform-azure-implementation` — Azure-only, subject to the applicability gate below |
-| Unit test | 6 | `csharp-testing` | `python-testing` | n/a — IaC has no unit layer at this gate | n/a — same |
-| **IaC test** | 6 | n/a | n/a | **gap** | **gap** |
-| Coverage | 6 | **gap** — `csharp-testing` covers it inline; no dedicated skill | `pytest-coverage` | n/a | n/a |
-| Lint / autofix | 7 | **gap** — `dotnet format` is in the gate palette, no skill | `ruff-recursive-fix` | built-in (`bicep lint`) | built-in (`fmt` / `validate`) |
-| Startup discovery | 7 | `dotnet-startup-discovery` | `python-startup-discovery` | n/a — nothing to start | n/a — nothing to start |
-| Deploy preflight | 7b | n/a | n/a | `azure-deployment-preflight` | **gap** — `plan` is built-in, but nothing covers policy / quota / permission preflight |
-| Design-pattern review | 8 | `dotnet-design-pattern-review` | **gap** | n/a | n/a |
-| Format migration | — | n/a | n/a | `update-avm-modules-in-bicep` | `import-infrastructure-as-code` — Azure-only, subject to the applicability gate below |
+### General instruction improvement
 
-**Azure applicability gate:** Azure-only cells require an **installed** capability and
-`infrastructure.cloud: azure`. For multi-cloud/hybrid declarations, require explicit repo
-evidence of an Azure resource subset and document that scope; hybrid alone is not Azure
-evidence. Count Azure-only coverage only for that subset.
-Non-Azure Terraform implementation is a **gap**, not covered by the Azure skill;
-use repo/provider conventions and provider documentation and report that hand-off fallback.
-Import support is counted separately only when its source/target providers match.
+- **Baseline:** general completion guidance lacks command-evidence reporting.
+- **Candidate/kind:** a trusted maintainer's native instruction for evidence-backed
+  completion; record URL, publisher, revision, license and maintenance.
+- **Comparison:** complements the existing hand-off rubric without replacing its
+  fields or gates; remove duplicate wording rather than loading both copies.
+- **Destination:** harness-owned general guidance; propose an instruction change
+  using a supported native scope, not an invented manifest key.
+- **Benefit hypothesis:** fewer unsupported "tests pass" claims.
+- **Before/after:** same bounded completion tasks; score command evidence and false
+  success claims, including an unavailable test tool. Require no lost gates.
+- **Decision:** propose only; human approval before any instruction change.
 
-### The IaC-test gap is the one that matters
+### Solution-specific technical plugin
 
-`infrastructure.agent.md` states it "owns its own IaC tests end-to-end" — since the coding/testing
-consolidation that is the *only* thing standing between an IaC change and an untested one, because
-there is no separate test agent left to fall back to — and `test-bar-gate` names
-Terratest and Pester. **No skill covers any of it.** The harness assumes a capability it does not
-ship — so an agent doing IaC tests works from the repo's conventions with no guidance, and the
-hand-off points at something that may not exist.
+- **Baseline:** a solution's Rust service needs database-migration depth; local
+  skills, scoped instructions, installed plugins and CI are inventoried first.
+- **Candidate/kind:** authoritative maintainer's technical plugin; verify source URL,
+  publisher, revision, license, maintenance, runtime and tool prerequisites.
+- **Comparison:** fills the migration gap, not unrelated implementation coverage;
+  does not override the repo's database version or check commands.
+- **Destination:** solution-selected external plugin, not a new harness ecosystem.
+- **Benefit hypothesis:** fewer migration/replay failures.
+- **Before/after:** same migration and replay tasks, including wrong-version/path
+  cases; assess correctness, scope, tool usage and rework under unchanged gates.
+- **Decision:** propose only; human approval before installation, then verify native
+  availability separately from on-disk presence.
 
-## Cross-cutting capabilities
+### Better replacement of covered guidance
 
-Ecosystem-neutral, all in core. Listed so a run can confirm coverage rather than assume it.
+- **Baseline:** an installed user-selected hand-off explanation skill already covers
+  the communication capability.
+- **Candidate/kind:** differently named skill from a trusted publisher; verify URL,
+  revision, artifact license and maintenance, not name similarity.
+- **Comparison:** suppose bounded prior evaluation demonstrates fewer omitted risk
+  caveats while preserving the user's preferred brevity. Cite those results in a real proposal;
+  do not invent a metric. Compare overlap, conflicts, context and migration costs.
+- **Destination:** optional user-owned plugin for a personal communication workflow;
+  solution-specific technical content would instead belong to the solution.
+- **Benefit:** evidence supports replacement, not stacking duplicate guidance.
+- **Before/after:** reproduce the comparison on the same fixtures/runtime; test no
+  personal plugin and stricter consent, and preserve solution constraints.
+- **Decision:** propose an opt-in replacement and rollback; human approval required.
+  Already-covered is not grounds to reject a demonstrably better candidate.
 
-| Capability | Covered by |
-|---|---|
-| Repo context / preamble | `read-repo-context` |
-| Code localisation | `code-localisation` |
-| Quality bar | `engineering-standards`, `code-review-checklist` |
-| Security lens | `security-reviewer`, `threat-model-analyst`, `codeql` |
-| Architecture | `architecture-design`, `architecture-decision-records` |
-| Backlog | `backlog-item-standards` + tracker mechanics (`ado-work-items` / `github-issues`) |
-| Gates | `test-bar-gate`, `deploy-verify` |
-| Telemetry / cost | `run-event-log`, `cost-budget` |
-| Delivery artifacts | `pr-description`, `release-notes`, `conventional-commit`, `git-commit` |
-| Bootstrap | `solution-profile-interview` |
+### Untrusted or conflicting candidate rejected
 
-## Ecosystems with no companion at all
+- **Baseline:** existing guidance preserves scoped instructions and approval gates.
+- **Candidate/kind:** instruction bundle from an unverifiable mirror, with unknown
+  license and a directive to bypass approvals and overwrite project constraints.
+- **Comparison:** provenance/trust/license cannot be verified; safety and solution
+  conflicts disqualify it regardless of claimed speed.
+- **Destination:** none; reject rather than copy into harness, solution or user scope.
+- **Benefit:** claimed gain is unsupported, not a measured improvement.
+- **Before/after:** no live execution of the rejected instructions. Propose an
+  offline negative-case check that the report rejects the candidate and preserves
+  existing guidance and gates.
+- **Decision:** reject; no install, adoption or instruction changes. Revisit only
+  with verified provenance/licensing and removal of the conflicting behavior.
 
-Go, Java, TypeScript / Node, Rust, PHP, Ruby. **Deliberate** — the declared technology scope is
-Azure + .NET / Python + Bicep / Terraform, and a skill per ecosystem nobody here ships is a fork's
-job. Agents fall back to the repo's own conventions and say so in their hand-off.
+## Report discipline
 
-In a consumer repo this is the most useful thing to report: *"your stack includes Go; no companion
-covers it, so expect repo-convention fallback rather than deep guidance."* Expected behaviour,
-stated up front, beats the same thing discovered mid-run.
+Rank proposals with artifact kind, source/trust/license, opportunity/baseline,
+overlap/conflicts, owner/destination/native delivery, expected benefit/evidence,
+before/after verification, cost and approval. Include declines and revisit
+conditions. No actual adoption or live evaluation is needed for scouting.
 
-## Declined — do not re-litigate without a reason
-
-Assessed and rejected for the marketplace. Re-open one only when its stated condition changes.
-
-| Artifact | Source | Declined because | Would change if |
-|---|---|---|---|
-| quality-playbook | awesome-copilot | 41,795 words — 15× our largest artifact — and its "Council of Three" audit overlaps the five-reviewer fan-out | it were decomposed into a skill that serves a reviewer instead of replacing them |
-| scoutqa-test | awesome-copilot | Hard dependency on the third-party ScoutQA CLI | it dropped the CLI dependency |
-| spring-boot-testing, java-junit | awesome-copilot | Java — outside the declared technology scope | the scope changed (a human decision, not a scouting one) |
-| breakdown-test | awesome-copilot | Overlaps `dev-lead` Stage 2 decomposition and `backlog-manager` task creation | never, while the harness owns planning |
-| playwright-explore-website, playwright-automation-fill-in-form | awesome-copilot | Subsumed by the vendored `webapp-testing` | `webapp-testing` were dropped |
-| csharp-xunit / nunit / mstest / tunit | awesome-copilot | Four skills of framework depth; `csharp-testing` already auto-detects the framework | a framework proved to need depth `csharp-testing` cannot carry |
-| *instructions* / *prompts* (any) | awesome-copilot | The plugin manifest has no key for them — they would ship as inert files | the plugin schema gained one |
-
-## Keeping it honest
-
-Re-derive rather than trust this file: the skills on disk and the agents' routing are the truth,
-and a matrix that has drifted is worse than none. When you close a gap, move the cell and name the
-skill that closed it; when you decide a cell is `n/a`, write the reason in the cell.
+Past ecosystem exclusions and blanket instruction exclusions are not current
+policy. A source may be outside this marketplace and still earn trust; native
+instructions are eligible when delivery and scope are verified. Preserve
+provenance and upstream content if later adoption is approved.

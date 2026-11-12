@@ -1,34 +1,17 @@
 ---
 name: development-practices
 description: >-
-  The implementation half of the build-and-verify craft — smallest-change bias,
-  no speculative generality, cloud-native and observability defaults, error
-  handling, documentation-in-the-same-change, language-skill routing, and the
-  build/lint/startup verification an implementation must pass before it is
-  handed off. Technology-neutral: routes to whichever language implementation
-  skill the project installed and falls back to the repo's own conventions when
-  none is. Loaded by the `coding` agent on every task that changes production
-  code, alongside `testing-practices` (its verification half). USE FOR: writing
-  a feature, fixing a bug, refactoring, integrating a library, migrating a
-  framework version. DO NOT USE FOR: writing the tests that cover the change
-  (that is `testing-practices`), Infrastructure-as-Code (that is
-  `iac-best-practices` and the infrastructure agent), or reviewing someone
-  else's diff (that is `code-review-checklist`).
+  Author the smallest correct code change: implementation, cloud-native defaults,
+  observability, documentation, verification and Git safety. Coding loads this
+  with testing-practices for production changes. IaC belongs to infrastructure;
+  independent diff review belongs to review-lead.
 metadata:
   applies_to: all
 ---
 
 # Development practices
 
-The craft bar for changing production code. Paired with **`testing-practices`** —
-one agent loads both, because whoever writes the code owns proving it works.
-This skill covers everything up to "the change is correct and builds";
-`testing-practices` covers everything that demonstrates it.
-
-`engineering-standards` (Clean Code, SOLID, DDD, Clean Architecture,
-standards-before-custom, configuration-over-hardcoding, security-by-default,
-favour-immutability) is assumed and **not restated here**. What follows are the
-implementation-specific deltas.
+Authors own implementation and its tests; pair with `testing-practices`.
 
 ## 1. Craft bias
 
@@ -38,14 +21,10 @@ implementation-specific deltas.
   dependency. A new dependency, boundary, contract, or cloud service is *not
   yours to add* — report it in `Open questions for review` and stop (the
   orchestrator routes it to `architect`).
-- **No speculative generality.** No interface with one implementation, no
-  factory for one product, no config knob for a value that never changes, no
-  extension point "for later". If you think it's coming, say so in the hand-off
-  — don't build it.
-- **Boring over clever.** Clever is what someone decodes at 3am. If a reviewer
-  needs the commit message to understand the code, simplify the code.
-- **Deletion counts as implementation.** If the request is satisfiable by
-  removing code, do that instead of adding.
+- Prefer readable code and deletion over speculative abstractions, configuration
+  or extension points.
+- **Refactors preserve observable behavior.** Establish test evidence before and
+  after; separate any intentional contract change from the refactor.
 - **Never simplify away correctness.** Input validation at trust boundaries,
   error handling that prevents data loss, authn/authz, secrets handling, and
   accessibility basics are non-negotiable regardless of how small the change is.
@@ -56,69 +35,37 @@ Read the surrounding code first; never write from memory. If a newer framework
 feature or library version is genuinely better, recommend it *with trade-offs*
 rather than silently adopting it.
 
-**Look it up rather than assume it.** When an API signature, default, option
-name, version behaviour, or limit would change what you write and you are not
-certain of it, verify before writing — the repo's own usage and lockfiles
-first, then `context7/*` / `microsoft-docs/*` / `web` / a browser
-(`read-repo-context` §9). A plausible-looking call that doesn't exist in the
-pinned version costs a build, a gate, and a corrective round to discover. If you
-couldn't verify, name the fact you assumed in the hand-off rather than leaving
-it silent.
+Verify consequential API/version facts using `read-repo-context` §9; label
+anything unverified in the hand-off.
 
-For an unfamiliar codebase, invoke `acquire-codebase-knowledge` first. For a
-large repo where the relevant files aren't obvious, invoke `code-localisation`.
+Read only the context needed for this task. `acquire-codebase-knowledge` is for
+explicit onboarding, not an ordinary-task prerequisite. Use `code-localisation`
+when the relevant files in a large repo are unclear.
 
 ## 3. Language routing
 
-Route by the repo's actual stack (`solution-profile.yaml:
-tech_stack.primary_languages`), not by assumption. **Check availability first,
-then language** — a language skill is a bonus, never a precondition:
+Use `read-repo-context` discovery before proposing gaps. Match available
+descriptions/capabilities from local skills or installed external plugins to the
+task, paths and declared stack/version (`tech_stack.*`). No historical names,
+mandatory companion catalog or framework table. Optional depth is a bonus, not
+a precondition. Native scoped instructions and existing CI/check commands count.
 
-- **A skill for the language is available** → invoke it (currently
-  `csharp-implementation` for C#/.NET, `python-implementation` for Python —
-  both ship in companion plugins and may not be installed). Those skills name
-  the deeper specialists to compose with (`ef-core`, `aspire`,
-  `ruff-recursive-fix`, `refactor`, …); treat each as a bonus. Do not assume the
-  set is fixed — skills are added and may ship in separate plugins.
-- **No skill for the language is available** (TypeScript / Go / Java / Rust /
-  … , or the expected skill isn't installed) → work from the repo's own
-  conventions: read neighbouring modules, honour the declared `tech_stack.*` and
-  `lint_format_tools`, and apply the language's mainstream idioms and community
-  style guide. Everything in this skill is language-neutral and still applies.
-  **Say in the hand-off that you worked without a language skill.**
+Without a match, read neighbouring modules, honour `lint_format_tools`, use repo
+conventions and authoritative language documentation, and report the fallback.
+Distinguish absent from ungranted before recommending setup.
 
 ## 4. Cloud-native defaults
 
-**Conditionally load `cloud-native-patterns`** when the change involves an
-external boundary (HTTP / gRPC / message bus), a shared resource (DB / cache /
-blob / queue), background work, startup/shutdown, or a new deployable. It is the
-canonical source for Cloud Design Patterns (Retry, Circuit Breaker, Outbox,
-Saga, Idempotency Key, Cache-Aside, Strangler Fig, Anti-Corruption Layer),
-12-Factor readiness, resilience defaults, observability and HTTP API hygiene.
-
-When it applies:
-
-- Reach for a vetted Cloud Design Pattern instead of inventing one.
-- Resilience comes from the ecosystem's established library (.NET:
-  `Microsoft.Extensions.Http.Resilience` / Polly v8; Python: tenacity;
-  equivalent elsewhere) — **never a hand-rolled retry loop**.
-- Every outbound call gets a timeout + cancellation/abort signal. Use the
-  platform's pooled HTTP client factory — never a fresh client per call.
-- Honour 12-Factor: stateless processes, config from env / secret store,
-  structured JSON logs to stdout, graceful `SIGTERM` shutdown, liveness +
-  readiness endpoints (liveness must not depend on downstreams).
-- For non-idempotent retried HTTP, accept an `Idempotency-Key`. For dual-write
-  scenarios (DB + broker), use the Outbox pattern.
-- Errors over HTTP are RFC 9457 Problem Details. Pagination on every unbounded
-  query touched by user input.
+Load `cloud-native-patterns` for external boundaries, shared resources,
+background work, startup/shutdown or a new deployable. Apply its resilience,
+12-Factor, idempotency, lifecycle and API contracts through the solution's
+established implementation; do not add packages by default.
 
 ## 5. Observability is part of "done"
 
-Emit OpenTelemetry traces / metrics / logs via the language's OTel SDK and the
-platform's structured-logging abstraction (.NET: `ILogger<T>` +
-`ActivitySource`; Python: `structlog` / `python-json-logger` + OTLP exporter;
-equivalent elsewhere). Propagate W3C `traceparent` on every outbound call. **No
-PII or secrets in logs.**
+Use the solution's correlated traces, metrics and structured logs. Apply
+`cloud-native-patterns`' propagation contract; SDK/exporter/sink selection belongs
+to solution guidance. Report fallback to repo/docs. **No PII or secrets in logs.**
 
 ## 6. Correctness details that get skipped
 
@@ -152,9 +99,8 @@ delta in the hand-off for a human to publish.
 ## 8. AI-integrated surfaces
 
 For LLM prompts, agent definitions, RAG retrieval, tool-calling, MCP servers, or
-prompt templates in code, invoke the `ai-prompt-engineering-safety-review` skill
-before hand-off **if the project installs it** — it is not bundled with this
-plugin. Without it, self-check against the OWASP LLM Top 10 (untrusted input
+prompt templates, select applicable prompt-safety guidance by available description.
+Without matching guidance, self-check against the OWASP LLM Top 10 (untrusted input
 reaching a prompt, unvalidated model output reaching a sink, over-broad tool
 grants) and surface any unaddressed item as a trade-off so `security-reviewer` can
 pick it up.
@@ -174,13 +120,16 @@ what its CI already runs). Never invent a toolchain the repo doesn't use.
    comes up** — the same check the Stage 7 smoke slot runs, done now while the
    cause is one task's diff instead of the whole change. Report the result. If
    you can't work out how to start it, research it (`read-repo-context` §9)
-   rather than skipping the check silently. The ecosystem startup-discovery
-   skills answer this when their companion plugin is installed.
+   rather than skipping the check silently. Use applicable startup-discovery
+   capabilities from solution guidance when available.
 
-Then walk the change through the Pre-PR review checklist from
-`engineering-standards` (standards, security, edge cases, regressions, docs)
-before writing the hand-off. **You do not review yourself** — that is the
-`review-lead` agent's verdict; this is a self-check, not a review.
+### Pre-PR self-check
+
+Before hand-off: confirm actual build/test/lint/format results; repo conventions
+and accepted decisions; secrets, least privilege, input validation, authn/authz,
+injection and dependency risks; edge/error cases; regression evidence; and docs
+for changed setup, architecture and public surfaces. Explain every existing-test
+change. **This is a self-check, not a review**: `review-lead` owns the verdict.
 
 ## 10. Write permissions
 
@@ -191,5 +140,16 @@ explicit approval**: prepare the branch and the PR body, then ask. **Completing,
 merging or closing a PR is never yours** — nor is force-pushing, rewriting
 shared history, or deleting a shared branch.
 
-For commit messages use `conventional-commit` + `git-commit`, honouring
-`backlog.commit_convention` and `required_commit_trailers`.
+### Git safety and conventions
+
+Honour explicit user restrictions and stricter personal consent. Inspect status,
+working and staged diffs; preserve unrelated edits and stage only the intended
+paths/hunks. Never commit secrets, change Git config, bypass hooks or use a
+destructive reset. A failed hook is repaired and retried as a new commit, not
+amended into unrelated history.
+
+Use `backlog.branch_naming`, `backlog.commit_convention`, `required_commit_trailers`
+and `backlog.pr_link_pattern`. Derive the message from the staged diff; do not
+impose Conventional Commits on another convention. When selected, use
+`type(scope): summary`, with `!` / `BREAKING CHANGE:` for breaking changes.
+Missing required conventions are gaps, not permission to invent them.

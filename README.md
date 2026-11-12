@@ -1,13 +1,13 @@
 # Agile Agents
 
-The **Agentic Agile Harness** — packaged as installable GitHub Copilot CLI plugins.
+The **Agentic Agile Harness** — the `agile-agents-core` GitHub Copilot CLI plugin.
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
 over 15 specialist agents (1 supervisor + 4 authors + 7 reviewers, plus a backlog-manager, a bootstrapper and a capability-scout) plus
-60 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
+22 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 **Start here:** install `agile-agents-core`, then run **`bootstrapper`** — it profiles your repo,
-writes the operational contract every agent reads, and installs the companion plugins your stack
+writes the operational contract every agent reads, and proposes only the additional plugins your solution
 needs. [Install →](#install)
 
 ## Install
@@ -31,12 +31,13 @@ you start. It:
 
 1. **Reads your repo first**, then interviews you only for what no scan can tell it — lifecycle
    stage, test discipline, compliance scope, where documentation actually lives.
-2. **Writes `.github/solution-profile.yaml`**, the operational contract every other agent reads.
-3. **Works out which companion plugins your declared stack needs** and installs them — after
-   showing you the list and asking. It never installs without an explicit yes.
-4. **Tells you what is still missing** — empty required fields, and any technology you declared
-   that no companion covers, so repo-convention fallback is something you expect rather than
-   discover mid-run.
+2. **Proposes and writes `.github/solution-profile.yaml` with approval**, preserving its
+   schema and six required fields.
+3. **Discovers existing scoped instructions, local skills, installed plugins and CI/check
+   commands** before proposing gaps. Matches capabilities and applicability, not a catalog.
+   Installs only selected plugins after explicit approval.
+4. **Reports what is unavailable and the fallback**, distinguishing absent from ungranted,
+   on-disk from available, and available from actually exercised.
 
 Everything downstream depends on that profile: which skills load, which gates fire, which tracker
 gets written to, what the cost envelope allows. `dev-lead` blocks at Stage 0 until its six
@@ -60,23 +61,36 @@ static consistency only, not runtime authorization. Required-policy and Auto
 interactions are unverified on CLI 1.0.98; no enforcement guarantee is claimed.
 See the [manual setup procedure and version caveats](plugins/agile-agents-core/skills/cost-budget/references/tier-defaults.md#manual-native-setup).
 
-### Installing companions yourself
+### Choosing solution and personal guidance
 
-`bootstrapper` derives these from your profile, so you rarely need to. To do it by hand:
+The harness owns general engineering; your solution owns technical/tool/tracker
+guidance and commands, locally or through selected external plugins. Match actual
+skill descriptions and applicability, not historical names. Native instructions
+retain their directory/`applyTo` scopes; do not flatten them into global guidance.
+There is no required companion catalog, framework skill table or second registry.
 
-```shell
-copilot plugin install agile-agents-dotnet@agile-agents-marketplace     # C# / .NET
-copilot plugin install agile-agents-python@agile-agents-marketplace     # Python
-copilot plugin install agile-agents-bicep@agile-agents-marketplace      # Bicep IaC
-copilot plugin install agile-agents-terraform@agile-agents-marketplace  # Terraform IaC
-copilot plugin install agile-agents-azure@agile-agents-marketplace      # Azure platform grounding
-copilot plugin install agile-agents-ado@agile-agents-marketplace        # Azure DevOps Boards
-copilot plugin install agile-agents-github@agile-agents-marketplace     # GitHub Issues
-```
+Personal native instructions, skills and plugins are optional and user-selected,
+with no required package/name. Absence is normal. Stricter personal consent is
+valid; preferences cannot waive harness approvals/safety/reviewer boundaries or
+supersede solution technical constraints. Report conflicts, not universal precedence.
 
-Agents route on **skill availability**, not on a hardcoded stack — an uninstalled companion
-degrades to repo conventions rather than failing. To see what your installed set covers and what
-it doesn't, ask **`capability-scout`** (`copilot --agent agile-agents-core:capability-scout`).
+The marketplace lists only core 0.17.0, with no technical companions.
+Marketplace listings do not uninstall existing copies. See
+[customization ownership and rollback](docs/customization-ownership.md)
+and the [documentation hub](docs/README.md).
+
+Without matching optional depth, agents use repo conventions and authoritative
+documentation and report the fallback. Ask **`capability-scout`**
+(`copilot --agent agile-agents-core:capability-scout`) to actively discover trusted
+skills, plugins or instruction improvements, including better replacements for
+covered needs. Its proposal records provenance/trust/license, overlap/conflicts,
+harness/solution/user destination, expected benefit and before/after verification.
+It never adopts, installs or edits instructions; a human approves those changes.
+
+All core skill-consuming roles grant native `skill`, without broadening their
+other permissions. Static grant regressions do not establish role-wide live
+loading or automatic selective instruction injection. Full RPI evaluation is
+currently blocked at approval transport.
 
 The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skills/`.
 
@@ -88,12 +102,12 @@ The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skill
 |------|-------|---------|
 | Supervisor | `dev-lead` | Orchestrates the RPI pipeline (Research → Plan → Implement → Review) across architect, backlog-manager, coding, infrastructure and review with gates |
 | Author | `architect` | Read-only/advisory: serves the Research phase — verifies the change fits the prepared concept (in the framework declared by `documentation.framework`) + any accepted decision records, cites them, reports decision gaps; never authors ADRs |
-| Author | `coding` | Implements features/fixes **and covers them with tests** (C# / Python; xUnit/NUnit/MSTest/TUnit, pytest) — one engineer's job, one hand-off |
+| Author | `coding` | Implements features/fixes **and covers them with tests** using the solution's language/framework — one engineer's job, one hand-off |
 | Author | `infrastructure` | Bicep, Terraform, Helm/Kustomize, CI/CD pipelines — and their IaC tests |
 | Author | `data-scientist` | Analysis, experiments, models and their evaluation — two rubrics (classical ML and AI/LLM). Owns the model and its evidence; `coding` owns the app that serves it |
 | Backlog | `backlog-manager` | Creates / improves / reviews tracker work items (ADO, GitHub, Jira, Linear); in the Plan phase materialises `dev-lead`'s task breakdown as child work items linked to the parent story |
-| Bootstrap | `bootstrapper` | One-off bootstrap and repair: runs the profile interview, writes `solution-profile.yaml`, derives the companion plugins the declared stack needs and installs them with the user's approval, then reports what is still missing |
-| Coverage | `capability-scout` | Dependency manager for harness artifacts: derives what each phase needs for the declared stack, reports the gaps, and proposes what would fill them and where it belongs. Read-only — proposes, never adopts |
+| Bootstrap | `bootstrapper` | Discovers existing guidance and commands, interviews for missing facts, writes the approved profile, installs only selected approved plugins, and reports remaining gaps/fallbacks |
+| Improvement | `capability-scout` | Proposes trusted skills, plugins and instructions, including better replacements for covered needs, with ownership, evidence and before/after verification. Read-only — never adopts |
 | Reviewer | `review-lead` | Read-only orchestrator: triages which lenses the diff warrants, dispatches them in parallel, merges into one ranked report with one verdict. Performs no lens itself |
 | Reviewer | `code-reviewer` | General code quality — correctness, line-level design, readability, standards, regressions, cloud-native anti-patterns, docs currency |
 | Reviewer | `security-reviewer` | OWASP, CWE, NIST SSDF, MS SDL, MCSB, OWASP LLM Top 10 |
@@ -108,17 +122,8 @@ The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skill
 — and `reviewer-read-only-rules`, the defence-in-depth contract every review agent loads. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md) for the vendored index across all plugins.
 
-**Companion skills** across seven technology plugins — install only what your project uses:
-
-| Plugin | Skills |
-|---|---|
-| `agile-agents-dotnet` | `csharp-implementation`, `csharp-testing`, `aspire`, `ef-core`, `dotnet-design-pattern-review` |
-| `agile-agents-python` | `python-implementation`, `python-testing`, `pytest-coverage`, `ruff-recursive-fix` |
-| `agile-agents-bicep` | `bicep-implementation`, `update-avm-modules-in-bicep` |
-| `agile-agents-terraform` | `terraform-azure-implementation`, `terraform-azurerm-set-diff-analyzer`, `import-infrastructure-as-code` |
-| `agile-agents-azure` | `azure-platform-grounding` |
-| `agile-agents-ado` | `ado-work-items` |
-| `agile-agents-github` | `github-issues` |
+The generated [skill inventory](AGENTS.md) lists the current distribution.
+Solution-local guidance can use arbitrary names; no companion is required.
 
 **Tracker MCP servers are named by you, not by this harness.** Tool grants are
 agent-scoped — a skill cannot grant them — so `backlog-manager` ships grants for the
@@ -128,42 +133,16 @@ different name, add `'<your-server>/*'` to the `tools:` list in
 is unreachable even while it's running; `backlog-manager` preflights for this and tells
 you which of the two causes it hit.
 
-**`agile-agents-azure` is grounding, not automation.** It carries the Azure substitutions core
-deliberately does not know — CAF naming and tagging, AVM selection and pinning, secure-by-default
-resource settings, the Well-Architected pillars as concrete review checks, and the MCSB / CIS Azure
-control ids reviewers cite. All of it applies to a *diff or a design*, before anything is deployed,
-which is what an agent reviewing a pull request actually needs.
-
-For **live-subscription** work — scanning deployed resources, querying real spend, provisioning,
-diagnostics — install Microsoft's own
-[`microsoft/azure-skills`](https://github.com/microsoft/azure-skills) alongside it. It ships ~28
-operational Azure skills plus the Azure MCP Server (200+ tools, 40+ services), maintained by the
-team that owns the platform. This harness does not duplicate any of it:
-
-```console
-copilot plugin marketplace add microsoft/azure-skills
-copilot plugin install azure@azure-skills
-```
-
-Without either plugin, the Azure lens degrades to the neutral cloud lens plus whatever
-`microsoft-docs` returns — correct, but with no conventions to enforce and no live subscription
-context.
-
-Three of those core skills — `trade-off-reporting`, `code-review` and `cloud-native-patterns` —
-apply to every task rather than a phase: `trade-off-reporting` is named explicitly by the agents,
-the other two load on demand when the task matches. They previously sat in a separate
-`user/skills/` folder; they are now in `skills/` with everything else.
-
 ### MCP servers
 
-Plugins ship their own MCP servers; every agent declares them, so an uninstalled companion
-just means the tool isn't there.
+Shared MCP access is independent of technical recipes. Core retains its three
+servers and all agent grants; actual access requires registration and a grant.
 
 | Server | Shipped by | Why |
 |---|---|---|
 | `context7` | `agile-agents-core` | Current, version-correct docs for whatever library the task touches — the cheapest defence against hallucinated APIs. |
 | `microsoft-docs` | `agile-agents-core` | Microsoft Learn search / fetch / code samples. In core because the agents live in core and declare it; it also covers Azure, Bicep and ADO, not just .NET. |
-| `playwright` | `agile-agents-core` | Interactive browser driving for `webapp-testing` — accessibility tree, console errors, failed requests, screenshots — and, for every other agent, rendering documentation that `web` alone can't fetch. Declared by all 15 agents. Runs `--headless --isolated` (fresh profile per session, no state leaking between runs); note that `--isolated` bounds profile persistence only, not what a page or script can reach. |
+| `playwright` | `agile-agents-core` | Interactive browser diagnosis and rendered documentation, granted to all 15 agents. Runs `--headless --isolated`; profile isolation is not a network/security sandbox. Reviewers remain read-only. |
 | `azure-mcp` | *(user-installed — Microsoft's own [`azure-skills`](https://github.com/microsoft/azure-skills) plugin)* | Live Azure resource context: 200+ tools across 40+ services — resource inventory, Log Analytics / App Insights queries, quotas, pricing, deployment status. Declared by `architect`, `infrastructure` and `infrastructure-reviewer`; the other agents review a diff and never query a subscription. Granted under three server-name aliases (`azure-mcp`, `azure-mcp-server`, `azure`) because the name varies by install method — unmatched grants are inert, so listing all three costs nothing and avoids a silent mismatch. |
 | `microsoft/azure-devops-mcp` | *(user-installed)* | Work-item CRUD; used only by `backlog-manager`. |
 
@@ -198,31 +177,27 @@ concept (arc42, C4, or whatever `documentation.framework` declares) and any acce
 records are authored **up-front by humans**; the pipeline conforms to them and never writes
 them — a missing decision is escalated, not invented. Projects without ADRs are supported.
 
-<p align="center">
-  <img src="docs/assets/rpi-pipeline.png" alt="The RPI pipeline: bootstrap once per solution, then Intake → Research → Plan → Create tasks → human plan approval → Implement (code and the tests that cover it) → test-bar gate → Review → Done. The test-bar gate returns failures to the author (max 2 retries), and Review returns findings for one corrective round." width="820">
-</p>
-
-<sub>Editable source: [`docs/assets/rpi-pipeline.drawio`](docs/assets/rpi-pipeline.drawio) — open with draw.io / diagrams.net and re-export after changing it.</sub>
-
-The two loops are the parts a straight line hides: the test bar returns to the author on failure
-(twice at most, then the run halts), and review gets exactly **one** corrective round before it
-stops and asks a human.
+Intake → Research → Plan → tracker tasks → **human approval** → implementation
+and tests → deterministic gates → independent review → Done.
+The [supervisor](plugins/agile-agents-core/agents/dev-lead.agent.md) defines retry
+limits: at most three deterministic corrective retries, and at most three
+non-Block review rounds. A ❌ Block halts rather than entering that loop.
 
 | Phase | What happens | Agents | Hand-off block |
 |---|---|---|---|
-| **Bootstrap** *(once, before the first run)* | `bootstrapper` profiles the repo, writes `solution-profile.yaml`, and installs the companion plugins the stack needs — with your approval. Re-run to repair. `dev-lead` delegates to it if the profile is missing or incomplete. | `bootstrapper` | `BOOTSTRAP COMPLETE` |
+| **Bootstrap** *(once, before the first run)* | `bootstrapper` discovers existing guidance/commands, writes the approved profile and installs only selected approved plugins. Re-run to repair. `dev-lead` delegates if the profile is missing or incomplete. | `bootstrapper` | `BOOTSTRAP COMPLETE` |
 | **Intake** | `dev-lead` captures the Definition of Done, out-of-scope, the **parent story id** (when creating tasks), confirms the `solution-profile.yaml`, and mints the run id. The requirement can arrive as text, a tracker item, a requirements file, or a **planning-mode `plan.md`** — for the last, criteria are derived from the plan and confirmed with you once. | `dev-lead` | — |
 | **Research** | Read-only verification against the prepared concept + any accepted decision records: confirm the story is implementable, verify codebase / APIs / patterns, surface any decision gap. Lightweight (`dev-lead` reads) or delegated to `architect` when scope warrants a new boundary / dependency / trade-off. | `dev-lead`, `architect` | `ARCHITECTURE DESIGN COMPLETE` |
 | **Plan** | Decompose the story into meaningful, independently-implementable **tasks**, each with its own acceptance criteria + a short approach note. When a `plan.md` supplied the decomposition, it is **adopted and reconciled** — every step carried, merged, or dropped with a reason — never silently re-derived. | `dev-lead` | — |
 | **Create tasks** | `backlog-manager` creates one child work item per task, **linked to the parent story** (provisional, tagged `pending-approval`), records the overall approach as a comment on the parent, and returns the task list. The tracker is the source of truth; local handover files are an ephemeral, gitignored cache. Gated by `backlog.create_tasks`. | `backlog-manager` | `TASKS PLANNED` |
 | **⛔ Plan approval** | The **only mandatory approval gate** — it fires **after** the tasks exist so the human reviews concrete, linked work items. ("Only" counts approvals: intake may still ask about an ambiguity, or to confirm criteria derived from a `plan.md`.) Approve → tags removed, autonomous run begins; Adjust → tasks revised; Cancel → provisional tasks cleaned up. | human | — |
 | **Implement** | `coding` delivers each task inside the approved plan — production code **and the tests that cover it** — and `infrastructure` does the same for IaC. A conditional design-approval gate fires first if Research introduced a new dependency / boundary / ADR gap. | `coding`, `infrastructure` | `IMPLEMENTATION COMPLETE`, `INFRASTRUCTURE COMPLETE` |
-| **Test-Bar Gate** | Deterministic lint → typecheck → unit-test → smoke gate over the combined diff, before reviewers spend tokens; loops back to the author on fail (max 2 retries). | `dev-lead` (skill: `test-bar-gate`) | — |
+| **Test-Bar Gate** | Deterministic lint → typecheck → unit-test → smoke gate over the combined diff, before reviewers spend tokens; loops back to the author on fail (max 3 retries). | `dev-lead` (skill: `test-bar-gate`) | — |
 | **Review** | Multi-lens review (quality / security / architecture / infra / test / data) merged into one verdict, validated against the research findings and the planned acceptance criteria. | `review-lead` (+ `code-reviewer`, `security-reviewer`, `architecture-reviewer`, `infrastructure-reviewer`, `test-reviewer`, `data-reviewer`) | `REVIEW COMPLETE` |
-| **Done** | `dev-lead` consolidates trade-offs, reports outcome vs Definition of Done, and (when shipping) drives `pr-description` / `release-notes`. | `dev-lead` | — |
+| **Done** | `dev-lead` reconciles evidence, relays trade-offs and uses the completion reference for approved PR/release artifacts. | `dev-lead` | — |
 
 After the plan is approved, the run is **autonomous** — it stops only on a defined stop
-condition (ambiguity, gate failure surviving one retry, scope change, destructive action,
+condition (ambiguity, exhausted gate retries, scope change, destructive action,
 missing secret, tracker-write failure, missing parent story id, or a ❌ Block review verdict).
 Two cross-cutting skills ride every transition: `run-event-log` (one JSONL event per stage /
 dispatch / gate) and `cost-budget` (a checkpoint after every stage, hard-stopping on envelope
@@ -283,7 +258,7 @@ Runtime-native settings govern actual model selection; no tier resolver or autom
 consumes it. Use the [consumer-owned setup](#optional-model-preferences--you-configure-them)
 above; shipped agents have no `model` / `models` pins. This annotation convention is
 Copilot-specific, not a cross-harness contract.
-Tier values accept ordered nonempty lists of model IDs or legacy single strings.
+Tier values require ordered nonempty lists of model IDs.
 The existing frontmatter checker validates the root profile and shipped template:
 only `heavy` / `mid` / `light`, no duplicates, and each listed model must be in
 `ai_copilot.approved_models`. This is static consistency checking, not runtime
@@ -314,13 +289,29 @@ There is no configured static type checker, application smoke command, or deploy
 Run the actual profile integration with either:
 
 ```text
-pwsh -NoProfile -File plugins/agile-agents-core/skills/test-bar-gate/scripts/run-gate.ps1 -ProfilePath .github/solution-profile.yaml
-bash plugins/agile-agents-core/skills/test-bar-gate/scripts/run-gate.sh --profile .github/solution-profile.yaml
+pwsh -NoProfile -File plugins/agile-agents-core/skills/test-bar-gate/scripts/run-gate.ps1 -ProfilePath .github/solution-profile.yaml -SmokeStatus not_applicable -SmokeDetail "Harness scripts and documentation; no application entry point"
+bash plugins/agile-agents-core/skills/test-bar-gate/scripts/run-gate.sh --profile .github/solution-profile.yaml --smoke-status not_applicable --smoke-detail "Harness scripts and documentation; no application entry point"
 ```
 
-The PowerShell gate requires `powershell-yaml`; the Bash gate requires mikefarah
+The PowerShell gate requires `powershell-yaml` (7.2+ for smoke signal cleanup); the Bash gate requires mikefarah
 `yq` v4. These are existing gate prerequisites, not optional skips. Checks are
 offline: this does not enable live evaluation or change budget caps.
+
+**Explicit gate commands.** Language palettes and tool aliases are not supported.
+Set each enabled `quality_gates.test_bar.<check>.command` from existing solution
+CI/scripts, with provenance and prerequisites in solution guidance. Empty enabled
+commands are configuration gaps (exit 2), not unsupported-stack passes.
+Compose polyglot checks in solution-owned scripts; `stacks` is rejected.
+Disabled checks are visible skips.
+Smoke still uses `testing.smoke.command`, `url`, `timeout_s`: missing setup or
+`undetermined` exits 2 and blocks verified Done. Only an inspected non-runnable
+project uses the evidenced `not_applicable` flags above. See
+[gate contract](plugins/agile-agents-core/skills/test-bar-gate/SKILL.md).
+Only declared command fields are supported. Scalar model-tier values are
+rejected; there are no aliases. The implicit profile
+path is `.github/solution-profile.yaml`; other locations need an explicit path.
+PowerShell smoke's explicit Unix signal cleanup requires 7.2+; older
+hosts report a configuration gap before starting a process.
 
 `scripts/check-skill-frontmatter.py` requires string-to-string agent metadata, restricts
 the tier to `light` / `mid` / `heavy`, rejects legacy top-level tiers and nested native
@@ -376,11 +367,11 @@ into your repo's `.github/`. Six fields are required before `dev-lead` will star
 `dev-lead` parses these terminator blocks from worker output. Renaming any silently breaks the
 pipeline: `IMPLEMENTATION COMPLETE`, `INFRASTRUCTURE COMPLETE`,
 `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`, `TASKS PLANNED`, `BOOTSTRAP COMPLETE`.
-`TESTS COMPLETE` was retired when `coding` absorbed `testing` ([ADR 0009](docs/adr/0009-merge-coding-and-testing-agents.md)) — `IMPLEMENTATION COMPLETE` now carries the test fields.
+`IMPLEMENTATION COMPLETE` includes test evidence; there is no separate testing hand-off.
 
 ### Vendored skills are read-only
-The 20 vendored skills (spread across `plugins/agile-agents*/skills/`) are unmodified copies from upstream. Do not edit them in
-place — extend via a wrapper skill or contribute upstream and re-sync. See
+`acquire-codebase-knowledge` is the sole vendored skill, retained for explicit
+onboarding. Do not edit its upstream body; contribute upstream and re-sync. See
 [`plugins/VENDORED.md`](plugins/VENDORED.md).
 
 ### Working on the harness

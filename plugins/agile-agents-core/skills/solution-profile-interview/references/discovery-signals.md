@@ -4,6 +4,22 @@ Filesystem → profile-field map for step 2. **Read-only** — no builds, no ins
 network. Field names below are the exact keys in `solution-profile.yaml`; if a signal is
 absent, leave the field empty rather than guessing.
 
+## Existing guidance and verification first
+
+Inventory before proposing gaps; this is evidence, not a new profile section:
+
+| Input | Evidence to record |
+|---|---|
+| Native repo/path instructions | source, client support, directory scope and `applyTo`; read only applicable guidance, never all scoped files as global policy |
+| Solution-local skills | actual description/capabilities and task/path/version/provider applicability; arbitrary names are valid |
+| Already-installed external plugins | native availability and source/version; a folder on disk alone does not establish runtime availability |
+| Missing capability | distinguish absent from ungranted (`tools: skill` for native loading); propose repair, never install during discovery |
+| Optional user-selected guidance | native instructions or personal plugins; absence is normal, no required package/name; stricter consent stands, safety and solution technical constraints remain |
+| CI/check commands | actual script or workflow, command, working directory, prerequisites and environment; propose existing `quality_gates.test_bar.<check>.command` values for confirmation, never guess from a language |
+
+Do not overwrite instructions or configuration from discovery alone. Resolve
+conflicts with the owner before changing their guidance.
+
 ## identity
 
 | Field | Signals |
@@ -81,7 +97,7 @@ absent, leave the field empty rather than guessing.
 | `team_communication.code_language` | language of `README.md` headings and top-of-file comments |
 | `team_communication.review_policy.code_owners_required` | `CODEOWNERS` exists → likely `true`, but confirm (it's a branch-protection setting) |
 | `legal.license` | `LICENSE` / `LICENSE.md` SPDX identifier |
-| `quality_gates.test_bar.stacks` | leave empty — the gate auto-detects from `tech_stack.primary_languages` |
+| `quality_gates.test_bar.<check>.command` | evidenced per-check commands from existing CI or repository scripts; do not infer commands from languages |
 | `code_localisation.*` | leave at defaults (`backend: auto`) unless the user asks |
 
 ## Never infer

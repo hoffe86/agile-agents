@@ -55,6 +55,24 @@ catalogue comes from each `<skill>/SKILL.md` frontmatter.
 
 ## Re-generation policy
 
+The implementations and template ship inside the
+[`solution-profile-interview` skill](../plugins/agile-agents-core/skills/solution-profile-interview/).
+The repository's `scripts/generate-agents-md.ps1` and `.sh` are thin compatibility
+wrappers, not symlinks or independent copies. Existing GitHub workflow commands
+and path filters still cover the bundled skill resources.
+
+In a consuming solution, invoke the loaded skill's script with `-RepoRoot` /
+`--repo-root` pointing at that checkout. See the bundled
+[generation guide](../plugins/agile-agents-core/skills/solution-profile-interview/references/generation.md)
+for runtime requirements, source-directory selection and explicit paths.
+Do not resolve consumer files relative to the installed plugin.
+
+Bootstrapper includes generation in profile-write approval and runs it after
+the write. Canvas Save approves both writes and uses the same bundled generator.
+An existing hand-maintained `AGENTS.md` is never overwritten; failures must be
+reported rather than claiming synchronization. Canvas retains the saved profile
+and offers a retry if generation fails.
+
 - **Run after every edit** to `solution-profile.yaml`, any `*.agent.md`
   frontmatter, or any `SKILL.md` frontmatter:
 
@@ -67,7 +85,7 @@ catalogue comes from each `<skill>/SKILL.md` frontmatter.
   ```
 
 - **Optional CI check** (recommended for downstream forks): run the
-  generator with `--dry-run` and `git diff --exit-code AGENTS.md` — fail
+  generator normally and then `git diff --exit-code AGENTS.md` — fail
   the build if AGENTS.md drifts from the profile. This is a
   copy-paste-ready GitHub Actions step:
 
@@ -101,7 +119,7 @@ catalogue comes from each `<skill>/SKILL.md` frontmatter.
   edit the relevant `*.agent.md` file or `SKILL.md`; AGENTS.md picks it
   up on next regeneration.
 - **Want to add a new vendor-neutral hint** that has no place in the
-  typed profile → extend `scripts/references/agents-md-template.md`
+  typed profile → extend the skill's `references/agents-md-template.md`
   (and document the new token in its `## Tokens` section).
 - **Never** hand-edit `AGENTS.md` — your changes will be lost.
 

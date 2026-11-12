@@ -31,9 +31,9 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Push-Location $repoRoot
 try {
-    $skillDirs = Get-ChildItem (Join-Path $repoRoot 'plugins') -Directory |
+    $skillDirs = @(Get-ChildItem (Join-Path $repoRoot 'plugins') -Directory |
         ForEach-Object { "plugins/$($_.Name)/skills" } |
-        Where-Object { Test-Path (Join-Path $repoRoot $_) }
+        Where-Object { Test-Path (Join-Path $repoRoot $_) })
 
     if (-not $skillDirs) { Write-Error 'No plugins/*/skills directories found.'; exit 2 }
     Write-Host "Scanning $($skillDirs.Count) plugin skill directories."

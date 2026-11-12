@@ -151,7 +151,9 @@ async function main() {
     client = new CopilotClient({
       connection: RuntimeConnection.forStdio({
         path: process.execPath,
-        args: [join(runtime, "index.js"), "--max-ai-credits", args["--max-ai-credits"]],
+        args: [join(runtime, "index.js"), "--max-ai-credits", args["--max-ai-credits"],
+          "--no-auto-update", "--sync-session=off",
+          "--secret-env-vars", "COPILOT_GITHUB_TOKEN,GH_TOKEN,GITHUB_TOKEN"],
       }),
       workingDirectory: process.cwd(),
       baseDirectory: process.env.COPILOT_HOME,

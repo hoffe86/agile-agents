@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -190,6 +191,7 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
                             self.assertTrue((ROOT / path).is_file(), path)
                     args = command.split()
                     if "discover" in args and "-s" in args and "-p" in args:
+                        args = shlex.split(command)
                         directory = ROOT / args[args.index("-s") + 1]
                         pattern = args[args.index("-p") + 1]
                         self.assertTrue(list(directory.glob(pattern)), (directory, pattern))
@@ -208,8 +210,9 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
         for directory, selector in (
             ("eval/pipeline/tests", "test_dependency_environment.py"),
             ("eval/pipeline/tests", "test_eval_pipeline_workflow.py"),
+            ("eval/pipeline/tests", "test_eval_custom_workflow.py"),
             ("eval/pipeline/trajectory", "test_check_trajectory.py"),
-            ("scripts/tests", "test_runtime_contracts.py"),
+            ("scripts/tests", "'test_*.py'"),
         ):
             self.assertIn(f"python -m unittest discover -s {directory} -p {selector} -v", commands)
         self.assertIn("python -m pytest -q eval/pipeline/custom-eval/tests eval/deepeval/tests", commands)
@@ -221,6 +224,43 @@ class EvalPipelineWorkflowTests(unittest.TestCase):
             f"python {SCORER} {FIXTURE} --score --expect-skill fixture-skill-a "
             "--output eval/pipeline/runs/skill-fixture-summary.json",
         )
+
+    def test_script_regressions_are_unconditional_with_native_prerequisites(self):
+        self.assertIn("push", self.skills["on"])
+        self.assertIn("pull_request", self.skills["on"])
+        job = self.skills["jobs"]["runtime-contracts"]
+        self.assertEqual(job["runs-on"], "${{ matrix.os }}")
+        self.assertEqual(job["strategy"]["matrix"], {"os": ["ubuntu-latest", "windows-latest"]})
+        self.assertNotIn("if", job)
+        self.assertNotIn("continue-on-error", job)
+        self.assertEqual(job["env"]["RUNTIME_GATE_REQUIRE_RUNNERS"], "1")
+        steps = {step.get("name"): step for step in job["steps"]}
+        scripts = steps["Offline runtime and instruction regressions"]
+        self.assertNotIn("if", scripts)
+        self.assertNotIn("continue-on-error", scripts)
+        args = shlex.split(scripts["run"])
+        selected = {path.name for path in
+                    (ROOT / args[args.index("-s") + 1]).glob(args[args.index("-p") + 1])}
+        self.assertTrue({
+            "test_runtime_contracts.py", "test_gate_commands.py",
+        } <= selected, selected)
+
+        powershell = steps["Install the gate's YAML parser"]
+        self.assertEqual(powershell["shell"], "pwsh")
+        self.assertNotIn("if", powershell)
+        self.assertNotIn("continue-on-error", powershell)
+        self.assertIn("#requires -Version 7.2", powershell["run"])
+        self.assertIn("Install-Module powershell-yaml -RequiredVersion 0.4.12", powershell["run"])
+        self.assertIn("Import-Module powershell-yaml -RequiredVersion 0.4.12 -ErrorAction Stop",
+                      powershell["run"])
+        bash = steps["Check the Bash gate's YAML parser"]
+        self.assertEqual(bash["if"], "runner.os == 'Linux'")
+        self.assertEqual(bash["shell"], "bash")
+        self.assertNotIn("continue-on-error", bash)
+        self.assertIn("command -v bash curl", bash["run"])
+        self.assertIn("yq --version | grep -E 'mikefarah/yq/.*version v4\\.'", bash["run"])
+        for prerequisite in (powershell, bash):
+            self.assertLess(job["steps"].index(prerequisite), job["steps"].index(scripts))
 
     def test_score_uses_literal_arguments_and_propagates_all_cli_exit_codes(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -9,27 +9,25 @@ profile, and versioned input declaration:
 
 | File | Purpose |
 |---|---|
-| `prompt.md` | The requirement fed verbatim to `dev-lead` |
+| `prompt.md` | The user-story prompt fed verbatim to `dev-lead` |
 | `acceptance.md` | 3-5 explicit, verifiable pass criteria |
 | `solution-profile.yaml` | Synthetic profile conforming to the shipped solution-profile contract |
-| `inputs.json` | Versioned list of required baseline inputs and their workspace destinations |
+| `inputs.json` | Version-1 explicit source/destination inputs, each with a required flag |
 | `expectations.yaml` | Trajectory contract: plan gate, which agents dev-lead delegates to, which skills each one must invoke |
 | `baseline/` | Minimal synthetic or task-directed source inputs; never includes the requested answer |
 
 A run has two halves, kept in separate trust zones:
 
-- **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, attempts
-  to drive `dev-lead` through the Copilot CLI to its plan gate, and has an LLM judge the plan
-  before resuming the *same* pending request. It records `phase1-changes.json` before any
-  acceptance checks, captures `produced.diff` against the staged baseline, and runs the task's
-  acceptance **checks** (see below) in that workspace, recording `checks.json`. Missing or
-  unverified approval evidence blocks the resume.
+- **Runner** (`../run_custom_eval.py`) stages the baseline into a fresh git workspace, drives
+  `dev-lead` to its plan gate, and has an LLM judge the plan before resuming the *same pending
+  request*. It records `phase1-changes.json` before acceptance checks, captures `produced.diff`
+  against the baseline, and runs the task's declared **checks**, recording `checks.json`.
+  Missing or unverified approval evidence blocks the resume.
 - **Scorer** (`../score_custom_eval.py`) reads only the recorded JSONL logs, `state.json`,
   `phase1-changes.json`, `plan-approval.json`, `produced.diff` and `checks.json`. Trajectory
   is scored with **DeepEval** (`ToolCorrectnessMetric`); command results decide
-  build/test/render criteria; the rest goes to a pluggable judge. The final agent response is
-  read from the log as separate evidence. The scorer runs no git and no workspace code, so it
-  can hold judge credentials safely.
+  build/test/render criteria; the rest goes to a pluggable judge. The completed final response
+  is separate untrusted evidence. The scorer runs no git and no workspace code.
 
 The live agent is **not OS-sandboxed** — it runs with every tool allowed on the host, which
 is why the runner refuses to start without `--unsandboxed`. The checks run in that same trust
@@ -45,20 +43,57 @@ Profiles populate the six required Stage-0 fields from the shipped template, set
 test bar with an explicit reason. These declarations describe intended task conditions;
 they do not authorize execution or bypass dev-lead's mandatory plan-approval gate.
 
+## Input staging and isolation
+
+The runner mounts **only `agile-agents-core`**. Each task declares ordinary
+version-1 `inputs`; there is no separate resolver or guidance manifest:
+
+```json
+{
+  "source": "baseline/.github/skills/python-testing/SKILL.md",
+  "destination": ".github/skills/python-testing/SKILL.md",
+  "required": true
+}
+```
+
+Sources must be task-local regular files. Symlinks, escaping/duplicate paths and
+configuration injection (`.git`, `.copilot`, `.claude`, plugins, agents or an
+overwritten task profile) fail setup. Native skill/instruction files are copied
+exactly like source inputs; the runner does not resolve capabilities or emulate
+`applyTo`. Presence is **not invocation**.
+
+Tasks 01/02/03/06/07/08/09/10 explicitly supply only their named technical
+capabilities. Tasks 04/05 need no technical skills. Their minimal, newly authored
+references are MIT test data, not copies of retired skills, scripts or resources.
+Technical skill-use expectations remain required when staged. No user-owned
+package, global skill directory or personal absolute path is a benchmark input.
+
+Live phases isolate HOME, USERPROFILE, COPILOT_HOME and XDG roots, omit ambient
+instruction/plugin/model overrides, and require `--sync-session=off` and
+`--secret-env-vars`. Missing controls fail
+setup. The runner probes the actual CLI, and the Node transport passes these controls to
+the SDK's CLI process. Dry runs stage only: they do not query the CLI or validate its flags.
+This is configuration isolation, **not an OS sandbox**.
+
+Offline tests cover exact staging, path/configuration rejection, core-only
+mounting, environment isolation and required privacy flags. Approval and
+per-agent command/skill evidence remain independently scored. These tests are
+not evidence of a successful live RPI run.
+
 ## The 10 tasks
 
 | # | Slug | Surface |
 |---|---|---|
 | 01 | `csharp-minimal-api-endpoint`       | C# / ASP.NET Minimal API + xUnit (csharp-implementation, csharp-testing) |
-| 02 | `python-di-refactor`                | Python refactor + DI (python-implementation, code-review-checklist) |
-| 03 | `bicep-storage-waf`                 | Bicep + Azure WAF baseline (bicep-implementation, iac-best-practices) |
-| 04 | `adr-library-tradeoff`              | ADR authoring (architecture-decision-records, trade-off-reporting) |
-| 05 | `pr-description`                    | Release-notes / PR-description authoring (engineering-standards) |
+| 02 | `python-di-refactor`                | Python refactor + DI (local python-implementation/python-testing) |
+| 03 | `bicep-storage-waf`                 | Bicep + Azure WAF baseline (local bicep-implementation) |
+| 04 | `adr-library-tradeoff`              | ADR authoring (architecture-decision-records, engineering-judgement) |
+| 05 | `pr-description`                    | PR/release artifacts (dev-lead-templates completion reference) |
 | 06 | `gha-oidc-deploy`                   | GitHub Actions + OIDC to Azure (cicd-pipeline-implementation) |
-| 07 | `test-coverage-uplift`              | Unit + integration test backfill (csharp-testing, code-review-checklist) |
-| 08 | `threat-model-api`                  | Threat-modelling (security-reviewer reviewer agent) |
+| 07 | `test-coverage-uplift`              | Unit + integration test backfill (local csharp-testing, independent code-reviewer) |
+| 08 | `threat-model-api`                  | Architect-authored STRIDE document (local minimal threat-model-analyst reference), independent security review |
 | 09 | `polly-resilience`                  | Resilience patterns on HTTP client (cloud-native-patterns, csharp-implementation) |
-| 10 | `helm-to-kustomize`                 | K8s migration (helm-kustomize-implementation, iac-best-practices) |
+| 10 | `helm-to-kustomize`                 | K8s migration (local helm-kustomize-implementation) |
 
 The 10 tasks together touch every author agent (coding × 2 stacks — implementation *and* the
 tests that cover it, infrastructure, architect) and every reviewer agent (code-reviewer,
@@ -80,88 +115,55 @@ python eval/pipeline/run_custom_eval.py task-05 --out $env:TEMP\ce\task-05 --pha
 python eval/pipeline/score_custom_eval.py $env:TEMP\ce\task-05 --judge azure-openai --output summary.json
 ```
 
-Needs the Copilot CLI on `PATH` (pinned `1.0.105` in CI), a nonempty
+Needs Node.js and the Copilot CLI on `PATH` (CLI pinned `1.0.105` in CI), a nonempty
 `COPILOT_GITHUB_TOKEN` or `GITHUB_TOKEN`, and the hash-locked environment from
 [`../../deepeval/README.md`](../../deepeval/README.md). Local runs can keep using
-`COPILOT_GITHUB_TOKEN`; GitHub Actions supplies `GITHUB_TOKEN` automatically.
+`COPILOT_GITHUB_TOKEN`; Actions supplies `GITHUB_TOKEN` to the two agent phase steps.
 `--max-ai-credits` caps each phase (minimum 30). The plan approver always uses Azure OpenAI;
 the acceptance judge is selected separately. Azure OpenAI authenticates with Entra only —
 `az login` locally, federated `azure/login` in CI; no API key is accepted — and reads
-`AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`. Unset `AZURE_OPENAI_API_KEY` and
-`AZURE_OPENAI_AD_TOKEN`, even if empty: the underlying client otherwise picks them up in
-addition to or instead of the Azure CLI token. Set the endpoint to the Azure resource URL,
-for example `https://<resource>.openai.azure.com/`,
-`https://<resource>.services.ai.azure.com/`, or
-`https://<resource>.cognitiveservices.azure.com/`, not a project URL or a Responses API
-operation URL.
-The deployment must support Azure's deployment-based Chat Completions API. The default API
-version is `2024-10-21`; local runs can override it with `AZURE_OPENAI_API_VERSION`.
-The judge requests `temperature=0`. If the service specifically rejects that value for
-`temperature`, it logs a warning and retries once using the deployment's default; results
-may then vary between runs. Other errors do not trigger this fallback.
-Judge failures report the HTTP status when available without logging the SDK response or
-credentials. A successful Azure login does not prove inference access: check the identity
-and its inference role for 401/403, the resource and deployment for 404, and model/API
-compatibility for 400.
+`AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`. Unset `AZURE_OPENAI_API_KEY`
+and `AZURE_OPENAI_AD_TOKEN`, even if empty; ambient credentials are rejected.
+The endpoint must be the HTTPS Azure resource URL, not a project or operation URL.
+The deployment must support deployment-based Chat Completions (default API version
+`2024-10-21`, overridable with `AZURE_OPENAI_API_VERSION`). The judge requests
+`temperature=0`; only a specific unsupported-temperature response triggers one retry
+with the deployment default and a warning that results may vary. Safe diagnostics report
+HTTP status, never SDK response bodies or credentials.
 
-In CI, run **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`) by hand.
-GitHub registers it for manual dispatch only after the workflow file is on the default branch;
-select the branch to evaluate when starting the run.
+In CI, dispatch **Eval · custom-eval live run** (`.github/workflows/eval-custom.yml`).
+GitHub registers manual dispatch once the workflow is on the default branch; select the
+branch to evaluate when starting the run:
 
 | Job | Holds | Does |
 |---|---|---|
-| `plan` | `GITHUB_TOKEN` with `contents: read` and `copilot-requests: write` | phase 1; writes the plan to the step summary (runs the checks only if dev-lead skipped the gate) |
-| `approve` | OIDC and `contents: read`; no `copilot-requests` permission | the simulated approver judges the plan and outputs `approved` or `rejected`; runs no agent |
+| `plan` | `GITHUB_TOKEN`: `contents: read`, `copilot-requests: write`; no OIDC | phase 1; writes the plan to the step summary (runs checks only if dev-lead skipped the gate) |
+| `approve` | OIDC and `contents: read`; no `copilot-requests` | the simulated approver judges the plan and outputs `approved` or `rejected`; runs no agent |
 | `implement` | same as `plan` | runs only when `approve` succeeds with an `approved` decision, then resumes and runs the checks |
-| `score` | OIDC and `contents: read`; no `copilot-requests` permission | DeepEval + judge over the recorded files; runs no agent |
+| `score` | OIDC and `contents: read`; no `copilot-requests` | DeepEval + judge over the recorded files; runs no agent |
 
-The agent jobs install .NET 10 for the C# tasks, pinned Python tools for task 02, and a
-pinned, checksum-verified `actionlint` for task 06; `kubectl`, `az` and Docker come with
-the runner image. Task 02 layers its hash-locked dependencies on the evaluation environment
-only in the agent jobs; the approver and scorer retain the evaluation lock alone. Locally,
-a missing tool leaves its criterion `UNVERIFIED`.
-
-The pinned `actionlint` 1.7.12 predates the `copilot-requests` permission. When linting
-this workflow with it, exclude only that false positive:
+The agent jobs install .NET 10 for C# tasks, task-02-only hash-locked Python tools, and
+checksum-verified `actionlint` for task 06; `kubectl`, `az` and Docker come with the runner
+image. Task 02 layers `requirements-task02.lock.txt` on the evaluation environment and runs
+`pip check`; approver/scorer jobs retain the evaluation lock alone. Missing local tools leave
+their criteria `UNVERIFIED`. The pinned actionlint 1.7.12 predates `copilot-requests`;
+when checking this workflow, suppress only its unknown-scope diagnostic:
 
 ```powershell
 actionlint -ignore 'unknown permission scope "copilot-requests"\.' .github\workflows\eval-custom.yml
 ```
 
-GitHub provides a short-lived `GITHUB_TOKEN`; no Copilot PAT or `EVAL_COPILOT_TOKEN` secret
-is needed. The unsandboxed agent can read this token while it runs. Usage in a personally
-owned repository is billed to the owner's Copilot seat; an organization-owned repository
-must enable the Copilot CLI organization-billing policy. See
-[Copilot CLI in GitHub Actions](https://docs.github.com/en/copilot/concepts/agent-capabilities/agent-powered-workflows-and-operations/copilot-cli-in-github-actions).
-
-Configure these repository variables under **Settings > Secrets and variables > Actions >
-Variables**:
-
-| Variable | Value |
-|---|---|
-| `EVAL_AZURE_CLIENT_ID` | Client ID of the Entra application or user-assigned managed identity |
-| `EVAL_AZURE_TENANT_ID` | Tenant ID of that identity |
-| `EVAL_AZURE_OPENAI_ENDPOINT` | Azure OpenAI resource URL, as described above |
-| `EVAL_AZURE_OPENAI_DEPLOYMENT` | Name of the deployed Chat Completions model |
-
-Give the identity a GitHub OIDC federated credential for the branch selected when dispatching
-the workflow. For these jobs, which do not use a GitHub environment, the issuer is
-`https://token.actions.githubusercontent.com` and the audience is `api://AzureADTokenExchange`.
-The subject must match the token's **exact** `sub` claim. Depending on the repository's OIDC
-settings, the default branch subject uses either
-`repo:<owner>/<repo>:ref:refs/heads/<branch>` or the immutable format
-`repo:<owner>@<owner-id>/<repo>@<repo-id>:ref:refs/heads/<branch>`. Customized subject
-claims can have a different format. The `azure/login` step reports the presented subject;
-`AADSTS700213` means no configured credential matched the token's trust values. Compare
-the issuer, subject, and audience, and configure a matching credential for each branch
-that is allowed to run the evaluation.
-
-Assign the identity `Cognitive Services OpenAI User` on the Azure OpenAI resource, or another
-role that grants the required inference access. See the
-[GitHub OIDC subject reference](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims),
-[OIDC setup](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect),
-and [Azure OpenAI roles](https://learn.microsoft.com/azure/foundry-classic/openai/how-to/role-based-access-control#summary).
-No approval environment, human reviewer, or stored client secret is needed.
+Actions uses a short-lived `GITHUB_TOKEN`; no Copilot PAT or `EVAL_COPILOT_TOKEN` secret is
+needed. The unsandboxed agent can read this token. Billing and organization policy must allow
+[Copilot CLI in Actions](https://docs.github.com/en/copilot/concepts/agent-capabilities/agent-powered-workflows-and-operations/copilot-cli-in-github-actions).
+Configure repository variables `EVAL_AZURE_CLIENT_ID`, `EVAL_AZURE_TENANT_ID`,
+`EVAL_AZURE_OPENAI_ENDPOINT` and `EVAL_AZURE_OPENAI_DEPLOYMENT`.
+The Entra identity needs an OIDC credential whose issuer, audience and exact subject match
+the selected branch's token, plus inference access such as `Cognitive Services OpenAI User`
+on the resource. Subject formats can be classic, immutable or customized: use the actual
+subject reported by `azure/login`, not an assumed template. See
+[OIDC setup](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect).
+No approval environment, human reviewer or stored client secret is needed for this eval.
 
 ## Simulated plan approval (eval-only)
 
@@ -173,44 +175,23 @@ separately, assumptions and risks, no scope expansion, approval asked before exe
 any task-specific ones under `plan_approval:` in `expectations.yaml` (needs
 `plan_gate: required`). Each criterion is `PASS`, `FAIL` or `UNVERIFIED`; the plan is
 **approved only if every criterion passes**. The approver sees the requirement (`prompt.md`),
-the preceding plan message, and the exact approval question — what a human sees — never
-`acceptance.md`. The question itself may contain the plan. Missing evidence must be judged
-`UNVERIFIED`; an oversized plan is rejected without making a model call.
+preceding plan message and exact question/choices, never `acceptance.md`. The question may
+contain the plan. Missing evidence is `UNVERIFIED`; oversized plans are rejected without a
+model call.
 
-The runner uses the pinned Copilot CLI's bundled SDK to suspend at the top-level `ask_user`
-request and resume that same request after approval. This internal SDK interface is tied to
-the pinned CLI version. Synthetic probes on Windows and Linux verified suspension, cold
-resume, the matching tool response, and delegated skill attribution. A
-[cross-job Actions probe](https://github.com/hoffe86/agile-agents/actions/runs/42985402021)
-used a synthetic agent and the real Azure judge: the plan was approved, the same request
-resumed in another job, and DeepEval credited the delegated worker and its skill. This
-verifies the transport, not real `dev-lead` compliance.
+The Node transport uses the pinned CLI's bundled SDK to suspend at the top-level `ask_user`
+request and resume that same request after approval. Its internal interface is version-bound.
+The decision binds the session, request, tool call, visible plan, requirement and rubric.
+A stale or mismatched decision, missing evidence, nonzero transport exit or a different
+completed response cannot pass; further unapproved questions block completion.
 
-Real `dev-lead` probes have not yet completed this path. In a
-[Python task run](https://github.com/hoffe86/agile-agents/actions/runs/42984715940),
-Azure graded all acceptance criteria and both command checks passed, but the result was
-`failed`: the agent changed files before approval and invoked none of the expected agents
-or skills. A [multi-file infrastructure task](https://github.com/hoffe86/agile-agents/actions/runs/42985948020)
-also failed the gate and recorded no expected agents or skills; one acceptance criterion
-remained unverified because its fixture does not contain an Ingress resource. Earlier probes
-also skipped the gate or could not verify an approval request.
-An earlier detector missed shell-written changes; replaying the captured diff against a
-clean task baseline now detects them, but that replay is not a new live run.
-Both recent real runs received the CLI's generic instruction not to delegate work
-finishable in five or fewer tool calls alongside dev-lead's instruction to delegate
-implementation. Whether that conflict caused the skipped gates has not been established.
-
-The gate checks implementing-agent delegation attempts and top-level write tools, and records
-persistent workspace changes against the staged baseline. That snapshot covers committed,
-staged, unstaged and non-ignored untracked changes, including shell writes. It excludes
-generated `bin`, `obj`, `node_modules`, `.venv`, `.pytest_cache`, `.mypy_cache` and
-`.ruff_cache` directories, Python bytecode in `__pycache__`, `.copilot-runs/` telemetry, and
-`.github/solution-profile.yaml` setup. A nonempty snapshot fails the gate; a missing or
-malformed snapshot leaves it unverified and prevents approval and resume. Runs recorded
-before this snapshot existed cannot receive gate credit without it. It cannot detect changes
-that were reverted, ignored, or made outside the workspace; the unsandboxed agent can also
-tamper with local evidence. A top-level write tool is still a violation regardless of path.
-This detection is not a security boundary.
+The gate detects implementing-agent delegation attempts and top-level write tools, plus
+persistent committed, staged, unstaged and non-ignored untracked changes against the
+baseline, including shell writes. The snapshot excludes generated build/cache directories,
+Python bytecode in `__pycache__`, `.copilot-runs/` telemetry and task-profile setup.
+A nonempty snapshot fails; a missing/malformed snapshot is unverified and prevents approval
+and resume. Reverted, ignored or out-of-workspace changes are not detected, and the
+unsandboxed agent can tamper with local evidence. Detection is not a security boundary.
 
 The decision is written to `plan-approval.json`, labelled `llm-simulated`, and scored as its
 own metric, `Plan approval (llm-simulated)`. A rejection **ends the run** as **failed**
@@ -242,14 +223,27 @@ forbidden_skills:
 Each agent's skill list scores as its own DeepEval metric (`skills:<agent>`), so a miss is
 attributed to the agent that should have loaded the skill. Tool-call starts are reported as
 attempts; a load receives credit only when its matching completion reports success. A
-missing completion is `UNVERIFIED`, not a pass or an agent failure. Delegation receives credit
-when the named agent starts or the task call succeeds; a failed attempt is not a successful
-delegation, and an incomplete attempt is `UNVERIFIED`. An attempted implementing-agent
-delegation before approval still violates the plan gate. Lists hold the **core contract
-loads** an agent's own definition makes mandatory — not every skill a good run might touch —
-so a pass means the contract was honoured, not that the run was optimal. `any` exists for
-deliverable skills whose author varies (an ADR may be drafted by dev-lead or a reviewer).
+missing completion is `UNVERIFIED`, not a pass or an agent failure. Lists hold the
+**core contract loads plus explicitly staged consumer capabilities**, not every
+skill a good run might touch. A pass means the measured contract was honoured,
+not that the run was optimal. `any` supports deliverable skills whose author varies;
+it never authorizes a reviewer to write or launch a nested author.
 Task-10 lists criterion 2 under `unverifiable` with its reason (see fixture boundaries).
+
+Delegation receives credit when the named agent starts or its task call succeeds.
+Failed attempts receive no credit; incomplete attempts are `UNVERIFIED`. An attempted
+implementing-agent delegation before approval still violates the gate.
+
+Current acceptance owners:
+
+- The **code-reviewer agent rubric** owns code quality; its delegation and
+  read-only skills are required. Reviewer forbidden-workflow checks still apply.
+- **dev-lead-templates/references/completion.md** covers
+  intent, real test evidence, rollback, migration/breaking changes and publication
+  approval. Task acceptance judges the requested PR text.
+- `threat-model-analyst` is **task-08-only synthetic author guidance**, not the
+  a general toolkit. Attribution belongs to `architect`;
+  security-reviewer remains independent. No threat-library coverage is claimed.
 
 ## Acceptance checks
 
@@ -278,13 +272,11 @@ in which case the judge grades the remaining clause (with `--judge none` it stay
 `UNVERIFIED`). Command output is also shown to the judge as untrusted evidence. Declared
 checks with no matching `checks.json` leave their criteria `UNVERIFIED`; rerun
 `--phase verify`. Checks run only for runs that reached `complete` or `gate_skipped`.
-`{python}` resolves to the interpreter running the verifier, not necessarily the agent's
-Python. Its environment must contain the tools the checks require. For task 02, install
-`requirements-task02.lock.txt` with `--require-hashes --only-binary=:all:` into a separate
-evaluation environment, then run `--phase verify` with that environment's Python.
-The judge receives the completed final response separately from the diff. It can grade the
-response itself when it is the requested deliverable, but cannot use its claims as proof of
-file changes or test results. A plan waiting for approval is never treated as a final answer.
+`{python}` is the verifier's interpreter. For task 02, install
+`requirements-task02.lock.txt` with `--require-hashes --only-binary=:all:` into an isolated
+evaluation environment, then verify using that interpreter.
+The judge can grade a completed final response when it is the requested deliverable, but
+its claims are not proof of changes or test results. A pending plan is not a final answer.
 Responses over 120,000 characters leave model-judged criteria `UNVERIFIED` without a model
 call; command-check overrides still apply.
 
@@ -299,15 +291,16 @@ call; command-check overrides still apply.
 | 10 | c1 `kubectl kustomize` for dev, staging, prod | c3+ (c2 is unverifiable) |
 | 04, 05, 08 | — documentation deliverables | all |
 
-### What the first live runs showed
+### Runtime limitations
 
-Spikes on CLI 1.0.105 (task-02, task-05), reproduced in the
-`copilot-subagent-session.jsonl` fixture, exposed missing tool grants and a skipped plan gate.
-The agents now grant `skill`, and `dev-lead` grants `ask_user`. A synthetic SDK probe confirmed
-that a delegated worker can invoke a skill and that the trace attributes the call to that
-worker. The real-agent gate outcomes above remain failures or unverified evidence; the grants
-do not make those runs pass. The unsandboxed coding sub-agent also read outside its workspace,
-and a 60-credit cap was hit mid-run — size `--max-ai-credits` per task.
+- Delegated skill use requires the native `skill` grant and source-attributed
+  execution evidence. Static grants do not prove role-wide invocation or
+  automatic scoped-instruction injection.
+- Native `ask_user` and transport support do not prove real dev-lead compliance.
+  Missing request evidence remains `blocked_approval`; implementation before approval
+  is `gate_skipped` and fails scoring.
+- The agent is unsandboxed and can read outside its workspace. Set
+  `--max-ai-credits` for the task; a cap is not filesystem isolation.
 
 ## Interpreting acceptance evidence
 

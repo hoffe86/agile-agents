@@ -30,7 +30,7 @@ number moved.
 So the governing principle here is **fail loudly, never silently**. Everything below is a
 variation on it.
 
-`engineering-standards` and `development-practices` cover the code. `iac-best-practices`
+`development-practices` covers the code. `iac-best-practices`
 covers provisioning the platform. This skill covers the data.
 
 ## 1. The contract comes before the pipeline

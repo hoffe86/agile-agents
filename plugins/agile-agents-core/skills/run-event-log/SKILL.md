@@ -1,6 +1,8 @@
 ---
 name: run-event-log
-description: Emit one JSON Lines event per phase boundary, tool call, and completion to `.copilot-runs/<run-id>/events.jsonl` for audit, cost tracking, and post-hoc analysis. Loaded only by `dev-lead`, the sole event writer. Sentinel blocks remain the canonical hand-off; the event log is additive structured telemetry.
+description: >-
+  Dev-lead-only append-only JSONL telemetry for phase boundaries, significant
+  tool calls, gates and completion. Supplements canonical sentinel hand-offs.
 metadata:
   applies_to: all
 ---
@@ -8,17 +10,6 @@ metadata:
 # run-event-log
 
 Structured, append-only telemetry that runs **alongside** (never replaces) the sentinel-block hand-off (`IMPLEMENTATION COMPLETE`, `INFRASTRUCTURE COMPLETE`, `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`).
-
-## Why this exists
-
-Sentinel blocks are great for sync hand-off between agents, but they're prose — you can't query them. The event log gives us four things prose blocks can't:
-
-1. **Audit trail** — replay any past run, attribute every action to an agent and phase
-2. **Cost telemetry** — the `phase_start` / `phase_complete` timestamps are the windows `cost-budget`'s `collect-usage.py` uses to attribute real, runtime-measured token usage per phase; prerequisite to H4 cost discipline
-3. **Reviewer-overlap analysis** — quantify how often `security-reviewer` re-flags `code-reviewer` findings; prerequisite to E3 spike on file-restriction enforcement
-4. **Debugging** — when a run fails, the JSONL is the smallest reproducible record of what each agent decided to do
-
-Citations: `docs/research/stream-e-blogs.md` §6 (Anthropic Managed Agents — every action a structured event), §25 (Sourcegraph mandates full transcripts).
 
 ## File layout
 
@@ -65,11 +56,8 @@ backfill them. Unversioned historical events are not current v2 compliance evide
 
 ## Who emits what
 
-**`dev-lead` emits everything.** It is the only agent that loads this skill, because it is
-the only one that knows the phase structure — and because usage is attributed to a phase
-by timestamp (see `cost-budget`), a worker emitting its own events would add nothing the
-orchestrator's phase window does not already capture. An earlier version of this file told
-every agent to emit; none did, and nothing depended on it.
+**`dev-lead` emits everything.** Only the supervisor loads this skill; its
+non-overlapping phase windows attribute measured usage (`cost-budget`).
 
 1. **`run_start`** — first event in the file. **`run_complete`** — last.
 2. **On phase entry / exit** — `phase_start`, then `phase_complete` with

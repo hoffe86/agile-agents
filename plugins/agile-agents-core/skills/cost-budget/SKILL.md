@@ -1,21 +1,13 @@
 ---
 name: cost-budget
 description: >-
-  Read the per-run / per-phase cost envelope from `solution-profile.yaml: cost_envelope`, gate run start (refuse if envelope is missing on production-tier engagements), checkpoint at every phase transition, and abort with a clear stop reason if the envelope is exceeded. Loaded by `dev-lead` at run start and at every stage transition. Reads real per-phase / per-agent token + AI-unit usage from the CLI's own usage store via `scripts/collect-usage.py` -- agents cannot observe their own token spend, so nothing is self-reported.
+  Gate dev-lead runs against the profile's token/AIU envelope using measured CLI
+  usage. Load at run start, phase transitions and completion; never self-report spend.
 metadata:
   applies_to: all
 ---
 
 # cost-budget
-
-## Why this skill exists
-
-Multi-agent runs are **expensive** and prone to runaway loops. Two pieces of evidence shape the policy:
-
-- **Anthropic / "How we built our multi-agent research system"** (stream-e-blogs.md, "Cost Economics"): a multi-agent chat consumes **~15× the tokens** of a single-agent baseline. A loop that nobody is watching can burn an entire monthly Foundry quota in a single afternoon.
-- **Shopify §21 ("Roast" fine-tune)**: a focused, fine-tuned 32B model was **2.2× faster and 68% cheaper** than the frontier model on the same task — i.e. the right tier for the job matters more than always reaching for the biggest model.
-
-Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuck "fix-the-tests" cycle) are the **#1 production failure mode** of agentic systems in real-world deployments. This skill is the circuit-breaker.
 
 ## What it does
 
@@ -36,7 +28,7 @@ Runaway loops (an agent re-prompting itself, a reviewer/author ping-pong, a stuc
 
    **Gate on AIU or tokens, not USD.** The runtime meters AI units; currency is a rate-card
    conversion it does not perform. A USD cap with no `usd_per_aiu` is inert — report it as
-   inert rather than as `0.00`, which is what let the old gate pass every run silently.
+   inert rather than as `0.00`.
 
    **Minutes are informational.** `max_minutes_per_run` is a planning value,
    not an enforced deadline. The collector gates tokens, AIU, and rated USD;
@@ -149,10 +141,3 @@ When the envelope is exceeded, emit the markdown report defined in `references/c
   **Exit 3 is a tooling failure, not a budget breach** — no `python3`, no store, or a
   schema the CLI changed under us. Warn, record `cost telemetry unavailable`, and let the
   run continue; halting a delivery run because a metering table moved is the wrong trade.
-  It is a single Python file because reading SQLite needs no dependency there, while both
-  PowerShell and bash would need one.
-
-## Citations
-
-- stream-e-blogs.md — "Cost Economics" (the 15× multi-agent overhead figure).
-- Shopify §21 — "Roast" fine-tune (32B = 2.2× faster, 68% cheaper than frontier on a focused task).

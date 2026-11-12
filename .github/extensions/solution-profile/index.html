@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Solution profile</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to profile</a>
+  <header>
+    <div class="eyebrow">AGILE AGENTS / CONFIGURATION</div>
+    <h1>Solution profile</h1>
+    <p class="muted"><code>.github/solution-profile.yaml</code> is the source of truth.</p>
+    <div id="summary" class="summary" aria-live="polite">Loading profile...</div>
+  </header>
+  <main id="main">
+    <p class="notice">Edits are kept as a session draft. Only <strong>Save profile</strong>
+      writes the YAML file and runs the bundled <code>AGENTS.md</code> generator.
+      Profile commands, installs and agent workflows never run here.</p>
+    <div id="error" role="alert" hidden></div>
+    <p id="message" role="status" aria-live="polite"></p>
+    <nav aria-label="Profile views">
+      <button type="button" data-view="form" aria-pressed="true">Fields</button>
+      <button type="button" data-view="yaml" aria-pressed="false">YAML</button>
+      <button type="button" data-view="changes" aria-pressed="false">Review changes</button>
+    </nav>
+    <section id="form-view" aria-label="Profile fields">
+      <label class="search">Find a field<input id="search" type="search" placeholder="Name, path or section"></label>
+      <div id="fields"></div>
+    </section>
+    <section id="yaml-view" aria-label="YAML editor" hidden>
+      <label for="yaml">Draft YAML</label>
+      <p class="muted">Preserve comments and unfamiliar keys. Missing fields can be added here.
+        Apply edits to the draft before reviewing or saving.</p>
+      <textarea id="yaml" spellcheck="false" rows="28"></textarea>
+      <button id="apply-yaml" type="button">Apply YAML to draft</button>
+    </section>
+    <section id="changes-view" aria-label="Change review" hidden>
+      <h2>Changes from disk snapshot</h2>
+      <p class="muted">Review all consequential changes, especially permissions, budgets and commands.</p>
+      <pre id="diff" tabindex="0" aria-label="YAML diff"></pre>
+      <label class="review"><input id="reviewed" type="checkbox"> I reviewed this exact draft and approve saving it and regenerating AGENTS.md.</label>
+    </section>
+    <section aria-label="Validation" class="validation">
+      <h2>Configuration checks</h2>
+      <p class="muted">Checks required values, template types and key gate rules. This does not execute
+        commands, certify the full profile or verify startup.</p>
+      <ul id="issues"></ul>
+    </section>
+    <details id="disk-panel">
+      <summary>Disk and recovery</summary>
+      <div class="actions">
+        <button id="compare" type="button">Compare with disk</button>
+        <button id="reload-view" type="button">Reload view</button>
+        <button id="discard" type="button" class="danger">Discard draft and reload disk</button>
+      </div>
+      <pre id="disk" tabindex="0" aria-label="Current disk YAML">Not read yet.</pre>
+    </details>
+  </main>
+  <footer>
+    <span id="save-hint" class="muted">Review the diff to enable Save.</span>
+    <button id="save" type="button" class="primary" disabled>Save profile</button>
+  </footer>
+</body>
+</html>

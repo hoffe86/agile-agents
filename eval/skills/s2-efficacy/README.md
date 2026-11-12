@@ -1,5 +1,8 @@
 # `s2-efficacy/` — efficacy A/B (blocked on environment isolation)
 
+**Not runnable against current core.** This suite's technical skill target is
+not shipped by the harness. Its results are not current-core efficacy evidence.
+
 **Status: cannot produce a valid result on a machine with the plugins installed.**
 Not blocked on credits — blocked on isolation. Read this before running anything here.
 

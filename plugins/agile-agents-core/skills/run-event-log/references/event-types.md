@@ -6,11 +6,8 @@ written by **`dev-lead`**. A delegated worker is identified by its role window
 `handoff_received`—never by changing the event's `agent`.
 The examples use schema version 2 and post-cutoff timestamps. Historical
 unversioned logs remain archived as-is and do not count as current compliance.
-The standalone `cost_summary` event shape shown in ADR 0006 is a historical
-proposal, superseded by the approved v2 contract: cost data belongs in
-`run_complete.payload.cost_summary`. ADR 0006 remains the accepted record for
-the JSONL format and single-emitter decision; its historical example is not
-the current wire schema.
+Cost data belongs in `run_complete.payload.cost_summary`, never a standalone
+event. The schema, not examples in decision records, defines accepted fields.
 
 Sentinel blocks remain the canonical hand-off. Events are additive and do not
 replace them.

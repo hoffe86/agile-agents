@@ -38,14 +38,14 @@ For application work following analysis, include the analysis producer's
 ### Gate invocation and evidence record
 
 Use the loaded `test-bar-gate` skill's `scripts/run-gate.sh` (or `.ps1` on
-Windows), after resolving `.github/solution-profile.yaml` with its documented
-root-profile compatibility. Stack detection uses `tech_stack.primary_languages`
-and `quality_gates.test_bar.<check>.command` overrides.
+Windows), using `.github/solution-profile.yaml` or an explicit profile path.
+Run solution-declared
+`quality_gates.test_bar.<check>.command` values; no language fallback.
 
-The smoke slot starts a runnable application and confirms it answers. An
-ecosystem startup-discovery skill, if installed, supplies the entry point when
-no `testing.smoke.command` is configured. A build alone cannot establish that
-DI registration, connection strings or startup dependencies work.
+Resolve `testing.smoke.command` from solution evidence; optional capabilities
+require actual availability and applicability. Otherwise use repo conventions
+and report the fallback. `undetermined` or a missing required command exits 2
+and blocks verified Done. Only evidenced `not_applicable` skips smoke.
 
 Store the gate's commands, outcomes, explicit skips and content identity in the
 session DB: verified HEAD, staged and unstaged diffs, and content hashes of

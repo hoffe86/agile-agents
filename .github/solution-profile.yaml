@@ -1,14 +1,6 @@
-# solution-profile.yaml — single source of truth for repo-level operational facts.
-#
-# Every agent in the suite reads this file FIRST (alongside .github/copilot-instructions.md).
-# Profile fields override the agent's defaults; safety/security defaults remain non-negotiable.
-# `dev-lead` validates that the **required** fields below are present at Stage 0 Intake and
-# halts with a `ask_user` if any are missing.
-#
-# `copilot-instructions.md` stays as freeform prose for narrative context. This file is for
-# the operational facts agents would otherwise have to discover or guess each invocation.
-#
-# Drop unknown / not-applicable optional fields. Don't fill in placeholders.
+# Operational facts for this repository; schema/defaults live in
+# plugins/agile-agents-core/skills/solution-profile-interview/references/solution-profile.template.yaml.
+# Read with repository instructions. Values override defaults, never safety.
 
 # ─── identity ─── REQUIRED: project_name, lifecycle_stage ─────────────────────
 identity:
@@ -24,26 +16,10 @@ identity:
 
 # ─── documentation ─── REQUIRED: location ─────────────────────────────────────
 documentation:
-  platform: "in-repo"                  # Where the docs live as a *system*.
-                                # in-repo | separate-repo | github-wiki | ado-wiki |
-                                # confluence | sharepoint | notion | none
-                                # Empty → agents assume `in-repo`.
-  location: "docs/"                  # REQUIRED. Resolves against `platform`:
-                                #   in-repo       → path, e.g. "docs/"
-                                #   separate-repo → clone URL (+ optional "#path/inside")
-                                #   *-wiki        → wiki URL
-                                #   confluence    → space or parent-page URL
-                                #   sharepoint    → document-library URL
-                                # Agents read here, and write here only when the platform is
-                                # writable from the workspace (in-repo). Otherwise they emit
-                                # the content and say where it needs to be pasted.
-  framework: "arc42"            # Documentation framework — the *table of contents* agents
-                                # follow when authoring or reviewing architecture docs.
-                                # arc42 | c4-only | togaf | 4+1 | custom | none
-                                # Empty → agents default to arc42 + C4 and say so.
-                                # `custom` → point `framework_reference` at the local template.
-  framework_reference: ""       # Path / URL to the project's own doc template. Required when
-                                # framework: custom — agents follow it instead of arc42.
+  platform: "in-repo"
+  location: "docs/"             # REQUIRED; writable in this worktree.
+  framework: "arc42"
+  framework_reference: ""
   adr:
     location: "docs/adr/"                # In-repo path (e.g. "docs/adr/") or external URL.
     format: "nygard"                  # madr | nygard | custom | none
@@ -62,21 +38,9 @@ backlog:
   commit_convention: "conventional-commits"         # conventional-commits | gitmoji | freeform
   required_commit_trailers: ["Co-authored-by"]  # E.g. ["Signed-off-by", "Co-authored-by"]
   task_type: "Task"             # Work-item type used for planned child tasks (ADO: Task; GitHub: Issue; Jira: Sub-task).
-  create_tasks: false           # When true, dev-lead's Plan phase has backlog-manager create one child task
-                                #   per planned task under the parent story (provisional, tagged `pending-approval`),
-                                #   then the human approves the plan. Requires a parent story id at intake.
+  create_tasks: false           # Inline planning; human plan approval still required.
   task_granularity: ""          # Optional hint: how finely to split (e.g. "one task per component/behaviour", "thin vertical slices").
-  task_states: {}               # Optional map: neutral lifecycle state -> this tracker's own state name.
-                                #   dev-lead speaks only the neutral names (in_progress / implemented /
-                                #   done / blocked); backlog-manager translates. Leave empty to have it
-                                #   discover the tracker's states, and fall back to a status comment when
-                                #   the tracker has no matching state (GitHub Issues, for one, has only
-                                #   open/closed).
-                                #   in_progress: ""   # e.g. Active | Doing | In Progress
-                                #   implemented: ""   # e.g. Resolved -- code complete, not yet verified;
-                                #                     #      omit when the tracker has no such state
-                                #   done:        ""   # e.g. Closed | Done | closed
-                                #   blocked:     ""   # omit when the tracker has no such state
+  task_states: {}               # Discover tracker states; unmatched states use comments.
 
 # ─── rpi ─── Research → Plan → Implement → Review handover ─────────────────────
 rpi:
@@ -225,22 +189,16 @@ code_localisation:
                                 # Protects against runaway maps on monorepos.
 
 # ─── quality_gates ────────────────────────────────────────────────────────────
-# Pre-reviewer automated gates. Today only `test_bar` is wired up (lint → typecheck →
-# unit-tests, fail-fast). Sits between Stage 4 (Testing) and Stage 5 (Review) in the
-# `dev-lead` pipeline so reviewer agents are never spent on a patch that doesn't build.
-# Per-stack default commands live in `plugins/agile-agents-core/skills/test-bar-gate/references/commands.yaml`;
-# the sub-blocks below let a project override any single command without redefining the
-# whole palette.
+# Stage 7 deterministic gates, before independent review.
+# Commands below come from this repository's scripts/CI, not a harness palette.
+# An enabled check without a command is a configuration gap (exit 2).
 quality_gates:
   test_bar:
     enabled: true
-    stacks: []                  # Empty → auto-detect from tech_stack.primary_languages
-                                # and tool hints. Override with e.g. ["python", "typescript"].
     fail_fast: true             # Stop at the first non-zero check; set false to aggregate.
     coverage_threshold_percent: 0      # 0 → coverage gate disabled. Otherwise hard floor (e.g. 80).
     mutation_score_threshold_percent: 0  # 0 → mutation gate disabled (Stryker / mutmut etc.).
-    # Per-check overrides. Leave `command: ""` to use the per-stack default from
-    # commands.yaml. Set `enabled: false` to skip a check explicitly (with a note in PR).
+    # Empty enabled commands fail configuration; disabled checks remain visible skips.
     # Run at repo root with eval/deepeval/requirements.lock.txt hash-installed in the active
     # Python environment and pwsh available. The helper propagates every failure.
     lint:
@@ -285,14 +243,15 @@ data_science:
 
 # ─── testing ──────────────────────────────────────────────────────────────────
 # Test-layer toggles that go beyond the unit-test discipline declared in `tech_stack`.
-# Today only `e2e` is wired up — drives the `e2e-testing` skill (plugins/agile-agents-core/skills/e2e-testing/).
+# `testing-practices` owns the E2E contract; commands/frameworks belong to the solution.
 testing:
   smoke:
     # Local "does it even come up?" check. Runs at Stage 7 after the unit tests,
-    # before the reviewers. Leave `command` empty to skip the slot entirely.
-    # Not applicable: this harness repo has no runnable application.
-    command: []                 # E.g. ["func", "start"] or ["dotnet", "run", "--project", "src/Api"].
-    url: ""                     # Health endpoint polled until it answers (e.g. "http://localhost:7071/api/health").
+    # before the reviewers. This repo has no runnable application: the caller must
+    # supply --smoke-status not_applicable --smoke-detail with that inspected evidence.
+    # Empty setup alone is not a pass; runnable but undetermined setup exits 2.
+    command: []
+    url: ""
     timeout_s: 60               # Give up (and fail the gate) after this many seconds.
   e2e:
     framework: "none"           # playwright | selenium | cypress | none (default none)

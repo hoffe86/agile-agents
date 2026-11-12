@@ -25,6 +25,7 @@ def commands_for(check: str) -> list[list[str]]:
             ["pwsh", "-NoProfile", "-File", "scripts/audit-references.ps1"],
             [python, "scripts/check-instructions-drift.py"],
             [python, "scripts/check-instructions-drift.py", "--self-test"],
+            [python, "scripts/gen-trigger-evals.py", "--check"],
             ["pwsh", "-NoProfile", "-File", "scripts/check-plugin-versions.ps1"],
         ]
     if check == "unit":

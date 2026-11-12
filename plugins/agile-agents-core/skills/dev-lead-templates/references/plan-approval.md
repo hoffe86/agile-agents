@@ -8,46 +8,11 @@ or the criteria derived from a plan file. Rendered via `ask_user` *after* the ch
 tasks exist in the tracker, so the human reviews concrete, linked work items — not
 an abstract outline.
 
-When the run was seeded with a **plan file**, this gate changes meaning but not shape:
-it is no longer "here is the plan I wrote" but "here is your plan, reconciled into
-tracker tasks — confirm I did not lose or distort a step". The *Changes I made to your
-plan* line is the substance of that confirmation, so fill it honestly and never
-collapse a split, a merge, a re-order or a drop into silence.
-
-The *Assumptions this plan rests on* line is the other one not to soften. It is the
-only point where a human sees what the plan took on trust before autonomous execution
-starts, and the cheapest place to correct it — a reader who knows the quota, the tier or
-the API answers it in one line, where the run would otherwise spend a stage discovering it.
-List an assumption even when you think it is safe; `none` is a claim that Stage 1 verified
-everything load-bearing, not a default.
-
-*Acceptance criteria I derived* works the same way for a different failure. A requirement
-that states no criteria does not stall Intake — the lead drafts them and confirms them
-**here**, which is why they must be listed separately from the stated ones rather than
-blended in. A derived criterion the human never saw would make the Stage 9 check measure
-the lead's own reading of the requirement instead of the requirement, and that loop closes
-silently: every gate passes and the delivered thing is still not what was asked for.
-
-**This gate is where the run's thinking becomes visible, or doesn't.** *Trade-offs*,
-*Decisions I made that you may want to change*, *Risks and open questions* and *What dies if
-a feasibility task returns ❌* exist because the pipeline decides a great deal before a human
-sees anything, and Research is where most of it is decided. `architect` already reports *Key
-tradeoffs*, *Open questions / risks* and *Decision gaps* in its hand-off; **relaying those
-here is not optional**, and neither is adding the calls the lead made while decomposing.
-
-Three rules keep these fields honest:
-
-- **Relay, don't digest.** A trade-off you found manageable is still a trade-off the human
-  may weigh differently. Judging it settled is not the same as it being settled.
-- **`none` is a claim.** Write it only after looking. It asserts that this plan involved no
-  non-obvious choice and no open risk — rarely true, and cheap to disprove later.
-- **Recommend, don't abdicate.** Each entry carries the alternative and your recommendation.
-  A list of unresolved options hands the work back; the point is to let a human overturn a
-  decision in one line, not to make them take it.
-
-Filling them well is what makes the *"decide rather than ask"* posture safe: the lead resolves
-what it can, and this gate is where every consequential resolution is exposed while it is
-still cheap to reverse (`engineering-judgement` §6).
+For a supplied plan, account for every split, merge, reorder and drop. Separate
+derived acceptance criteria for human confirmation. Expose all unverified
+assumptions, consequential choices and feasibility-dependent work. Relay Research
+trade-offs, risks and decision gaps without dismissing them; add the lead's own
+choices with alternatives and recommendations. Use `none` only after checking.
 
 **Choices:** `Approve and run autonomously` / `Adjust plan` / `Cancel`.
 
