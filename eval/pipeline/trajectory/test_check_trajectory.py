@@ -1,6 +1,7 @@
 """Offline protocol regressions for the event schema, emitters, and trajectory."""
 
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import io
 import json
@@ -697,6 +698,51 @@ class EmitterIntegrationTests(unittest.TestCase):
                 command.extend(["--payload-json", payload_json])
         return subprocess.run(command, env=env, capture_output=True, text=True, timeout=20)
 
+    def assert_emitter_clamps_timestamp(self, emitter):
+        self.require_emitters()
+        previous_timestamp = "2099-12-31T23:59:59.999Z"
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            run_dir = base / RUN_ID
+            run_dir.mkdir()
+            previous = event("phase_start", "research", 0)
+            previous["timestamp"] = previous_timestamp
+            (run_dir / "events.jsonl").write_text(
+                json.dumps(previous) + "\n", encoding="utf-8",
+            )
+
+            result = self.emit(emitter, "phase_start", "coding", base)
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            produced = [
+                json.loads(line)
+                for line in (run_dir / "events.jsonl").read_text(
+                    encoding="utf-8",
+                ).splitlines()
+            ]
+            self.assertEqual(produced[-1]["timestamp"], previous_timestamp)
+            self.assertEqual(checker._event_schema_errors(produced), [])
+            self.assertEqual(
+                [item["timestamp"] for item in produced],
+                sorted(item["timestamp"] for item in produced),
+            )
+
+    def assert_emitter_rejects_invalid_previous_timestamp(self, emitter):
+        self.require_emitters()
+        invalid_line = '{"timestamp":"not-a-timestamp"}\n'
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            run_dir = base / RUN_ID
+            run_dir.mkdir()
+            archive = run_dir / "events.jsonl"
+            archive.write_text(invalid_line, encoding="utf-8")
+
+            result = self.emit(emitter, "phase_start", "coding", base)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(archive.read_text(encoding="utf-8"), invalid_line)
+            self.assertFalse((run_dir / "events.jsonl.lock").exists())
+
     def test_real_emitters_produce_a_valid_supervisor_only_run(self):
         self.require_emitters()
         with tempfile.TemporaryDirectory() as temp:
@@ -737,6 +783,50 @@ class EmitterIntegrationTests(unittest.TestCase):
                 "Emitted JSONL (original append order):\n" + "\n".join(lines),
             )
             self.assertTrue(all(item["agent"] == "dev-lead" for item in produced))
+
+    def test_bash_clamps_timestamp_when_clock_precedes_last_event(self):
+        self.assert_emitter_clamps_timestamp("bash")
+
+    def test_powershell_clamps_timestamp_when_clock_precedes_last_event(self):
+        self.assert_emitter_clamps_timestamp("powershell")
+
+    def test_concurrent_emitters_keep_timestamps_in_append_order(self):
+        self.require_emitters()
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            calls = [
+                ("powershell", 0), ("bash", 1),
+                ("powershell", 2), ("bash", 3),
+                ("powershell", 4), ("bash", 5),
+            ]
+            with ThreadPoolExecutor(max_workers=len(calls)) as executor:
+                results = list(executor.map(
+                    lambda call: self.emit(
+                        call[0], "phase_start", f"phase-{call[1]}", base,
+                    ),
+                    calls,
+                ))
+
+            self.assertEqual(
+                [result.returncode for result in results],
+                [0] * len(calls),
+                [result.stdout + result.stderr for result in results],
+            )
+            produced = [
+                json.loads(line)
+                for line in (base / RUN_ID / "events.jsonl").read_text(
+                    encoding="utf-8",
+                ).splitlines()
+            ]
+            timestamps = [item["timestamp"] for item in produced]
+            self.assertEqual(len(produced), len(calls))
+            self.assertEqual(timestamps, sorted(timestamps))
+
+    def test_bash_rejects_a_prior_event_without_a_valid_timestamp(self):
+        self.assert_emitter_rejects_invalid_previous_timestamp("bash")
+
+    def test_powershell_rejects_a_prior_event_without_a_valid_timestamp(self):
+        self.assert_emitter_rejects_invalid_previous_timestamp("powershell")
 
     def test_both_emitters_reject_worker_owned_events(self):
         self.require_emitters()

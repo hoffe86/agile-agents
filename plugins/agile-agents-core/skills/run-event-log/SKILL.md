@@ -33,7 +33,7 @@ Every event has these required fields:
 | field        | type    | notes                                                          |
 | ------------ | ------- | -------------------------------------------------------------- |
 | `schema_version` | integer | `2` for events emitted at or after 2026-10-05T21:12:21.000Z UTC |
-| `timestamp`  | string  | ISO 8601 UTC, millisecond precision, `Z` suffix                |
+| `timestamp`  | string  | non-decreasing ISO 8601 UTC, millisecond precision, `Z` suffix |
 | `run_id`     | string  | UUID minted by `dev-lead` at run start                         |
 | `agent`      | string  | always `dev-lead`; workers never emit events |
 | `phase`      | string  | supervisor stage or delegated role window (e.g. `research`, `coding`, `review-lead`) |
@@ -86,7 +86,7 @@ Use the helper scripts so you don't hand-craft JSON:
 - PowerShell: `scripts/emit-event.ps1`
 - bash: `scripts/emit-event.sh`
 
-Both validate required fields per `event_type`, stamp `timestamp` with current UTC, append one JSON line to `${COPILOT_RUNS_DIR:-.copilot-runs}/<run-id>/events.jsonl`, and create the parent directory if missing.
+Both validate required fields per `event_type`, stamp `timestamp` with current UTC (clamped to the last event if the system clock moves backward), append one JSON line to `${COPILOT_RUNS_DIR:-.copilot-runs}/<run-id>/events.jsonl`, and create the parent directory if missing. A per-run exclusive lock serializes timestamp selection and append across concurrent emitters; an emitter fails closed if it cannot acquire the lock within 10 seconds. If forcibly terminated while holding the lock, remove the leftover `events.jsonl.lock` only after confirming no emitter is active.
 
 Example (PowerShell, `dev-lead` closes a delegated `coding` role window):
 

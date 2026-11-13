@@ -5,7 +5,7 @@
 .DESCRIPTION
     Helper for the run-event-log skill. Validates supervisor-owned events and
     required fields per event_type,
-    stamps timestamp = current UTC ISO 8601 with millisecond precision, and
+    stamps timestamp = non-decreasing UTC ISO 8601 with millisecond precision, and
     appends one JSON line to ${COPILOT_RUNS_DIR:-.copilot-runs}/<run-id>/events.jsonl.
     Append-only — never rewrites past events. See ../SKILL.md for full conventions.
 
@@ -399,31 +399,74 @@ if ($ArgsSummary -and $ArgsSummary.Length -gt 200) {
     $ArgsSummary = $ArgsSummary.Substring(0, 200)
 }
 
-# Build event with insertion-ordered keys
-$evt = [ordered]@{
-    schema_version = 2
-    timestamp  = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-    run_id     = $RunId
-    agent      = $Agent
-    phase      = $Phase
-    event_type = $EventType
-}
-if ($CorrelationId)            { $evt.correlation_id  = $CorrelationId }
-if ($ParentEventId)            { $evt.parent_event_id = $ParentEventId }
-if ($Outcome)                  { $evt.outcome         = $Outcome }
-if ($DurationMs -ge 0)         { $evt.duration_ms     = $DurationMs }
-if ($ToolName)                 { $evt.tool_name       = $ToolName }
-if ($ArgsSummary)              { $evt.args_summary    = $ArgsSummary }
-if ($ErrorKind)                { $evt.error_kind      = $ErrorKind }
-if ($Payload)                  { $evt.payload         = $Payload }
-
 $baseDir = if ($env:COPILOT_RUNS_DIR) { $env:COPILOT_RUNS_DIR } else { ".copilot-runs" }
 $runDir  = Join-Path $baseDir $RunId
 if (-not (Test-Path $runDir)) { New-Item -ItemType Directory -Force -Path $runDir | Out-Null }
 $file = Join-Path $runDir "events.jsonl"
+$lockFile = Join-Path $runDir "events.jsonl.lock"
+$lockHandle = $null
+$lockTimer = [System.Diagnostics.Stopwatch]::StartNew()
+while ($null -eq $lockHandle) {
+    try {
+        $lockHandle = [System.IO.File]::Open(
+            $lockFile,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None
+        )
+    } catch [System.IO.IOException] {
+        if (-not (Test-Path -LiteralPath $lockFile)) { throw }
+        if ($lockTimer.Elapsed.TotalSeconds -ge 10) {
+            Write-StdErr "emit-event: timed out waiting for the event log lock"
+            exit 1
+        }
+        Start-Sleep -Milliseconds 50
+    }
+}
 
-# Compress to single line; UTF-8 without BOM; LF terminator
-$json = ($evt | ConvertTo-Json -Compress -Depth 30)
-$utf8NoBom = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::AppendAllText($file, $json + "`n", $utf8NoBom)
+try {
+    $timestamp = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+    if (Test-Path -LiteralPath $file) {
+        $lastLine = Get-Content -LiteralPath $file -Tail 1 -ErrorAction Stop
+        if ($lastLine) {
+            $timestampMatch = [regex]::Match(
+                $lastLine,
+                '"timestamp"\s*:\s*"(?<value>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z)"'
+            )
+            if (-not $timestampMatch.Success) {
+                throw "emit-event: prior event has an invalid timestamp"
+            }
+            $lastTimestamp = $timestampMatch.Groups['value'].Value
+            if ([string]::CompareOrdinal($timestamp, $lastTimestamp) -lt 0) {
+                $timestamp = $lastTimestamp
+            }
+        }
+    }
+
+    # Build event with insertion-ordered keys while holding the append lock.
+    $evt = [ordered]@{
+        schema_version = 2
+        timestamp  = $timestamp
+        run_id     = $RunId
+        agent      = $Agent
+        phase      = $Phase
+        event_type = $EventType
+    }
+    if ($CorrelationId)            { $evt.correlation_id  = $CorrelationId }
+    if ($ParentEventId)            { $evt.parent_event_id = $ParentEventId }
+    if ($Outcome)                  { $evt.outcome         = $Outcome }
+    if ($DurationMs -ge 0)         { $evt.duration_ms     = $DurationMs }
+    if ($ToolName)                 { $evt.tool_name       = $ToolName }
+    if ($ArgsSummary)              { $evt.args_summary    = $ArgsSummary }
+    if ($ErrorKind)                { $evt.error_kind      = $ErrorKind }
+    if ($Payload)                  { $evt.payload         = $Payload }
+
+    # Compress to single line; UTF-8 without BOM; LF terminator
+    $json = ($evt | ConvertTo-Json -Compress -Depth 30)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::AppendAllText($file, $json + "`n", $utf8NoBom)
+} finally {
+    $lockHandle.Dispose()
+    Remove-Item -LiteralPath $lockFile -ErrorAction SilentlyContinue
+}
 exit 0
