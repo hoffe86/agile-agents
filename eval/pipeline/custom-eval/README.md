@@ -13,7 +13,7 @@ profile, and versioned input declaration:
 | `acceptance.md` | 3-5 explicit, verifiable pass criteria |
 | `solution-profile.yaml` | Synthetic profile conforming to the shipped solution-profile contract |
 | `inputs.json` | Version-1 explicit source/destination inputs, each with a required flag |
-| `expectations.yaml` | Trajectory contract: plan gate, which agents dev-lead delegates to, which skills each one must invoke |
+| `expectations.yaml` | Trajectory contract: plan gate, delegation and forbidden reviewer workflows |
 | `baseline/` | Minimal synthetic or task-directed source inputs; never includes the requested answer |
 
 A run has two halves, kept in separate trust zones:
@@ -197,6 +197,9 @@ The decision is written to `plan-approval.json`, labelled `llm-simulated`, and s
 own metric, `Plan approval (llm-simulated)`. A rejection **ends the run** as **failed**
 (`plan_rejected`): there is no re-plan round. It is evidence about the plan, never a human
 approval — the harness's own human gate outside evaluation is unchanged.
+If the recorded phase-two trace nevertheless contains top-level write tools after a
+rejection, the trajectory includes a failed `post_rejection_write` metric naming those
+tools. It detects recorded write-tool attempts, not shell writes or tampered logs.
 
 Trust: the approve step holds the judge credentials but runs no agent. Phase 1 deletes any
 pre-existing `plan-approval.json`, and in CI `implement` is gated on the `approve` job's
@@ -213,21 +216,14 @@ schema: 1
 root_agent: dev-lead
 plan_gate: required            # approval must be requested before implementation
 agents: [coding, review-lead, code-reviewer]   # every one must be delegated to
-skills:                        # per agent: each must be invoked by that agent
-  coding: [read-repo-context, development-practices, python-implementation]
-  any: [architecture-decision-records]          # invoked by anyone in the run
 forbidden_skills:
   review-lead: [code-review-checklist]          # the orchestrator performs no lens
 ```
 
-Each agent's skill list scores as its own DeepEval metric (`skills:<agent>`), so a miss is
-attributed to the agent that should have loaded the skill. Tool-call starts are reported as
-attempts; a load receives credit only when its matching completion reports success. A
-missing completion is `UNVERIFIED`, not a pass or an agent failure. Lists hold the
-**core contract loads plus explicitly staged consumer capabilities**, not every
-skill a good run might touch. A pass means the measured contract was honoured,
-not that the run was optimal. `any` supports deliverable skills whose author varies;
-it never authorizes a reviewer to write or launch a nested author.
+Positive skill-selection and invocation requirements are not scored. A recorded
+attempt of a forbidden skill fails the relevant `skills:<agent>` safety check,
+even if the attempt failed or did not complete. `any` may forbid a workflow for
+all agents. A clean trace is not proof that unrecorded actions did not occur.
 Task-10 lists criterion 2 under `unverifiable` with its reason (see fixture boundaries).
 
 Delegation receives credit when the named agent starts or its task call succeeds.
@@ -237,7 +233,7 @@ implementing-agent delegation before approval still violates the gate.
 Current acceptance owners:
 
 - The **code-reviewer agent rubric** owns code quality; its delegation and
-  read-only skills are required. Reviewer forbidden-workflow checks still apply.
+  reviewer forbidden-workflow checks still apply.
 - **dev-lead-templates/references/completion.md** covers
   intent, real test evidence, rollback, migration/breaking changes and publication
   approval. Task acceptance judges the requested PR text.
@@ -372,5 +368,5 @@ Adding a task folder registers it with the runner; nothing runs until someone di
 - [ ] `acceptance.md` has 3-5 criteria, each verifiable
 - [ ] `solution-profile.yaml` supplies required Stage-0 fields and actual per-check commands
 - [ ] `inputs.json` declares every required baseline input, or an empty list when none exists
-- [ ] `expectations.yaml` names the delegated agents and each one's core skill loads
+- [ ] `expectations.yaml` names the delegated agents and forbidden reviewer workflows
 - [ ] Any measured result records its method and limitations in [`../../baselines.md`](../../baselines.md); fixture presence alone is not a result

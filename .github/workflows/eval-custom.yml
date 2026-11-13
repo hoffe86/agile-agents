@@ -417,7 +417,8 @@ jobs:
               return re.sub(r"([\\`*_\[\]()!|#~])", r"\\\1", text)[:300]
 
           lines = [f"## custom-eval score: {cell(report['status'])} (judge: {cell(os.environ['JUDGE'])})",
-                   "Trajectory is DeepEval ToolCorrectness over recorded skill and delegation calls. "
+                   "DeepEval ToolCorrectness measures skill and delegation metrics; the post-rejection "
+                   "write metric is checked deterministically. "
                    "Build, test and render criteria are decided by the acceptance commands the agent "
                    "job ran (a missing tool is UNVERIFIED, never FAIL); the judge grades the rest "
                    "from the captured diff and executes nothing.", "",

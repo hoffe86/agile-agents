@@ -1,0 +1,15 @@
+{
+  "name": "solution-profile-canvas",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node build.mjs",
+    "check:bundle": "node build.mjs --check",
+    "test": "node --test ../../plugins/agile-agents-core/extensions/solution-profile/tests/profile.test.mjs ../../plugins/agile-agents-core/extensions/solution-profile/tests/packaging.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "yaml": "2.9.1"
+  }
+}

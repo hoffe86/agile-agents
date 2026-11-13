@@ -12,36 +12,43 @@ evaluation is `SKILL.md` itself. No Azure, no AI Foundry — the executor enum i
 
 | Tier | Directory | Grades | Cost | Gates? |
 |---|---|---|---|---|
-| **S0** | [`s0-routing/`](s0-routing/) | should this prompt reach this skill (offline heuristic) | free | reports only — threshold uncalibrated |
-| **S1** | [`s1-invocation/`](s1-invocation/) | did the agent actually invoke it | model | historical technical suites; not runnable against current core |
-| **S2** | [`s2-efficacy/`](s2-efficacy/) | is the outcome better *with* the skill than without | 2× model | historical; blocked on isolation and consumer staging |
+| Hygiene | `scripts/` | frontmatter, token ratchet, instructions drift | free | yes — deterministic and offline |
+| Outcome | [`outcome/plan/`](outcome/plan/) | plan artifact for one data-feasibility scenario | model | manual, not an A/B comparison |
+| **S2** | [`s2-efficacy/`](s2-efficacy/) | historical A/B attempt | 2× model | not runnable against current core; isolation also required |
 
-Hygiene checks that also belong to S0 — frontmatter validity, the token ratchet, and the
-`copilot-instructions.md` drift check — live in `scripts/` and run in the
-[`Eval · skills`](../../.github/workflows/eval-skills.yml) workflow. Those **do** gate;
-they are deterministic and offline.
+Only hygiene runs in the [`Eval · skills`](../../.github/workflows/eval-skills.yml)
+workflow. Token size and the coverage inventory are not skill-quality results.
+
+Routing (S0) and invocation (S1) suites were removed: they measured whether
+GitHub Copilot selects or invokes a skill, which is host behavior, not ours. We test
+our own artifacts and phase gates; see `scripts/tests/`.
 
 ## Running each tier
 
 ```powershell
-# S0 — free, offline, no auth. This is what CI runs.
-./scripts/check-skill-tokens.ps1        # hygiene + coverage
-./scripts/run-trigger-evals.ps1         # routing
+# Free, offline, no auth. CI runs this alongside frontmatter and drift checks.
+./scripts/check-skill-tokens.ps1
 
-# Check generated current-target inventory without modifying it.
-python scripts/gen-trigger-evals.py --check
+# Manual, model-backed outcome check, run from the repository root.
+waza run eval/skills/outcome/plan/eval.yaml --no-update-check
 ```
 
-The S0 corpus is generated from authored prompts in
-[`scripts/gen-trigger-evals.py`](../../scripts/gen-trigger-evals.py) — edit the prompts
-there and regenerate, rather than hand-editing the YAML.
+The outcome suite injects the current `plan` body and checks the
+produced plan file; it does not grade skill selection or invocation. Its
+execution sends the skill and synthetic prompt to the configured model provider;
+run it only where that disclosure is permitted. Its deterministic patterns
+check the specified ownership, dependency, criterion
+mapping, approval and acceptance markers, not the full semantic quality of the
+plan. It is not evidence that the skill improves results over a baseline.
+The synthetic scenario explicitly enables data science and makes its agent
+available; it does not use this repository's disabled data-science setting.
+Research and Implement do not yet have outcome suites. The coverage report is
+an inventory of suite definitions, not proof that they ran or passed; Waza's
+full/partial classification is based on suite structure, not outcome quality.
 
-Current S0 inventory: **5/22 skills, 15 cases**. This uncalibrated heuristic is
-informational, not evidence of model equivalence or end-to-end success.
-The nine suites for deleted skills are removed, not silently redirected.
-Technical suites require their own available targets. Custom-eval uses its own
-minimal explicit inputs, not a skill library. See
-[ownership](../../docs/customization-ownership.md).
+The remaining technical S2 suite requires its absent consumer target and a
+verified isolated baseline. Custom-eval uses its own minimal explicit inputs,
+not a skill library. See [ownership](../../docs/customization-ownership.md).
 
 ## Historical findings before retirement
 
@@ -52,9 +59,7 @@ minimal explicit inputs, not a skill library. See
   work perfectly while invoking **no skill at all**.
 - **S2** — attempted; blocked on environment isolation, not credits.
 
-The through-line: **S0 over-reports collisions, and the real risk is skills being
-bypassed rather than confused.** That is why no description has been rewritten on S0
-evidence alone, and why S2 matters more than it originally looked.
+These observations are historical, not evidence about the current phase skills.
 
 ## The trap to remember
 

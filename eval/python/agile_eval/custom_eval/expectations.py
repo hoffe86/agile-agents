@@ -1,8 +1,8 @@
 """Per-task expectations: what a correct trajectory looks like, and the criteria verbatim.
 
 `expectations.yaml` sits beside each task's `acceptance.md`. It declares the trajectory
-(which agents dev-lead should delegate to, which skills each agent should invoke, which
-it must not), whether the mandatory plan-approval gate applies, and which criteria a
+(which agents dev-lead should delegate to and which skills an agent must not use),
+whether the mandatory plan-approval gate applies, and which criteria a
 command can decide (`checks`: build, test, type-check, render). Criteria are never
 restated there: they are parsed verbatim from `acceptance.md`, because a restated
 criterion is a fork and forks drift.
@@ -16,8 +16,7 @@ from pathlib import Path
 
 SCHEMA_VERSION = 1
 PLAN_GATE_VALUES = ("required", "not_applicable")
-# Pseudo-agent for a skill the deliverable needs regardless of which agent produces it
-# (e.g. architecture-decision-records: architect advises but never writes ADR files).
+# Pseudo-agent for a forbidden workflow regardless of which agent attempts it.
 ANY_AGENT = "any"
 
 _CRITERION = re.compile(r"^(\d+)\.\s+(.*\S)\s*$")
@@ -62,7 +61,6 @@ class Expectations:
     root_agent: str
     plan_gate: str
     agents: tuple[str, ...]
-    skills: dict[str, tuple[str, ...]]
     forbidden_skills: dict[str, tuple[str, ...]] = field(default_factory=dict)
     implementation_agents: tuple[str, ...] | None = None
     criteria: tuple[Criterion, ...] = ()
@@ -174,7 +172,7 @@ def _checks(value: object, ids: set[int], unverifiable: dict[int, str]) -> tuple
 def from_mapping(data: object, task: str, criteria: tuple[Criterion, ...]) -> Expectations:
     if not isinstance(data, dict):
         raise ExpectationsError("expectations must be a mapping")
-    known = {"schema", "root_agent", "plan_gate", "agents", "skills", "forbidden_skills",
+    known = {"schema", "root_agent", "plan_gate", "agents", "forbidden_skills",
              "implementation_agents", "unverifiable", "checks", "plan_approval"}
     unknown = sorted(set(data) - known)
     if unknown:
@@ -187,18 +185,8 @@ def from_mapping(data: object, task: str, criteria: tuple[Criterion, ...]) -> Ex
     gate = data.get("plan_gate")
     if gate not in PLAN_GATE_VALUES:
         raise ExpectationsError(f"plan_gate must be one of {PLAN_GATE_VALUES}")
-    skills = _by_agent(data.get("skills"), "skills")
-    if not any(skills.values()):
-        raise ExpectationsError("at least one expected skill is required")
     forbidden = _by_agent(data.get("forbidden_skills"), "forbidden_skills")
-    for agent, names in forbidden.items():
-        clash = set(names) & set(skills.get(agent, ()))
-        if clash:
-            raise ExpectationsError(f"{agent} both expects and forbids {sorted(clash)}")
     agents = _names(data.get("agents"), "agents")
-    stray = sorted(set(skills) - set(agents) - {root, ANY_AGENT})
-    if stray:
-        raise ExpectationsError(f"skills declared for agents never delegated to: {stray}")
     impl = data.get("implementation_agents")
     unverifiable_raw = data.get("unverifiable") or {}
     if not isinstance(unverifiable_raw, dict):
@@ -215,7 +203,7 @@ def from_mapping(data: object, task: str, criteria: tuple[Criterion, ...]) -> Ex
     if plan_approval and gate != "required":
         raise ExpectationsError("plan_approval criteria need plan_gate: required")
     return Expectations(
-        task=task, root_agent=root, plan_gate=gate, agents=agents, skills=skills,
+        task=task, root_agent=root, plan_gate=gate, agents=agents,
         forbidden_skills=forbidden,
         implementation_agents=None if impl is None else _names(impl, "implementation_agents"),
         criteria=criteria, unverifiable=unverifiable,

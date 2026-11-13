@@ -2,6 +2,8 @@
 
 No Copilot CLI, no network, no model: the trajectory metrics run DeepEval's
 ToolCorrectnessMetric against a stub model, the judge is exercised with a fake.
+These are deterministic engineering-contract tests of the harness evaluator.
+They produce no LLM-judge quality scores and are not project AI evaluation.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from agile_eval.custom_eval.expectations import (
 )
 from agile_eval.custom_eval.trajectory import (
     IMPLEMENTATION_AGENTS,
+    WRITE_TOOLS,
     check_plan_gate,
     delegated_agents,
     short_agent,
@@ -42,7 +45,7 @@ CRITERIA = (Criterion(1, "one"), Criterion(2, "two"))
 def _base(**overrides) -> dict:
     data = {
         "schema": 1, "root_agent": "dev-lead", "plan_gate": "required",
-        "agents": ["coding"], "skills": {"coding": ["testing-practices"]},
+        "agents": ["coding"],
     }
     data.update(overrides)
     return data
@@ -61,7 +64,6 @@ def test_every_task_has_loadable_expectations(task_dir):
     assert exp.task == task_dir.name
     assert exp.plan_gate == "required"
     assert [c.id for c in exp.criteria] == list(range(1, len(exp.criteria) + 1))
-    assert "reviewer-read-only-rules" in exp.skills["review-lead"]
     assert "code-review-checklist" in exp.forbidden_skills["review-lead"]
 
 
@@ -80,9 +82,9 @@ def test_parse_acceptance_rejects_missing_or_gapped_numbering(text):
     {"schema": 2},
     {"plan_gate": "sometimes"},
     {"surprise": True},
-    {"skills": {}},
-    {"skills": {"architect": ["x"]}},
-    {"forbidden_skills": {"coding": ["testing-practices"]}},
+    {"skills": {"coding": ["testing-practices"]}},
+    {"forbidden_skills": {"coding": ["x", "x"]}},
+    {"forbidden_skills": {"coding": "not a list"}},
     {"unverifiable": {9: "no such criterion"}},
 ])
 def test_from_mapping_rejects_invalid_expectations(overrides):
@@ -90,10 +92,10 @@ def test_from_mapping_rejects_invalid_expectations(overrides):
         from_mapping(_base(**overrides), "t", CRITERIA)
 
 
-def test_from_mapping_accepts_any_agent_and_known_unverifiable():
-    exp = from_mapping(_base(skills={"any": ["pr-description"]}, unverifiable={2: "why"}),
+def test_from_mapping_accepts_any_agent_forbidden_and_known_unverifiable():
+    exp = from_mapping(_base(forbidden_skills={"any": ["code-review"]}, unverifiable={2: "why"}),
                        "t", CRITERIA)
-    assert exp.skills["any"] == ("pr-description",)
+    assert exp.forbidden_skills["any"] == ("code-review",)
     assert exp.unverifiable == {2: "why"}
 
 
@@ -343,23 +345,6 @@ def test_failed_delegation_still_violates_the_pre_approval_gate():
     assert check_plan_gate(trace).honoured is False
 
 
-@pytest.mark.parametrize(("completion", "passed", "score", "reason"), [
-    (False, False, 0.0, "delegation failed before the agent started"),
-    (None, None, None, "delegation outcome unavailable"),
-])
-def test_skill_metric_explains_unconfirmed_agent_delegation(completion, passed, score, reason):
-    from agile_eval.custom_eval.metrics import skill_metrics
-
-    exp = from_mapping(_base(), "t", CRITERIA)
-    trace = _trace_with_events(*_delegation_events("call", completion))
-
-    (metric,) = skill_metrics(trace, exp)
-
-    assert metric.passed is passed
-    assert metric.score == score
-    assert reason in metric.reason
-
-
 @pytest.mark.parametrize("tool", ["view", "ask_user"])
 def test_no_implementation_does_not_prove_a_plan_approval_request(tool):
     trace = _trace_with_events(
@@ -383,95 +368,66 @@ def test_top_level_writes_still_fail_the_plan_gate():
     assert "apply_patch" in gate.reason
 
 
-def test_deepeval_metrics_score_skills_per_agent(trace):
+@pytest.mark.parametrize("tool", sorted(WRITE_TOOLS))
+def test_direct_authoring_writes_are_forbidden_before_plan_approval(tool):
+    events = _plan_events()
+    events.insert(1, {"type": "tool.execution_start", "data": {
+        "toolName": tool, "toolCallId": "direct-write", "arguments": "task output"}})
+
+    gate = check_plan_gate(_trace_with_events(*events), phase1_changes=())
+
+    assert gate.honoured is False
+    assert any(tool in violation for violation in gate.violations)
+
+
+def test_deepeval_delegation_and_plan_gate_metrics(trace):
     pytest.importorskip("deepeval")
-    from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric, skill_metrics
+    from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric
 
     exp = load(TASKS / "task-02-python-di-refactor")
-    by_name = {m.name: m for m in skill_metrics(trace, exp)}
-    assert by_name["skills:dev-lead"].passed is None
-    assert "completion unavailable" in by_name["skills:dev-lead"].reason
-    assert by_name["skills:coding"].score == 0.0
-    assert "python-implementation" in by_name["skills:coding"].reason
-    assert "never delegated" in by_name["skills:code-reviewer"].reason
     delegation = delegation_metric(trace, exp)
     assert delegation.score == 0.5 and delegation.passed is False
     gate, _ = plan_gate_metric(trace, exp)
     assert gate.passed is False
 
 
-def test_forbidden_skill_zeroes_the_agent_score(trace):
-    pytest.importorskip("deepeval")
+@pytest.mark.parametrize("completion", [True, False, None])
+def test_forbidden_skill_attempt_fails_even_without_successful_completion(completion):
     from agile_eval.custom_eval.metrics import skill_metrics
 
     exp = from_mapping(
-        _base(agents=[], skills={"dev-lead": ["read-repo-context"]},
-              forbidden_skills={"dev-lead": ["cost-budget"]}),
+        _base(agents=["review-lead"], forbidden_skills={"review-lead": ["code-review"]}),
         "t", CRITERIA,
     )
-    (metric,) = skill_metrics(trace, exp)
+    (metric,) = skill_metrics(_skill_trace("code-review", completion, "review-lead"), exp)
     assert metric.score == 0.0
-    assert "forbidden skill invoked: cost-budget" in metric.reason
-
-
-def test_any_agent_skill_is_satisfied_by_whoever_loads_it(trace):
-    pytest.importorskip("deepeval")
-    from agile_eval.custom_eval.metrics import skill_metrics
-
-    exp = from_mapping(_base(agents=[], skills={"any": ["test-bar-gate"]}), "t", CRITERIA)
-    (metric,) = skill_metrics(_skill_trace("test-bar-gate", True), exp)
-    assert metric.passed is True
-
-
-@pytest.mark.parametrize(("completion", "passed", "reason"), [
-    (True, True, "loaded successfully"),
-    (False, False, "skill load failed"),
-    (None, None, "skill completion unavailable"),
-])
-def test_skill_metric_requires_successful_completion_for_the_correct_agent(
-        completion, passed, reason):
-    pytest.importorskip("deepeval")
-    from agile_eval.custom_eval.metrics import skill_metrics
-
-    exp = from_mapping(_base(agents=["coding"], skills={"coding": ["testing-practices"]}),
-                       "t", CRITERIA)
-    (metric,) = skill_metrics(_skill_trace("testing-practices", completion), exp)
-    assert metric.passed is passed
-    assert reason in metric.reason
-    assert metric.actual == ["testing-practices"]
-    if completion is None:
-        assert metric.score is None
-
-
-def test_successful_skill_load_by_another_agent_does_not_satisfy_the_expected_agent():
-    pytest.importorskip("deepeval")
-    from agile_eval.custom_eval.metrics import skill_metrics
-
-    exp = from_mapping(_base(agents=["coding", "architect"],
-                             skills={"coding": ["testing-practices"]}), "t", CRITERIA)
-    (metric,) = skill_metrics(_skill_trace("testing-practices", True, "architect"), exp)
     assert metric.passed is False
-    assert "not invoked: testing-practices" in metric.reason
+    assert "forbidden skill invoked: code-review" in metric.reason
 
 
-def test_successful_retry_satisfies_a_previously_failed_skill():
-    pytest.importorskip("deepeval")
+def test_other_agent_or_absent_forbidden_skill_does_not_violate_reviewer_rule():
     from agile_eval.custom_eval.metrics import skill_metrics
 
-    events = []
-    for call_id, success in [("first", False), ("retry", True)]:
-        events.extend([
-            {"type": "tool.execution_start", "data": {
-                "toolName": "skill", "toolCallId": call_id,
-                "arguments": {"skill": "read-repo-context"}}},
-            {"type": "tool.execution_complete",
-             "data": {"toolCallId": call_id, "success": success}},
-        ])
-    exp = from_mapping(_base(agents=[], skills={"dev-lead": ["read-repo-context"]}),
-                       "t", CRITERIA)
-    (metric,) = skill_metrics(_trace_with_events(*events), exp)
+    exp = from_mapping(
+        _base(agents=["coding", "review-lead"],
+              forbidden_skills={"review-lead": ["code-review"]}), "t", CRITERIA)
+    (metric,) = skill_metrics(_skill_trace("code-review", True, "coding"), exp)
     assert metric.passed is True
-    assert metric.actual == ["read-repo-context"]
+
+
+def test_any_agent_forbidden_skill_is_detected():
+    from agile_eval.custom_eval.metrics import skill_metrics
+
+    exp = from_mapping(_base(forbidden_skills={"any": ["code-review"]}),
+                       "t", CRITERIA)
+    (metric,) = skill_metrics(_skill_trace("code-review", False, "coding"), exp)
+    assert metric.passed is False
+
+def test_no_positive_skill_requirements_are_scored():
+    from agile_eval.custom_eval.metrics import skill_metrics
+
+    exp = from_mapping(_base(), "t", CRITERIA)
+    assert skill_metrics(_trace_with_events(), exp) == []
 
 
 # --- judge ------------------------------------------------------------------------------
@@ -1300,11 +1256,13 @@ def test_read_rejects_duplicate_criterion_ids(tmp_path):
     assert plan_approval.read(tmp_path, CRITERIA) is None
 
 
-def _awaiting(tmp_path, *, verified=False) -> runner.Paths:
+def _awaiting(tmp_path, *, verified=False, stage_workspace=False) -> runner.Paths:
     paths = runner.Paths(tmp_path)
-    runner.write_state(paths, {"task": "task-02-python-di-refactor",
-                               "status": "awaiting_approval", "session_id": "session",
-                               "plan_message": "the plan", "phases": {}})
+    state = {"task": "task-02-python-di-refactor", "status": "awaiting_approval",
+             "session_id": "session", "plan_message": "the plan", "phases": {}}
+    if stage_workspace:
+        state["baseline"] = runner.stage(TASKS / state["task"], paths)
+    runner.write_state(paths, state)
     if verified:
         paths.log(1).write_text("\n".join(json.dumps(event) for event in _plan_events()),
                                 encoding="utf-8")
@@ -1333,6 +1291,26 @@ def _phase2_log(*, request_id="request", call_id="call", answer="Approve and run
     events.extend(extra)
     return "\n".join(json.dumps(event) for event in events) + "\n" + FIXTURE.read_text(
         encoding="utf-8")
+
+
+def _direct_phase2_log(
+        *, answer="Approve and run autonomously",
+        patch="*** Begin Patch\n*** Add File: direct-authored.txt\n+approved task change\n*** End Patch",
+        write_success=True):
+    events = [
+        {"type": "assistant.turn_start", "data": {}},
+        {"type": "external_tool.completed", "data": {"requestId": "request"}},
+        {"type": "tool.execution_complete", "data": {
+            "toolCallId": "call", "success": True,
+            "result": {"content": answer}}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": "apply_patch", "toolCallId": "direct-write",
+            "arguments": patch}},
+        {"type": "tool.execution_complete", "data": {
+            "toolCallId": "direct-write", "success": write_success}},
+        {"type": "assistant.message", "data": {"content": "Direct task completed."}},
+    ]
+    return "\n".join(json.dumps(event) for event in events)
 
 
 def test_phase_approve_refuses_a_stale_awaiting_state_without_gate_evidence(
@@ -1644,7 +1622,7 @@ def test_score_recorded_run_end_to_end(tmp_path, monkeypatch):
     assert row["errors"] == []
     assert row["status"] == "failed" and code == scorer.EXIT["failed"]
     assert row["plan_gate"]["passed"] is False
-    assert {m["name"] for m in row["trajectory"]} >= {"delegation", "skills:coding"}
+    assert {m["name"] for m in row["trajectory"]} >= {"delegation", "skills:review-lead"}
     statuses = {r["id"]: r["status"] for r in row["acceptance"]["criteria"]}
     assert statuses == {1: "UNVERIFIED", 2: "UNVERIFIED", 3: "UNVERIFIED", 4: "FAIL",
                         5: "UNVERIFIED"}
@@ -1739,6 +1717,104 @@ def test_scorer_accepts_a_completed_run_with_a_valid_simulated_approval(tmp_path
     assert row["status"] == "failed"
     assert row["plan_approval"]["passed"] is True
     assert row["plan_gate"]["passed"] is True
+
+
+@needs_git
+def test_scorer_verifies_approval_before_direct_authorship(tmp_path):
+    pytest.importorskip("deepeval")
+    paths = _awaiting(tmp_path, verified=True, stage_workspace=True)
+    runner.write_state(paths, {**runner.read_state(paths), "status": "complete",
+                               "approved_by": plan_approval.SIMULATED})
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, *(["PASS"] * count))
+    paths.log(2).write_text(_direct_phase2_log(), encoding="utf-8")
+    (paths.workspace / "direct-authored.txt").write_text("approved task change\n",
+                                                          encoding="utf-8")
+    runner.capture_diff(paths, runner.read_state(paths)["baseline"])
+    exp = load(TASKS / "task-02-python-di-refactor")
+    checks_report = checks.run_checks(exp, paths.workspace, paths.run)
+    row = scorer.score_run(tmp_path, "none", TASKS)
+
+    assert row["errors"] == []
+    assert row["plan_gate"]["passed"] is True
+    assert row["plan_approval"]["passed"] is True
+    assert checks.load_results(paths.run, exp) == checks_report["results"]
+    assert row["checks"] == [
+        {key: value for key, value in item.items() if key != "output_tail"}
+        for item in checks_report["results"]
+    ]
+    assert any(tool.name == "apply_patch" for tool in parse_log(paths.log(2)).tools)
+    assert not any(metric["name"] == "post_rejection_write" for metric in row["trajectory"])
+
+
+@pytest.mark.parametrize("decision", ["missing", pytest.param("rejected", marks=needs_git)])
+def test_scorer_fails_direct_authorship_without_approved_plan(
+        tmp_path, decision, capsys):
+    pytest.importorskip("deepeval")
+    paths = _awaiting(tmp_path, verified=True, stage_workspace=decision == "rejected")
+    if decision == "missing":
+        runner.write_state(paths, {**runner.read_state(paths), "status": "complete",
+                                   "approved_by": plan_approval.SIMULATED})
+        paths.log(2).write_text(_direct_phase2_log(), encoding="utf-8")
+        row = scorer.score_run(tmp_path, "none", TASKS)
+        assert row["status"] == "setup_error"
+        assert "missing plan-approval.json" in row["errors"]
+    else:
+        runner.write_state(paths, {**runner.read_state(paths), "status": "plan_rejected"})
+        count = len(plan_approval.load_rubric(RUBRIC))
+        _bound_plan_decision(paths, "FAIL", *(["PASS"] * (count - 1)))
+        runner.capture_diff(paths, runner.read_state(paths)["baseline"])
+        without_write = scorer.score_run(tmp_path, "none", TASKS)
+        assert without_write["status"] == "failed"
+        assert not any(metric["name"] == "post_rejection_write"
+                       for metric in without_write["trajectory"])
+
+        patch = ("*** Begin Patch\n*** Add File: direct-authored.txt\n"
+                 "+unapproved task change\n*** End Patch")
+        paths.log(2).write_text(_direct_phase2_log(answer="Cancel", patch=patch),
+                                encoding="utf-8")
+        (paths.workspace / "direct-authored.txt").write_text(
+            "unapproved task change\n", encoding="utf-8")
+        runner.capture_diff(paths, runner.read_state(paths)["baseline"])
+        row = scorer.score_run(tmp_path, "none", TASKS)
+        trace = parse_log(paths.log(2))
+        assert any(tool.name == "apply_patch" and tool.arguments == {"input": patch}
+                   and tool.success is True for tool in trace.tools)
+        assert "+++ b/direct-authored.txt" in paths.diff.read_text(encoding="utf-8")
+        assert "+unapproved task change" in paths.diff.read_text(encoding="utf-8")
+        assert row["status"] == "failed"
+        assert row["plan_gate"]["passed"] is True
+        assert row["plan_approval"]["passed"] is False
+        assert next(metric for metric in row["trajectory"]
+                    if metric["name"] == "post_rejection_write") == {
+                        "name": "post_rejection_write", "score": 0.0, "passed": False,
+                        "reason": "top-level write after plan rejection",
+                        "expected": ["no top-level writes after plan rejection"],
+                        "actual": ["apply_patch"],
+                    }
+        output = tmp_path / "summary.json"
+        assert scorer.main([str(tmp_path), "--judge", "none", "--output", str(output)]) == 1
+        report = json.loads(output.read_text(encoding="utf-8"))
+        assert any(metric["name"] == "post_rejection_write" and metric["passed"] is False
+                   for metric in report["results"][0]["trajectory"])
+        assert "post_rejection_write" in capsys.readouterr().out
+
+
+def test_scorer_reports_failed_write_attempt_after_rejection(tmp_path):
+    pytest.importorskip("deepeval")
+    paths = _awaiting(tmp_path, verified=True)
+    runner.write_state(paths, {**runner.read_state(paths), "status": "plan_rejected"})
+    count = len(plan_approval.load_rubric(RUBRIC))
+    _bound_plan_decision(paths, "FAIL", *(["PASS"] * (count - 1)))
+    paths.log(2).write_text(
+        _direct_phase2_log(answer="Cancel", write_success=False), encoding="utf-8")
+    paths.diff.write_text("", encoding="utf-8")
+
+    row = scorer.score_run(tmp_path, "none", TASKS)
+
+    assert row["status"] == "failed"
+    assert any(metric["name"] == "post_rejection_write" and metric["passed"] is False
+               and metric["actual"] == ["apply_patch"] for metric in row["trajectory"])
 
 
 def test_scorer_passes_only_the_completed_phase_two_response_to_the_judge(tmp_path, monkeypatch):

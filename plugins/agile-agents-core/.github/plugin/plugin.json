@@ -1,7 +1,7 @@
 {
   "name": "agile-agents-core",
   "description": "RPI orchestration, 15 specialist agents, general engineering and evidence contracts. Solutions own technical guidance; personal tooling is optional.",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "license": "MIT",
   "author": {
     "name": "hoffe86",
@@ -21,6 +21,9 @@
   "category": "development",
   "agents": [
     "agents/"
+  ],
+  "extensions": [
+    "extensions/"
   ],
   "mcpServers": ".mcp.json",
   "skills": [

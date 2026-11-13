@@ -1,13 +1,7 @@
 # Trajectory expectations for task-08-threat-model-api; criteria stay verbatim in acceptance.md.
-# Core contracts plus explicitly staged consumer capabilities; see inputs.json.
 schema: 1
 root_agent: dev-lead
 plan_gate: required
 agents: [architect, review-lead, security-reviewer]
-skills:
-  dev-lead: [read-repo-context, dev-lead-templates]
-  architect: [read-repo-context, threat-model-analyst]
-  security-reviewer: [read-repo-context, reviewer-read-only-rules]
-  review-lead: [read-repo-context, reviewer-read-only-rules]
 forbidden_skills:
   review-lead: [code-review-checklist, code-review]

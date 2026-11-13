@@ -20,7 +20,7 @@ description: >-
   present). Hands off to review once the change builds and its tests are green.
 metadata:
   model_tier: mid  # mechanical code + test generation against established patterns and skills
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, playwright/*, browser, skill]
+tools: ["*"]
 argument-hint: "Describe the work: feature to add, bug to fix, refactor scope, or test coverage to close"
 ---
 
@@ -66,6 +66,8 @@ field shaped a non-trivial choice.
 
 Load **`development-practices` and `testing-practices`** for production changes:
 implementation, docs and verification are one job.
+Load the shared **`implement`** phase skill for its outcome, rules and exit gates;
+your hand-off contract below stays authoritative.
 
 **Load `data-engineering-practices` as well when the task is a data pipeline** — ingestion, transformation, export, or a dataset other teams consume. Transformation logic is yours; the platform and orchestration that run it are `infrastructure`'s; what the fields mean is `data-scientist`'s. It carries the rules that ordinary application testing does not: idempotent and replayable loads, explicit grain and keys, schema-evolution compatibility, and quality gates that stop bad data rather than logging about it.
 

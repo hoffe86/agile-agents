@@ -1,24 +1,21 @@
 """DeepEval measurement of the recorded trajectory against a task's expectations.
 
-Skill invocation per agent and delegation coverage are measured with DeepEval's
-ToolCorrectnessMetric, projected onto identities only (the same pattern
-`report_skill_usage.measure_skills` uses), so they stay deterministic and credential-
-free. A forbidden skill zeroes its agent's score: coverage alone cannot express "loaded
-the lens the orchestrator must not perform itself".
+Delegation coverage uses DeepEval's ToolCorrectnessMetric. Forbidden skill
+attempts are checked separately so a reviewer performing another role's workflow
+cannot pass merely because delegation succeeded.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from agile_eval.adapters.copilot_trace import SKILL_TOOL_NAME, TASK_TOOL_NAME, Trace
+from agile_eval.adapters.copilot_trace import TASK_TOOL_NAME, Trace
 from agile_eval.custom_eval.expectations import ANY_AGENT, Expectations
 from agile_eval.custom_eval.trajectory import (
     IMPLEMENTATION_AGENTS,
     GateCheck,
     check_plan_gate,
     delegation_outcomes,
-    short_agent,
     skills_by_short_agent,
 )
 
@@ -69,46 +66,16 @@ def _coverage(tool: str, key: str, actual: list[str], expected: list[str]) -> fl
 def skill_metrics(trace: Trace, exp: Expectations) -> list[MetricResult]:
     by_agent = skills_by_short_agent(trace, exp.root_agent)
     by_agent[ANY_AGENT] = list(dict.fromkeys(s for v in list(by_agent.values()) for s in v))
-    delegated = delegation_outcomes(trace, exp.root_agent)
     results: list[MetricResult] = []
-    for agent in dict.fromkeys([*exp.skills, *exp.forbidden_skills]):
-        expected = list(exp.skills.get(agent, ()))
+    for agent, names in exp.forbidden_skills.items():
         actual = by_agent.get(agent, [])
-        calls = [t for t in trace.tools if t.skill_name is not None
-                 and (agent == ANY_AGENT or short_agent(t.agent, exp.root_agent) == agent)]
-        confirmed = list(dict.fromkeys(t.skill_name for t in calls if t.success is True))
-        forbidden = [s for s in exp.forbidden_skills.get(agent, ()) if s in actual]
-        missing = [s for s in expected if s not in actual]
-        failed = [s for s in expected if s not in confirmed and s in actual
-                  and all(t.success is False for t in calls if t.skill_name == s)]
-        unknown = [s for s in expected if s not in confirmed and s in actual and s not in failed]
-        score = _coverage(SKILL_TOOL_NAME, "skill", confirmed, expected) if expected else 1.0
-        passed: bool | None = score == 1.0
-        reasons = []
-        if missing:
-            reasons.append(f"not invoked: {', '.join(missing)}")
-        if failed:
-            reasons.append(f"skill load failed: {', '.join(failed)}")
-        if unknown:
-            reasons.append(f"skill completion unavailable: {', '.join(unknown)}")
-            if not missing and not failed:
-                score, passed = None, None
-        if forbidden:
-            score, passed = 0.0, False
-            reasons.append(f"forbidden skill invoked: {', '.join(forbidden)}")
-        if agent not in (exp.root_agent, ANY_AGENT):
-            if agent not in delegated:
-                reasons.append("agent was never delegated to")
-            elif delegated[agent] is False:
-                reasons.append("delegation failed before the agent started")
-            elif delegated[agent] is None:
-                reasons.append("delegation outcome unavailable")
-                if (missing or unknown) and not failed and not forbidden:
-                    score, passed = None, None
+        forbidden = [s for s in names if s in actual]
         results.append(MetricResult(
-            name=f"skills:{agent}", score=score, passed=passed,
-            reason="; ".join(reasons) or "all expected skills loaded successfully",
-            expected=expected, actual=actual,
+            name=f"skills:{agent}", score=0.0 if forbidden else 1.0,
+            passed=not forbidden,
+            reason=(f"forbidden skill invoked: {', '.join(forbidden)}" if forbidden
+                    else "no forbidden skill attempts recorded"),
+            expected=[], actual=actual,
         ))
     return results
 

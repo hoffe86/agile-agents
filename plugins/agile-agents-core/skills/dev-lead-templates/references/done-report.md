@@ -16,8 +16,8 @@ why" — answer that first.
 | Stage | Agent | Outcome | Tokens (in/out) | AIU |
 |---|---|---|---|---|
 | Research | architect (or dev-lead lightweight) | <verified design / explicit skip reason> | <in>/<out> | <aiu> |
-| Implementation + tests | coding | <N files, build and tests result> | <in>/<out> | <aiu> |
-| Infrastructure + IaC tests | infrastructure | <validation and IaC tests / inapplicable> | <in>/<out> | <aiu> |
+| Implementation + tests | dev-lead (direct) / coding (delegated) | <N files, build and tests result> | <in>/<out> | <aiu> |
+| Infrastructure + IaC tests | dev-lead (direct) / infrastructure (delegated) | <validation and IaC tests / inapplicable> | <in>/<out> | <aiu> |
 | Analysis + evidence | data-scientist | <supported / inconclusive / not supported / inapplicable> | <in>/<out> | <aiu> |
 | Review | review-lead | <verdict and corrective rounds actually used> | <in>/<out> | <aiu> |
 | **Run total** | | | **<in>/<out>** | **<aiu>** |

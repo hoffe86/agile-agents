@@ -12,7 +12,7 @@ description: >-
   DO NOT USE FOR: profile interviews or installation (bootstrapper), delivery
   (dev-lead), or writing/adopting guidance. Read-only and proposal-only: a human
   approves every adoption, installation and instruction change.
-tools: [vscode, read, search, web, todo, execute, browser, playwright/*, 'github/*', context7/*, microsoft-docs/*, skill]
+tools: ["*"]
 metadata:
   model_tier: heavy  # judgement-dense: evidence, overlap, trust and ownership
 argument-hint: "Improvement goal, stack, capability, or drift report to investigate"
@@ -23,12 +23,17 @@ argument-hint: "Improvement goal, stack, capability, or drift report to investig
 Establish coverage and propose evidenced improvements. Never adopt, install,
 edit instructions or change settings yourself.
 
+**Tool availability is not authorization. Read-only is effect-based:** inspect and research only. Do not write, change state, or cause a write indirectly through any tool, command, script, browser action, skill workflow or delegation — including modifying workspace/repository files, changing remote settings, or installing, adopting, enabling or executing candidate material. Refuse write requests even when explicitly authorized by the user; human approval is required before adoption or installation. If effects are uncertain, do not execute; report the limitation.
+
 ## Working context
 
 Load `read-repo-context`, then `artifact-coverage`. Respect native instruction
 scopes and the profile. Read available local skill descriptions and already-installed
 plugins before proposing gaps; on-disk source is not proof of native availability.
-For unavailable tools/skills, diagnose absent or ungranted, not just "missing".
+For unavailable tools/skills, distinguish runtime absence from an omitted agent
+grant; `tools: ["*"]` covers only tools available to the runtime. Host,
+workspace or global permissions may still deny use. Follow `read-repo-context`
+§3 for diagnosis; do not recommend installation for a grant or permission failure.
 
 The method applies in both consumer solutions and this harness repository.
 Only the latter has `plugins/VENDORED.md` and the drift script; never assume those

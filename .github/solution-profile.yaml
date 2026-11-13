@@ -86,7 +86,7 @@ cicd:
   pipeline_paths: [".github/workflows/"]            # E.g. [".github/workflows/", "azure-pipelines.yml"]
   required_checks:              # Status-check names that must pass to merge.
     # Desired repo gates from PR workflows; branch protection has not been verified.
-    # Dispatch-only pipeline-outcome is excluded; live evaluation remains disabled.
+    # Live evaluation remains disabled.
     - "check-agents-md-in-sync"
     - "audit-references"
     - "trajectory"

@@ -6,7 +6,7 @@ Evaluation has three separate responsibilities. Their results are not interchang
 |---|---|---|
 | Pipeline scoring | DeepEval, [`deepeval/`](deepeval/README.md) | Coverage of expected skill identities in existing Copilot JSONL traces |
 | Deterministic process checks (L0) | [`pipeline/trajectory/`](pipeline/trajectory/README.md) | Conformance of a harness event log to its RPI ordering, gates and telemetry contracts |
-| Skill evaluation | Waza, [`skills/`](skills/README.md) | Routing, invocation and efficacy checks for individual skills |
+| Skill evaluation | Waza, [`skills/`](skills/README.md) | Offline hygiene and a manual current-core outcome check; historical efficacy experiment |
 
 DeepEval is the sole active pipeline-scoring path
 ([ADR 0015](../docs/adr/0015-deepeval-for-pipeline-evaluation.md)).
@@ -14,6 +14,12 @@ Waza remains the skill evaluator
 ([ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md)); deterministic L0
 checks remain independent
 ([ADR 0008](../docs/adr/0008-layered-evaluation-strategy.md)).
+
+ADR 0015 is historical: current direction retires grading whether Copilot
+invoked expected skills. The manual invocation-grading workflow has been
+removed. Local scoring remains available, and synthetic checks exercise
+evaluation infrastructure rather than Copilot's loading behaviour. Waza
+evaluates skill quality.
 
 ## Pipeline scoring and boundaries
 
@@ -50,8 +56,8 @@ supplies telemetry/configuration safeguards and a fail-on-call model stub.
 
 [`pipeline/custom-eval/`](pipeline/custom-eval/README.md) holds ten tasks for live
 evaluation: `agile_eval.custom_eval` stages a task, drives dev-lead through the Copilot CLI,
-and scores the run with DeepEval — plan gate, delegation, and **per-agent skill
-invocation** against each task's
+and scores the run with DeepEval — plan gate, delegation, and forbidden reviewer
+workflows against each task's
 `expectations.yaml` — plus command checks for build, test and render criteria and an
 optional model judge over the captured diff for the rest. A missing tool leaves its
 criterion `UNVERIFIED`, never failed. Simulated LLM plan approval is implemented but
@@ -87,36 +93,9 @@ Installation, CLI arguments, result schema, exit codes and test commands are in
 python eval/deepeval/report_skill_usage.py path/to/existing/logs --score --expect-skill architecture-decision-records --output eval/pipeline/runs/skill-usage-summary.json
 ```
 
-### CI (on demand)
+### CI
 
-The manual [DeepEval offline scoring workflow](../.github/workflows/eval-pipeline-outcome.yml)
-scores checkout-local traces; its synthetic fixture is a demonstration only.
-Use local scoring for gitignored developer logs rather than importing remote
-artifacts. Expected identities and trace paths are data, never shell source.
-Only sanitized JSON summaries belong in workflow artifacts, not raw transcripts,
-workspaces or credentials.
-
-Its complete dispatch input contract is:
-
-| Input | Meaning | Default |
-|---|---|---|
-| `trace_path` | Existing checkout-relative JSONL file or log directory; paths and symlinks must stay inside the checkout | `eval/deepeval/tests/fixtures/skill-scoring-demo.jsonl` (**synthetic**) |
-| `expected_skills` | Nonempty JSON array of nonblank skill identities, applied to each input log | `["fixture-skill-a"]` |
-
-The workflow provisions Python 3.12 using hash-verified wheels from the pinned
-evaluation lock, installs without an index, checks dependency closure and requires
-the real DeepEval offline metric. The scoring threshold is 1.0. Exit codes remain
-0 for all expectations recorded, 1 for measured failure, and 2 for input,
-schema or setup errors; errors never become inferred scores.
-
-The owned output is `eval/pipeline/runs/skill-usage-summary.json`. Existing output
-files and redirected output paths are rejected. Only a summary created by the
-scoring step is eligible for upload, including measured failures and schema/setup
-error reports; input validation failures do not publish stale files. Artifact
-retention is seven days. The job summary renders only status, measured/total counts
-and threshold, not trace content or operator-supplied skill labels.
-
-The independent [skill workflow](../.github/workflows/eval-skills.yml) runs
+The [skill workflow](../.github/workflows/eval-skills.yml) runs
 dependency/runtime contract checks and the Waza skill checks. L0 retains its
 own [trajectory workflow](../.github/workflows/eval-pipeline-trajectory.yml).
 No scoring demonstration grants live-execution readiness or L2 outcome credit.

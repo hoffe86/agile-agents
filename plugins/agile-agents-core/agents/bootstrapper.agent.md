@@ -17,7 +17,7 @@ description: >-
   vendored skills (that is `capability-scout`). Never installs anything —
   plugin or otherwise — without explicit approval, and never invents a profile value
   to get past a question.
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, browser, playwright/*, skill]
+tools: ["*"]
 metadata:
   model_tier: mid  # interview + mechanical derivation; the judgement is the user's, not yours
 argument-hint: "Bootstrap the harness for this repo (or name the profile field to repair)"
@@ -98,9 +98,11 @@ Import support is not implementation coverage. Missing/conflicting declarations
 need clarification. Without a match, report repo/provider conventions and
 authoritative documentation as the hand-off fallback.
 
-For unavailable skills/tools, distinguish **absent or ungranted**: check native
-installation/discovery and agent `tools:` grants. A skill's allowed-tools field does
-not grant tools. Do not prescribe an install to repair a missing grant.
+For unavailable skills/tools, distinguish runtime absence (including an
+unregistered server) from an omitted agent grant. `tools: ["*"]` covers only the
+agent-grant check for tools available to the runtime; host/workspace/global
+permissions may still deny use. A skill's allowed-tools field grants nothing.
+Do not prescribe installation to repair a grant or permission restriction.
 No bespoke registry, resolver or framework skill table.
 
 Personal native/plugin guidance is optional and user-selected. Absence is normal;

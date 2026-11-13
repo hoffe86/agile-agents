@@ -25,7 +25,6 @@ def commands_for(check: str) -> list[list[str]]:
             ["pwsh", "-NoProfile", "-File", "scripts/audit-references.ps1"],
             [python, "scripts/check-instructions-drift.py"],
             [python, "scripts/check-instructions-drift.py", "--self-test"],
-            [python, "scripts/gen-trigger-evals.py", "--check"],
             ["pwsh", "-NoProfile", "-File", "scripts/check-plugin-versions.ps1"],
         ]
     if check == "unit":
@@ -44,6 +43,9 @@ def commands_for(check: str) -> list[list[str]]:
              "-p", "test_check_trajectory.py", "-v"],
             [python, "-m", "pytest", "-q", "eval/pipeline/custom-eval/tests",
              "eval/deepeval/tests"],
+            ["node", "--test",
+             "plugins/agile-agents-core/extensions/solution-profile/tests/profile.test.mjs",
+             "plugins/agile-agents-core/extensions/solution-profile/tests/packaging.test.mjs"],
         ]
     raise ValueError(f"unknown check: {check}")
 

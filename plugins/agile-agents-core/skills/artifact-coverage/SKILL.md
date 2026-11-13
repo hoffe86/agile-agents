@@ -45,11 +45,12 @@ that subset. Tool syntax or a state backend alone does not establish a resource
 provider. Import support is not implementation coverage. Missing/conflicting
 declarations need clarification, not a vendor default.
 
-If unavailable, distinguish absent or ungranted: native discovery/installation
-and agent `tools:` grants are separate checks. A skill's `allowed-tools` grants
-nothing. Without matching optional guidance, report repo/provider conventions
-and authoritative documentation as the hand-off fallback. Reviewers may read
-reference guidance, not execute author workflows.
+If unavailable, check runtime discovery/registration separately from the agent
+grant. `tools: ["*"]` covers only the grant check for runtime-available tools; it
+does not authorize use or bypass host/workspace/global restrictions. A skill's
+`allowed-tools` grants nothing. Without matching optional guidance, report
+repo/provider conventions and authoritative documentation as the hand-off
+fallback. Reviewers may read reference guidance, not execute author workflows.
 
 ## 3. Classify coverage and opportunities separately
 

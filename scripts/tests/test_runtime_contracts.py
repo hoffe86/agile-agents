@@ -370,6 +370,7 @@ SCHEMA_CLAUSES = {
     "review-lead": (
         "keep the full specialist reports and the role's merging rubric",
         "✅ Approve | 🔁 Request changes | ❌ Block", "with skip reasons",
+        "dev-lead: <directly-authored findings>",
     ),
     "backlog-manager": (
         "on the Plan workflow only", "provisional, tag `pending-approval`",
@@ -724,6 +725,51 @@ class SharedHandoffTests(unittest.TestCase):
 # Independent routing oracle: never derive the expected destination from the
 # production pointer under test. These helpers are offline test code only.
 TEMPLATE_HOME = Path("skills/dev-lead-templates")
+PHASE_SKILL_PATHS = {
+    name: Path("skills") / name / "SKILL.md"
+    for name in ("research", "plan", "implement")
+}
+STAGE_PHASE_SKILLS = {
+    1: "research",
+    2: "plan",
+    3: "plan",
+    4: "plan",
+    5: "plan",
+    6: "implement",
+    7: "implement",
+}
+PHASE_SKILL_CONTENT = {
+    "research": (
+        "prepared concept and accepted decisions", "Choose research depth",
+        "load-bearing external facts with applicable authoritative sources",
+        "label it as an assumption", "does not analyse data",
+        "`data-scientist` feasibility task", "data existence",
+        "permitted use", "physical landing", "NFRs and security posture",
+        "decision gaps", "carry it forward", "`dev-lead` alone owns stage transitions"),
+    "plan": (
+        "smallest meaningful set", "testable acceptance criteria",
+        "approach note", "Map every requirement acceptance criterion",
+        "every source step", "carried, merged or dropped",
+        "`data-scientist` feasibility task", "Never bundle feasibility analysis",
+        "dataset contract", "grain, keys, schema", "backlog-manager",
+        "linked to the required parent", "backlog.create_tasks",
+        "not authoritative when it conflicts", "approval prompts",
+        "does not interpret an approval response",
+        "transformation logic belongs to `coding`",
+        "platform/storage/orchestration belongs to `infrastructure`",
+        "modeling and evaluation belong to `data-scientist`",
+        "`dev-lead` alone owns stage transitions"),
+    "implement": (
+        "Choose separately for each approved task", "only after Stage 4 approval",
+        "direct `dev-lead` authorship", "`coding`", "`infrastructure`",
+        "`data-scientist`", "never direct `dev-lead` work",
+        "Interface for coding", "one implementation writer active at a time",
+        "behavior-to-test mapping", "must never weaken, delete, skip or rebaseline",
+        "Existing tests modified", "canonical hand-off", "supervisor-owned",
+        "worker identity", "combined-diff `test-bar-gate`",
+        "does not authorize skips, retries, approval changes",
+        "`dev-lead` remains authoritative"),
+}
 STAGE_RECIPES = {
     0: ("intake-plan", "Stage 0"),
     1: ("intake-plan", "Stage 1"),
@@ -751,14 +797,15 @@ STAGE_CONTROLS = {
         "derived list reach Stage 9 unconfirmed", "stop condition #10",
         "stop condition #12", "run_started_at", "never replace it",
         "external-project", "halt with `ask_user`", "USD as *unmetered*, never `0.00`"),
-    1: ("**Entry:** Stage 0 passed", "Read-only", "Lightweight",
-        "Delegate to `architect`", "Stage 1 blocker", "does not analyse data",
-        "decision gap", "NFRs and security posture", "verified with a source",
+    1: ("**Entry:** Stage 0 passed", "Read-only", "Delegate when warranted",
+        "Stage 1 blocker", "does not analyse data", "decision gap",
+        "NFRs and security posture", "verified with a source",
         "one** corrective message", "stop and ask the human"),
-    2: ("independently-implementable tasks", "feasibility goes first",
-        "never bundled with a model task", "stop condition #3",
-        "every requirement AC maps", "out-of-scope", "every step in the source plan",
-        "never skip Review", "todo_deps", "tracker wins on conflict"),
+    2: ("independently-implementable tasks", "Every requirement criterion maps",
+        "out-of-scope", "every architect follow-on", "every supplied-plan step",
+        "feasibility is a separate first", "never bundled with modeling",
+        "scope stop", "todo_deps", "source of truth on conflict",
+        "Review is never skipped"),
     3: ("delegate to `backlog-manager`", "`TASKS PLANNED`",
         "`pending-approval`", "every task linked to the parent",
         "stop condition #11", "never silently fall back to file-only planning",
@@ -775,12 +822,18 @@ STAGE_CONTROLS = {
         "architect stage's one corrective retry", "one Adjust round per run",
         "persisted across resume", "second Adjust is not allowed",
         "user stopped at design gate"),
-    6: ("Stage 4 approved and Stage 5 passed", "`coding`", "`infrastructure`",
-        "`data-scientist`", "scope question for the human",
-        "no separate testing agent", "must never weaken a test",
-        "all dependencies are `done`", "dependency cycle",
-        "Deliver tasks sequentially", "do not dispatch implementation tasks in parallel",
-        "safe only for **read-only** agents", "Existing tests modified",
+    6: ("The human's exact approval response for Stage 4 is verified",
+        "Stage 5 passed or is explicitly inapplicable", "`coding`", "`infrastructure`",
+        "`data-scientist`", "stop for a human scope decision",
+        "Never weaken a test", "Choose the author per approved task",
+        "only here and after approval", "one implementation writer and task at a time",
+        "Analysis, modeling and evaluation are always delegated",
+        "unavailable, inactive or disabled", "canonical fields",
+        "do not emit a worker sentinel",
+        "`phase=implement`", "`agent=dev-lead`",
+        "dependencies are `done`", "dependency cycle",
+        "Implementation tasks are sequential, never parallel",
+        "only read-only agents may fan out", "Existing tests modified",
         "deleted test", "newly-skipped test", "stop condition #9",
         "all three pass this gate", "Never send a corrective round asking for a better result",
         "baseline", "uncertainty", "split rule, seed and leakage checks",
@@ -795,7 +848,8 @@ STAGE_CONTROLS = {
         "before and after verification", "result is stale",
         "Only when 7a passed **and**", "`infrastructure.deploy_verify` is `dev`",
         "Never production", "per deterministic gate", "does **not reset**",
-        "not itself a corrective retry", "3rd fail", "4th fail",
+        "not itself a corrective retry", "`dev-lead` for its directly authored",
+        "deploy-verify failure", "3rd fail", "4th fail",
         "Halt the run", "Do not call reviewers", "quota, policy denial",
         "halts immediately with no retry"),
     8: ("**Delegate to:** `review-lead`", "quality and security unconditionally",
@@ -807,6 +861,7 @@ STAGE_CONTROLS = {
         "Re-route anything marked `not mine`", "A `disputed` finding stays open",
         "Re-verify before re-review", "failed rerun prevents reviewer dispatch",
         "No-edit disputes retain valid evidence",
+        "Findings owned by `dev-lead` are direct-authorship findings",
         "at most three corrective rounds", "does not reset this separate counter",
         "If a round closes nothing", "stop condition #7",
         "Only you write the session ledger", "a fixer's claim cannot close a finding",
@@ -847,13 +902,17 @@ RECIPE_CONTENT = {
     6: ("SELECT t.* FROM todos t", "t.status = 'pending'",
         "td.depends_on = dep.id", "dep.status != 'done'",
         "Design constraints (locked by Stage 1)", "allowed dependencies",
-        "Interface for coding", "that task's"),
+        "Interface for coding", "that task's",
+        "After the human's plan approval is verified",
+        "choose direct dev-lead authorship", "specialist delegation"),
     7: ("scripts/run-gate.sh", "quality_gates.test_bar.<check>.command",
         "testing.smoke.command", "content hashes of relevant untracked files",
         "before **and** after verification", "structured failure report"),
     8: ("git diff <base>...HEAD", "Existing tests modified",
         "CREATE TABLE IF NOT EXISTS findings", "id TEXT PRIMARY KEY",
-        "severity TEXT", "owner TEXT", "summary TEXT", "status TEXT DEFAULT 'open'",
+        "severity TEXT", "owner TEXT",
+        "dev-lead (direct author) | coding | data-scientist | infrastructure | architect",
+        "summary TEXT", "status TEXT DEFAULT 'open'",
         "note TEXT", "SELECT id, owner FROM findings WHERE status = 'open'"),
     9: ("SELECT ac_id, text, covered_by, evidence, status FROM requirement_acs",
         "WHERE status = 'uncovered'", "every** criterion", "previously covered rows",
@@ -867,8 +926,12 @@ RECIPE_CONTENT = {
 
 
 def load_stage_files(core=CORE):
-    return {name: (core / path).read_text(encoding="utf-8")
-            for name, path in TEMPLATE_PATHS.items()}
+    return {
+        **{name: (core / path).read_text(encoding="utf-8")
+           for name, path in TEMPLATE_PATHS.items()},
+        **{name: (core / path).read_text(encoding="utf-8")
+           for name, path in PHASE_SKILL_PATHS.items()},
+    }
 
 
 def lead_stage_section(lead, stage):
@@ -916,6 +979,13 @@ def stage_contract_errors(files, core=CORE):
                    "Missing file", "stop and surface malformed contract/context"):
         if clause not in skill:
             errors.append("skill loading guard missing " + clause)
+    for clause in ("load `research` at Stage 1",
+                   "`plan` at Stages 2–5",
+                   "`implement` at Stages 6–7",
+                   "on entry and resume", "phase working methods only",
+                   "remains authoritative", "Never let a phase skill override"):
+        if clause not in lead:
+            errors.append("phase skill loading guard missing " + clause)
     for stage in STAGE_RECIPES:
         try:
             resident = " ".join(lead_stage_section(files["dev-lead"], stage).split())
@@ -923,6 +993,23 @@ def stage_contract_errors(files, core=CORE):
         except ValueError as error:
             errors.append(str(error))
             continue
+        phase_name = STAGE_PHASE_SKILLS.get(stage)
+        if phase_name:
+            route = re.findall(
+                r"\*\*Phase skill:\*\*\s+load\s+`([^`]+)`\s+on entry and resume",
+                resident)
+            if route != [phase_name]:
+                errors.append("wrong or missing phase skill route at Stage " + str(stage))
+            if "supplements but does not override this agent's" not in resident:
+                errors.append("phase skill authority guard missing at Stage " + str(stage))
+            phase_text = files.get(phase_name)
+            if phase_text is None:
+                errors.append("missing phase skill file " + phase_name)
+            else:
+                phase_text = " ".join(phase_text.split())
+                for clause in PHASE_SKILL_CONTENT[phase_name]:
+                    if clause not in phase_text:
+                        errors.append("%s phase skill missing %s" % (phase_name, clause))
         for clause in STAGE_CONTROLS[stage]:
             if clause not in resident:
                 errors.append("Stage %s resident control missing %s" % (stage, clause))
@@ -975,7 +1062,8 @@ def stage_contract_errors(files, core=CORE):
             errors.append("missing auxiliary skill route " + heading)
     try:
         report = " ".join(named_contract_section(files.get("done-report", ""), "Report").split())
-        for phrase in ("Implementation + tests | coding", "Infrastructure + IaC tests | infrastructure",
+        for phrase in ("Implementation + tests | dev-lead (direct) / coding (delegated)",
+                       "Infrastructure + IaC tests | dev-lead (direct) / infrastructure (delegated)",
                        "Analysis + evidence | data-scientist", "Review | review-lead",
                        "Evidence is a test name or a review finding", "collect-usage.py"):
             if phrase not in report:
@@ -1040,6 +1128,33 @@ class StageRecipeTests(unittest.TestCase):
                     changed["dev-lead-templates"] = changed["dev-lead-templates"].replace(link, replacement)
                     self.assertIn("missing or duplicate skill route at Stage " + str(stage),
                                   stage_contract_errors(changed))
+
+    def test_phase_skill_route_file_and_content_are_independently_required(self):
+        for stage, phase_name in STAGE_PHASE_SKILLS.items():
+            with self.subTest(stage=stage, failure="wrong route"):
+                changed = dict(self.files)
+                section = lead_stage_section(changed["dev-lead"], stage)
+                wrong = ("plan" if phase_name != "plan"
+                         else "research")
+                changed["dev-lead"] = changed["dev-lead"].replace(
+                    section, section.replace(
+                        "`%s` on entry and resume" % phase_name,
+                        "`%s` on entry and resume" % wrong, 1))
+                self.assertIn("wrong or missing phase skill route at Stage " + str(stage),
+                              stage_contract_errors(changed))
+
+        for phase_name, clauses in PHASE_SKILL_CONTENT.items():
+            with self.subTest(skill=phase_name, failure="missing file"):
+                changed = dict(self.files)
+                del changed[phase_name]
+                self.assertIn("missing phase skill file " + phase_name,
+                              stage_contract_errors(changed))
+            with self.subTest(skill=phase_name, failure="missing content"):
+                changed = dict(self.files)
+                clause = clauses[0]
+                changed[phase_name] = changed[phase_name].replace(clause, "removed", 1)
+                self.assertIn(phase_name + " phase skill missing " + clause,
+                              stage_contract_errors(changed))
 
     def test_each_resident_control_cannot_be_hidden_in_a_recipe(self):
         for stage, clauses in STAGE_CONTROLS.items():
@@ -1170,7 +1285,7 @@ class StageRecipeTests(unittest.TestCase):
             decoy = consumer / "references/intake-plan.md"
             decoy.parent.mkdir(parents=True)
             decoy.write_text("## Stage 0\nWrong recipe", encoding="utf-8")
-            for name, path in TEMPLATE_PATHS.items():
+            for name, path in {**TEMPLATE_PATHS, **PHASE_SKILL_PATHS}.items():
                 target = installed / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(self.files[name], encoding="utf-8")
@@ -1230,9 +1345,87 @@ class InstructionTests(unittest.TestCase):
         self.files = load_handoff_files()
         self.files.update(load_stage_files())
         self.files["cost-budget"] = (CORE / "skills/cost-budget/SKILL.md").read_text(encoding="utf-8")
+        self.files["event-map"] = (
+            CORE / "skills/run-event-log/references/dev-lead-event-map.md"
+        ).read_text(encoding="utf-8")
+        self.files["test-bar"] = (
+            CORE / "skills/test-bar-gate/SKILL.md"
+        ).read_text(encoding="utf-8")
 
     def test_contracts_match(self):
         self.assertEqual(contract_errors(self.files), [])
+
+    def test_direct_authoring_is_post_approval_auditable_and_reviewed_independently(self):
+        lead = " ".join(self.files["dev-lead"].split())
+        for marker in (
+            "The human's exact approval response for Stage 4 is verified",
+            "Choose the author per approved task, only here and after approval",
+            "The selected author owns implementation and its tests",
+            "Existing tests modified",
+            "phase=implement",
+            "do not emit `handoff_received`",
+        ):
+            with self.subTest(source="dev-lead", marker=marker):
+                self.assertIn(marker, lead)
+        implement = " ".join(self.files["implement"].split())
+        for marker in (
+            "Analysis, profiling, experiments, trained models and evaluation evidence belong "
+            "to `data-scientist`, never direct `dev-lead` work",
+            "raise the scope/capability question",
+            "one per task",
+            "supervisor-owned",
+            "behavior-to-test mapping",
+            "Existing tests modified",
+        ):
+            with self.subTest(source="implement", marker=marker):
+                self.assertIn(marker, implement)
+
+        review = " ".join(self.files["review-lead"].split())
+        self.assertIn("dev-lead` for its directly authored application/IaC work", review)
+        self.assertIn("reviewer-read-only-rules", review)
+        self.assertIn("Strictly read-only", review)
+        self.assertIn("You do not perform a review lens yourself", review)
+        self.assertIn("Dispatch all applicable specialists in parallel", review)
+        self.assertIn("Always invoke `code-reviewer` and `security-reviewer`", review)
+        self.assertIn("dev-lead: <directly-authored findings>", self.files["handoff-contracts"])
+        handoffs = " ".join(self.files["handoff-contracts"].split())
+        self.assertIn("This is not a worker hand-off", handoffs)
+        self.assertIn("do not emit either sentinel", handoffs)
+        self.assertIn("to `dev-lead` when directly fixing its own authored application/IaC work",
+                      handoffs)
+        self.assertIn("dev-lead (direct) / coding (delegated)", self.files["done-report"])
+        self.assertIn("dev-lead (direct) / infrastructure (delegated)",
+                      self.files["done-report"])
+
+        event_map = " ".join(self.files["event-map"].split())
+        self.assertIn("phase=implement", event_map)
+        self.assertIn("agent=dev-lead", event_map)
+        self.assertIn("no `handoff_received`", event_map)
+        self.assertIn("phase=implement", self.files["cost-budget"])
+        self.assertIn("by_agent.dev-lead", self.files["cost-budget"])
+        self.assertIn("`dev-lead` when it directly authored the approved task",
+                      " ".join(self.files["test-bar"].split()))
+
+    def test_direct_author_may_run_required_checks_without_deployment_authority(self):
+        lead = " ".join(self.files["dev-lead"].split())
+        self.assertIn(
+            "For directly authored approved application/IaC tasks, run the repository-required "
+            "build, lint, test, and other deterministic verification checks for the task.",
+            lead,
+        )
+        self.assertIn(
+            "This is not a limited tool grant and does not authorize deployments or other "
+            "human-only operations",
+            lead,
+        )
+
+    def test_data_science_deliverables_are_positively_routed_to_data_scientist(self):
+        implement = " ".join(self.files["implement"].split())
+        self.assertIn(
+            "Analysis, profiling, experiments, trained models and evaluation evidence belong "
+            "to `data-scientist`, never direct `dev-lead` work",
+            implement,
+        )
 
     def test_known_contradictions_are_detected(self):
         mutations = [
@@ -1808,46 +2001,10 @@ class AgentMetadataTests(unittest.TestCase):
             with self.subTest(agent=path.name):
                 self.assertNotIn("model_tier", data)
                 self.assertNotIn("model", data)  # Migration must not configure a runtime model.
-                self.assertIn("tools", data)
                 self.assertIn("argument-hint", data)
                 self.assertEqual(data["name"], path.name.removesuffix(".agent.md"))
                 actual[data["name"]] = data["metadata"]["model_tier"]
         self.assertEqual(actual, expected)
-
-    def test_all_fifteen_native_skill_grants_preserve_exact_permissions(self):
-        common = ["vscode", "execute", "read", "search", "web", "todo"]
-        docs = ["context7/*", "microsoft-docs/*"]
-        azure = ["azure-mcp/*", "azure-mcp-server/*", "azure/*"]
-        browser = ["playwright/*", "browser"]
-        expected = {
-            "architect": common + azure + docs + ["edit", "agent"] + browser,
-            "infrastructure": common + azure + docs + ["edit", "agent"] + browser,
-            "coding": common + docs + ["edit", "agent"] + browser,
-            "data-scientist": common + docs + ["edit", "agent"] + browser,
-            "backlog-manager": common + docs + ["edit", "agent", "browser", "github/*",
-                "ado/*", "azure-devops/*", "azure-devops-mcp/*", "playwright/*"],
-            "bootstrapper": common + docs + ["edit", "browser", "playwright/*"],
-            "capability-scout": ["vscode", "read", "search", "web", "todo", "execute",
-                                "browser", "playwright/*", "github/*"] + docs,
-            "dev-lead": common + docs + ["agent", "ado/*", "azure-devops/*",
-                                        "azure-devops-mcp/*"] + browser,
-            "review-lead": common + docs + ["agent"] + browser,
-            "infrastructure-reviewer": common + azure + docs + browser,
-        }
-        for name in ("code-reviewer", "architecture-reviewer", "security-reviewer",
-                     "test-reviewer", "data-reviewer"):
-            expected[name] = common + docs + browser
-        self.assertEqual({p.stem.removesuffix(".agent") for p in (CORE / "agents").glob("*.agent.md")},
-                         set(expected))
-        for name, tools in expected.items():
-            with self.subTest(agent=name):
-                header = (CORE / "agents" / f"{name}.agent.md").read_text(
-                    encoding="utf-8").split("---", 2)[1]
-                data = self.checker.yaml.safe_load(header)
-                native = ["skill", "ask_user"] if name == "dev-lead" else ["skill"]
-                self.assertEqual(data["tools"], tools + native)
-                self.assertNotIn("tools", data["metadata"])
-                self.assertNotIn("allowed-tools", data)
 
     def test_scan_rejects_dev_lead_reassignment_to_light(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2218,7 +2375,7 @@ class SkillMetadataTests(unittest.TestCase):
 
     def test_repository_scope_inventory_and_unique_names(self):
         paths = sorted((ROOT / "plugins").glob("*/skills/*/SKILL.md"))
-        self.assertEqual(len(paths), 22)
+        self.assertEqual(len(paths), 25)
         scopes, names = [], []
         for path in paths:
             with self.subTest(path=path):
@@ -2227,14 +2384,14 @@ class SkillMetadataTests(unittest.TestCase):
                 self.checker.FRONTMATTER.match(path.read_text(encoding="utf-8")).group(1))
             scopes.append(data["metadata"]["applies_to"])
             names.append(data["name"])
-        self.assertEqual(scopes.count("all"), 22)
+        self.assertEqual(scopes.count("all"), 25)
         self.assertEqual(len(scopes) - scopes.count("all"), 0)
         for path in (CORE / "agents").glob("*.agent.md"):
             data = self.checker.yaml.safe_load(
                 self.checker.FRONTMATTER.match(path.read_text(encoding="utf-8")).group(1))
             names.append(data["name"])
-        self.assertEqual(len(names), 37)
-        self.assertEqual(len(set(names)), 37)
+        self.assertEqual(len(names), 40)
+        self.assertEqual(len(set(names)), 40)
 
     def test_acquire_codebase_retains_upstream_types(self):
         path = CORE / "skills/acquire-codebase-knowledge/SKILL.md"
@@ -2412,15 +2569,15 @@ class ScopeCountDriftTests(unittest.TestCase):
         actual = self.checker.actual_facts(str(ROOT))
         claimed = self.checker.claimed_facts(
             (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8"))
-        self.assertEqual((actual["all_scopes"], actual["scoped"]), (22, 0))
+        self.assertEqual((actual["all_scopes"], actual["scoped"]), (25, 0))
         self.assertEqual(self.checker.compare(actual, claimed), [])
 
     def test_stale_and_removed_scope_claims_fail(self):
         actual = self.checker.actual_facts(str(ROOT))
         text = (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8")
-        for replacement in ("21 `all` / 0 scoped", "22 `all` / 1 scoped", "not counted"):
+        for replacement in ("24 `all` / 0 scoped", "25 `all` / 1 scoped", "not counted"):
             with self.subTest(replacement=replacement):
-                changed = text.replace("22 `all` / 0 scoped", replacement)
+                changed = text.replace("25 `all` / 0 scoped", replacement)
                 self.assertTrue(self.checker.compare(actual, self.checker.claimed_facts(changed)))
 
     def test_count_reads_nested_annotation_not_body_or_fixed_inventory(self):
@@ -2575,7 +2732,7 @@ class AdvisoryProfileTests(unittest.TestCase):
                 capture_output=True, encoding="utf-8", timeout=20,
                 env=legacy_python_environment())
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("Frontmatter check passed: 39 artifacts, all frontmatter valid.",
+            self.assertIn("Frontmatter check passed: 42 artifacts, all frontmatter valid.",
                           result.stdout)
             self.assertEqual(result.stderr, "")
 
@@ -2682,67 +2839,6 @@ class AdvisoryProfileTests(unittest.TestCase):
         for key in ("max_usd_per_run", "max_aiu_per_run", "max_aiu_per_phase",
                     "max_tokens_per_run", "max_minutes_per_run"):
             self.assertEqual(profile["cost_envelope"][key], template["cost_envelope"][key])
-
-
-class TriggerEvalTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        spec = importlib.util.spec_from_file_location(
-            "trigger_evals", ROOT / "scripts/gen-trigger-evals.py")
-        cls.generator = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cls.generator)
-
-    def setUp(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
-        target = "plugins/agile-agents-core/skills/fixture/SKILL.md"
-        patches = patch.multiple(self.generator, REPO=self.root,
-            SKILL_PATHS={"fixture": target}, CASES=[
-                ("fixture", "positive", "positive", "Use fixture.", "Direct match."),
-                ("fixture", "negative", "negative", "Use another skill.", "Near miss."),
-            ])
-        patches.start()
-        self.addCleanup(patches.stop)
-        path = self.root / target
-        path.parent.mkdir(parents=True)
-        path.write_text("# Fixture\n", encoding="utf-8")
-        for relative, content in self.generator.rendered_files().items():
-            path = self.root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
-
-    def test_missing_target_and_orphan_suite_fail(self):
-        self.assertEqual(self.generator.inventory_errors(self.root), [])
-        target = self.root / self.generator.SKILL_PATHS["fixture"]
-        target.unlink()
-        self.assertTrue(any("missing skill" in e
-                            for e in self.generator.inventory_errors(self.root)))
-        target.write_text("# Fixture\n", encoding="utf-8")
-        orphan = self.root / self.generator.EVALS / "orphan/eval.yaml"
-        orphan.parent.mkdir()
-        orphan.write_text("skill: orphan\n", encoding="utf-8")
-        self.assertTrue(any("orphan suite file" in e
-                            for e in self.generator.inventory_errors(self.root)))
-
-    def test_missing_case_kind_and_duplicate_case_fail(self):
-        cases = self.generator.CASES
-        for kind in ("positive", "negative"):
-            with self.subTest(missing=kind), patch.object(
-                    self.generator, "CASES", [c for c in cases if c[2] != kind]):
-                self.assertTrue(any("positive and negative" in e
-                                    for e in self.generator.inventory_errors(self.root)))
-        with patch.object(self.generator, "CASES", cases + [cases[0]]):
-            with self.assertRaisesRegex(ValueError, "duplicate S0 case"):
-                self.generator.rendered_files()
-
-    def test_check_mode_detects_content_drift_without_rewriting(self):
-        with patch.object(sys, "argv", ["gen-trigger-evals.py", "--check"]), redirect_stdout(io.StringIO()):
-            self.assertEqual(self.generator.main(), 0)
-            path = self.root / next(iter(self.generator.rendered_files()))
-            path.write_text("changed", encoding="utf-8")
-            self.assertEqual(self.generator.main(), 1)
-        self.assertEqual(path.read_text(encoding="utf-8"), "changed")
 
 
 @unittest.skipUnless(shutil.which("pwsh"), "PowerShell required")
@@ -2933,7 +3029,6 @@ class RepoCheckRunnerTests(unittest.TestCase):
             ["pwsh", "-NoProfile", "-File", "scripts/audit-references.ps1"],
             [sys.executable, "scripts/check-instructions-drift.py"],
             [sys.executable, "scripts/check-instructions-drift.py", "--self-test"],
-            [sys.executable, "scripts/gen-trigger-evals.py", "--check"],
             ["pwsh", "-NoProfile", "-File", "scripts/check-plugin-versions.ps1"],
         ])
 
@@ -3005,14 +3100,14 @@ runpy.run_path(sys.argv[0], run_name="__main__")
         commands = self.runner.commands_for("unit")
         # Dependency-present checks now precede, but do not replace, the existing
         # unittest/pytest split. An absent DeepEval must fail before tests can skip.
-        self.assertEqual(len(commands), 8)
+        self.assertEqual(len(commands), 9)
         self.assertEqual([command[1:] for command in commands[:3]], [
             ["-m", "pip", "check"],
             ["eval/deepeval/check_environment.py"],
             ["-m", "unittest", "discover", "-s", "eval/pipeline/tests",
              "-p", "test_dependency_environment.py", "-v"],
         ])
-        suite_commands = commands[3:]
+        suite_commands = commands[3:-1]
         self.assertEqual([command[1:4] for command in suite_commands[:4]],
                          [["-m", "unittest", "discover"]] * 4)
         self.assertEqual([command[5] for command in suite_commands[:4]],
@@ -3023,7 +3118,12 @@ runpy.run_path(sys.argv[0], run_name="__main__")
             "test_eval_custom_workflow.py", "test_check_trajectory.py"])
         self.assertEqual(suite_commands[4][1:], [
             "-m", "pytest", "-q", "eval/pipeline/custom-eval/tests", "eval/deepeval/tests"])
-        self.assertTrue(all(command[0] == sys.executable for command in commands))
+        self.assertTrue(all(command[0] == sys.executable for command in commands[:-1]))
+        self.assertEqual(commands[-1], [
+            "node", "--test",
+            "plugins/agile-agents-core/extensions/solution-profile/tests/profile.test.mjs",
+            "plugins/agile-agents-core/extensions/solution-profile/tests/packaging.test.mjs",
+        ])
 
 
 if __name__ == "__main__":

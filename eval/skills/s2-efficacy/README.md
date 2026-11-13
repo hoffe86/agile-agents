@@ -3,8 +3,9 @@
 **Not runnable against current core.** This suite's technical skill target is
 not shipped by the harness. Its results are not current-core efficacy evidence.
 
-**Status: cannot produce a valid result on a machine with the plugins installed.**
-Not blocked on credits — blocked on isolation. Read this before running anything here.
+**Historical experiment:** its target is absent and it cannot produce a valid
+current-core result. Its baseline also requires isolation. Read this before
+reusing the experiment.
 
 ## What S2 is for
 
@@ -70,10 +71,11 @@ Only S2, which depends on a skill-free control, is affected.
 
 ## The suite here
 
-`avm-bump-efficacy/` is written and correct — outcome-graded via the `file` grader (did
+`avm-bump-efficacy/` is outcome-graded via the `file` grader (did
 both AVM pins actually move, with the module references and parameters intact) rather
 than `skill_invocation`, which would trivially fail the stripped pass and measure nothing.
-It is ready to run the moment an isolated environment exists.
+It targets a removed consumer skill and is not ready to run against current core;
+an isolated environment alone does not restore that target.
 
 One caveat to fix at the same time: the grader checks that the versions *changed*, not
 that they are *correct*. A skill could plausibly add accuracy that this grader cannot

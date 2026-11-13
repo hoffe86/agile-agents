@@ -8,7 +8,6 @@ import subprocess
 import pytest
 
 from agile_eval.custom_eval import runner
-from agile_eval.custom_eval.expectations import load
 
 TASKS = runner.default_tasks_root()
 CORE = runner.repo_root() / "plugins/agile-agents-core"
@@ -61,9 +60,6 @@ def test_scenarios_stage_explicit_inputs_byte_for_byte(tmp_path, number):
         source / "solution-profile.yaml").read_bytes()
     local = {p.parent.name for p in (paths.workspace / ".github/skills").glob("*/SKILL.md")}
     assert local == LOCAL[number]
-    required = {name for names in load(source).skills.values() for name in names}
-    core_names = {p.parent.name for p in (CORE / "skills").glob("*/SKILL.md")}
-    assert required - core_names == local
     assert not (paths.run / "guidance.json").exists()
     assert not (paths.workspace / "plugins").exists()
     assert not (paths.workspace / ".github/agents").exists()

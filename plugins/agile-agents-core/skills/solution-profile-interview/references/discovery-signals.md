@@ -13,7 +13,7 @@ Inventory before proposing gaps; this is evidence, not a new profile section:
 | Native repo/path instructions | source, client support, directory scope and `applyTo`; read only applicable guidance, never all scoped files as global policy |
 | Solution-local skills | actual description/capabilities and task/path/version/provider applicability; arbitrary names are valid |
 | Already-installed external plugins | native availability and source/version; a folder on disk alone does not establish runtime availability |
-| Missing capability | distinguish absent from ungranted (`tools: skill` for native loading); propose repair, never install during discovery |
+| Missing capability | distinguish runtime absence (including an unregistered server) from an omitted agent grant (`tools: skill` or `tools: ["*"]`); host/workspace/global restrictions may still deny use; propose evidence-based repair, never install during discovery |
 | Optional user-selected guidance | native instructions or personal plugins; absence is normal, no required package/name; stricter consent stands, safety and solution technical constraints remain |
 | CI/check commands | actual script or workflow, command, working directory, prerequisites and environment; propose existing `quality_gates.test_bar.<check>.command` values for confirmation, never guess from a language |
 

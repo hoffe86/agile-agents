@@ -13,12 +13,10 @@ description: >-
   (use review-lead), estimating / prioritising / progressing item state on your own
   authority (the team decides — you capture what was agreed), end-to-end
   autonomous delivery (use dev-lead).
-# `tools` is a filter, not a hint: a tracker server that is not listed here is unreachable even when
-# it is running. Common server names are granted below; otherwise add
-# `'<your-server>/*'` here.
-# A grant must match the server's registered name exactly, and that name may itself contain a slash
-# (`microsoft/azure-devops-mcp`) — copy it verbatim from your mcp-config.json.
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, browser, 'github/*', 'ado/*', 'azure-devops/*', 'azure-devops-mcp/*', playwright/*, skill]
+# `tools` declares the agent-level grant. `*` covers tools available to the runtime,
+# but does not register servers, authorize use, or bypass host/workspace/global restrictions.
+# With a narrow list, grant a server by its exact registered name; slashes are part of the name.
+tools: ["*"]
 metadata:
   model_tier: mid  # mechanical authoring of well-structured work items; reasoning is bounded by the Definition of Ready + INVEST checklists
 argument-hint: "Describe the backlog task: create, improve, review, or update a work item"
@@ -95,11 +93,17 @@ You are tracker-agnostic. **Check skill availability first, then `backlog.platfo
 
 Confirm you can actually reach the tracker **before** drafting anything. List the tools available to you and look for ones belonging to the declared `backlog.platform`. If none are there, **stop and report** — don't misroute to another tracker, don't hand-roll API calls, don't draft items you can't file.
 
-Report both indistinguishable causes: missing server (register/start it), or
-missing exact `'<server-name>/*'` in this agent's `tools:` (grant and restart).
-Common shipped server names are not an adapter catalog.
+Distinguish runtime absence (for example, an unregistered/unavailable server),
+an omitted grant (an exact `'<server-name>/*'` grant is needed only with a
+narrow `tools:` list; `["*"]` covers the agent-grant check), and host,
+workspace or global permissions that deny use despite a grant. Recommend a fix
+only for the diagnosed cause; do not treat installation or a wider grant as a
+way around a permission restriction. Common server names are not an adapter
+catalog.
 
 **Also load `backlog-item-standards`** whenever you author, improve, or review an item body — it carries the tracker-agnostic content templates, writing rules, BDD format, and Definition of Ready checklist. Load one reference at a time (see *Content standards* below), not the whole skill up-front.
+
+**When materialising a plan, load the shared `plan` phase skill** for its outcome, rules and exit gates. It never authorises you to approve the plan or progress state.
 
 ## Phase 1: Intent Classification
 

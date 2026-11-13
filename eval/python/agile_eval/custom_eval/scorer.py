@@ -4,8 +4,8 @@
         --judge none|azure-openai --output summary.json
 
 Each run directory is one produced by run_custom_eval.py. The trajectory -- did dev-lead
-stop at the plan gate, delegate to the expected agents, and did each agent invoke the
-skills it is expected to -- is scored deterministically. Acceptance evidence is what the
+stop at the plan gate, delegate to the expected agents, and avoid forbidden workflows --
+is scored deterministically. Acceptance evidence is what the
 runner recorded in the agent's trust zone: the diff against the staged baseline, the
 agent's final response, and `checks.json`, the task's declared build / test / render results.
 Failing commands fail their criterion outright; the judge grades what no command covers.
@@ -30,12 +30,12 @@ from agile_eval.custom_eval import plan_approval
 from agile_eval.custom_eval.checks import CHECKS_FILE, apply_checks, evidence, load_results
 from agile_eval.custom_eval.expectations import ExpectationsError, load
 from agile_eval.custom_eval.judges import JUDGES, JudgeError, judge
-from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric, skill_metrics
+from agile_eval.custom_eval.metrics import MetricResult, delegation_metric, plan_gate_metric, skill_metrics
 from agile_eval.custom_eval.runner import (
     STATE_FILE, Paths, default_tasks_root, read_phase1_changes, resolve_task,
 )
 from agile_eval.custom_eval.trajectory import (
-    IMPLEMENTATION_AGENTS, approval_response_recorded, check_plan_gate,
+    IMPLEMENTATION_AGENTS, WRITE_TOOLS, approval_response_recorded, check_plan_gate,
 )
 
 EXIT = {"resolved": 0, "failed": 1, "partial": 2, "unverified": 3, "setup_error": 4}
@@ -171,6 +171,16 @@ def score_run(run: Path, judge_name: str, tasks_root: Path) -> dict:
     try:
         gate, _ = plan_gate_metric(phase1, exp, phase1_changes=phase1_changes)
         trajectory = [delegation_metric(combined, exp), *skill_metrics(combined, exp)]
+        if run_status == "plan_rejected":
+            writes = list(dict.fromkeys(
+                tool.name for tool in phase2.tools_for(None) if tool.name in WRITE_TOOLS
+            ))
+            if writes:
+                trajectory.append(MetricResult(
+                    "post_rejection_write", 0.0, False,
+                    "top-level write after plan rejection",
+                    ["no top-level writes after plan rejection"], writes,
+                ))
     except Exception:
         row["errors"].append("DeepEval trajectory measurement failed; check the pinned environment")
         return row

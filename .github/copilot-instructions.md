@@ -32,12 +32,12 @@ evaluation; humans approve adoption and installation.
 ## Inventory and layout
 
 - 15 *.agent.md files under `plugins/agile-agents-core/agents/`.
-- 22 repo-scope skills under `plugins/agile-agents-core/skills/`.
-- 6 workflows under `.github/workflows/`.
+- 25 repo-scope skills under `plugins/agile-agents-core/skills/`.
+- 5 workflows under `.github/workflows/`.
 - Architecture decision records (0001–0015) under `docs/adr/`.
-- 1 of the 22 skills are unmodified copies (apart from the scope annotation).
-21 are hand-written or adopted. `plugins/VENDORED.md` is the current upstream index.
-- Scope split today is 22 `all` / 0 scoped.
+- 1 of the 25 skills is an unmodified copy (apart from the scope annotation).
+24 are hand-written or adopted. `plugins/VENDORED.md` is the current upstream index.
+- Scope split today is 25 `all` / 0 scoped.
 
 Keep agents and skill folders flat: manifests discover only the declared paths,
 relative to the plugin root. `.github/plugin/marketplace.json` lists local core
@@ -74,8 +74,14 @@ trade-offs, risks and downstream consequences at the earliest actionable gate.
 - Research verifies prepared concepts/decisions and source evidence.
 - Plan decomposes into tasks; `backlog-manager` creates provisional linked
   children when enabled. Human approval follows task creation.
-- Dispatch one writer task at a time in the shared tree. Authors own their tests:
-  coding owns application tests; infrastructure owns IaC tests.
+- After approval, `dev-lead` may author an approved application/IaC task and its
+  tests directly or delegate it to `coding` / `infrastructure`, one task at a
+  time. Data-science analysis remains delegated to `data-scientist`; authors
+  own their tests. This task-level author choice follows the approved
+  [ADR 0009 amendment](../docs/adr/0009-merge-coding-and-testing-agents.md).
+- Direct authorship does not waive the deterministic test bar, independent
+  review, human-only operations, or role boundaries. `dev-lead` never reviews
+  its own work.
 - Never weaken/delete/skip tests to manufacture green. Justify every existing
   test change in `Existing tests modified`; test-reviewer adjudicates it.
 - The deterministic test bar precedes independent review. `review-lead` performs
@@ -107,20 +113,24 @@ explicit per-run approval, separate from plan approval. Merge/complete/close,
 force-push, shared-history rewrite, shared-branch deletion and production
 deployment are human-only. Non-production deployment uses the project's pipeline
 and `infrastructure.deploy_verify: dev`, excluding the final or prod-named stage.
-Reviewers remain read-only regardless of tool availability.
+Reviewers and `capability-scout` remain effect-based read-only / proposal-only
+regardless of tool availability; these are role contracts, not technical
+tool-denials.
 
 PR publication follows `identity.repo_url`, not `backlog.platform`.
 Git safety/conventions: `development-practices` §10. Publication evidence:
 `dev-lead-templates/references/completion.md`. Report permission boundaries as
 such, not as missing MCP tools.
 
-Agent `tools:` is the grant; skill `allowed-tools` grants nothing. Preserve the
-15 roles' exact grants, including native `skill`, `dev-lead`'s `ask_user`, and shared MCP access:
-`context7`, `microsoft-docs`, `playwright`. Recipe removal does not remove tools.
-Match registered server names exactly, including slash-containing names; aliases
-are allowed. Preflight both absent and ungranted causes, with fixes.
-Reviewers may navigate/read but not submit forms, mutate state or execute unsafe
-browser code; `reviewer-read-only-rules` is authoritative.
+All 15 agent definitions use `tools: ["*"]` to expose tools made available
+through runtime, workspace, or global configuration. This does not register an
+absent server, grant authorization to an external service, or bypass local/host
+restrictions. Skill `allowed-tools` grants nothing. Tool grants do not
+technically deny reviewers or `capability-scout` write-capable tools: reviewers
+must remain read-only by effect, and `capability-scout` proposal-only, as
+specified by their role contracts. Reviewers may read/navigate but not edit
+files, submit forms, mutate state, authenticate through a console, or execute
+unsafe browser code; `reviewer-read-only-rules` is authoritative.
 
 ## Usage and models
 
@@ -164,7 +174,6 @@ Use the repo's declared checks:
 - `python scripts/run-repo-checks.py lint`
 - `python scripts/run-repo-checks.py unit`
 - `pwsh -NoProfile -File scripts/check-skill-tokens.ps1`
-- `pwsh -NoProfile -File scripts/run-trigger-evals.ps1` (informational S0)
 
 The full unit command requires the hash-locked `eval/deepeval` environment and
 PowerShell; preserve CI's unittest/pytest split. Report environment blockers and

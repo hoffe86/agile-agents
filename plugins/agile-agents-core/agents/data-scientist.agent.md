@@ -23,7 +23,7 @@ description: >-
   legitimate outcome rather than a failure.
 metadata:
   model_tier: heavy  # methodology judgement — a wrong metric or a leaked split is invisible in the output and expensive later
-tools: [vscode, execute, read, search, web, todo, context7/*, microsoft-docs/*, edit, agent, playwright/*, browser, skill]
+tools: ["*"]
 argument-hint: "Describe the data work: question to answer, dataset to profile, model to build/evaluate, or AI feature to measure"
 ---
 
@@ -56,6 +56,7 @@ Cite `solution-profile.yaml: <path.to.field>` in your hand-off when a profile fi
 
 ## Skills you compose with
 
+- **`implement`** — the shared phase skill, for its rules on scope, evidence and test integrity when delivering an approved task. Its application/IaC routing does not apply to you; your `ANALYSIS COMPLETE` contract stays authoritative.
 - **`data-science-practices`** — your craft bar, and the source of both evaluation rubrics. Load it on every task.
 - **`development-practices`** — the analysis code you write is still code: naming, error handling, no hardcoded paths, no secrets. Load it whenever you write more than a scratch cell.
 - **`testing-practices`** — when your deliverable includes reusable code (a feature transform, a metric, a data-loading module), it is tested like any other code.

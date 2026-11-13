@@ -1,6 +1,7 @@
 """Offline protocol regressions for the event schema, emitters, and trajectory."""
 
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import io
 import json
@@ -40,16 +41,16 @@ def disabled_cost():
     return {"status": "disabled", "reason": "disabled for synthetic test"}
 
 
-def measured_cost(unmetered=False):
+def measured_cost(unmetered=False, phase="coding"):
     usd = None if unmetered else 0.01
     metric_set = {
-        "calls": 0,
+        "calls": 1,
         "tokens_in": 120,
         "tokens_out": 0,
         "tokens_reasoning": 0,
         "tokens_cache_read": 0,
         "tokens_total": 120,
-        "aiu": 0.0,
+        "aiu": 0.5,
         "duration_ms": 0,
         "models": [],
         "usd": usd,
@@ -60,11 +61,18 @@ def measured_cost(unmetered=False):
         "usage": {
             "session_id": "synthetic-session",
             "totals": dict(metric_set),
-            "by_phase": {"coding": dict(metric_set)},
+            "by_phase": {phase: dict(metric_set)},
             "by_agent": {"dev-lead": dict(metric_set)},
             "usd": usd,
-            "usd_basis": "not-metered" if unmetered else "rate:0 USD per AIU",
-            "unattributed": dict(metric_set),
+            "usd_basis": "not-metered" if unmetered else "rate:0.02 USD per AIU",
+            "unattributed": {
+                **metric_set,
+                "calls": 0,
+                "tokens_in": 0,
+                "tokens_total": 0,
+                "aiu": 0.0,
+                "usd": None if unmetered else 0.0,
+            },
             "warnings": [],
             "breaches": [],
         },
@@ -100,6 +108,33 @@ def successful_run():
         }),
     ]
     return events
+
+
+def successful_direct_run():
+    return [
+        event("run_start", "intake", 0, payload={
+            "requirement_summary": "Synthetic direct-author trajectory test",
+            "profile_loaded": True,
+        }),
+        event("phase_start", "research", 1),
+        event("phase_complete", "research", 2, outcome="success"),
+        event("phase_start", "implement", 3),
+        event("phase_complete", "implement", 4, outcome="success"),
+        event("gate_check", "test-bar", 5, outcome="success", payload={
+            "gate": "test_bar",
+        }),
+        event("phase_start", "review-lead", 6),
+        event("phase_complete", "review-lead", 7, outcome="success"),
+        event("handoff_received", "review-lead", 8, payload={
+            "from_agent": "review-lead", "sentinel": "REVIEW COMPLETE",
+        }),
+        event("gate_check", "review-lead", 9, outcome="success", payload={
+            "gate": "review",
+        }),
+        event("run_complete", "wrap-up", 10, outcome="success", payload={
+            "cost_summary": measured_cost(phase="implement"),
+        }),
+    ]
 
 
 def set_ordered_timestamps(events):
@@ -150,6 +185,33 @@ class TrajectoryContractTests(unittest.TestCase):
 
     def test_supervisor_only_successful_trajectory_passes(self):
         self.assertEqual(failures(successful_run()), set())
+
+    def test_direct_implementation_uses_supervisor_window_without_worker_handoff(self):
+        events = successful_direct_run()
+        self.assertEqual(failures(events), set())
+        self.assertTrue(all(item["agent"] == "dev-lead" for item in events))
+        implementation = [
+            item for item in events
+            if item["event_type"] in ("phase_start", "phase_complete")
+            and item["phase"] == "implement"
+        ]
+        self.assertEqual(
+            [item["event_type"] for item in implementation],
+            ["phase_start", "phase_complete"],
+        )
+        self.assertEqual(events[-1]["payload"]["cost_summary"]["usage"]["by_phase"].keys(),
+                         {"implement"})
+        handoffs = [item["payload"]["from_agent"] for item in events
+                    if item["event_type"] == "handoff_received"]
+        self.assertEqual(handoffs, ["review-lead"])
+
+    def test_direct_implementation_cannot_fabricate_worker_identity(self):
+        events = successful_direct_run()
+        events.insert(5, event("handoff_received", "implement", 5, payload={
+            "from_agent": "dev-lead", "sentinel": "IMPLEMENTATION COMPLETE",
+        }))
+        set_ordered_timestamps(events)
+        self.assertIn("schema-valid", failures(events))
 
     def test_schema_rejects_workers_unknown_events_and_self_reported_cost(self):
         cases = []
@@ -372,6 +434,27 @@ class TrajectoryContractTests(unittest.TestCase):
         set_ordered_timestamps(events)
         self.assertEqual(failures(events), set())
 
+    def test_direct_author_corrective_round_reverifies_before_independent_review(self):
+        events = successful_direct_run()
+        events[9]["outcome"] = "fail"
+        events[-1:-1] = [
+            event("phase_start", "implement", 10),
+            event("phase_complete", "implement", 11, outcome="success"),
+            event("gate_check", "test-bar", 12, outcome="success", payload={
+                "gate": "test_bar",
+            }),
+            event("phase_start", "review-lead", 13),
+            event("phase_complete", "review-lead", 14, outcome="success"),
+            event("handoff_received", "review-lead", 15, payload={
+                "from_agent": "review-lead", "sentinel": "REVIEW COMPLETE",
+            }),
+            event("gate_check", "review-lead", 16, outcome="success", payload={
+                "gate": "review",
+            }),
+        ]
+        set_ordered_timestamps(events)
+        self.assertEqual(failures(events), set())
+
     def test_failed_review_is_an_honest_terminal_outcome(self):
         events = successful_run()
         events[10]["outcome"] = "fail"
@@ -453,6 +536,27 @@ class TrajectoryContractTests(unittest.TestCase):
         events[-1]["payload"]["cost_summary"] = measured_cost(unmetered=True)
         self.assertEqual(failures(events), set())
 
+    def test_cost_fixture_attributes_usage_without_double_counting(self):
+        for unmetered in (False, True):
+            with self.subTest(unmetered=unmetered):
+                usage = measured_cost(unmetered=unmetered)["usage"]
+                phase = usage["by_phase"]["coding"]
+                unattributed = usage["unattributed"]
+                agent = usage["by_agent"]["dev-lead"]
+                for metric in ("calls", "tokens_in", "tokens_out", "tokens_reasoning",
+                               "tokens_cache_read", "tokens_total", "aiu", "duration_ms"):
+                    self.assertEqual(
+                        usage["totals"][metric], phase[metric] + unattributed[metric], metric,
+                    )
+                    self.assertEqual(usage["totals"][metric], agent[metric], metric)
+                self.assertEqual(usage["totals"]["models"], agent["models"])
+                if unmetered:
+                    self.assertIsNone(unattributed["usd"])
+                    self.assertIsNone(agent["usd"])
+                else:
+                    self.assertEqual(usage["totals"]["usd"], phase["usd"] + unattributed["usd"])
+                    self.assertEqual(usage["totals"]["usd"], agent["usd"])
+
     def test_schema_requires_cost_status_to_match_every_collector_usd_bucket(self):
         for status, invalid_value in (
             ("measured", None),
@@ -478,7 +582,7 @@ class TrajectoryContractTests(unittest.TestCase):
     def test_schema_binds_collector_usd_basis_to_cost_status(self):
         for status, invalid_basis in (
             ("measured", "not-metered"),
-            ("unmetered", "rate:0 USD per AIU"),
+            ("unmetered", "rate:0.02 USD per AIU"),
         ):
             with self.subTest(status=status):
                 events = successful_run()
@@ -594,6 +698,51 @@ class EmitterIntegrationTests(unittest.TestCase):
                 command.extend(["--payload-json", payload_json])
         return subprocess.run(command, env=env, capture_output=True, text=True, timeout=20)
 
+    def assert_emitter_clamps_timestamp(self, emitter):
+        self.require_emitters()
+        previous_timestamp = "2099-12-31T23:59:59.999Z"
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            run_dir = base / RUN_ID
+            run_dir.mkdir()
+            previous = event("phase_start", "research", 0)
+            previous["timestamp"] = previous_timestamp
+            (run_dir / "events.jsonl").write_text(
+                json.dumps(previous) + "\n", encoding="utf-8",
+            )
+
+            result = self.emit(emitter, "phase_start", "coding", base)
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            produced = [
+                json.loads(line)
+                for line in (run_dir / "events.jsonl").read_text(
+                    encoding="utf-8",
+                ).splitlines()
+            ]
+            self.assertEqual(produced[-1]["timestamp"], previous_timestamp)
+            self.assertEqual(checker._event_schema_errors(produced), [])
+            self.assertEqual(
+                [item["timestamp"] for item in produced],
+                sorted(item["timestamp"] for item in produced),
+            )
+
+    def assert_emitter_rejects_invalid_previous_timestamp(self, emitter):
+        self.require_emitters()
+        invalid_line = '{"timestamp":"not-a-timestamp"}\n'
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            run_dir = base / RUN_ID
+            run_dir.mkdir()
+            archive = run_dir / "events.jsonl"
+            archive.write_text(invalid_line, encoding="utf-8")
+
+            result = self.emit(emitter, "phase_start", "coding", base)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(archive.read_text(encoding="utf-8"), invalid_line)
+            self.assertFalse((run_dir / "events.jsonl.lock").exists())
+
     def test_real_emitters_produce_a_valid_supervisor_only_run(self):
         self.require_emitters()
         with tempfile.TemporaryDirectory() as temp:
@@ -634,6 +783,50 @@ class EmitterIntegrationTests(unittest.TestCase):
                 "Emitted JSONL (original append order):\n" + "\n".join(lines),
             )
             self.assertTrue(all(item["agent"] == "dev-lead" for item in produced))
+
+    def test_bash_clamps_timestamp_when_clock_precedes_last_event(self):
+        self.assert_emitter_clamps_timestamp("bash")
+
+    def test_powershell_clamps_timestamp_when_clock_precedes_last_event(self):
+        self.assert_emitter_clamps_timestamp("powershell")
+
+    def test_concurrent_emitters_keep_timestamps_in_append_order(self):
+        self.require_emitters()
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            calls = [
+                ("powershell", 0), ("bash", 1),
+                ("powershell", 2), ("bash", 3),
+                ("powershell", 4), ("bash", 5),
+            ]
+            with ThreadPoolExecutor(max_workers=len(calls)) as executor:
+                results = list(executor.map(
+                    lambda call: self.emit(
+                        call[0], "phase_start", f"phase-{call[1]}", base,
+                    ),
+                    calls,
+                ))
+
+            self.assertEqual(
+                [result.returncode for result in results],
+                [0] * len(calls),
+                [result.stdout + result.stderr for result in results],
+            )
+            produced = [
+                json.loads(line)
+                for line in (base / RUN_ID / "events.jsonl").read_text(
+                    encoding="utf-8",
+                ).splitlines()
+            ]
+            timestamps = [item["timestamp"] for item in produced]
+            self.assertEqual(len(produced), len(calls))
+            self.assertEqual(timestamps, sorted(timestamps))
+
+    def test_bash_rejects_a_prior_event_without_a_valid_timestamp(self):
+        self.assert_emitter_rejects_invalid_previous_timestamp("bash")
+
+    def test_powershell_rejects_a_prior_event_without_a_valid_timestamp(self):
+        self.assert_emitter_rejects_invalid_previous_timestamp("powershell")
 
     def test_both_emitters_reject_worker_owned_events(self):
         self.require_emitters()

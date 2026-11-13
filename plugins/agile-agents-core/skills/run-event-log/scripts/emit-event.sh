@@ -3,7 +3,7 @@
 #
 # Helper for the run-event-log skill. Validates supervisor-owned events and
 # required fields per event_type,
-# stamps timestamp = current UTC ISO 8601 with millisecond precision, and
+# stamps timestamp = non-decreasing UTC ISO 8601 with millisecond precision, and
 # appends one JSON line to "${COPILOT_RUNS_DIR:-.copilot-runs}/<run-id>/events.jsonl".
 # Append-only — never rewrites past events. See ../SKILL.md for full conventions.
 #
@@ -256,11 +256,56 @@ json_escape() {
     printf '%s' "$s"
 }
 
+# Serialize timestamp selection and append across Bash and PowerShell emitters.
+# The lock file is created exclusively; a timed-out lock fails closed rather
+# than appending an event whose timestamp might be out of order.
+base_dir="${COPILOT_RUNS_DIR:-.copilot-runs}"
+run_dir="$base_dir/$run_id"
+mkdir -p "$run_dir"
+event_file="$run_dir/events.jsonl"
+lock_file="$run_dir/events.jsonl.lock"
+lock_deadline=$((SECONDS + 10))
+while ! (set -o noclobber; : > "$lock_file") 2>/dev/null; do
+    if (( SECONDS >= lock_deadline )); then
+        echo "emit-event: timed out waiting for the event log lock" >&2
+        exit 1
+    fi
+    sleep 0.05
+done
+trap 'rm -f -- "$lock_file"' EXIT
+
 # Timestamp: ISO 8601 UTC with millisecond precision; BSD date may return
 # success while printing the unsupported %3N token literally.
 timestamp="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
 if [[ ! "$timestamp" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$ ]]; then
     timestamp="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+fi
+if [[ -s "$event_file" ]]; then
+    python_bin="${PYTHON:-}"
+    if [[ -z "$python_bin" ]]; then
+        python_bin="$(command -v python3 || command -v python || true)"
+    fi
+    [[ -n "$python_bin" ]] || {
+        echo "emit-event: Python is required to read the prior event timestamp" >&2
+        exit 1
+    }
+    last_timestamp="$(tail -n 1 "$event_file" | "$python_bin" -c '
+import json, re, sys
+try:
+    event = json.loads(sys.stdin.readline())
+    timestamp = event.get("timestamp")
+    if not isinstance(timestamp, str) or not re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z",
+        timestamp,
+    ):
+        raise ValueError
+except (ValueError, TypeError, AttributeError):
+    raise SystemExit("emit-event: prior event has an invalid timestamp")
+print(timestamp)
+')"
+    if [[ "$timestamp" < "$last_timestamp" ]]; then
+        timestamp="$last_timestamp"
+    fi
 fi
 
 # Build JSON
@@ -287,8 +332,5 @@ for i in "${!parts[@]}"; do
 done
 json+="}"
 
-base_dir="${COPILOT_RUNS_DIR:-.copilot-runs}"
-run_dir="$base_dir/$run_id"
-mkdir -p "$run_dir"
-printf '%s\n' "$json" >> "$run_dir/events.jsonl"
+printf '%s\n' "$json" >> "$event_file"
 exit 0

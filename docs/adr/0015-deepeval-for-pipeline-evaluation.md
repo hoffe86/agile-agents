@@ -240,10 +240,13 @@ earlier shell harness was deleted (#24) and the tasks sat as data only.
   transport cannot verify the approval request, so the live path is blocked rather than
   treating an unverified pause as approval evidence. A run that delegates implementation
   before approval fails.
-- **First live finding:** the harness's delegated agents were not offered the `skill` tool
-  on CLI 1.0.105, so per-agent skill expectations fail. A synthetic SDK probe subsequently
-  showed that an explicit `skill` grant makes it available to a delegated agent; the harness
-  agents do not currently list that grant. See `eval/pipeline/custom-eval/README.md`.
+- **First live finding (historical):** on CLI 1.0.105 the harness agents did not declare a
+  `skill` grant, so per-agent skill expectations failed. Current agent definitions declare
+  `tools: ["*"]`; that is a declared wildcard grant, not proof that a runtime exposes the
+  `skill` tool or that an agent successfully invokes it. Runtime availability and invocation
+  remain separate evaluation evidence. A synthetic SDK probe showed that an explicit `skill`
+  grant makes it available to a delegated agent; this historical observation does not verify
+  current runtime behavior. See `eval/pipeline/custom-eval/README.md`.
 
 ## References
 
