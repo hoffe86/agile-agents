@@ -33,7 +33,7 @@
         "repo": "hoffe86/agentic-persona"
       },
       "description": "Optional personal working style, architecture, microservice testing, planning-tool and coding-style preferences. Native user instructions are a separate opt-in.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "development",
       "keywords": [
         "personal-preferences",
