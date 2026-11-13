@@ -414,10 +414,11 @@ while ($null -eq $lockHandle) {
             [System.IO.FileAccess]::Write,
             [System.IO.FileShare]::None
         )
-    } catch [System.IO.IOException] {
-        if (-not (Test-Path -LiteralPath $lockFile)) { throw }
+    } catch [System.IO.IOException], [System.UnauthorizedAccessException] {
+        # The holder may release between the failed create and any re-check, and
+        # Windows denies access while a deleted lock is pending; both are contention.
         if ($lockTimer.Elapsed.TotalSeconds -ge 10) {
-            Write-StdErr "emit-event: timed out waiting for the event log lock"
+            Write-StdErr "emit-event: timed out waiting for the event log lock: $($_.Exception.Message)"
             exit 1
         }
         Start-Sleep -Milliseconds 50
