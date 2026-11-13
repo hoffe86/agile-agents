@@ -32,12 +32,12 @@ evaluation; humans approve adoption and installation.
 ## Inventory and layout
 
 - 15 *.agent.md files under `plugins/agile-agents-core/agents/`.
-- 22 repo-scope skills under `plugins/agile-agents-core/skills/`.
-- 6 workflows under `.github/workflows/`.
+- 25 repo-scope skills under `plugins/agile-agents-core/skills/`.
+- 5 workflows under `.github/workflows/`.
 - Architecture decision records (0001–0015) under `docs/adr/`.
-- 1 of the 22 skills are unmodified copies (apart from the scope annotation).
-21 are hand-written or adopted. `plugins/VENDORED.md` is the current upstream index.
-- Scope split today is 22 `all` / 0 scoped.
+- 1 of the 25 skills is an unmodified copy (apart from the scope annotation).
+24 are hand-written or adopted. `plugins/VENDORED.md` is the current upstream index.
+- Scope split today is 25 `all` / 0 scoped.
 
 Keep agents and skill folders flat: manifests discover only the declared paths,
 relative to the plugin root. `.github/plugin/marketplace.json` lists local core
@@ -174,7 +174,6 @@ Use the repo's declared checks:
 - `python scripts/run-repo-checks.py lint`
 - `python scripts/run-repo-checks.py unit`
 - `pwsh -NoProfile -File scripts/check-skill-tokens.ps1`
-- `pwsh -NoProfile -File scripts/run-trigger-evals.ps1` (informational S0)
 
 The full unit command requires the hash-locked `eval/deepeval` environment and
 PowerShell; preserve CI's unittest/pytest split. Report environment blockers and

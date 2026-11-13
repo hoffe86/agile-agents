@@ -1,0 +1,40 @@
+name: plan-outcome
+description: >-
+  Outcome check for a traceable plan with a data-feasibility dependency.
+  The target skill body is supplied to the model; the grader checks the
+  resulting plan, not whether Copilot chose or invoked a skill.
+skill: plan
+version: "1.0"
+config:
+  trials_per_task: 2
+  timeout_seconds: 300
+  parallel: false
+  executor: copilot-sdk
+  model: claude-haiku-5.5
+  skill_directories:
+    - ../../../../plugins/agile-agents-core/skills/plan
+  required_skills:
+    - plan
+  inject_skill_body: true
+metrics:
+  - name: plan-outcome
+    weight: 1.0
+    threshold: 1.0
+graders:
+  - type: file
+    name: traceable-feasibility-plan
+    config:
+      must_exist:
+        - plan.md
+      content_patterns:
+        - path: plan.md
+          must_match:
+            - '(?m)^T1 \| data-scientist \| feasibility \| depends: none$'
+            - '(?m)^T2 \| coding \| implementation \| depends: T1$'
+            - '(?m)^AC1 \| T1$'
+            - '(?m)^AC2 \| T2$'
+            - '(?m)^approval \| required before implementation$'
+            - '(?im)^T1 acceptance \| .*(source|dataset).*(permitted|permission|consent).*$'
+            - '(?im)^T2 acceptance \| .*(tested|tests).*$'
+tasks:
+  - "tasks/*.yaml"

@@ -1,0 +1,23 @@
+id: plan-data-feasibility-001
+name: Plan a data-dependent implementation without bypassing feasibility
+description: >-
+  Check task ownership, dependency, criterion mapping, acceptance evidence and
+  the approval boundary in a plan for a synthetic requirement.
+inputs:
+  prompt: >-
+    Prepare a plan, not an implementation. In this synthetic project,
+    solution-profile data_science.enabled is true and the data-scientist agent
+    is available and active. A team wants a tested application feature using a
+    dataset whose existence and permitted use are unknown.
+    AC1: establish whether the dataset exists and may be used, including the
+    possibility that it cannot be used. AC2: deliver the application feature
+    with tests, contingent on a positive feasibility result. Approval is
+    required before implementation. Create plan.md with a self-contained task
+    description and testable acceptance criteria for each task. Include these
+    exact machine-readable lines (one per line), with task IDs T1 and T2:
+    "T1 | <owner> | <kind> | depends: <dependency>",
+    "T2 | <owner> | <kind> | depends: <dependency>",
+    "AC1 | <task IDs>", "AC2 | <task IDs>",
+    "approval | <approval condition>",
+    "T1 acceptance | <acceptance criterion>",
+    "T2 acceptance | <acceptance criterion>".

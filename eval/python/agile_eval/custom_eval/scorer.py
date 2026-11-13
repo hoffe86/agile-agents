@@ -4,8 +4,8 @@
         --judge none|azure-openai --output summary.json
 
 Each run directory is one produced by run_custom_eval.py. The trajectory -- did dev-lead
-stop at the plan gate, delegate to the expected agents, and did each agent invoke the
-skills it is expected to -- is scored deterministically. Acceptance evidence is what the
+stop at the plan gate, delegate to the expected agents, and avoid forbidden workflows --
+is scored deterministically. Acceptance evidence is what the
 runner recorded in the agent's trust zone: the diff against the staged baseline, the
 agent's final response, and `checks.json`, the task's declared build / test / render results.
 Failing commands fail their criterion outright; the judge grades what no command covers.

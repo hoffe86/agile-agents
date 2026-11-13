@@ -120,8 +120,10 @@ def claimed_facts(text: str) -> dict:
     one(r"(\d+)\s+repo-scope skills", "core_skills")
     one(r"(\d+)\s+workflows", "workflows")
     one(r"Architecture decision records \(0001[–-](\d{4})\)", "adr_max")
-    one(r"(\d+) of the (\d+) skills are unmodified copies", "vendored", 1)
-    one(r"(\d+) of the (\d+) skills are unmodified copies", "total_skills", 2)
+    one(r"(\d+) of the (\d+) skills (?:are unmodified copies|is an unmodified copy)",
+        "vendored", 1)
+    one(r"(\d+) of the (\d+) skills (?:are unmodified copies|is an unmodified copy)",
+        "total_skills", 2)
     one(r"(?m)^(\d+) are hand-written or adopted", "handwritten")
     one(r"split today is (\d+) `all` / (\d+) scoped", "all_scopes", 1)
     one(r"split today is (\d+) `all` / (\d+) scoped", "scoped", 2)

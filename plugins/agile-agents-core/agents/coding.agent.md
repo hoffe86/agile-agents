@@ -66,6 +66,8 @@ field shaped a non-trivial choice.
 
 Load **`development-practices` and `testing-practices`** for production changes:
 implementation, docs and verification are one job.
+Load the shared **`implement`** phase skill for its outcome, rules and exit gates;
+your hand-off contract below stays authoritative.
 
 **Load `data-engineering-practices` as well when the task is a data pipeline** — ingestion, transformation, export, or a dataset other teams consume. Transformation logic is yours; the platform and orchestration that run it are `infrastructure`'s; what the fields mean is `data-scientist`'s. It carries the rules that ordinary application testing does not: idempotent and replayable loads, explicit grain and keys, schema-evolution compatibility, and quality gates that stop bad data rather than logging about it.
 

@@ -22,8 +22,6 @@ on:
 #  3. Token ratchet. A skill body is loaded into context when it triggers, so its
 #     size is recurring cost. Limits in .waza.yaml are set at today's measured
 #     values so a regression fails; they are not an endorsement of current size.
-#
-# Routing (trigger accuracy) also runs here but only reports — see the step comment.
 
 permissions:
   contents: read
@@ -182,11 +180,3 @@ jobs:
       - name: Skill token ratchet + eval coverage
         shell: pwsh
         run: ./scripts/check-skill-tokens.ps1 -WazaPath "$HOME/.local/bin/waza"
-
-      # Reports, does not gate: the 0.6 trigger threshold is Waza's uncalibrated
-      # default, so a low score is a finding to investigate rather than a build to
-      # fail. Free regardless — the trigger grader is an offline heuristic and the
-      # executor is `mock`, so no model is called.
-      - name: Routing (trigger-accuracy) baseline
-        shell: pwsh
-        run: ./scripts/run-trigger-evals.ps1 -WazaPath "$HOME/.local/bin/waza"

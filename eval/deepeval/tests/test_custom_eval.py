@@ -45,7 +45,7 @@ CRITERIA = (Criterion(1, "one"), Criterion(2, "two"))
 def _base(**overrides) -> dict:
     data = {
         "schema": 1, "root_agent": "dev-lead", "plan_gate": "required",
-        "agents": ["coding"], "skills": {"coding": ["testing-practices"]},
+        "agents": ["coding"],
     }
     data.update(overrides)
     return data
@@ -64,7 +64,6 @@ def test_every_task_has_loadable_expectations(task_dir):
     assert exp.task == task_dir.name
     assert exp.plan_gate == "required"
     assert [c.id for c in exp.criteria] == list(range(1, len(exp.criteria) + 1))
-    assert "reviewer-read-only-rules" in exp.skills["review-lead"]
     assert "code-review-checklist" in exp.forbidden_skills["review-lead"]
 
 
@@ -83,9 +82,9 @@ def test_parse_acceptance_rejects_missing_or_gapped_numbering(text):
     {"schema": 2},
     {"plan_gate": "sometimes"},
     {"surprise": True},
-    {"skills": {}},
-    {"skills": {"architect": ["x"]}},
-    {"forbidden_skills": {"coding": ["testing-practices"]}},
+    {"skills": {"coding": ["testing-practices"]}},
+    {"forbidden_skills": {"coding": ["x", "x"]}},
+    {"forbidden_skills": {"coding": "not a list"}},
     {"unverifiable": {9: "no such criterion"}},
 ])
 def test_from_mapping_rejects_invalid_expectations(overrides):
@@ -93,10 +92,10 @@ def test_from_mapping_rejects_invalid_expectations(overrides):
         from_mapping(_base(**overrides), "t", CRITERIA)
 
 
-def test_from_mapping_accepts_any_agent_and_known_unverifiable():
-    exp = from_mapping(_base(skills={"any": ["pr-description"]}, unverifiable={2: "why"}),
+def test_from_mapping_accepts_any_agent_forbidden_and_known_unverifiable():
+    exp = from_mapping(_base(forbidden_skills={"any": ["code-review"]}, unverifiable={2: "why"}),
                        "t", CRITERIA)
-    assert exp.skills["any"] == ("pr-description",)
+    assert exp.forbidden_skills["any"] == ("code-review",)
     assert exp.unverifiable == {2: "why"}
 
 
@@ -346,23 +345,6 @@ def test_failed_delegation_still_violates_the_pre_approval_gate():
     assert check_plan_gate(trace).honoured is False
 
 
-@pytest.mark.parametrize(("completion", "passed", "score", "reason"), [
-    (False, False, 0.0, "delegation failed before the agent started"),
-    (None, None, None, "delegation outcome unavailable"),
-])
-def test_skill_metric_explains_unconfirmed_agent_delegation(completion, passed, score, reason):
-    from agile_eval.custom_eval.metrics import skill_metrics
-
-    exp = from_mapping(_base(), "t", CRITERIA)
-    trace = _trace_with_events(*_delegation_events("call", completion))
-
-    (metric,) = skill_metrics(trace, exp)
-
-    assert metric.passed is passed
-    assert metric.score == score
-    assert reason in metric.reason
-
-
 @pytest.mark.parametrize("tool", ["view", "ask_user"])
 def test_no_implementation_does_not_prove_a_plan_approval_request(tool):
     trace = _trace_with_events(
@@ -398,95 +380,54 @@ def test_direct_authoring_writes_are_forbidden_before_plan_approval(tool):
     assert any(tool in violation for violation in gate.violations)
 
 
-def test_deepeval_metrics_score_skills_per_agent(trace):
+def test_deepeval_delegation_and_plan_gate_metrics(trace):
     pytest.importorskip("deepeval")
-    from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric, skill_metrics
+    from agile_eval.custom_eval.metrics import delegation_metric, plan_gate_metric
 
     exp = load(TASKS / "task-02-python-di-refactor")
-    by_name = {m.name: m for m in skill_metrics(trace, exp)}
-    assert by_name["skills:dev-lead"].passed is None
-    assert "completion unavailable" in by_name["skills:dev-lead"].reason
-    assert by_name["skills:coding"].score == 0.0
-    assert "python-implementation" in by_name["skills:coding"].reason
-    assert "never delegated" in by_name["skills:code-reviewer"].reason
     delegation = delegation_metric(trace, exp)
     assert delegation.score == 0.5 and delegation.passed is False
     gate, _ = plan_gate_metric(trace, exp)
     assert gate.passed is False
 
 
-def test_forbidden_skill_zeroes_the_agent_score(trace):
-    pytest.importorskip("deepeval")
+@pytest.mark.parametrize("completion", [True, False, None])
+def test_forbidden_skill_attempt_fails_even_without_successful_completion(completion):
     from agile_eval.custom_eval.metrics import skill_metrics
 
     exp = from_mapping(
-        _base(agents=[], skills={"dev-lead": ["read-repo-context"]},
-              forbidden_skills={"dev-lead": ["cost-budget"]}),
+        _base(agents=["review-lead"], forbidden_skills={"review-lead": ["code-review"]}),
         "t", CRITERIA,
     )
-    (metric,) = skill_metrics(trace, exp)
+    (metric,) = skill_metrics(_skill_trace("code-review", completion, "review-lead"), exp)
     assert metric.score == 0.0
-    assert "forbidden skill invoked: cost-budget" in metric.reason
-
-
-def test_any_agent_skill_is_satisfied_by_whoever_loads_it(trace):
-    pytest.importorskip("deepeval")
-    from agile_eval.custom_eval.metrics import skill_metrics
-
-    exp = from_mapping(_base(agents=[], skills={"any": ["test-bar-gate"]}), "t", CRITERIA)
-    (metric,) = skill_metrics(_skill_trace("test-bar-gate", True), exp)
-    assert metric.passed is True
-
-
-@pytest.mark.parametrize(("completion", "passed", "reason"), [
-    (True, True, "loaded successfully"),
-    (False, False, "skill load failed"),
-    (None, None, "skill completion unavailable"),
-])
-def test_skill_metric_requires_successful_completion_for_the_correct_agent(
-        completion, passed, reason):
-    pytest.importorskip("deepeval")
-    from agile_eval.custom_eval.metrics import skill_metrics
-
-    exp = from_mapping(_base(agents=["coding"], skills={"coding": ["testing-practices"]}),
-                       "t", CRITERIA)
-    (metric,) = skill_metrics(_skill_trace("testing-practices", completion), exp)
-    assert metric.passed is passed
-    assert reason in metric.reason
-    assert metric.actual == ["testing-practices"]
-    if completion is None:
-        assert metric.score is None
-
-
-def test_successful_skill_load_by_another_agent_does_not_satisfy_the_expected_agent():
-    pytest.importorskip("deepeval")
-    from agile_eval.custom_eval.metrics import skill_metrics
-
-    exp = from_mapping(_base(agents=["coding", "architect"],
-                             skills={"coding": ["testing-practices"]}), "t", CRITERIA)
-    (metric,) = skill_metrics(_skill_trace("testing-practices", True, "architect"), exp)
     assert metric.passed is False
-    assert "not invoked: testing-practices" in metric.reason
+    assert "forbidden skill invoked: code-review" in metric.reason
 
 
-def test_successful_retry_satisfies_a_previously_failed_skill():
-    pytest.importorskip("deepeval")
+def test_other_agent_or_absent_forbidden_skill_does_not_violate_reviewer_rule():
     from agile_eval.custom_eval.metrics import skill_metrics
 
-    events = []
-    for call_id, success in [("first", False), ("retry", True)]:
-        events.extend([
-            {"type": "tool.execution_start", "data": {
-                "toolName": "skill", "toolCallId": call_id,
-                "arguments": {"skill": "read-repo-context"}}},
-            {"type": "tool.execution_complete",
-             "data": {"toolCallId": call_id, "success": success}},
-        ])
-    exp = from_mapping(_base(agents=[], skills={"dev-lead": ["read-repo-context"]}),
-                       "t", CRITERIA)
-    (metric,) = skill_metrics(_trace_with_events(*events), exp)
+    exp = from_mapping(
+        _base(agents=["coding", "review-lead"],
+              forbidden_skills={"review-lead": ["code-review"]}), "t", CRITERIA)
+    (metric,) = skill_metrics(_skill_trace("code-review", True, "coding"), exp)
     assert metric.passed is True
-    assert metric.actual == ["read-repo-context"]
+
+
+def test_any_agent_forbidden_skill_is_detected():
+    from agile_eval.custom_eval.metrics import skill_metrics
+
+    exp = from_mapping(_base(forbidden_skills={"any": ["code-review"]}),
+                       "t", CRITERIA)
+    (metric,) = skill_metrics(_skill_trace("code-review", False, "coding"), exp)
+    assert metric.passed is False
+
+def test_no_positive_skill_requirements_are_scored():
+    from agile_eval.custom_eval.metrics import skill_metrics
+
+    exp = from_mapping(_base(), "t", CRITERIA)
+    assert skill_metrics(_trace_with_events(), exp) == []
 
 
 # --- judge ------------------------------------------------------------------------------
@@ -1681,7 +1622,7 @@ def test_score_recorded_run_end_to_end(tmp_path, monkeypatch):
     assert row["errors"] == []
     assert row["status"] == "failed" and code == scorer.EXIT["failed"]
     assert row["plan_gate"]["passed"] is False
-    assert {m["name"] for m in row["trajectory"]} >= {"delegation", "skills:coding"}
+    assert {m["name"] for m in row["trajectory"]} >= {"delegation", "skills:review-lead"}
     statuses = {r["id"]: r["status"] for r in row["acceptance"]["criteria"]}
     assert statuses == {1: "UNVERIFIED", 2: "UNVERIFIED", 3: "UNVERIFIED", 4: "FAIL",
                         5: "UNVERIFIED"}

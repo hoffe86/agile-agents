@@ -4,7 +4,7 @@ The **Agentic Agile Harness** — the `agile-agents-core` GitHub Copilot CLI plu
 It takes a prepared requirement and drives it to a reviewed change without a human
 between stages: an **RPI pipeline** — **R**esearch → **P**lan → **I**mplement → **R**eview —
 over 15 specialist agents (1 supervisor + 4 authors + 7 reviewers, plus a backlog-manager, a bootstrapper and a capability-scout) plus
-22 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
+25 skills, with up-front concept + decision-record conformance, multi-lens review, and an eval/cost layer.
 
 **Start here:** install `agile-agents-core`, then run **`bootstrapper`** — it profiles your repo,
 writes the operational contract every agent reads, and proposes only the additional plugins your solution
@@ -19,6 +19,10 @@ copilot plugin install agile-agents-core@agentic-universe
 
 > **Compatibility:** Existing `agile-agents-marketplace` registrations and plugin
 > installations are not automatically migrated to `agentic-universe`.
+
+Core also ships the optional [Solution profile canvas](docs/README.md#solution-profile-canvas)
+for hosts with canvas support. Ask the agent to open it; no separate extension
+installation or consumer-side npm setup is needed.
 
 ### Then run the bootstrapper — this is the first step
 
@@ -114,7 +118,8 @@ checks do not establish role-wide live loading or automatic selective
 instruction injection. Full RPI evaluation is currently blocked at approval
 transport.
 
-The `agile-agents-core` plugin ships `agents/` and the technology-neutral `skills/`.
+The `agile-agents-core` plugin ships `agents/`, the technology-neutral `skills/`,
+and the optional solution-profile canvas in `extensions/`.
 
 ## What you get
 
@@ -238,7 +243,7 @@ Recorded invocation is not successful skill use, task acceptance or L2 outcome c
 |---|---|
 | [DeepEval pipeline scoring](eval/deepeval/README.md) | Recorded expected-skill coverage; setup/schema errors remain distinct from measured failures |
 | [Deterministic L0 trajectory checks](eval/pipeline/trajectory/README.md) | RPI ordering, gates and cost telemetry in harness event logs ([ADR 0008](docs/adr/0008-layered-evaluation-strategy.md)) |
-| [Waza skill evaluation](eval/skills/README.md) | Individual-skill routing, invocation and efficacy ([ADR 0014](docs/adr/0014-skill-evaluation-with-waza.md)) |
+| [Waza skill evaluation](eval/skills/README.md) | Offline hygiene and a manual outcome-quality suite; historical efficacy experiment ([ADR 0014](docs/adr/0014-skill-evaluation-with-waza.md)) |
 
 Use `eval/deepeval/report_skill_usage.py` with `--score`, repeated
 `--expect-skill` values and a local `--output` JSON destination.
@@ -249,7 +254,7 @@ third-party `deepeval`.
 
 The ten [custom benchmark tasks](eval/pipeline/custom-eval/README.md) run live:
 dev-lead is driven through the Copilot CLI across a human plan gate, and DeepEval
-scores the plan gate, delegation and per-agent skill invocation, with an optional
+scores the plan gate, delegation and forbidden reviewer workflows, with an optional
 model judge for acceptance. Runs are not OS-sandboxed yet
 ([#22](https://github.com/hoffe86/agile-agents/issues/22)). The 25-instance
 [SWE-bench manifest](eval/pipeline/swe-bench-subset/README.md) and
@@ -292,12 +297,14 @@ The roster has 0 light, 4 mid, and 11 heavy agents; `light` remains a supported 
 
 **Dogfood test bar.** At repository root, activate a Python environment with
 `eval/deepeval/requirements.lock.txt` hash-installed
-([setup and supported Python versions](eval/deepeval/README.md#install-and-verify)) and put `pwsh` on `PATH`. The profile's
+([setup and supported Python versions](eval/deepeval/README.md#install-and-verify)) and put `pwsh` and Node.js 22+ on `PATH`. The profile's
 `lint.command` and `unit_test.command` call `python scripts/run-repo-checks.py lint`
 and `python scripts/run-repo-checks.py unit`. The helper stops on any failed command
 or missing prerequisite. Unit checks use unittest for script, pipeline-workflow,
 and trajectory tests, and pytest only for custom-eval/deepeval; running all paths
 through pytest incorrectly collects trajectory helper functions as tests.
+The canvas uses Node's built-in test runner against the shipped bundle; no npm
+installation is needed for these unit checks.
 There is no configured static type checker, application smoke command, or deployment.
 Run the actual profile integration with either:
 
@@ -395,3 +402,5 @@ development guide (flat-layout rule, model-tier convention, skill format, plugin
 
 [MIT](LICENSE). Vendored skills under `plugins/agile-agents*/skills/` retain their upstream MIT license
 (Copyright GitHub, Inc.) — see [`plugins/VENDORED.md`](plugins/VENDORED.md).
+The canvas's bundled YAML parser retains its
+[ISC license](plugins/agile-agents-core/extensions/solution-profile/yaml.LICENSE).

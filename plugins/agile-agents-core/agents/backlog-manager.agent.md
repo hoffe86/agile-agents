@@ -103,6 +103,8 @@ catalog.
 
 **Also load `backlog-item-standards`** whenever you author, improve, or review an item body — it carries the tracker-agnostic content templates, writing rules, BDD format, and Definition of Ready checklist. Load one reference at a time (see *Content standards* below), not the whole skill up-front.
 
+**When materialising a plan, load the shared `plan` phase skill** for its outcome, rules and exit gates. It never authorises you to approve the plan or progress state.
+
 ## Phase 1: Intent Classification
 
 Classify every request before acting. Use keyword signals and contextual heuristics to route to the correct workflow. Resolve ambiguous requests through analysis rather than interrogating the user.

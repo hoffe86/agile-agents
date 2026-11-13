@@ -74,13 +74,16 @@ limitations and are reported as such rather than folded silently into a score.
 # Skill-eval baselines (S-layer)
 
 Separate table because the S-layer grades **skills as artifacts**, not runs — see
-[ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md). Everything below is
-zero-credit and deterministic, so it can be regenerated at will:
+[ADR 0014](../docs/adr/0014-skill-evaluation-with-waza.md). The rows below are
+historical, not current measurements. Current offline hygiene can be run with:
 
 ```powershell
 ./scripts/check-skill-tokens.ps1     # hygiene + coverage
-./scripts/run-trigger-evals.ps1      # routing
 ```
+
+Routing and invocation suites were removed because
+they measured GitHub Copilot's skill selection rather than this repository's behavior.
+The [current outcome suite](skills/README.md) is manual and model-backed.
 
 | Date       | Commit    | Metric                                | Value      | Notes |
 |------------|-----------|---------------------------------------|------------|-------|
@@ -116,13 +119,12 @@ written in abstract vocabulary that shares few tokens with how the situation is 
 Two things not to do with any of these numbers. Do not raise a threshold to clear them,
 and do not stuff keywords into a description — the threshold is Waza's uncalibrated
 default, and editing prose to move a metric is exactly what `engineering-judgement` §7
-forbids. This is why the routing suite **reports** while the frontmatter, drift and token
-checks **gate**. Confirm against S1 (observed invocation) before editing any description.
+forbids. The routing suite reported rather than gated; it has since been removed.
 
 ## S1 — observed invocation (first results)
 
 Ground truth for two of the three S0 false triggers. Run via Waza's `copilot-sdk`
-executor, 3 trials each; see [`eval/skills/s1-invocation/README.md`](skills/s1-invocation/README.md).
+executor, 3 trials each; suite since removed.
 
 | Date | Collision S0 predicted | S0 heuristic | Observed (3 trials) | Verdict |
 |---|---|---|---|---|

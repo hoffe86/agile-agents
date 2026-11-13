@@ -111,6 +111,8 @@ ADR check is handled by `read-repo-context` — reference any binding ADR id (to
 
 Beyond the routed primary skills:
 
+- **`implement`** — the shared phase skill: outcome, rules and exit gates for delivering an approved task with its IaC tests. Your hand-off contract stays authoritative.
+
 - **`acquire-codebase-knowledge`** — explicit onboarding only; ordinary tasks read
   relevant source and existing deployment contracts.
 - **Applicable container-image authoring guidance** — selected by capability and runtime from available solution guidance.

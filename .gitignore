@@ -25,7 +25,7 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Waza skill-eval run artifacts (regenerate with scripts/run-trigger-evals.ps1)
+# Waza skill-eval run artifacts
 .waza-results/
 .waza-cache/
 

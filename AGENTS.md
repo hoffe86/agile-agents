@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-11-12.
+> Generated from `solution-profile.yaml` on 2026-11-13.
 > Do not edit by hand — use the `solution-profile-interview` skill's bundled generator
 > (this harness repository also provides `scripts/generate-agents-md.ps1` / `.sh` wrappers).
 
@@ -180,7 +180,10 @@ servers, grant service authorization, or bypass local/host restrictions.
 - **development-practices** (`agile-agents-core`) — Author the smallest correct code change: implementation, cloud-native defaults, observability, documentation, verification and Git safety.
 - **engineering-judgement** (`agile-agents-core`) — Decide when to act, ask or stop: mandate, missing requirements, reversibility and blast radius.
 - **iac-best-practices** (`agile-agents-core`) — Cross-cutting Infrastructure-as-Code best practices that apply regardless of tool (Bicep, Terraform, Helm, Kustomize, ARM, Pulumi) or cloud.
+- **implement** (`agile-agents-core`) — Implement phase of Research → Plan → Implement, usable by any author or orchestrator: deliver approved tasks one at a time with the tests that cover them, route each deliverable to the right author...
+- **plan** (`agile-agents-core`) — Plan phase of Research → Plan → Implement, usable by any agent: decompose a requirement into traceable, independently implementable tasks, map acceptance criteria and dependencies, make data work e...
 - **read-repo-context** (`agile-agents-core`) — Required agent preamble: scoped repo instructions, solution profile, engineering judgement, capability discovery, decision capture and hand-off validation.
+- **research** (`agile-agents-core`) — Research phase of Research → Plan → Implement, usable by any agent: verify a prepared concept, decisions, codebase and external facts; size research depth; separate evidence from assumptions; surfa...
 - **reviewer-read-only-rules** (`agile-agents-core`) — Defence-in-depth read-only contract that every review agent enforces.
 - **run-event-log** (`agile-agents-core`) — Dev-lead-only append-only JSONL telemetry for phase boundaries, significant tool calls, gates and completion.
 - **solution-profile-interview** (`agile-agents-core`) — Bootstrap or repair `.github/solution-profile.yaml` by discovering what the repo already tells you and interviewing the human only for what it can't.
