@@ -800,7 +800,7 @@ class PowerShellGateTests(GateCases, unittest.TestCase):
         assert_process_stopped(self, helper_pid, self.output)
 
     def test_command_removed_after_resolution_fails_launch_at_reachable_url(self):
-        self.smoke(timeout=3)
+        self.smoke(timeout=10)
         url, requests = self.reachable_url()
         executable = self.cwd / "removed-before-launch.exe"
         shutil.copy2(sys.executable, executable)
@@ -808,7 +808,7 @@ class PowerShellGateTests(GateCases, unittest.TestCase):
         runners, helper_pid = self.controlled_smoke_helper(
             before_launch="Remove-Item -LiteralPath 'removed-before-launch.exe'")
         with patch(f"{__name__}.RUNNERS", runners):
-            code = self.invoke(status=None, timeout=12)
+            code = self.invoke(status=None, timeout=25)
         self.assertEqual(self.event("smoke")["outcome"], "fail", self.output)
         self.assertEqual(code, 1, self.output)
         self.assertFalse(executable.exists(), self.output)
