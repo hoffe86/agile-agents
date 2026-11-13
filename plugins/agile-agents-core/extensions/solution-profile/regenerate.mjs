@@ -18,24 +18,27 @@ export async function regenerate(root, text) {
     try {
         // JSON is a lossless snapshot for the generators, including flow YAML and quoted '#' values.
         const snapshot = path.join(temporary, "profile.json");
+        const outputPath = path.join(temporary, "AGENTS.md");
         await fs.writeFile(snapshot, JSON.stringify(parseProfile(text).toJSON()), { mode: 0o600 });
         const windows = process.platform === "win32";
         const command = windows ? "pwsh" : "bash";
         const args = windows
             ? ["-NoProfile", "-File", path.join(scripts, "generate-agents-md.ps1"),
-                "-RepoRoot", root, "-ProfilePath", snapshot, "-DryRun"]
-            : [path.join(scripts, "generate-agents-md.sh"), "--repo-root", root, "--profile", snapshot, "--dry-run"];
-        let output;
+                "-RepoRoot", root, "-ProfilePath", snapshot, "-Output", outputPath]
+            : [path.join(scripts, "generate-agents-md.sh"), "--repo-root", root, "--profile", snapshot,
+                "--output", outputPath];
         try {
-            ({ stdout: output } = await execute(command, args, {
+            await execute(command, args, {
                 cwd: root, timeout: 30_000, maxBuffer: MAX_BYTES, windowsHide: true,
                 env: { ...process.env, BASH_ENV: "", ENV: "" },
-            }));
+            });
         } catch (error) {
             throw new ProfileError("generator_failed",
                 `Bundled generator failed (${error.code ?? error.signal ?? "unknown"}): ${error.stderr?.trim() || error.message}`);
         }
-        output = output.replaceAll("\r\n", "\n").trimEnd() + "\n";
+        if ((await fs.stat(outputPath)).size > MAX_BYTES)
+            throw new ProfileError("invalid_generation", "Generator returned invalid or oversized output; AGENTS.md was not changed.");
+        const output = (await fs.readFile(outputPath, "utf8")).replaceAll("\r\n", "\n").trimEnd() + "\n";
         if (!output.startsWith(`${marker}\n`) || Buffer.byteLength(output) > MAX_BYTES)
             throw new ProfileError("invalid_generation", "Generator returned invalid or oversized output; AGENTS.md was not changed.");
         if (await safeFile(root, PROFILE) !== text)
