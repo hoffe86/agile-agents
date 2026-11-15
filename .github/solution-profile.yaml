@@ -53,20 +53,24 @@ tech_stack:
     - { name: "powershell" }
     - { name: "python" }
     - { name: "shell" }
-  frameworks: []                # E.g. ["aspnetcore", "ef-core", "fastapi"]
-  package_managers: ["pip"]     # E.g. ["nuget", "pip", "uv", "npm"]
+    - { name: "javascript" }
+  frameworks: ["docusaurus"]    # E.g. ["aspnetcore", "ef-core", "fastapi"]
+  package_managers: ["pip", "npm"] # E.g. ["nuget", "pip", "uv", "npm"]
   test_discipline: "test-after" # REQUIRED. tdd | bdd | test-after | none
-  test_frameworks: ["unittest", "pytest"] # E.g. ["xunit", "fluentassertions"], ["pytest", "pytest-cov"]
+  test_frameworks: ["unittest", "pytest", "node:test", "playwright"] # E.g. ["xunit", "fluentassertions"], ["pytest", "pytest-cov"]
   coverage_threshold: null      # Integer percent (e.g. 80) or null if not enforced.
   lint_format_tools: []         # E.g. ["dotnet-format", "ruff", "black", "eslint"]
-  build_tools: []               # E.g. ["dotnet", "uv", "make"]
+  build_tools: ["npm"]          # E.g. ["dotnet", "uv", "make"]
 
 # ─── infrastructure ───────────────────────────────────────────────────────────
 infrastructure:
   iac_tool: "none"              # bicep | terraform | arm | pulumi | none
   iac_root: ""                  # Path to IaC root (e.g. "infra/").
+  # `cloud` and `hosting_model` describe the primary harness runtime, not
+  # auxiliary repository publishing. The docs site is separately published
+  # via GitHub Pages and does not change the harness runtime values.
   cloud: ""                     # azure | aws | gcp | on-prem | hybrid
-                                # Not applicable: this harness repo has no cloud deployment.
+                                # No primary harness cloud runtime applies.
                                 # Empty because the template vocabulary has no `none` value.
   allowed_regions: []           # E.g. ["westeurope", "northeurope"] — hard constraint.
   hosting_model: ""             # aks | aca | functions | app-service | vm | on-prem | edge
@@ -85,7 +89,7 @@ cicd:
   platform: "github-actions"                  # github-actions | azure-pipelines | gitlab-ci | jenkins
   pipeline_paths: [".github/workflows/"]            # E.g. [".github/workflows/", "azure-pipelines.yml"]
   required_checks:              # Status-check names that must pass to merge.
-    # Desired repo gates from PR workflows; branch protection has not been verified.
+    # Desired checks only; main branch protection still needs configuration to enforce this list.
     # Live evaluation remains disabled.
     - "check-agents-md-in-sync"
     - "audit-references"
@@ -94,6 +98,7 @@ cicd:
     - "runtime-contracts (windows-latest)"
     - "skill-quality"
     - "plugin-versions"
+    - "Build and test docs site"
   release_strategy: "trunk"          # trunk | gitflow | release-branches | env-branches
                                 # Read by `deploy-verify`: on trunk-based a feature-branch push
                                 # normally triggers the dev deploy; on gitflow / env-branches it
@@ -246,19 +251,24 @@ data_science:
 # `testing-practices` owns the E2E contract; commands/frameworks belong to the solution.
 testing:
   smoke:
-    # Local "does it even come up?" check. Runs at Stage 7 after the unit tests,
-    # before the reviewers. This repo has no runnable application: the caller must
-    # supply --smoke-status not_applicable --smoke-detail with that inspected evidence.
-    # Empty setup alone is not a pass; runnable but undetermined setup exits 2.
-    command: []
-    url: ""
+    # Start the docs package from its own directory and probe its base path.
+    command:
+      - npm
+      - run
+      - start
+      - --prefix
+      - docs/site
+      - --
+      - --port
+      - "3030"
+    url: "http://127.0.0.1:3030/agile-agents/"
     timeout_s: 60               # Give up (and fail the gate) after this many seconds.
   e2e:
-    framework: "none"           # playwright | selenium | cypress | none (default none)
-    base_url: ""                # Target URL the suite hits (e.g. "https://stage.contoso.com").
+    framework: "playwright"     # playwright | selenium | cypress | none (default none)
+    base_url: "http://127.0.0.1:4173/agile-agents/" # Local production-build target for docs-site CI.
     headless: true              # Headless in CI; flip locally for debugging.
     parallelism: 1              # Workers / shards. Bump once selectors are stable.
-    flake_retries: 2            # Per-test retry budget. >2 usually masks real flakes.
+    flake_retries: 0            # Per-test retry budget. >2 usually masks real flakes.
 
 # ─── cost_envelope ────────────────────────────────────────────────────────────
 # Per-AI-run budget for the agent suite — DISTINCT from `operational.cost_band_eur_monthly`,

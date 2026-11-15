@@ -1,0 +1,132 @@
+name: Docs · site
+
+# Builds and tests the Docusaurus documentation site (docs/site/) on every pull
+# request and on relevant pushes. Only a push to main or a manual run on main
+# deploys to GitHub Pages; pull requests and scheduled runs can never deploy. The
+# deployed artifact is the exact output of the build job in the same run. Push
+# filters are broad because published pages link to files across .github/, eval/
+# and plugins/; the link check must rerun when any of those targets moves. The
+# weekly run catches drift anyway.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'eval/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'plugins/**'
+      - '.github/**'
+  # This is a required check: do not path-filter pull requests or it can remain
+  # pending when a PR changes files outside the docs site's link targets.
+  pull_request: {}
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-site-${{ github.ref }}-${{ github.event_name == 'schedule' && 'scheduled' || 'ci' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build and test docs site
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: docs/site/package-lock.json
+
+      - name: Use the pinned npm version
+        run: npm install --global npm@12.2.1 --ignore-scripts --no-fund --no-audit
+
+      - name: Install site dependencies
+        run: npm ci --prefix docs/site --ignore-scripts --no-audit --no-fund
+
+      - name: Projection and link tests
+        run: npm test --prefix docs/site
+
+      - name: Build site
+        run: npm run build --prefix docs/site
+
+      - name: Production output tests
+        run: npm run test:build --prefix docs/site
+
+      - name: Install Chromium
+        run: docs/site/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Production browser tests
+        env:
+          DOCS_SITE_BASE_URL: http://127.0.0.1:4173/agile-agents/
+        run: npm run test:browser --prefix docs/site
+
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docs-site-browser-diagnostics
+          path: docs/site/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Pages artifact
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/site/build
+
+  deploy:
+    name: Deploy docs site to Pages
+    needs: build
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: docs-site-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Check deployment freshness
+        id: freshness
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest_sha="$(curl --fail --silent --show-error --retry 3 --retry-all-errors \
+            --retry-delay 1 --max-time 10 \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/commits/main" \
+            | jq --exit-status --raw-output '.sha')"
+
+          if [[ "$latest_sha" == "$GITHUB_SHA" ]]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+            echo "Run commit is current on main ($GITHUB_SHA)."
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping stale docs deployment: run commit $GITHUB_SHA; main is $latest_sha."
+          fi
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        if: steps.freshness.outputs.latest == 'true'
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
