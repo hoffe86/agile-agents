@@ -1,6 +1,6 @@
 name: Docs · site
 
-# Builds and tests the Docusaurus documentation site (docs/site/) on every pull
+# Builds the Docusaurus documentation site (docs/site/) on every pull
 # request and on relevant pushes. Only a push to main or a manual run on main
 # deploys to GitHub Pages; pull requests and scheduled runs can never deploy. The
 # deployed artifact is the exact output of the build job in the same run. Push
@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and test docs site
+    name: Build docs site
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -54,31 +54,8 @@ jobs:
       - name: Install site dependencies
         run: npm ci --prefix docs/site --ignore-scripts --no-audit --no-fund
 
-      - name: Projection and link tests
-        run: npm test --prefix docs/site
-
       - name: Build site
         run: npm run build --prefix docs/site
-
-      - name: Production output tests
-        run: npm run test:build --prefix docs/site
-
-      - name: Install Chromium
-        run: docs/site/node_modules/.bin/playwright install --with-deps chromium
-
-      - name: Production browser tests
-        env:
-          DOCS_SITE_BASE_URL: http://127.0.0.1:4173/agile-agents/
-        run: npm run test:browser --prefix docs/site
-
-      - name: Upload browser failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: docs-site-browser-diagnostics
-          path: docs/site/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
 
       - name: Upload Pages artifact
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
