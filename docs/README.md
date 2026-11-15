@@ -1,5 +1,22 @@
 # Documentation
 
+The documentation website (built from these files by [`site/`](site/README.md))
+is organized into four sections:
+
+- **Introduction** — [what Agile Agents is](introduction/index.md),
+  [concepts and roles](introduction/concepts.md),
+  [capabilities and limitations](introduction/capabilities.md)
+- **Getting started** — [overview](getting-started/index.md),
+  [installation](getting-started/installation.md),
+  [bootstrap](getting-started/bootstrap.md),
+  [first requirement](getting-started/first-requirement.md)
+- **Flow** — [overview](flow/index.md), [research](flow/research.md),
+  [plan and approvals](flow/plan.md), [implement](flow/implement.md),
+  [review and completion](flow/review.md), [hand-offs](flow/handoffs.md)
+- **Evaluation** — [evaluation overview](../eval/README.md)
+
+Reference material:
+
 - [Repository overview and commands](../README.md)
 - [Customization ownership, activation and rollback](customization-ownership.md)
 - [Generated AGENTS mapping](AGENTS-MD-MAPPING.md)

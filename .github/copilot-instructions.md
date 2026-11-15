@@ -33,7 +33,7 @@ evaluation; humans approve adoption and installation.
 
 - 15 *.agent.md files under `plugins/agile-agents-core/agents/`.
 - 25 repo-scope skills under `plugins/agile-agents-core/skills/`.
-- 5 workflows under `.github/workflows/`.
+- 6 workflows under `.github/workflows/`.
 - Architecture decision records (0001–0015) under `docs/adr/`.
 - 1 of the 25 skills is an unmodified copy (apart from the scope annotation).
 24 are hand-written or adopted. `plugins/VENDORED.md` is the current upstream index.

@@ -1,7 +1,7 @@
 <!-- GENERATED-BY: scripts/generate-agents-md.ps1 -->
 # AGENTS.md — agile-agents
 
-> Generated from `solution-profile.yaml` on 2026-11-13.
+> Generated from `solution-profile.yaml` on 2026-11-15.
 > Do not edit by hand — use the `solution-profile-interview` skill's bundled generator
 > (this harness repository also provides `scripts/generate-agents-md.ps1` / `.sh` wrappers).
 
@@ -13,7 +13,7 @@ profile selected for generation), repository instructions and the configured
 ## Project context
 
 - **Project**: agile-agents
-- **Primary language(s)**: powershell, python, shell
+- **Primary language(s)**: powershell, python, shell, javascript
 - **Backlog platform**: github-issues
 - **Documentation**: docs/ (platform: in-repo)
 - **Branch naming**: <type>/<slug>

@@ -2824,14 +2824,19 @@ class AdvisoryProfileTests(unittest.TestCase):
         self.assertEqual(profile["backlog"]["branch_naming"], "<type>/<slug>")
         self.assertEqual(profile["backlog"]["pr_link_pattern"], "Closes #<n>")
         self.assertEqual(profile["tech_stack"]["primary_languages"],
-                         [{"name": "powershell"}, {"name": "python"}, {"name": "shell"}])
+                         [{"name": "powershell"}, {"name": "python"}, {"name": "shell"},
+                          {"name": "javascript"}])
+        self.assertEqual(profile["tech_stack"]["frameworks"], ["docusaurus"])
+        self.assertEqual(profile["tech_stack"]["package_managers"], ["pip", "npm"])
         self.assertEqual(profile["tech_stack"]["test_discipline"], "test-after")
-        self.assertEqual(profile["tech_stack"]["test_frameworks"], ["unittest", "pytest"])
+        self.assertEqual(profile["tech_stack"]["test_frameworks"],
+                         ["unittest", "pytest", "node:test", "playwright"])
+        self.assertEqual(profile["tech_stack"]["build_tools"], ["npm"])
         self.assertEqual(profile["engagement_context"]["engagement_type"], "open-source")
         self.assertEqual(profile["cicd"]["required_checks"], [
             "check-agents-md-in-sync", "audit-references", "trajectory",
             "runtime-contracts (ubuntu-latest)", "runtime-contracts (windows-latest)",
-            "skill-quality", "plugin-versions"])
+            "skill-quality", "plugin-versions", "Build and test docs site"])
         self.assertEqual(profile["compliance_security"]["allowed_oss_licenses"], [])
         self.assertEqual(profile["infrastructure"]["cloud"], "")
         self.assertEqual(profile["infrastructure"]["deploy_verify"], "off")
@@ -2839,6 +2844,113 @@ class AdvisoryProfileTests(unittest.TestCase):
         for key in ("max_usd_per_run", "max_aiu_per_run", "max_aiu_per_phase",
                     "max_tokens_per_run", "max_minutes_per_run"):
             self.assertEqual(profile["cost_envelope"][key], template["cost_envelope"][key])
+
+    def test_docs_site_e2e_profile_matches_browser_runner(self):
+        profile = self.checker.yaml.safe_load(
+            (ROOT / ".github/solution-profile.yaml").read_text(encoding="utf-8"))
+        e2e = profile["testing"]["e2e"]
+        self.assertEqual(e2e, {
+            "framework": "playwright",
+            "base_url": "http://127.0.0.1:4173/agile-agents/",
+            "headless": True,
+            "parallelism": 1,
+            "flake_retries": 0,
+        })
+
+        site = ROOT / "docs/site"
+        package = json.loads((site / "package.json").read_text(encoding="utf-8"))
+        browser_test = (site / "tests/browser/site.test.mjs").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/docs-site.yml").read_text(encoding="utf-8")
+        browser_command = package["scripts"]["test:browser"]
+
+        self.assertIn("playwright", package["devDependencies"])
+        self.assertIn("import { chromium } from 'playwright';", browser_test)
+        self.assertIn("node --test", browser_command)
+        self.assertNotIn("--test-retries", browser_command)
+        self.assertNotRegex(browser_test, r"\bretry\b")
+        concurrency = re.search(r"--test-concurrency=(\d+)", browser_command)
+        self.assertIsNotNone(concurrency)
+        self.assertEqual(int(concurrency.group(1)), e2e["parallelism"])
+
+        configured_url = re.search(
+            r"^\s*DOCS_SITE_BASE_URL:\s*(\S+)\s*$", workflow, re.MULTILINE)
+        self.assertIsNotNone(configured_url)
+        self.assertEqual(configured_url.group(1), e2e["base_url"])
+        self.assertIn("process.env.DOCS_SITE_BASE_URL", browser_test)
+        self.assertIn("run: npm run test:browser --prefix docs/site", workflow)
+
+        headless = re.search(
+            r"chromium\.launch\(\{\s*headless:\s*(true|false)", browser_test)
+        self.assertIsNotNone(headless)
+        self.assertEqual(headless.group(1) == "true", e2e["headless"])
+
+    def test_docs_site_required_check_runs_for_every_pull_request(self):
+        workflow = (ROOT / ".github/workflows/docs-site.yml").read_text(encoding="utf-8")
+        # BaseLoader keeps the GitHub Actions `on` key a string (unlike YAML 1.1).
+        triggers = self.checker.yaml.load(
+            workflow, Loader=self.checker.yaml.BaseLoader)["on"]
+
+        self.assertEqual(triggers["pull_request"], {})
+        self.assertEqual(triggers["push"]["branches"], ["main"])
+        self.assertEqual(triggers["push"]["paths"], [
+            "docs/**", "eval/**", "README.md", "AGENTS.md", "plugins/**", ".github/**",
+        ])
+        self.assertEqual(triggers["schedule"], [{"cron": "23 4 * * 1"}])
+        self.assertIn("workflow_dispatch", triggers)
+
+        workflow_config = self.checker.yaml.load(
+            workflow, Loader=self.checker.yaml.BaseLoader)
+        main_only_deploy_guard = (
+            "(github.event_name == 'push' || "
+            "github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'"
+        )
+        self.assertEqual(workflow_config["jobs"]["deploy"]["if"], main_only_deploy_guard)
+
+        pages_upload_steps = [
+            step for step in workflow_config["jobs"]["build"]["steps"]
+            if step.get("name") == "Upload Pages artifact"
+        ]
+        self.assertEqual(len(pages_upload_steps), 1)
+        self.assertEqual(
+            pages_upload_steps[0]["uses"].split("@", maxsplit=1)[0],
+            "actions/upload-pages-artifact",
+        )
+        self.assertEqual(pages_upload_steps[0]["if"], main_only_deploy_guard)
+
+    def test_docs_site_deploy_skips_runs_that_are_stale_on_main(self):
+        workflow = (ROOT / ".github/workflows/docs-site.yml").read_text(encoding="utf-8")
+        workflow_config = self.checker.yaml.load(
+            workflow, Loader=self.checker.yaml.BaseLoader)
+        deploy = workflow_config["jobs"]["deploy"]
+
+        self.assertEqual(deploy["concurrency"], {
+            "group": "docs-site-pages",
+            "cancel-in-progress": "false",
+        })
+        self.assertEqual(deploy["permissions"], {
+            "contents": "read",
+            "pages": "write",
+            "id-token": "write",
+        })
+
+        steps = deploy["steps"]
+        freshness_index = next(
+            index for index, step in enumerate(steps)
+            if step.get("name") == "Check deployment freshness")
+        deploy_index = next(
+            index for index, step in enumerate(steps)
+            if step.get("name") == "Deploy to GitHub Pages")
+        self.assertEqual(deploy_index, freshness_index + 1)
+
+        freshness = steps[freshness_index]
+        self.assertEqual(freshness["id"], "freshness")
+        self.assertIn("/commits/main", freshness["run"])
+        self.assertIn('"$latest_sha" == "$GITHUB_SHA"', freshness["run"])
+        self.assertIn('echo "latest=false"', freshness["run"])
+        self.assertEqual(
+            steps[deploy_index]["if"],
+            "steps.freshness.outputs.latest == 'true'",
+        )
 
 
 @unittest.skipUnless(shutil.which("pwsh"), "PowerShell required")
@@ -3096,7 +3208,11 @@ runpy.run_path(sys.argv[0], run_name="__main__")
         self.assertTrue(gate["lint"]["enabled"])
         self.assertTrue(gate["unit_test"]["enabled"])
         self.assertFalse(gate["typecheck"]["enabled"])
-        self.assertEqual(profile["testing"]["smoke"]["command"], [])
+        self.assertEqual(profile["testing"]["smoke"]["command"], [
+            "npm", "run", "start", "--prefix", "docs/site", "--", "--port", "3030",
+        ])
+        self.assertEqual(profile["testing"]["smoke"]["url"],
+                         "http://127.0.0.1:3030/agile-agents/")
         commands = self.runner.commands_for("unit")
         # Dependency-present checks now precede, but do not replace, the existing
         # unittest/pytest split. An absent DeepEval must fail before tests can skip.
