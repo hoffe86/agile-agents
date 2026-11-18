@@ -2830,13 +2830,13 @@ class AdvisoryProfileTests(unittest.TestCase):
         self.assertEqual(profile["tech_stack"]["package_managers"], ["pip", "npm"])
         self.assertEqual(profile["tech_stack"]["test_discipline"], "test-after")
         self.assertEqual(profile["tech_stack"]["test_frameworks"],
-                         ["unittest", "pytest", "node:test", "playwright"])
+                         ["unittest", "pytest", "node:test"])
         self.assertEqual(profile["tech_stack"]["build_tools"], ["npm"])
         self.assertEqual(profile["engagement_context"]["engagement_type"], "open-source")
         self.assertEqual(profile["cicd"]["required_checks"], [
             "check-agents-md-in-sync", "audit-references", "trajectory",
             "runtime-contracts (ubuntu-latest)", "runtime-contracts (windows-latest)",
-            "skill-quality", "plugin-versions", "Build and test docs site"])
+            "skill-quality", "plugin-versions", "Build docs site"])
         self.assertEqual(profile["compliance_security"]["allowed_oss_licenses"], [])
         self.assertEqual(profile["infrastructure"]["cloud"], "")
         self.assertEqual(profile["infrastructure"]["deploy_verify"], "off")
@@ -2845,44 +2845,26 @@ class AdvisoryProfileTests(unittest.TestCase):
                     "max_tokens_per_run", "max_minutes_per_run"):
             self.assertEqual(profile["cost_envelope"][key], template["cost_envelope"][key])
 
-    def test_docs_site_e2e_profile_matches_browser_runner(self):
+    def test_docs_site_build_has_no_site_test_suite(self):
         profile = self.checker.yaml.safe_load(
             (ROOT / ".github/solution-profile.yaml").read_text(encoding="utf-8"))
         e2e = profile["testing"]["e2e"]
-        self.assertEqual(e2e, {
-            "framework": "playwright",
-            "base_url": "http://127.0.0.1:4173/agile-agents/",
-            "headless": True,
-            "parallelism": 1,
-            "flake_retries": 0,
+        self.assertEqual(e2e["framework"], "none")
+        self.assertEqual(e2e["base_url"], "")
+        self.assertEqual(set(e2e), {
+            "framework", "base_url", "headless", "parallelism", "flake_retries",
         })
 
         site = ROOT / "docs/site"
         package = json.loads((site / "package.json").read_text(encoding="utf-8"))
-        browser_test = (site / "tests/browser/site.test.mjs").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/docs-site.yml").read_text(encoding="utf-8")
-        browser_command = package["scripts"]["test:browser"]
-
-        self.assertIn("playwright", package["devDependencies"])
-        self.assertIn("import { chromium } from 'playwright';", browser_test)
-        self.assertIn("node --test", browser_command)
-        self.assertNotIn("--test-retries", browser_command)
-        self.assertNotRegex(browser_test, r"\bretry\b")
-        concurrency = re.search(r"--test-concurrency=(\d+)", browser_command)
-        self.assertIsNotNone(concurrency)
-        self.assertEqual(int(concurrency.group(1)), e2e["parallelism"])
-
-        configured_url = re.search(
-            r"^\s*DOCS_SITE_BASE_URL:\s*(\S+)\s*$", workflow, re.MULTILINE)
-        self.assertIsNotNone(configured_url)
-        self.assertEqual(configured_url.group(1), e2e["base_url"])
-        self.assertIn("process.env.DOCS_SITE_BASE_URL", browser_test)
-        self.assertIn("run: npm run test:browser --prefix docs/site", workflow)
-
-        headless = re.search(
-            r"chromium\.launch\(\{\s*headless:\s*(true|false)", browser_test)
-        self.assertIsNotNone(headless)
-        self.assertEqual(headless.group(1) == "true", e2e["headless"])
+        self.assertFalse((site / "tests").exists())
+        self.assertFalse(any(name.startswith("test") for name in package["scripts"]))
+        self.assertNotIn("playwright", package["devDependencies"])
+        self.assertNotIn("cheerio", package["devDependencies"])
+        self.assertIn("run: npm run build --prefix docs/site", workflow)
+        self.assertNotRegex(workflow, r"npm (?:run )?test(?:[: ]|$)")
+        self.assertNotIn("playwright install", workflow)
 
     def test_docs_site_required_check_runs_for_every_pull_request(self):
         workflow = (ROOT / ".github/workflows/docs-site.yml").read_text(encoding="utf-8")

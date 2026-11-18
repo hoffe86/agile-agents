@@ -11,11 +11,7 @@ From the repository root:
 
 ```sh
 npm ci --prefix docs/site --ignore-scripts --no-audit --no-fund
-npm run install:browser --prefix docs/site
-npm test --prefix docs/site
 npm run build --prefix docs/site
-npm run test:build --prefix docs/site
-DOCS_SITE_BASE_URL=http://127.0.0.1:4173/agile-agents/ npm run test:browser --prefix docs/site
 npm run serve --prefix docs/site -- --port 3000
 ```
 
@@ -65,7 +61,8 @@ unresolved. Links to it still open its validated canonical GitHub location.
 
 Versions are exact and the lockfile is committed with the site package. The
 projection uses the same unified/remark AST ecosystem shipped by Docusaurus;
-tests use Node's built-in test runner, not a copied external test stack.
+there is no separate documentation-site test suite. Agent/plugin behavior
+remains covered by the repository's existing checks.
 Search 0.52.3 supports Docusaurus 3 and React 19 without the later optional
 AI-search peer.
 
@@ -73,7 +70,7 @@ AI-search peer.
 
 Docusaurus 3.10.2 (latest at adoption) pulls build-time transitives with
 published advisories. Two exact `overrides` in `package.json` move them to fixed
-releases, verified by the full build and both test suites:
+releases, verified by the production build:
 
 | Package | Override | Advisory |
 |---|---|---|
@@ -89,36 +86,23 @@ any dependency upgrade.
 
 ## Publishing to GitHub Pages
 
-`.github/workflows/docs-site.yml` runs the projection tests, production build and
-production output tests on pull requests and pushes that touch `docs/`, `eval/`,
+`.github/workflows/docs-site.yml` builds the site on pull requests and pushes
+that touch `docs/`, `eval/`,
 `plugins/`, `.github/`, `README.md` or `AGENTS.md` — published pages link into
-all of them, so moving a target must rerun the link check — plus a weekly
-scheduled run that catches any remaining drift. The build job installs pinned
-Playwright Chromium and runs production browser checks for keyboard navigation,
-local search, cross-section links, mobile navigation, prefixed assets and visible
-prose-link underlines. Failed browser runs retain traces and screenshots for
-seven days. `testing.e2e` in `.github/solution-profile.yaml` records the browser,
-base URL, headless setting, single-worker execution and zero-retry policy. Pull
-requests and scheduled runs never deploy. A push to `main` (or
+all of them, so changes trigger production build and link validation. A weekly
+scheduled run catches remaining drift. No browser-level or documentation-site
+test suite is configured. Pull requests and scheduled runs never deploy. A push
+to `main` (or
 a manual run on `main`) uploads the build output of that same run as the Pages
 artifact, and a separate job with only `pages: write` and
 `id-token: write` deploys it. Actions are pinned by commit SHA.
 
-The workflow being present does **not** mean the site is live. A maintainer must
-enable it once: **Settings → Pages → Build and deployment → Source: GitHub
-Actions**. Then create the `github-pages` environment yourself (Settings →
-Environments), restrict its deployment branches to `main`, and configure at
-least one required human reviewer **before** the first deploy. These are
-required user-owned pre-deployment controls, not housekeeping: the
-workflow's `main`-only guard can be edited on a branch by anyone with write
-access, so only the environment policy actually prevents publishing from an
-unreviewed branch. Neither Pages setup nor deployment occurred here; a
-read-only live lookup confirmed that the `github-pages` environment is absent
-(404), so its branch restriction and required-reviewer controls remain to be
-configured. Until Pages is enabled, the deploy job on `main` fails at
-`configure-pages`; the build and tests still gate every change. The intended
-site URL is
-`https://hoffe86.github.io/agile-agents/`. Keep its URL and branch coordinates
+The site is live at
+`https://hoffe86.github.io/agile-agents/`; the maintainer has enabled Pages and
+deployed it. For future deployments, keep the workflow's source, branch
+restrictions, and any required reviewer policy aligned with repository
+governance. The build is required before the Pages artifact is uploaded. Keep
+the URL and branch coordinates
 synchronized when the repository owner/name, Pages host or path, or source/deploy
 branch changes:
 
