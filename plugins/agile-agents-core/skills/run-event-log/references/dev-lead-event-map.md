@@ -16,6 +16,12 @@ aggregate within the same run, including corrective rounds. Only dev-lead emits.
 Direct dev-lead implementation uses its own `phase=implement` window and keeps
 `agent=dev-lead`; it is not a worker window and emits no `handoff_received`
 event. Its measured usage is attributed to the `implement` phase.
+Research and refinement contributions run inside the supervisor's
+`phase=research` / `phase=plan` window, never a worker-role window, because
+they are read-only and not implementation work. Each contribution still emits
+`handoff_received` with its specialist as `payload.from_agent`; its dispatch
+emits the `tool_call` row and a malformed or failed contribution the `error`
+row, both inside the same supervisor window.
 
 | When | `event_type` | Required extras |
 |---|---|---|
@@ -25,6 +31,7 @@ event. Its measured usage is attributed to the `implement` phase.
 | Directly authored approved application/IaC task | `phase_start` / `phase_complete` | `agent=dev-lead`, `phase=implement`; no worker dispatch or hand-off |
 | Dispatching a worker | `tool_call` | `tool_name=agent`, `args_summary="<agent-name>: <task one-liner>"` |
 | Worker hand-off received | `handoff_received` | `payload.from_agent=<worker>`, `payload.sentinel=<block name>` |
+| Research / refinement contribution received | `handoff_received` | inside `phase=research\|plan`; `payload.from_agent=<specialist>`, `payload.sentinel=RESEARCH CONTRIBUTION COMPLETE` |
 | Worker malformed / failed | `error` | `error_kind=malformed_handoff\|build_fail\|...` |
 | Test-bar / cost / review gate pass | `gate_check` | `payload.gate=test_bar\|cost\|review`, `outcome=success` |
 | Test-bar / cost / review gate fail | `gate_check` | same, `outcome=fail`, `payload.reason` |

@@ -333,6 +333,35 @@ HANDOFF_FIELDS = {
     )),
 }
 CORRECTIVE_AUTHORS = ("architect", "coding", "infrastructure", "data-scientist")
+# One shared schema with several producers, so it cannot live in the
+# single-author HANDOFF_FIELDS map.
+CONTRIBUTION_SENTINEL = "RESEARCH CONTRIBUTION COMPLETE"
+CONTRIBUTION_PRODUCERS = CORRECTIVE_AUTHORS
+CONTRIBUTION_FIELDS = (
+    "Role", "Mode", "Impact on my domain", "Domain findings", "Facts verified",
+    "Assumptions (unverified)", "Risks and likely review findings", "Task input",
+    "Verification approach", "Decision gaps", "Data questions", "Dissent",
+)
+CONTRIBUTION_CLAUSES = (
+    "it never decides, approves or implements",
+    "read-only by effect, per `reviewer-read-only-rules`",
+    "Never pad a contribution",
+    "Contribution mode overrides the producer's normal permissions",
+    "Tool availability is not authorisation",
+    "untrusted data",
+    "contribute or stop",
+)
+CONTRIBUTION_PINS = (
+    "Producers: `architect`, `coding`, `infrastructure`, `data-scientist`",
+    "- Role: architect | coding | infrastructure | data-scientist",
+    "- Mode: research | refinement",
+    "- Impact on my domain: none | low | material",
+)
+CONTRIBUTION_PRODUCER_CLAUSES = (
+    "Mode: research", "Mode: refinement", "read-only by effect",
+    "overrides your normal permissions", "no analysis run",
+    "Tool availability is not authorisation", "never pad it",
+)
 SCHEMA_CLAUSES = {
     "architect": (
         "Research/design evidence, not permission to invent a decision",
@@ -482,6 +511,8 @@ def handoff_contract_errors(files, core=CORE):
         if set(inline) & set(expected):
             errors.append(author + " inline field definition")
 
+    errors.extend(contribution_contract_errors(files, core))
+
     for source in (*CORRECTIVE_AUTHORS, "review-lead", "dev-lead", "read-repo-context"):
         try:
             resolve_handoff_section(files, source, "Corrective accounting", core)
@@ -533,11 +564,53 @@ def handoff_contract_errors(files, core=CORE):
     return errors
 
 
+def contribution_contract_errors(files, core=CORE):
+    """Shared multi-producer contribution schema; same oracle as single-author blocks."""
+    errors = []
+    sentinel = CONTRIBUTION_SENTINEL
+    for source in (*CONTRIBUTION_PRODUCERS, "dev-lead", "read-repo-context"):
+        try:
+            section = resolve_handoff_section(files, source, sentinel, core)
+            block = schema_block(section, sentinel)
+        except ValueError as error:
+            errors.append(str(error))
+            continue
+        fields = tuple(" ".join(field.split())
+                       for field in re.findall(r"^-\s+([^:]+):", block, re.M))
+        if fields != CONTRIBUTION_FIELDS:
+            errors.append(sentinel + " field shape drift")
+        flat = " ".join(section.split())
+        for clause in CONTRIBUTION_CLAUSES:
+            if clause not in flat:
+                errors.append(sentinel + " missing semantics " + clause)
+        for pin in CONTRIBUTION_PINS:
+            if " ".join(pin.split()) not in flat:
+                errors.append(sentinel + " value set drift " + pin)
+    definition = re.compile(
+        r"^(?:## )?" + re.escape(sentinel) + r"\s*\n\s*-\s+", re.M)
+    if sum(len(definition.findall(body)) for body in files.values()) != 1:
+        errors.append(sentinel + " duplicate or missing definition")
+    for producer in CONTRIBUTION_PRODUCERS:
+        inline = re.findall(r"^-\s+([^:\n]+):", files[producer], re.M)
+        if set(inline) & set(CONTRIBUTION_FIELDS):
+            errors.append(producer + " inline contribution field definition")
+        if "**Mode check first:**" not in files[producer]:
+            errors.append(producer + " contribution mode check missing")
+        # Scope the semantics to the contribution paragraph, so wording elsewhere
+        # in the agent cannot satisfy them.
+        paragraph = files[producer].split("**Research contribution", 1)[-1].split("\n\n", 1)[0]
+        text = " ".join(paragraph.split()) if "**Research contribution" in files[producer] else ""
+        for clause in CONTRIBUTION_PRODUCER_CLAUSES:
+            if clause not in text:
+                errors.append(producer + " contribution mode missing " + clause)
+    return errors
+
+
 class SharedHandoffTests(unittest.TestCase):
     def setUp(self):
         self.files = load_handoff_files()
 
-    def test_seven_schemas_and_bounded_loading_match(self):
+    def test_eight_schemas_and_bounded_loading_match(self):
         self.assertEqual(handoff_contract_errors(self.files), [])
 
     def test_missing_or_renamed_field_fails_independent_oracle(self):
@@ -554,6 +627,49 @@ class SharedHandoffTests(unittest.TestCase):
                             section, section.replace(prefix, replacement))
                         self.assertIn(sentinel + " field shape drift",
                                       handoff_contract_errors(changed))
+
+    def test_contribution_field_drift_and_missing_producer_link_fail(self):
+        section = named_contract_section(
+            self.files["handoff-contracts"], CONTRIBUTION_SENTINEL)
+        for field in CONTRIBUTION_FIELDS:
+            with self.subTest(field=field):
+                changed = dict(self.files)
+                changed["handoff-contracts"] = changed["handoff-contracts"].replace(
+                    section, section.replace("- " + field + ":", "- Renamed field:"))
+                self.assertIn(CONTRIBUTION_SENTINEL + " field shape drift",
+                              contribution_contract_errors(changed))
+        for producer in (*CONTRIBUTION_PRODUCERS, "dev-lead"):
+            with self.subTest(producer=producer):
+                changed = dict(self.files)
+                changed[producer] = changed[producer].replace(
+                    "#research-contribution-complete", "#research-contribution")
+                self.assertIn(producer + " missing or duplicate reference "
+                              + CONTRIBUTION_SENTINEL,
+                              contribution_contract_errors(changed))
+
+    def test_contribution_value_sets_and_producer_semantics_are_pinned(self):
+        section = named_contract_section(
+            self.files["handoff-contracts"], CONTRIBUTION_SENTINEL)
+        for pin in (*CONTRIBUTION_PINS, *CONTRIBUTION_CLAUSES):
+            with self.subTest(pin=pin):
+                self.assertIn(pin, " ".join(section.split()))
+                changed = dict(self.files)
+                changed["handoff-contracts"] = changed["handoff-contracts"].replace(
+                    section, re.sub(re.escape(pin).replace(r"\ ", r"\s+"),
+                                    "drifted", section, count=1))
+                self.assertNotEqual(contribution_contract_errors(changed), [])
+        for producer in CONTRIBUTION_PRODUCERS:
+            for clause in CONTRIBUTION_PRODUCER_CLAUSES:
+                with self.subTest(producer=producer, clause=clause):
+                    changed = dict(self.files)
+                    paragraph = changed[producer].split(
+                        "**Research contribution", 1)[1].split("\n\n", 1)[0]
+                    pattern = re.escape(clause).replace(r"\ ", r"\s+")
+                    moved = re.sub(pattern, "removed", paragraph)
+                    changed[producer] = (changed[producer].replace(paragraph, moved)
+                                         + "\n\n" + clause + "\n")
+                    self.assertIn(producer + " contribution mode missing " + clause,
+                                  contribution_contract_errors(changed))
 
     def test_backlog_table_columns_are_part_of_schema(self):
         changed = dict(self.files)
@@ -697,6 +813,7 @@ class SharedHandoffTests(unittest.TestCase):
             line.replace(" ", " \n\t ") if (
                 line and not line.startswith(("#", "```", "|"))
                 and line not in {sentinel for sentinel, _ in HANDOFF_FIELDS.values()}
+                and line != CONTRIBUTION_SENTINEL
             ) else line
             for line in original.splitlines()
         )
@@ -800,12 +917,19 @@ STAGE_CONTROLS = {
     1: ("**Entry:** Stage 0 passed", "Read-only", "Delegate when warranted",
         "Stage 1 blocker", "does not analyse data", "decision gap",
         "NFRs and security posture", "verified with a source",
-        "one** corrective message", "stop and ask the human"),
+        "one** corrective message", "stop and ask the human",
+        "Breadth round (always, T-shaped)", "opens with the `Mode:` line",
+        "`git status --porcelain`", "contribution-mode violation",
+        "per specialist per round", "known before dispatch",
+        "Reviewers are never consulted here", "to the producer that caused it"),
     2: ("independently-implementable tasks", "Every requirement criterion maps",
         "out-of-scope", "every architect follow-on", "every supplied-plan step",
         "feasibility is a separate first", "never bundled with modeling",
         "scope stop", "todo_deps", "source of truth on conflict",
-        "Review is never skipped"),
+        "Review is never skipped",
+        "Refinement round (once, before Stage 3)", "verbatim and attributed",
+        "Fold each task's agreed verification", "never run a second round",
+        "stop condition #3", "workspace check as Stage 1"),
     3: ("delegate to `backlog-manager`", "`TASKS PLANNED`",
         "`pending-approval`", "every task linked to the parent",
         "stop condition #11", "never silently fall back to file-only planning",

@@ -8,6 +8,15 @@ requirement criterion maps to at least one task or is marked out of scope with a
 reason. When you supply a `plan.md`, its decomposition is adopted and reconciled
 rather than silently re-derived.
 
+## Refine
+
+Before any tracker write, the same specialists review the draft in one parallel,
+read-only refinement round: they agree with, change, split, merge or add tasks
+and name how each task in their domain will be verified. `dev-lead` adopts or
+declines every input; disagreement it cannot resolve is shown to you as
+specialist dissent at plan approval. Reviewers never take part, so review stays
+independent of the plan it checks.
+
 ## Create tracker tasks
 
 When `backlog.create_tasks` is true, `backlog-manager` creates one child work
@@ -17,8 +26,8 @@ falls back to file-only planning silently.
 
 ## Plan approval
 
-The **only mandatory approval gate**. It shows the tasks, assumptions, risks and
-trade-offs, and offers:
+The **only mandatory approval gate**. It shows the tasks, assumptions, risks,
+trade-offs, each specialist's input and any unresolved dissent, and offers:
 
 - **Approve** — provisional tags are removed and autonomous execution begins.
 - **Adjust** — tasks are revised and the plan is shown again.

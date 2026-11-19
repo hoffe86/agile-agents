@@ -3,7 +3,8 @@ name: plan
 description: >-
   Plan phase of Research → Plan → Implement, usable by any agent: decompose a
   requirement into traceable, independently implementable tasks, map
-  acceptance criteria and dependencies, make data work explicit and prepare a
+  acceptance criteria and dependencies, make data work explicit, refine the
+  draft with every available author discipline and prepare a
   tracker or inline plan for human approval. States the phase purpose,
   outcome, rules, quality bar and exit gates. An orchestrator such as dev-lead
   keeps approvals, transitions, stops and retry budgets.
@@ -19,8 +20,9 @@ Turn verified research into the smallest set of tasks a human can approve and
 an author can deliver one at a time. Plan decides *what* gets built and in
 which order; it does not build, and it does not approve itself.
 
-Typical users: `dev-lead` (Stages 2–5), `backlog-manager` (materialising tasks)
-and any agent asked to break work down.
+Typical users: `dev-lead` (Stages 2–5), the author specialists refining its
+draft, `backlog-manager` (materialising tasks) and any agent asked to break
+work down.
 
 ## Outcome
 
@@ -32,6 +34,8 @@ A plan ready for human approval:
   `out-of-scope` with a reason;
 - ordering constraints between tasks;
 - assumptions, risks, trade-offs and feasibility-dependent work, visible;
+- each task's verification approach, agreed by its owning discipline;
+- unresolved specialist dissent, visible for approval;
 - tracker children linked to the parent, or the same plan inline.
 
 ## Rules
@@ -59,9 +63,13 @@ The phase is complete only when all hold:
 1. Every requirement criterion is covered or explicitly out-of-scope.
 2. Every `architect` follow-on task and every source-plan step is accounted for.
 3. Every ordering constraint is recorded.
-4. When tracker tasks are enabled, each child is created and linked to the
+4. When the caller can dispatch specialists, the refinement round ran once
+   over the draft: every contribution is reconciled into the tasks or carried
+   as dissent, and every skipped discipline has a recorded reason. A caller
+   that cannot dispatch records the round as skipped with that reason.
+5. When tracker tasks are enabled, each child is created and linked to the
    required parent; a write failure stops the phase.
-5. A human approved the plan, and any required design approval.
+6. A human approved the plan, and any required design approval.
 
 The caller enforces these gates. Under `dev-lead`, `dev-lead` alone owns stage
 transitions, tracker delegation, approval handling and entry to Implement.
@@ -86,6 +94,17 @@ belongs to `infrastructure`; data semantics, analysis, modeling and evaluation
 belong to `data-scientist`. Join producer and consumer with a dataset contract
 stating grain, keys, schema and freshness. A missing required source or
 unpermitted personal data is a scope question, not a decomposition problem.
+
+Refine the draft as a T-shaped team before tracker creation. Send the Research
+payload with `Mode: refinement`, the draft tasks, mapping, all Research
+contributions and any `architect` design once, in parallel, to the same
+available author specialists; no writes may result. Each answers `RESEARCH CONTRIBUTION COMPLETE`
+(`Mode: refinement`) per task id: agree, change, split, merge or missing,
+plus its verification approach and the risks its reviewer would flag.
+Reconcile every input — adopt it, or record why not — and fold each task's
+verification approach and risks into its approach note. Relay dissent to plan
+approval verbatim and attributed; never resolve it by silently
+growing scope. One round only; reviewers never refine plans.
 
 When `backlog.create_tasks` is enabled, send `backlog-manager` each task, the
 Research approach summary and the relevant `backlog.*` and
