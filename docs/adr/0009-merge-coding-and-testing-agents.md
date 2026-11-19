@@ -1,195 +1,53 @@
-# ADR 0009 — Merge the `coding` and `testing` agents into one author, with the craft split across two skills
+# ADR 0009 — Give one task author ownership of implementation and its tests
 
 - **Status:** Accepted
 - **Date:** 2026-08
 - **Deciders:** Harness maintainers (agent-roster consolidation)
-- **Supersedes in part:** ADR 0003 (stage numbering only — the gate placement decision stands), ADR 0006 (the `agent` enum), ADR 0007 (the `mid` tier roster)
+- **Supersedes in part:** ADR 0003 (stage numbering only; the verification-gate decision stands), ADR 0006 (event-role inventory), ADR 0007 (capability-tier assignments)
 
 ## Context
 
-The suite shipped `coding` and `testing` as separate author agents: `coding`
-wrote production code and was explicitly forbidden from touching test files;
-`testing` wrote and ran the tests and was explicitly forbidden from touching
-production code. `dev-lead` ran them as consecutive stages (6 and 7), each with
-its own gate and its own sentinel block (`IMPLEMENTATION COMPLETE`,
-`TESTS COMPLETE`).
-
-The split was inherited from the shape of the pipeline, not from evidence that
-it worked. In practice it bought less than it cost:
-
-- **It is not how the work is actually done.** A developer who writes a
-  behaviour writes the test for it; the two activities interleave —
-  red-green-refactor is a loop, not a hand-off. Forcing a stage boundary
-  between them means the agent with the most context about *why* the code is
-  shaped this way is not the one asserting what it should do.
-- **It bought a hand-off round, not independence.** Every task paid a full
-  context transfer (the `IMPLEMENTATION COMPLETE` block, re-read of the diff,
-  re-derivation of intent) so that a second agent could write assertions
-  against code it had to reverse-engineer. The genuine independent judgement in
-  this pipeline is the reviewers' — `test-review` in particular — and those are
-  different agents either way.
-- **Split ownership produced ping-pong.** `testing` could not fix production
-  code, `coding` could not fix a test, so a red test that revealed a real defect
-  had to bounce back through `dev-lead`. The retry tables in `test-bar-gate`
-  existed largely to adjudicate *which of the two* owned a failure — a routing
-  problem the split itself created.
-- **The stage separation was already leaking.** `infrastructure` owned its own
-  IaC tests end-to-end, so Stage 7 carried an "IaC-only skip" whose sole job was
-  to avoid delegating to an agent that had nothing to do. Two of the three
-  author agents already tested their own work.
-
-The counter-argument is real and is the reason the split existed: **an author
-who owns the tests can make a failure disappear by weakening the assertion.**
-That risk is what any consolidation has to answer for.
+Production behavior and its tests are developed together. Splitting those
+activities between separate authors adds a hand-off and can leave a failing
+test with no clear owner. At the same time, authors must not weaken assertions
+to make their own work appear correct.
 
 ## Decision
 
-**One author agent, `coding`, owns application code and the tests that cover
-it.** The `testing` agent is removed. `infrastructure` is unchanged — it already
-owned its IaC tests.
-
-Concretely:
-
-1. **One sentinel block.** `IMPLEMENTATION COMPLETE` absorbs the test fields
-   (`Test files changed`, `Test run`, `Coverage on touched files`,
-   `Existing tests modified`). `TESTS COMPLETE` is **retired** — a second block
-   from the same agent would give `dev-lead` two gates over one diff.
-2. **One stage.** Stages 6 (Coding) and 7 (Testing) merge into **Stage 6 —
-   Implement (code + tests)**, gated once per task. Everything after shifts down
-   one: 7 = Automated gates, 8 = Review, 9 = Done. The IaC-only skip disappears
-   with the stage it guarded.
-3. **The craft moves into two skills**, both loaded by the one agent:
-   `development-practices` (implementation bar) and `testing-practices`
-   (verification bar). Keeping them as separate skills means the two concerns
-   stay separately editable and separately loadable — a coverage-only task loads
-   just `testing-practices` — while the agent file shrinks to role, routing and
-   tool grant.
-4. **The asymmetry rule replaces the split.** The author *may* change production
-   code to make a test pass — that is now the point — but **may never weaken a
-   test to make production code pass.** Every modified existing test is
-   justified in the `Existing tests modified` field, naming what the old
-   assertion claimed and why that claim was invalid.
-5. **Three independent checks enforce rule 4**, because a rule the author
-   applies to itself is not a control:
-   - `dev-lead`'s per-task gate **fails outright** on an unexplained assertion
-     change, a deleted test, or a newly-skipped test.
-   - `test-bar-gate` is a **script**, not an opinion, and runs over the combined
-     diff — it cannot be talked into passing.
-   - `test-review` receives the `Existing tests modified` lines with the diff
-     and raises 🔴 Critical on any weakening that does not hold up. It is now
-     the *only* second pair of eyes on the tests, which is stated explicitly in
-     its agent definition.
+The author responsible for a task's implementation also owns the tests that
+verify that task. A separate deterministic gate and independent review remain
+responsible for checking the result; existing tests may not be weakened without
+an evidence-based justification.
 
 ## Consequences
 
-**Positive**
-- One hand-off round removed per task, and with it a context transfer that
-  existed only to re-establish what the previous agent already knew.
-- A red test that exposes a real defect is fixed where it is found, instead of
-  bouncing between two agents via the orchestrator.
-- Failure routing is simplified: `coding` owns application failures, whatever
-  layer the file is in; `infrastructure` owns IaC failures. The
-  `test-bar-gate` retry table stops adjudicating ownership and starts asking the
-  question that matters — was the code wrong, or the assertion?
-- The roster is smaller (12 agents), and the model-tier / event-schema /
-  finding-owner enums lose an entry each.
-- Test guidance is now a skill, so it is reusable by anything that writes tests
-  rather than being locked inside one agent definition.
+- Implementation and test changes can be corrected together without an
+  additional author hand-off.
+- The author has responsibility for both the behavior and its verification,
+  increasing the importance of independent checks and explicit accounting for
+  changed assertions.
+- Test guidance remains independently reusable from implementation guidance.
 
-**Negative**
-- **The author marks its own homework.** The mitigations above are gates, not
-  proofs; a determined weakening with a plausible justification can still get
-  through to `test-review`. This is a real transfer of risk from "structurally
-  impossible" to "detected downstream", accepted because the structural version
-  was costing a round on every task and because `test-review` was always the
-  agent whose judgement actually counted.
-- `test-review` becomes load-bearing. If a project's review budget skips it, the
-  independent check on tests is gone entirely. It remains auto-invoked whenever
-  the diff touches tests or adds testable code.
-- One agent now carries two skill bodies, so its context is larger per task than
-  either predecessor's was. Splitting the guidance into two separately loadable
-  skills bounds this: a coverage-only task need not load the implementation bar.
-- Stage renumbering invalidates stage references in anything written against the
-  old table (see ADR 0003's note).
+## Amendment (2026-11-12) — permit the run lead to author approved tasks
+
+For an approved task, the run lead may author implementation and tests directly
+or delegate the task to a specialist. This is a task-level author choice; it
+does not change the requirement for independent review, deterministic checks,
+or human approval boundaries.
 
 ## Alternatives considered
 
-- **Keep both agents, reduce the hand-off.** Rejected: the cost is the stage
-  boundary itself, not the verbosity of the block. Shrinking the block keeps
-  every problem and removes the audit trail.
-- **Merge, and keep both sentinel blocks.** Rejected: two blocks from one agent
-  means two gates over one diff and a `dev-lead` that must decide what a
-  `TESTS COMPLETE` adds when it already parsed the tests in
-  `IMPLEMENTATION COMPLETE`.
-- **Merge and inline all guidance into the agent file.** Rejected: the file
-  would carry both craft bodies with no way to load one without the other, and
-  the testing bar would stay locked inside a single agent.
-- **Two skills, but split as `development` / `testing` *agents* sharing them.**
-  Rejected: that is the status quo with extra indirection — the hand-off round
-  is the cost, and sharing skills does not remove it.
-- **Rename the merged agent** (`development`, `engineering`, `developer`).
-  Rejected: `coding` is referenced by `dev-lead`'s `agents:` list, the event-log
-  agent enum, eval fixtures and ~60 doc references; the rename buys accuracy in
-  the name at the cost of a much wider blast radius, and the description carries
-  the scope.
-
-## Amendment (2026-11-12) — Allow dev-lead to author application and infrastructure tasks
-
-### Context
-
-ADR 0009 made `coding` the application author and kept authoring separate from
-`dev-lead`’s orchestration role. That separation preserves clear ownership, but
-it also prevents the senior engineering lead from applying its expertise
-directly when that is the best fit for a task. The harness can retain the
-specialist roles while allowing the lead to choose, task by task, whether to
-implement or delegate.
-
-### Decision
-
-`coding` remains the dedicated application author and `infrastructure` the
-dedicated IaC author. For an approved task, `dev-lead` may implement application
-code or IaC and its tests directly, or delegate to the corresponding
-specialist. It delegates data-science analysis to `data-scientist`.
-
-When implementing directly, `dev-lead` is the task’s author: it works on one
-task at a time, follows the same scope and test-accounting rules, and records
-the applicable implementation or infrastructure evidence without presenting
-it as a specialist hand-off. Review findings for its work are routed back to
-`dev-lead`; `review-lead` and its independent reviewers retain review
-ownership.
-
-### What remains unchanged
-
-Plan approval still precedes implementation. Direct authorship does not waive
-the deterministic test bar, independent review, or any human-only operation or
-approval. `dev-lead` remains the sole run-event writer; direct implementation
-does not authorize parallel writers or reviewer edits.
-
-### Consequences
-
-- The lead can keep task context and contribute implementation work rather than
-  delegating every change.
-- Author selection becomes a per-task judgement, so the lead must record who
-  implemented each task and route review fixes accordingly.
-- The lead’s orchestration and implementation responsibilities can compete for
-  attention. Sequential task execution and independent review remain essential
-  checks.
-
-### Alternatives considered
-
-- **Keep dev-lead orchestration-only.** This preserves the existing role
-  separation, but prevents the lead from implementing tasks where direct
-  contribution is appropriate.
-- **Replace the specialist authors with dev-lead.** This removes useful
-  domain-specific implementation paths; retaining `coding`, `infrastructure`,
-  and `data-scientist` allows delegation when specialist ownership fits better.
+- **Keep implementation and test authors separate.** Rejected: it adds a
+  hand-off and makes ownership of failures less clear.
+- **Let the author own the work without independent checks.** Rejected: an
+  author must not be the sole judge of its own assertions.
+- **Allow the run lead only to coordinate.** Superseded by the amendment:
+  direct authorship is useful for approved tasks when it fits the work.
 
 ## References
 
-- `plugins/agile-agents-core/agents/coding.agent.md` (merged agent; hand-off contract)
-- `plugins/agile-agents-core/skills/development-practices/SKILL.md`
-- `plugins/agile-agents-core/skills/testing-practices/SKILL.md` (§2 — the asymmetry rule)
-- `plugins/agile-agents-core/agents/dev-lead.agent.md` (Stage 6 gate; renumbered stage table)
-- `plugins/agile-agents-core/agents/test-reviewer.agent.md` (independent judgement on author-written tests) — created here as `test-review.agent.md`; renamed by [ADR 0011](0011-reviewer-agent-naming.md)
-- `plugins/agile-agents-core/skills/test-bar-gate/SKILL.md` (retry routing)
-- ADR 0003 (gate placement — unchanged), ADR 0006 (event schema `agent` enum), ADR 0007 (`model_tier` roster)
+- ADR 0003 — deterministic verification before review
+- ADR 0006 — run-level evidence
+- ADR 0007 — advisory model-capability intent
+- `plugins/agile-agents-core/skills/testing-practices/`
+- `plugins/agile-agents-core/skills/test-bar-gate/`

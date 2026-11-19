@@ -82,6 +82,18 @@ from accepted ADRs where used, otherwise design docs / work items. Verify
 relevant codebase, APIs and existing patterns against these sources, not a newly
 invented design.
 
+**Breadth contribution payload.** Send each available author specialist the
+same payload, in parallel, opening with the line `Mode: research`: requirement,
+verbatim acceptance criteria, in-scope / out-of-scope, binding decision ids /
+references, the relevant profile subset, and the read-only clause ("contribution
+mode: answer from your own discipline; no writes, commits, installs, delegations
+or analysis runs"). Collect one `RESEARCH CONTRIBUTION COMPLETE`
+per specialist; record each skip (inactive, disabled, unavailable) with its
+reason. On the depth path, pass all contributions to `architect` to synthesise;
+on the lightweight path, reconcile them yourself. Check HEAD and workspace
+status around the round as in the refinement round below. Union their facts verified,
+assumptions, risks, decision gaps and data questions into the Stage 1 record.
+
 Verify external facts with available `context7/*`, `microsoft-docs/*`, `web`,
 browser or vendor tooling (`read-repo-context` §9). Lightweight Research owes
 the same facts verified with sources and assumptions with impacts as delegation.
@@ -168,6 +180,27 @@ Record applicability per task: coding is inapplicable for pure design or IaC-onl
 work (infrastructure owns IaC); testing is inapplicable for pure docs or a config
 rename with no behavioural impact. IaC tests belong to infrastructure, not an
 application-testing delegation. Review is always applicable.
+
+### Refinement round
+
+After the draft is reconciled and before Stage 3, send every specialist that
+contributed at Stage 1 the Stage 1 payload with its first line replaced by
+`Mode: refinement`, plus the draft tasks (ids, ACs, approach notes, order), the
+criterion mapping, all Stage 1 contributions and the `architect` design when one
+exists. Run the round once, in parallel.
+
+Record `git rev-parse HEAD` and `git status --porcelain` before each round and
+compare after it. Any difference fails the round's gate: stop and report it as
+a contribution-mode violation; never keep or commit the change. Each answer names task ids with agree / change /
+split / merge / missing and a verification approach per task in its domain.
+
+Reconcile every item: adopt it (edit the task and record the change), or
+decline it with a one-line reason. Relay every non-`none` `Dissent:` verbatim
+and attributed to its role at Stage 4, with each declined item and its reason;
+keep your own rationale separate from the specialist's words. Fold each task's
+agreed verification approach and flagged risks into its approach note before
+Stage 3, so the tracker task, the Stage 4 plan and the Stage 6 payload all
+carry them. Do not re-run the round to reach consensus.
 
 Mirror the task list into `todos` + `todo_deps`, with descriptive kebab-case ids
 and a dependency row for every ordering constraint:

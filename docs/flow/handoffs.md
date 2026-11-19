@@ -13,6 +13,7 @@ Delegated work ends with a fixed block. The names are a stable contract:
 | `INFRASTRUCTURE COMPLETE` | `infrastructure` — IaC and its tests |
 | `ANALYSIS COMPLETE` | `data-scientist` — an answer and its evidence |
 | `REVIEW COMPLETE` | `review-lead` |
+| `RESEARCH CONTRIBUTION COMPLETE` | `architect`, `coding`, `infrastructure`, `data-scientist` — read-only Research and Plan refinement input |
 
 A missing or malformed block receives one corrective request; a second failure
 stops the run. Field definitions live in the

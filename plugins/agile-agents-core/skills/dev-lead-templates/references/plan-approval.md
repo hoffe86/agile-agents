@@ -11,7 +11,8 @@ an abstract outline.
 For a supplied plan, account for every split, merge, reorder and drop. Separate
 derived acceptance criteria for human confirmation. Expose all unverified
 assumptions, consequential choices and feasibility-dependent work. Relay Research
-trade-offs, risks and decision gaps without dismissing them; add the lead's own
+trade-offs, risks and decision gaps without dismissing them; relay every
+specialist dissent verbatim and attributed to its role; add the lead's own
 choices with alternatives and recommendations. Use `none` only after checking.
 
 **Choices:** `Approve and run autonomously` / `Adjust plan` / `Cancel`.
@@ -26,7 +27,7 @@ choices with alternatives and recommendations. Use `none` only after checking.
 **Out of scope:** <bulleted>
 
 **Tasks created (provisional — tagged `pending-approval`):**
-1. <task-id> — <title> (<N> ACs)
+1. <task-id> — <title> (<N> ACs) — verify: <agreed verification approach> — risks: <flagged risks, or `none`>
 2. ...
 (overall approach recorded as a comment on the parent work item)
 
@@ -45,6 +46,10 @@ choices with alternatives and recommendations. Use `none` only after checking.
 **Decisions I made that you may want to change:** <the call — the alternative — why I chose this, one line each. These are the consequential judgement calls taken without asking, listed here rather than raised as separate questions. `none — nothing consequential was left unspecified`.>
 
 **Risks and open questions:** <risk or question — impact if it goes the wrong way — who owns it, one line each. Relay `architect`'s *Open questions / risks* and *Decision gaps* verbatim in substance; add your own. `none` only after looking.>
+
+**Specialist input:** <role — contributed / `Impact on my domain: none` / skipped + reason, one line each for architect, coding, infrastructure, data-scientist>
+
+**Specialist dissent:** <role — every non-`none` `Dissent:` quoted verbatim, then each declined item: task id — what they proposed — my reason, kept separate from their words; or `none — no dissent and every refinement was adopted`>
 
 **What dies if a feasibility task returns ❌:** <the dependent tasks, per feasibility task, or `n/a — no feasibility task in this plan`>
 

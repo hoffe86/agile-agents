@@ -37,6 +37,7 @@ Workers return these canonical hand-off blocks:
 - `REVIEW COMPLETE` (review-lead — the specialist reviewers report into it)
 - `TASKS PLANNED` (backlog-manager)
 - `BOOTSTRAP COMPLETE` (bootstrapper)
+- `RESEARCH CONTRIBUTION COMPLETE` (architect, coding, infrastructure, data-scientist — read-only Research and Plan refinement input)
 
 Reviewers are read-only by effect despite open tool grants; `capability-scout`
 is proposal-only. These role contracts do not technically deny write-capable

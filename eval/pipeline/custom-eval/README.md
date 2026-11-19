@@ -227,8 +227,11 @@ all agents. A clean trace is not proof that unrecorded actions did not occur.
 Task-10 lists criterion 2 under `unverifiable` with its reason (see fixture boundaries).
 
 Delegation receives credit when the named agent starts or its task call succeeds.
-Failed attempts receive no credit; incomplete attempts are `UNVERIFIED`. An attempted
-implementing-agent delegation before approval still violates the gate.
+Failed attempts receive no credit; incomplete attempts are `UNVERIFIED`. The plan gate
+judges by effect: a pre-approval dispatch whose prompt has a `Mode: research` or
+`Mode: refinement` line is a read-only contribution and is allowed. An attempted
+implementing-agent delegation without that line, a write tool used by any agent, or a
+workspace change before approval still violates the gate.
 
 Current acceptance owners:
 

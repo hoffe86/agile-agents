@@ -7,17 +7,20 @@ the metrics need the same facts, so both read them from one place.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from agile_eval.adapters.copilot_trace import ExternalToolRequest, Trace
 
-# Agents whose delegation means implementation has started. dev-lead's contract puts
-# the mandatory Stage 4 plan-approval gate before any of them is dispatched.
+# Agents whose delivery-mode delegation means implementation has started. dev-lead's
+# contract puts the mandatory Stage 4 plan-approval gate before delivery dispatch; before
+# it they may only contribute read-only (`Mode: research` or `Mode: refinement`).
 IMPLEMENTATION_AGENTS = frozenset({"coding", "infrastructure", "data-scientist"})
 
-# Tools that write to the workspace. The top-level agent using one before approval is
-# implementation work done without the gate, even when nothing was delegated.
+# Tools that write to the workspace. Any agent using one before approval is
+# implementation work done without the gate, whether top-level or delegated.
 WRITE_TOOLS = frozenset({"edit", "create", "apply_patch", "write"})
+CONTRIBUTION_MODE = re.compile(r"^[\s>*-]*Mode:\s*`?(research|refinement)`?\s*$", re.MULTILINE)
 PLAN_APPROVAL_CHOICES = ("Approve and run autonomously", "Adjust plan", "Cancel")
 
 
@@ -42,16 +45,18 @@ def check_plan_gate(
 ) -> GateCheck:
     """Verify a pending top-level Stage 4 request and check for prior implementation.
 
-    The workspace snapshot detects persistent shell writes, not reverted or ignored files.
+    Judged by effect: a read-only contribution dispatch is allowed before approval, but
+    a delivery-mode dispatch or any agent's write is not. The workspace snapshot detects
+    persistent shell writes, not reverted or ignored files.
     """
     violations: list[str] = []
-    for _, delegated in phase1.delegations:
-        agent = short_agent(delegated, "?")
-        if agent in implementation_agents:
+    for tool in phase1.tools:
+        agent = short_agent(tool.delegated_agent, "?") if tool.delegated_agent else None
+        if agent in implementation_agents and not is_contribution_dispatch(tool.arguments):
             violations.append(f"delegated to {agent} before plan approval")
-    for tool in phase1.tools_for(None):
         if tool.name in WRITE_TOOLS:
-            violations.append(f"top-level agent used {tool.name} before plan approval")
+            who = short_agent(tool.agent, "top-level agent")
+            violations.append(f"{who} used {tool.name} before plan approval")
     if phase1_changes:
         preview = ", ".join(json.dumps(path) for path in phase1_changes[:10])
         suffix = ", ..." if len(phase1_changes) > 10 else ""
@@ -77,6 +82,12 @@ def check_plan_gate(
     if phase1_changes is None:
         return GateCheck(None, (), "pre-approval workspace change evidence is unavailable")
     return GateCheck(True, (), "top-level Stage 4 approval request is pending", request)
+
+
+def is_contribution_dispatch(arguments: dict) -> bool:
+    """A delegation whose prompt declares the read-only research or refinement mode."""
+    prompt = arguments.get("prompt")
+    return isinstance(prompt, str) and CONTRIBUTION_MODE.search(prompt) is not None
 
 
 def approval_response_recorded(request: ExternalToolRequest, phase2: Trace,

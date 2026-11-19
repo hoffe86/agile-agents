@@ -59,6 +59,9 @@ metadata:
    worker window and reopen it afterward if needed. Never overlap windows.
    Repeated windows for a role, including corrections, accumulate in one bucket
    for this run; neither a retry nor resume resets its cap.
+   Read-only contribution rounds run inside the supervisor's `research` / `plan`
+   window and count against that bucket; per-role overrides for the
+   contributing specialists do not apply to them, so report them as unapplied.
    Parallel review lenses share `review-lead`'s window. Individual lens overrides
    have no separate window: report them as unapplied, never claim enforcement.
 

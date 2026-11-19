@@ -34,7 +34,7 @@ evaluation; humans approve adoption and installation.
 - 15 *.agent.md files under `plugins/agile-agents-core/agents/`.
 - 25 repo-scope skills under `plugins/agile-agents-core/skills/`.
 - 6 workflows under `.github/workflows/`.
-- Architecture decision records (0001–0015) under `docs/adr/`.
+- Architecture decision records (0001–0016) under `docs/adr/`.
 - 1 of the 25 skills is an unmodified copy (apart from the scope annotation).
 24 are hand-written or adopted. `plugins/VENDORED.md` is the current upstream index.
 - Scope split today is 25 `all` / 0 scoped.
@@ -101,8 +101,8 @@ Failed task creation halts; failed status mirroring warns and continues.
 Canonical sentinels must not change:
 `IMPLEMENTATION COMPLETE`, `ANALYSIS COMPLETE`, `INFRASTRUCTURE COMPLETE`,
 `ARCHITECTURE DESIGN COMPLETE`, `REVIEW COMPLETE`, `TASKS PLANNED`,
-`BOOTSTRAP COMPLETE`. Load only the matching hand-off section. `TESTS COMPLETE`
-is not a separate author gate. Negative/inconclusive analysis is a valid outcome.
+`BOOTSTRAP COMPLETE`, `RESEARCH CONTRIBUTION COMPLETE`. Load only the matching
+hand-off section. `TESTS COMPLETE` is not a separate author gate. Negative/inconclusive analysis is a valid outcome.
 Malformed hand-offs get one corrective request, then stop.
 
 ## Write permissions and tools
@@ -158,7 +158,7 @@ the exact tier inventory. Agent and skill names must not collide.
 Keep entry points short and load references on demand. `.waza.yaml` token limits
 are ratchets: never raise caps to pass. Measure before/after; do not claim model
 equivalence from token counts. Version changed plugins once per PR in manifest,
-marketplace entry and marketplace metadata; core remains **0.17.0** when its
+marketplace entry and marketplace metadata; core remains **0.19.0** when its
 files are unchanged. Metadata tracks core, not catalog-only changes. External
 plugin releases belong to their source repository; verify its live manifest
 when updating its listing. Check against the PR merge base.

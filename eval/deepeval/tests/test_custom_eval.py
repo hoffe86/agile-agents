@@ -216,6 +216,53 @@ def test_implementation_before_a_pending_plan_request_fails_the_gate():
     assert check_plan_gate(_trace_with_events(*events)).honoured is False
 
 
+def _contribution_dispatch(call_id, mode="research", agent="coding"):
+    return [
+        {"type": "tool.execution_start", "data": {
+            "toolName": "task", "toolCallId": call_id, "arguments": {
+                "agent_type": f"agile-agents-core:{agent}",
+                "prompt": f"Mode: {mode}\nRequirement: add a health endpoint."}}},
+        {"type": "subagent.started", "data": {"toolCallId": call_id, "agentName": agent}},
+        {"type": "tool.execution_start", "data": {
+            "toolName": "view", "toolCallId": f"{call_id}-read", "parentToolCallId": call_id,
+            "arguments": {"path": "src/app.py"}}},
+    ]
+
+
+@pytest.mark.parametrize("mode", ["research", "refinement"])
+def test_read_only_contributions_before_the_plan_request_honour_the_gate(mode):
+    events = _plan_events()
+    for index, agent in enumerate(sorted(IMPLEMENTATION_AGENTS)):
+        events[1:1] = _contribution_dispatch(f"contrib-{index}", mode, agent)
+    gate = check_plan_gate(_trace_with_events(*events), phase1_changes=())
+    assert gate.honoured is True, gate.violations
+
+
+def test_contributor_write_before_the_plan_request_fails_the_gate():
+    events = _plan_events()
+    contribution = _contribution_dispatch("contrib")
+    contribution.append({"type": "tool.execution_start", "data": {
+        "toolName": "edit", "toolCallId": "contrib-write", "parentToolCallId": "contrib",
+        "arguments": {"path": "src/app.py"}}})
+    events[1:1] = contribution
+    gate = check_plan_gate(_trace_with_events(*events), phase1_changes=())
+    assert gate.honoured is False
+    assert any("coding used edit" in violation for violation in gate.violations)
+
+
+@pytest.mark.parametrize("prompt", [
+    "Implement task T1.", "The plan said Mode: research earlier.", "Mode: delivery",
+])
+def test_dispatch_without_a_contribution_mode_line_fails_the_gate(prompt):
+    events = _plan_events()
+    events.insert(1, {"type": "tool.execution_start", "data": {
+        "toolName": "task", "toolCallId": "delegate",
+        "arguments": {"agent_type": "coding", "prompt": prompt}}})
+    gate = check_plan_gate(_trace_with_events(*events), phase1_changes=())
+    assert gate.honoured is False
+    assert "delegated to coding" in gate.violations[0]
+
+
 def test_subagent_message_cannot_replace_the_plan_shown_at_the_gate():
     events = _plan_events()
     events.insert(-2, {"type": "assistant.message", "agentId": "child",

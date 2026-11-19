@@ -77,7 +77,9 @@ Emit both from `dev-lead` around one work window. The `phase` is the supervisor
 stage or delegated role. **Windows never overlap**: close supervisor work before
 dispatch, close each worker-role window before opening another, and reopen
 supervisor work as needed. Repeated role windows are valid and aggregate in
-cost attribution. `phase_start` forbids `outcome`; `phase_complete` requires
+cost attribution. Read-only contribution rounds are the exception to
+role windows: they stay inside the supervisor's `research` / `plan` window.
+`phase_start` forbids `outcome`; `phase_complete` requires
 `success`, `fail`, or `partial`.
 
 ```json
