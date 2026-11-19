@@ -34,6 +34,13 @@ The budget now applies only to resource dimensions supported by runtime
 telemetry. An unavailable monetary rate is reported as unmetered, not as zero,
 and elapsed time is not inferred from overlapping call durations.
 
+## Amendment (2026-10) — minutes remain informational
+
+`max_minutes_per_run` is informational, not an enforced deadline. Summed call
+`duration_ms` is not elapsed wall-clock time: overlapping calls can double-count
+duration, and idle time is not included. Elapsed runtime is the interval from
+run start to its end; any operational timeout must be established separately.
+
 ## Alternatives considered
 
 - **Reuse the application's operating-cost budget.** Rejected: it measures a
