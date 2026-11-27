@@ -34,6 +34,7 @@ implementation and independent, read-only review before anything is called Done.
 | Section | Read it to… |
 |---|---|
 | [Concepts and roles](concepts.md) | Understand the supervisor, authors, reviewers and support roles. |
+| [Plugin architecture](../codebase/ARCHITECTURE.md) and [agent and skill guide](../codebase/STRUCTURE.md) | See what core supplies, what your solution owns, and which capability to use. |
 | [Capabilities and limitations](capabilities.md) | Know what is verified today and what is not. |
 | [Getting started](../getting-started/index.md) | Install the plugin, bootstrap a repository and run a first requirement. |
 | [Flow](../flow/index.md) | Follow a requirement through every stage and gate. |

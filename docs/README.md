@@ -12,11 +12,19 @@ is organized into four sections:
   [first requirement](getting-started/first-requirement.md)
 - **Flow** — [overview](flow/index.md), [research](flow/research.md),
   [plan and approvals](flow/plan.md), [implement](flow/implement.md),
-  [review and completion](flow/review.md), [hand-offs](flow/handoffs.md)
+  [review and completion](flow/review.md), [hand-offs](flow/handoffs.md),
+  [budget checkpoints](flow/budget.md)
 - **Evaluation** — [evaluation overview](../eval/README.md)
 
 Reference material:
 
+- [Plugin architecture](codebase/ARCHITECTURE.md) — how the host, plugin,
+  solution and human decisions fit together
+- [Agent and skill guide](codebase/STRUCTURE.md) — choose a role or method by
+  purpose; every entry links to its shipped definition
+- [Runtime and tools](codebase/STACK.md), [conventions](codebase/CONVENTIONS.md),
+  [integrations](codebase/INTEGRATIONS.md), [verification and evaluation](codebase/TESTING.md)
+  and [operating limits](codebase/CONCERNS.md)
 - [Repository overview and commands](../README.md)
 - [Customization ownership, activation and rollback](customization-ownership.md)
 - [Generated AGENTS mapping](AGENTS-MD-MAPPING.md)

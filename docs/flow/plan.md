@@ -13,9 +13,10 @@ rather than silently re-derived.
 Before any tracker write, the same specialists review the draft in one parallel,
 read-only refinement round: they agree with, change, split, merge or add tasks
 and name how each task in their domain will be verified. `dev-lead` adopts or
-declines every input; disagreement it cannot resolve is shown to you as
-specialist dissent at plan approval. Reviewers never take part, so review stays
-independent of the plan it checks.
+declines each proposal. At approval you see every non-`none` `Dissent:`
+verbatim and attributed, even if the lead thinks it has resolved the objection.
+The lead gives its own reason for each declined proposal separately. Reviewers
+do not help write the plan they will later check.
 
 ## Create tracker tasks
 
@@ -27,9 +28,13 @@ falls back to file-only planning silently.
 ## Plan approval
 
 The **only mandatory approval gate**. It shows the tasks, assumptions, risks,
-trade-offs, each specialist's input and any unresolved dissent, and offers:
+trade-offs, how each proposal was handled and every specialist's stated dissent.
+It offers:
 
-- **Approve** — provisional tags are removed and autonomous execution begins.
+- **Approve** — provisional tags are removed where applicable. The lead checks
+  whether separate design approval is required before any implementation
+  write or implementation-agent dispatch. Provisional tracker writes may
+  already have happened.
 - **Adjust** — tasks are revised and the plan is shown again.
 - **Cancel** — provisional items from this run are cleaned up and the run stops.
 

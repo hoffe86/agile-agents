@@ -5,6 +5,19 @@ module.exports = {
     'docs/introduction/capabilities',
     {
       type: 'category',
+      label: 'Plugin guide',
+      items: [
+        'docs/codebase/ARCHITECTURE',
+        'docs/codebase/STRUCTURE',
+        'docs/codebase/STACK',
+        'docs/codebase/CONVENTIONS',
+        'docs/codebase/INTEGRATIONS',
+        'docs/codebase/TESTING',
+        'docs/codebase/CONCERNS',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Reference',
       items: [
         'docs/README',
@@ -31,6 +44,7 @@ module.exports = {
     'docs/flow/implement',
     'docs/flow/review',
     'docs/flow/handoffs',
+    'docs/flow/budget',
   ],
   evaluation: [
     'eval/README',

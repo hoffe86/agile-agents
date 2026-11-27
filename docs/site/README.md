@@ -53,9 +53,10 @@ missing heading anchors, unallowlisted local images, symlinks and repository
 escapes fail the build. Docusaurus also fails on unresolved generated
 links/anchors.
 
-The allowlist includes the four section entry and starter pages under
-`docs/introduction/`, `docs/getting-started/` and `docs/flow/`, the existing docs
-hub, ownership/mapping references, ADRs and selected evaluation guides.
+The allowlist includes the Introduction, Getting started and Flow pages, the
+plugin reference under `docs/codebase/`, the docs hub, ownership and mapping
+references, ADRs and selected evaluation guides. Flow diagrams embed
+allowlisted PNG exports and link to their editable Draw.io sources.
 `eval/baselines.md` is not published: its existing `./scoring-rubric.md` link is
 unresolved. Links to it still open its validated canonical GitHub location.
 
