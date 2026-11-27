@@ -3,6 +3,13 @@ export const documents = [
   'docs/introduction/index.md',
   'docs/introduction/concepts.md',
   'docs/introduction/capabilities.md',
+  'docs/codebase/ARCHITECTURE.md',
+  'docs/codebase/STRUCTURE.md',
+  'docs/codebase/STACK.md',
+  'docs/codebase/CONVENTIONS.md',
+  'docs/codebase/INTEGRATIONS.md',
+  'docs/codebase/TESTING.md',
+  'docs/codebase/CONCERNS.md',
   'docs/getting-started/index.md',
   'docs/getting-started/installation.md',
   'docs/getting-started/bootstrap.md',
@@ -13,6 +20,7 @@ export const documents = [
   'docs/flow/implement.md',
   'docs/flow/review.md',
   'docs/flow/handoffs.md',
+  'docs/flow/budget.md',
   'docs/README.md',
   'docs/customization-ownership.md',
   'docs/AGENTS-MD-MAPPING.md',
@@ -31,6 +39,7 @@ export const documents = [
   'docs/adr/0013-senior-agent-judgement.md',
   'docs/adr/0014-skill-evaluation-with-waza.md',
   'docs/adr/0015-deepeval-for-pipeline-evaluation.md',
+  'docs/adr/0016-t-shaped-research-and-plan.md',
   'eval/README.md',
   'eval/skills/README.md',
   'eval/pipeline/trajectory/README.md',
@@ -39,7 +48,13 @@ export const documents = [
   'eval/pipeline/scoring-rubric.md',
 ];
 
-export const assets = ['docs/assets/rpi-pipeline.png'];
+export const assets = [
+  'docs/assets/rpi-pipeline.png',
+  'docs/assets/delivery-handovers.png',
+  'docs/assets/budget-checkpoint.png',
+  'docs/assets/delivery-sequence.png',
+  'docs/assets/technical-test-gate.png',
+];
 export const repositoryUrl = 'https://github.com/hoffe86/agile-agents';
 export const sourceBranch = 'main';
 

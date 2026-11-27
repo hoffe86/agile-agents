@@ -125,10 +125,9 @@ and offers a retry if generation fails.
 
 ## Out-of-scope for the generator
 
-- Skill audit/conformance to the AgentSkills.io spec — that is a
-  separate Wave-2 task (see plan H5 part A).
-- Vendored skills (26 of 42 in `skills/`) — re-sync upstream from
-  `github/awesome-copilot`; do not edit in place.
+- Skill conformance and upstream synchronization are not generator
+  responsibilities. [The upstream index](../plugins/VENDORED.md) identifies
+  vendored content; the generator does not update it.
 
 ## Status: adopted & CI-enforced (2026-05-08)
 

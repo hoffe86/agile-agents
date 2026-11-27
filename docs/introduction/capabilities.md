@@ -12,13 +12,14 @@ decide how much to rely on it.
 - Optionally creates those tasks as linked child work items in Azure DevOps,
   GitHub Issues, Jira or Linear, through `backlog-manager` only.
 - Implements approved tasks one at a time, with the author owning the tests.
-- Runs only the solution's profile-enabled, configured lint, type-check,
-  unit-test and smoke checks as a deterministic gate before any reviewer is
-  used. Disabled checks are reported as skips; an enabled check without a
-  command is a configuration error, not a skip.
+- Runs the solution's configured deterministic checks before independent
+  review: lint, type-check, unit tests, opt-in integration/coverage/mutation
+  checks, then applicable smoke. Disabled checks are skips; an enabled check
+  without a command is a configuration error, not a skip.
 - Merges multi-lens independent review into one verdict with stable finding ids.
-- Records run events and measured usage, and stops when a configured cost
-  envelope is breached.
+- Records run events and checks measured usage against the configured budget.
+  A measured breach stops the run by default; explicit warn-only policy and
+  unavailable telemetry are reported differently. See [budget checkpoints](../flow/budget.md).
 
 ## Deliberate boundaries
 

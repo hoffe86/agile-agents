@@ -1,0 +1,51 @@
+<mxfile host="agile-agents" type="device">
+  <diagram name="Budget checkpoint" id="budget-checkpoint">
+    <mxGraphModel grid="0" page="1" pageScale="1" pageWidth="700" pageHeight="650" background="#ffffff">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Should the lead start more work?" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="24" y="14" width="650" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="start" value="&lt;b&gt;dev-lead: emit-event.sh / .ps1&lt;/b&gt;&lt;br&gt;Append phase_complete to events.jsonl" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#ddf4ff;strokeColor=#0969da;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="70" width="310" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="collect" value="&lt;b&gt;dev-lead: collect-usage.py&lt;/b&gt;&lt;br&gt;CLI SQLite: assistant_usage_events&lt;br&gt;Select session + created_at since run start" style="rounded=1;whiteSpace=wrap;html=1;fontSize=15;fillColor=#ddf4ff;strokeColor=#0969da;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="390" y="70" width="285" height="78" as="geometry"/>
+        </mxCell>
+        <mxCell id="available" value="&lt;b&gt;Usable&lt;br&gt;measurement?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fontSize=16;fillColor=#f6f8fa;strokeColor=#57606a;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="66" y="178" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="unknown" value="&lt;b&gt;Unavailable (exit 3)&lt;/b&gt;&lt;br&gt;Lead warns, records why and continues without cost verification." style="rounded=1;whiteSpace=wrap;html=1;fontSize=15;fillColor=#fff1d0;strokeColor=#9a6700;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="390" y="178" width="285" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="breached" value="&lt;b&gt;Any cap&lt;br&gt;breached?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fontSize=16;fillColor=#f6f8fa;strokeColor=#57606a;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="66" y="304" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="stop" value="&lt;b&gt;Breach (exit 2)&lt;/b&gt;&lt;br&gt;Lead applies stop_on_breach:&lt;br&gt;halt for a human by default; if false, report and continue." style="rounded=1;whiteSpace=wrap;html=1;fontSize=15;fillColor=#ffebe9;strokeColor=#cf222e;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="390" y="300" width="285" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="near" value="&lt;b&gt;Any cap in&lt;br&gt;warning range?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fontSize=16;fillColor=#f6f8fa;strokeColor=#57606a;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="66" y="430" width="230" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="warning" value="&lt;b&gt;Warning (exit 0)&lt;/b&gt;&lt;br&gt;Report actual usage and the cap.&lt;br&gt;Continue." style="rounded=1;whiteSpace=wrap;html=1;fontSize=15;fillColor=#fff1d0;strokeColor=#9a6700;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="390" y="430" width="285" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="normal" value="&lt;b&gt;Within budget (exit 0)&lt;/b&gt;&lt;br&gt;Record measured usage and continue." style="rounded=1;whiteSpace=wrap;html=1;fontSize=15;fillColor=#dafbe1;strokeColor=#1a7f37;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="550" width="310" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="zero" value="With a zero cap, any positive usage is a breach. No USD rate means unmetered, not zero." style="text;whiteSpace=wrap;html=1;align=left;fontSize=14;fontColor=#424a53;" vertex="1" parent="1">
+          <mxGeometry x="390" y="548" width="285" height="66" as="geometry"/>
+        </mxCell>
+        <mxCell id="window-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="start" target="collect"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="measure-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#57606a;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="collect" target="available"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="unknown-edge" value="No" style="edgeStyle=orthogonalEdgeStyle;html=1;labelBackgroundColor=#ffffff;fontSize=14;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="available" target="unknown"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="assess-edge" value="Yes" style="edgeStyle=orthogonalEdgeStyle;html=1;labelBackgroundColor=#ffffff;fontSize=14;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="available" target="breached"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="breach-edge" value="110% or more" style="edgeStyle=orthogonalEdgeStyle;html=1;labelBackgroundColor=#ffffff;fontSize=13;strokeColor=#cf222e;strokeWidth=2;" edge="1" parent="1" source="breached" target="stop"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="warn-check-edge" value="No" style="edgeStyle=orthogonalEdgeStyle;html=1;labelBackgroundColor=#ffffff;fontSize=14;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="breached" target="near"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="warning-edge" value="80% or more" style="edgeStyle=orthogonalEdgeStyle;html=1;labelBackgroundColor=#ffffff;fontSize=13;strokeColor=#9a6700;strokeWidth=2;" edge="1" parent="1" source="near" target="warning"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="normal-edge" value="No" style="edgeStyle=orthogonalEdgeStyle;html=1;labelBackgroundColor=#ffffff;fontSize=14;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="near" target="normal"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

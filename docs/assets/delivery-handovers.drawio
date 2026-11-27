@@ -1,0 +1,49 @@
+<mxfile host="agile-agents" type="device">
+  <diagram name="Delivery handovers" id="delivery-handovers">
+    <mxGraphModel grid="0" page="1" pageScale="1" pageWidth="720" pageHeight="640" background="#ffffff">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Who hands over what?" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="12" width="640" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="research" value="&lt;b&gt;Specialists to dev-lead&lt;/b&gt;&lt;br&gt;Verified facts, risks and how to test the plan" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#ddf4ff;strokeColor=#0969da;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="62" width="342" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="approval" value="&lt;b&gt;Human to dev-lead&lt;/b&gt;&lt;br&gt;Approved plan and any required design decision" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#fff1d0;strokeColor=#9a6700;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="156" width="342" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="author" value="&lt;b&gt;Task author to dev-lead&lt;/b&gt;&lt;br&gt;Change, checks and evidence for the criterion" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#ddf4ff;strokeColor=#0969da;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="250" width="342" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="direct" value="&lt;b&gt;If dev-lead is the author&lt;/b&gt;&lt;br&gt;Record equivalent evidence.&lt;br&gt;No worker completion block." style="rounded=0;whiteSpace=wrap;html=1;align=left;spacingLeft=12;fontSize=15;fillColor=#f6f8fa;strokeColor=#8c959f;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="430" y="246" width="260" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="bar" value="&lt;b&gt;Combined test bar to dev-lead&lt;/b&gt;&lt;br&gt;Command results for the exact content" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#fff1d0;strokeColor=#9a6700;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="344" width="342" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="review" value="&lt;b&gt;Independent review to dev-lead&lt;/b&gt;&lt;br&gt;One verdict and finding IDs by owner" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#fbefff;strokeColor=#8250df;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="438" width="342" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="recheck" value="&lt;b&gt;Content changed&lt;/b&gt;&lt;br&gt;Prior check results no longer suffice" style="rounded=1;whiteSpace=wrap;html=1;fontSize=15;fillColor=#fff1d0;strokeColor=#9a6700;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="430" y="344" width="260" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="fix" value="&lt;b&gt;Finding to its owner&lt;/b&gt;&lt;br&gt;Correct the work and account for the ID" style="rounded=1;whiteSpace=wrap;html=1;fontSize=15;fillColor=#fbefff;strokeColor=#8250df;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="430" y="438" width="260" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="done" value="&lt;b&gt;Dev-lead to human&lt;/b&gt;&lt;br&gt;Original criterion, delivered work and proof" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#dafbe1;strokeColor=#1a7f37;fontColor=#1f2328;" vertex="1" parent="1">
+          <mxGeometry x="26" y="540" width="342" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="plan-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="research" target="approval"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="task-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="approval" target="author"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="evidence-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="author" target="bar"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="note-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=none;dashed=1;strokeColor=#8c959f;" edge="1" parent="1" source="author" target="direct"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="pass-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#57606a;strokeWidth=2;" edge="1" parent="1" source="bar" target="review"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="accept-edge" value="Approve; no open Critical or unaccepted Major" style="edgeStyle=orthogonalEdgeStyle;html=1;labelBackgroundColor=#ffffff;fontSize=13;strokeColor=#1a7f37;strokeWidth=2;" edge="1" parent="1" source="review" target="done"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="finding-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#8250df;strokeWidth=2;" edge="1" parent="1" source="review" target="fix"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edit-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#8250df;strokeWidth=2;" edge="1" parent="1" source="fix" target="recheck"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="rerun-edge" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#8250df;strokeWidth=2;" edge="1" parent="1" source="recheck" target="bar"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

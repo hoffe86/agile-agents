@@ -46,9 +46,9 @@ Core provides 15 agents and 25 repository-scope skills:
 | Reviewers | `review-lead`, `code-reviewer`, `security-reviewer`, `architecture-reviewer`, `infrastructure-reviewer`, `test-reviewer`, `data-reviewer` |
 | Support | `backlog-manager`, `bootstrapper`, `capability-scout` |
 
-See [concepts and roles](docs/introduction/concepts.md), the
-[agent definitions](plugins/agile-agents-core/agents/), and the generated
-[skill inventory](AGENTS.md). Reviewers are read-only by effect;
+Start with [concepts and roles](docs/introduction/concepts.md) or use the
+[agent and skill guide](docs/codebase/STRUCTURE.md) to find the owner of a
+task and its source contract. Reviewers are read-only by effect;
 `capability-scout` proposes improvements but does not adopt them.
 
 The optional [`agentic-persona`](https://github.com/hoffe86/agentic-persona)

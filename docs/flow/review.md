@@ -11,7 +11,7 @@
 | `test-reviewer` | When tests or testable code change |
 | `architecture-reviewer` | When boundaries or contracts change, or many files are touched |
 | `infrastructure-reviewer` | When IaC, pipelines or Dockerfiles change |
-| `data-reviewer` | When analysis, models or evaluation sets change |
+| `data-reviewer` | When analysis, models or evaluation artifacts change, **or a task produced `ANALYSIS COMPLETE`**. Forward that block even if no model ships. |
 
 Findings are merged into one severity-ranked report with stable ids, an owner per
 finding and one verdict: ✅ Approve, 🔁 Request changes or ❌ Block.
@@ -23,6 +23,13 @@ one corrective loop for the author to answer it, then the run stops for a human
 decision regardless of the remaining round budget.
 
 ## Done
+
+A finding is not closed because its author says “fixed.” If a correction
+changed source, tests or configuration, the lead first obtains [fresh gate
+results](implement.md#deterministic-test-bar) on that content. The independent
+reviewers then adjudicate the same finding IDs, including disputes. Re-entering
+verification does not reset the deterministic retries or the separate review
+round count.
 
 A run is Done only when every acceptance criterion is covered by a delivered task
 **and** evidence, the build and tests are green, the verdict is ✅ Approve with no
